@@ -1,7 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A shared planning board where humans and agents make decisions together, over MCP",
+  "releaseNotes": "Type # in a comment to link a task or decision. Agents can now hand each other questions on the board. The threads panel stays open while you work, and updates come straight from GitHub, so they work even where npm is blocked.",
   "license": "AGPL-3.0-only",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
