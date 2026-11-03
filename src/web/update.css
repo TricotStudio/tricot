@@ -1,0 +1,165 @@
+/* "Tricot 0.2.0 is out" (update.tsx): on Home, a flat line above everything,
+   the sheet's own surface and hairline, neutral, as nothing here is a status;
+   in a board's top bar, a small label that opens the same words in a popover. */
+
+.update-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 28px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.home.is-first-run .update-notice {
+  margin-bottom: 24px;
+}
+.update-icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 15px;
+}
+.update-notice.is-updated .update-icon {
+  color: var(--decided-ink);
+}
+
+.update-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.update-title {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.update-title strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.update-notes {
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+.update-fine {
+  max-width: 72ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+.update-fine code {
+  overflow-wrap: anywhere;
+}
+/* A quiet text link, underlined so it reads as one, as Home's are. */
+.update-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.12s;
+}
+.update-link:hover {
+  text-decoration-color: currentColor;
+}
+.update-link .icon {
+  color: var(--muted);
+}
+/* The command to run, whole, so it can be read before it's copied. */
+.update-command {
+  margin: 2px 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.update-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.update-busy {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  padding-right: 4px;
+}
+
+@media (max-width: 700px) {
+  .update-notice {
+    flex-wrap: wrap;
+  }
+  .update-text {
+    flex-basis: calc(100% - 28px);
+  }
+  .update-actions {
+    margin-left: 28px;
+  }
+}
+
+/* ---- a board's top bar ------------------------------------------------- */
+
+.update-chip {
+  margin-right: 6px;
+}
+.update-chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  max-width: 220px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.update-chip-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.update-chip-button:hover,
+.popover[open] > .update-chip-button {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.update-chip-button .icon {
+  flex: none;
+  font-size: 14px;
+}
+.update-chip-button.is-updated .icon {
+  color: var(--decided-ink);
+}
+.update-chip-button .stitch {
+  width: 22px;
+}
+
+.update-popover {
+  width: min(400px, calc(100vw - 32px));
+  gap: 12px;
+}
+.update-popover .update-actions {
+  justify-content: flex-start;
+}
+.update-popover.is-updating {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}

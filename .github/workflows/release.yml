@@ -1,0 +1,195 @@
+# The GitHub release for a version tag, with the npm package attached, so that
+#   npm install -g https://github.com/TricotStudio/tricot/releases/download/v<version>/tricot-<version>.tgz
+# works where the npm registry is blocked (Tricot bundles everything it needs).
+# Job "release" builds, tests and runs the clean-machine check on the very
+# file it attaches; it can write releases and nothing else. Job "npm" then
+# downloads that file from the release and stages it on npm, with no token or
+# secret (npm trusts this workflow, RELEASING.md): it goes live on npm only
+# when a person approves it there. Only that job, which runs none of the
+# package's code, can get the identity token npm trusts.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+# Nothing by default: each job asks for what it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Writing releases, and nothing else.
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      # The runner's own Chrome, for the diagram tests and the clean-machine check.
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          # No dependency cache in a job that can write releases.
+          package-manager-cache: false
+
+      - name: Check the tag is package.json's version
+        id: version
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME but package.json says $version: the tag should be v$version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Pack the package, as npm publish would
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm pack
+          test -f "tricot-$VERSION.tgz"
+
+      - name: Check it on a clean machine
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          "$CHROME_PATH" --version
+          npm run smoke:release -- --tarball "tricot-$VERSION.tgz"
+
+      - name: Write the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ runner.temp }}/release-notes.md
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const { releaseNotes } = JSON.parse(readFileSync("package.json", "utf8"));
+            const { VERSION: version, NOTES, GITHUB_SERVER_URL, GITHUB_REPOSITORY } = process.env;
+            const url = `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/v${version}/tricot-${version}.tgz`;
+            const fence = "```";
+            const lead = typeof releaseNotes === "string" && releaseNotes.trim() ? releaseNotes.trim() : `Tricot ${version}.`;
+            writeFileSync(NOTES, [
+              lead,
+              "",
+              "Install it with npm:",
+              "",
+              `${fence}sh\nnpm install -g tricot@${version}\n${fence}`,
+              "",
+              "Or straight from this release, where the npm registry is blocked (Tricot needs nothing else):",
+              "",
+              `${fence}sh\nnpm install -g ${url}\n${fence}`,
+              "",
+            ].join("\n"));
+          '
+          cat "$NOTES"
+
+      - name: Make the GitHub release, or attach the package to it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ runner.temp }}/release-notes.md
+        run: |
+          tag="$GITHUB_REF_NAME"
+          tarball="tricot-$VERSION.tgz"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" "$tarball" --clobber
+            # Notes a person wrote on the release stay; an empty one gets these.
+            if [ -z "$(gh release view "$tag" --json body --jq .body)" ]; then
+              gh release edit "$tag" --notes-file "$NOTES"
+            fi
+          else
+            prerelease=()
+            case "$VERSION" in *-*) prerelease=(--prerelease) ;; esac
+            gh release create "$tag" "$tarball" --verify-tag --title "Tricot $VERSION" --notes-file "$NOTES" "${prerelease[@]}"
+          fi
+
+  # The release's own file, staged on npm. No checkout, no npm ci, no scripts,
+  # no tests: nothing of the package runs beside the identity token.
+  npm:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Reading the release, and an identity token that npm's trusted publishing
+    # exchanges for a short-lived one that can only stage tricot.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      # Staging under trusted publishing needs npm 11.15.0 or later; Node 22
+      # comes with npm 10.
+      - name: Use an npm that can stage
+        run: |
+          npm install -g npm@11.21.1
+          npm --version
+
+      - name: Download the release's file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: gh release download "v$VERSION" -p "tricot-$VERSION.tgz"
+
+      # The very file attached to the release, unchanged, held by npm until a
+      # person approves it. npm adds provenance by itself (public repository,
+      # public package): a signed record that this workflow run made it.
+      - name: Stage the same file on npm, for approval
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          LOG: ${{ runner.temp }}/npm-stage.log
+        run: |
+          tarball="tricot-$VERSION.tgz"
+          shasum="$(sha1sum "$tarball" | cut -d' ' -f1)"
+          integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)"
+
+          if published="$(npm view "tricot@$VERSION" version 2> /dev/null)" && [ "$published" = "$VERSION" ]; then
+            if [ "$(npm view "tricot@$VERSION" dist.integrity)" = "$integrity" ]; then
+              echo "::notice::tricot@$VERSION is already on npm, as this release's file. Nothing to stage."
+            else
+              echo "::warning::tricot@$VERSION is already on npm, but as a different file from this release's (rebuilt after it was published?). npm's is the one people get: put it back on the release with npm pack tricot@$VERSION, then gh release upload v$VERSION tricot-$VERSION.tgz --clobber."
+            fi
+            exit 0
+          fi
+
+          # A pre-release goes under "next", so that npm install -g tricot
+          # keeps installing the last full release.
+          tag=()
+          case "$VERSION" in *-*) tag=(--tag next) ;; esac
+          if npm stage publish "./$tarball" --access public "${tag[@]}" 2>&1 | tee "$LOG"; then
+            id="$(sed -n 's/.*(staged with id \([^)]*\)).*/\1/p' "$LOG")"
+            echo "::notice::tricot@$VERSION is staged on npm, waiting for approval: npm stage approve ${id:-<id>} --otp=<code>, or on npmjs.com (RELEASING.md). Its shasum there should be $shasum, this release's file."
+            exit 0
+          fi
+
+          # npm keeps one staged version per version number.
+          if grep -qE 'code E409|409 Conflict' "$LOG"; then
+            echo "::notice::npm already has tricot@$VERSION staged, so nothing changed. Before approving it, check that its shasum is $shasum, this release's file; if not, reject it on npm and re-run this job."
+            exit 0
+          fi
+          echo "::error::npm didn't stage tricot@$VERSION. ENEEDAUTH or a 404 usually means npm doesn't trust this workflow yet: check tricot's Trusted Publisher on npmjs.com (RELEASING.md)."
+          exit 1

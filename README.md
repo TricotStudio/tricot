@@ -1,0 +1,85 @@
+# Tricot
+
+Tricot is a shared workspace where you and your agents plan and work together. Agents connect over MCP and bring their questions, options and workflows to the board instead of burying them in chat. You answer there, at your own pace, and the board keeps them working the way you expect: they follow what you decide, and adjust as your project changes.
+
+![A Tricot board with one question open: the agent's evidence on its canvas (a table, a note, a comparison of three prototypes and a diagram) and the options in the panel beside it, the recommended one starred](docs/images/board.png)
+
+## Install
+
+Tricot needs Node 22.13 or newer. Install it with npm, from the npm registry or straight from a [GitHub release](https://github.com/TricotStudio/tricot/releases):
+
+```sh
+# from the npm registry
+npm install -g tricot
+
+# or from a GitHub release
+npm install -g https://github.com/TricotStudio/tricot/releases/download/v<version>/tricot-<version>.tgz
+```
+
+Or with Homebrew, which brings Node.js along if you don't have it:
+
+```sh
+brew install tricotstudio/tap/tricot
+```
+
+To try it once without installing, run `npx tricot`.
+
+## Start
+
+```sh
+tricot
+```
+
+This starts the board (or finds the one already running), opens it in your browser, and prints how to connect an agent.
+
+## Connect an agent
+
+Tricot works with any agent that speaks MCP. Run the line for yours once, then start a new session:
+
+```sh
+# Claude Code
+claude mcp add --transport http tricot "http://127.0.0.1:4545/mcp?agent=Claude"
+
+# Codex
+codex mcp add tricot --url "http://127.0.0.1:4545/mcp?agent=Codex"
+
+# Gemini CLI
+gemini mcp add --scope user --transport http tricot "http://127.0.0.1:4545/mcp?agent=Gemini"
+
+# Pi
+pi mcp add tricot --url "http://127.0.0.1:4545/mcp?agent=Pi"
+```
+
+OMP and OpenCode take it in their settings file. For OMP, in `~/.omp/agent/mcp.json`:
+
+```json
+{ "mcpServers": { "tricot": { "type": "http", "url": "http://127.0.0.1:4545/mcp?agent=OMP", "timeout": 300000 } } }
+```
+
+For OpenCode, in `~/.config/opencode/opencode.json`:
+
+```json
+{ "mcp": { "tricot": { "type": "remote", "url": "http://127.0.0.1:4545/mcp?agent=OpenCode", "timeout": 300000 } } }
+```
+
+Any other MCP client connects to `http://127.0.0.1:4545/mcp` over Streamable HTTP; `tricot connect mcp-json` prints a config entry for it. `tricot connect <agent>` prints any of these again, and the Connect panel in Tricot shows them too.
+
+## Learn more
+
+- [The `tricot` command](docs/cli.md): its commands, connecting agents, showing their steps live on your boards, and updating or removing it.
+- [How Tricot works](docs/how-it-works.md): how a decision moves, what agents can and can't change, tasks, and canvases.
+- [MCP tools](docs/mcp-tools.md): the tools agents use, and what each one does.
+- [Updates, configuration and Google sign-in](docs/configuration.md): the daily update check, the environment variables, running Tricot on a network, and connecting Google Docs.
+- [Contributing](CONTRIBUTING.md): building and running Tricot from its source code, and how the code is laid out.
+
+## License
+
+Tricot is open source under the [AGPL-3.0](LICENSE), free for everyone. The licence doesn't cover the name "Tricot": a fork needs its own. Contributions are welcome under the [CLA](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Copyright © 2026 Tricot Studio.
+
+## Credits
+
+Canvases are built on [React Flow](https://reactflow.dev) by xyflow (MIT). The wordmark is set in [Cal Sans](https://github.com/calcom/font) by Cal.com (SIL Open Font License 1.1, in `src/web/fonts/OFL.txt`).
+
+The installed package carries `THIRD_PARTY_NOTICES.md`: the name, version and full licence of every library bundled into it, which the build writes from what the bundles hold (`scripts/notices.mjs`).

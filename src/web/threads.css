@@ -1,0 +1,710 @@
+/* The board's threads (threads.tsx): the list of them, one thread's
+   conversation in the panel docked on the right, lenses, what a thread led
+   to. The dock and the chat bar themselves are in chatBar.css. */
+
+/* ---- the threads list (threadsList.tsx) ---------------------------------------
+   A sheet rising from the floating chat bar, as wide as it is, or dropping
+   from the docked conversation's "Threads". Waiting on you first, said by
+   order, weight and one amber square; Recent; then Earlier, a quiet line
+   each. Rows stay plain, as in the needs-you panel: no washes, no stripes. */
+
+.threads-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  max-height: min(600px, calc(100vh - 230px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  overflow: hidden;
+  animation: threads-pop-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
+  transform-origin: 50% 100%;
+}
+.threads-pop.is-docked {
+  top: 56px;
+  bottom: auto;
+  left: 8px;
+  right: 8px;
+  max-height: calc(100% - 140px);
+  transform-origin: 0 0;
+  animation-name: threads-drop-in;
+}
+@keyframes threads-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+@keyframes threads-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .threads-pop {
+    animation: none;
+  }
+}
+.tl-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.tl-heading {
+  margin: 0 auto 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tl-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 8px 8px;
+}
+.tl-empty {
+  margin: 0;
+  padding: 18px 10px 10px;
+  color: var(--muted);
+}
+.tl-group-head {
+  margin: 0;
+  padding: 14px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tl-group.is-waiting .tl-group-head {
+  color: var(--open-ink);
+}
+.tl-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.tl-more {
+  margin: 2px 0 0 40px;
+}
+
+/* A row: who started it, then its title over its latest message and what it
+   made, and when at the right. Its button is
+   stretched over the whole row, under Delete; its focus ring is the row's.
+   Corners nest inside the sheet's, as the needs-you panel's rows do. */
+.tl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+}
+.tl-row:hover,
+.tl-row.is-current {
+  background: var(--surface-2);
+}
+.tl-row:has(.tl-open:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.tl-row .actor-mark {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+.tl-open {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tl-open:focus-visible {
+  outline: none;
+}
+.tl-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+/* Two lines at most, so a long title can still be read in the docked panel. */
+.tl-title {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.tl-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  line-height: 19px;
+}
+.tl-last {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+/* What it made, in quiet words after what was said: "made a question". */
+.tl-made {
+  flex: none;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.tl-last + .tl-made::before {
+  content: '·';
+  margin-right: 6px;
+}
+.tl-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+}
+.tl-time {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Your turn: an agent asked you. Its title takes the heading weight, what it
+   said reads in ink, and the time has the status square in needs-you amber. */
+.tl-row.is-waiting .tl-title {
+  font-weight: 600;
+}
+.tl-row.is-waiting .tl-last {
+  color: var(--text);
+}
+.tl-turn {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--open);
+}
+
+/* Earlier: done with for now, so quieter, and one line each. The title keeps
+   its room; what it made gives way first. */
+.tl-row.is-compact {
+  align-items: center;
+  padding: 6px 10px;
+}
+.tl-row.is-compact .tl-open {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tl-row.is-compact .tl-title {
+  flex: none;
+  max-width: 100%;
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.tl-row.is-compact .tl-made {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.tl-row.is-compact .tl-end {
+  height: auto;
+}
+/* Too narrow for both (a phone): an Earlier row keeps just its title. */
+.tl-body {
+  container-type: inline-size;
+}
+@container (max-width: 380px) {
+  .tl-row.is-compact .tl-made {
+    display: none;
+  }
+}
+
+/* Delete shows on a row's hover or keyboard focus, in the time's place. The
+   list opening on a row (or a click in it) doesn't show it. */
+.tl-delete {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  visibility: hidden;
+}
+.tl-row.is-compact .tl-delete {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.tl-row:hover .tl-delete,
+.tl-row:has(:focus-visible) .tl-delete {
+  visibility: visible;
+}
+.tl-row:hover .tl-end,
+.tl-row:has(:focus-visible) .tl-end {
+  visibility: hidden;
+}
+
+/* A narrow window: the list fills the width above the bar. */
+@media (max-width: 900px) {
+  .threads-pop {
+    max-height: calc(100vh - 140px);
+  }
+}
+
+/* The conversation is as wide as the panel, at any width it takes: it
+   scrolls up and down only. Each grid in it has one column of
+   minmax(0, 1fr), not the implicit auto one, which would grow to the widest
+   thing that can't wrap in it (an option's one-line label, a long name)
+   and push the whole message past the panel's edge. Text wraps; code,
+   tables and diagrams scroll in their own box (.md). */
+.threads-conversation {
+  flex: 1 1 auto;
+  min-height: 72px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+}
+.thread-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.thread-message {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.thread-message .actor-mark {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+.thread-message-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+/* Who and when on one line; a long name (or "via /skill") takes the next. */
+.thread-message-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  font-size: 13px;
+}
+.thread-message-head .tag {
+  white-space: normal; /* one line, unless it is wider than the message on a line of its own */
+}
+.thread-message-head strong {
+  font-weight: 600;
+}
+.thread-message-time {
+  font-size: 12px;
+  color: var(--faint);
+}
+.threads-intro {
+  margin: 0;
+  color: var(--muted);
+}
+.threads-quiet {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ---- lenses (lenses.tsx) ----------------------------------------------------
+   A quiet tinted chip per preset, from the status tints with their inks, so
+   both themes have them; one of your own is plain, with a hairline. */
+
+.lens-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--lens-bg);
+  color: var(--lens-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.lens-general {
+  --lens-bg: var(--deferred-bg);
+  --lens-ink: var(--deferred-ink);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.lens-legal {
+  --lens-bg: var(--provisional-bg);
+  --lens-ink: var(--provisional-ink);
+}
+.lens-design {
+  --lens-bg: var(--danger-bg);
+  --lens-ink: var(--danger);
+}
+.lens-performance {
+  --lens-bg: var(--decided-bg);
+  --lens-ink: var(--decided-ink);
+}
+.lens-security {
+  --lens-bg: var(--exploring-bg);
+  --lens-ink: var(--exploring-ink);
+}
+.lens-own {
+  --lens-bg: var(--surface);
+  --lens-ink: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* The chip that changes a lens is its own button: on hover, focus or while
+   its menu is open the chip takes a ring in its ink. A new thread's line, above
+   its composer, holds the chip and who answers. */
+.lens-line {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+}
+.lens-anchor {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+.lens-pick {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.lens-pick:hover .lens-chip,
+.lens-pick:focus-visible .lens-chip,
+.lens-pick[aria-expanded='true'] .lens-chip {
+  box-shadow: inset 0 0 0 1.5px var(--lens-ink);
+}
+.lens-pick:focus-visible {
+  outline-offset: 2px;
+}
+/* The menu floats under the chip, over the conversation, and pushes nothing;
+   fixed, at the place the chip measured, so the list doesn't clip it. */
+.lens-menu {
+  position: fixed;
+  z-index: 50;
+  width: min(380px, calc(100vw - 56px));
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+.lens-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lens-pill {
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.lens-pill:hover,
+.lens-pill[aria-checked='true'] {
+  background: var(--surface-2);
+}
+.lens-pill[aria-checked='true'] .lens-chip {
+  box-shadow: inset 0 0 0 1.5px var(--lens-ink);
+}
+.lens-pill:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+.lens-check {
+  margin-left: 3px;
+  font-size: 12px;
+}
+.lens-menu-brief {
+  margin: 0;
+  min-height: 36px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.lens-form {
+  display: grid;
+  gap: 6px;
+}
+.lens-form input,
+.lens-form textarea {
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.lens-form textarea {
+  resize: none;
+  field-sizing: content;
+  min-height: 52px;
+}
+.lens-form .btn {
+  justify-self: start;
+}
+.lens-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.lens-agent select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.lens-agent select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* ---- what a thread led to (threadWork.tsx) ----------------------------------
+   Under the reply that made it: a decision with its status and options, a
+   task, a block, a comment. Sunk into the paper, so they read as the board's
+   cards rather than more of the message. */
+
+/* As wide as the message: a card's one-line option labels and titles end in
+   an ellipsis there rather than widening it (the conversation's note above). */
+.work-cards {
+  list-style: none;
+  margin: 8px 0 2px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.work-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  transition: border-color 0.12s;
+  --marker: var(--faint);
+}
+.work-card:hover {
+  border-color: var(--border-strong);
+}
+.work-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.work-meta .icon {
+  color: var(--faint);
+}
+.work-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--marker);
+}
+.ref-retired .work-mark,
+.ref-task-backlog .work-mark {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+}
+.work-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* A task or a block: one row, its number or kind, its title, its status or place. */
+.work-card.is-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 7px 12px;
+}
+.work-card.is-row .work-meta {
+  align-self: center;
+}
+.work-card.is-row .work-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+}
+.work-where {
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.work-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.work-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px 2px 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12px;
+}
+.work-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-option.is-chosen {
+  border-color: var(--decided);
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.work-option.is-chosen .option-letter {
+  background: var(--decided);
+  color: var(--surface);
+}
+.work-quote {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.work-card.is-gone {
+  border-style: dashed;
+  background: none;
+  color: var(--faint);
+}
+
+/* Under the byline of a decision or task made answering a thread. */
+.from-thread {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  margin-top: -14px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.from-thread .icon,
+.from-thread .from-thread-label {
+  flex: none;
+}
+.from-thread .icon {
+  align-self: center;
+}
+.from-thread button,
+.from-thread span:not(.from-thread-label) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.from-thread button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.from-thread button:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- deleting a thread --------------------------------------------------------
+   The toast that offers Undo is the canvas's (canvas/undo.tsx), held where
+   the canvas's own sits, near the foot of the window, and lifted clear of
+   the chat bar floating there. */
+
+.threads-error {
+  flex: none;
+  margin: 0;
+  padding: 8px 14px 0;
+}
+.threads-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 15px;
+  z-index: 60;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+}
+body:has(.chat-float .chat-bar) .threads-toast {
+  bottom: 84px;
+}

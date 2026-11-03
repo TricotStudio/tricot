@@ -1,0 +1,25 @@
+node_modules/
+dist/
+# Written by the build from what the bundles hold (scripts/notices.mjs), and shipped in the package
+/THIRD_PARTY_NOTICES.md
+*.tmp
+# Patches and screenshots for review, and the release smoke test's install (RELEASING.md)
+.review/
+
+# Secrets and boards never go in the repository: environment files, and
+# Tricot's SQLite database with its -wal and -shm files
+.env*
+*.db
+*.db-*
+*.sqlite
+
+# Local tool state and installed tooling (reinstallable, 19 MB): all of
+# .claude/ (settings, agents, worktrees, installed skills) but the project's
+# own skills, named one by one so an installed skill never slips in
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/release/
+*/**/.claude/
+.impeccable/
+.DS_Store

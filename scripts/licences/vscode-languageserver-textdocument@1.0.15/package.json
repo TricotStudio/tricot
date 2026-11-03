@@ -1,0 +1,10 @@
+{
+  "name": "vscode-languageserver-textdocument",
+  "version": "1.0.15",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Microsoft/vscode-languageserver-node.git",
+    "directory": "textDocument"
+  }
+}

@@ -1,0 +1,669 @@
+/* ---- a Google Doc's draft, edited over the canvas -----------------------
+   A sheet over the canvas: the doc's mark and title, who changed what, the
+   doc as a page of paragraphs, and Save. What the draft changes is marked in
+   the margin in the draft's amber, added paragraphs in green, removed ones in
+   red, as the canvas marks a part being pinned. */
+
+.doc-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(1.5px);
+  animation: doc-editor-fade 0.14s ease-out;
+}
+@keyframes doc-editor-fade {
+  from {
+    opacity: 0;
+  }
+}
+.doc-editor {
+  width: min(860px, 100%);
+  height: 100%;
+  max-height: 940px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  cursor: default;
+  animation: doc-editor-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes doc-editor-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+    scale: 0.99;
+  }
+}
+
+.doc-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-editor-title {
+  flex: 1;
+  min-width: 0;
+}
+.doc-editor-title h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-editor-title p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-editor-close {
+  padding: 6px;
+  font-size: 15px;
+}
+
+.doc-editor-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.doc-authors {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.doc-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.doc-author-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+.doc-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--decided-ink);
+  font-weight: 500;
+}
+.doc-rebased {
+  color: var(--exploring-ink);
+}
+
+.doc-editor-head,
+.doc-editor-band,
+.doc-editor-foot {
+  flex: none;
+}
+.doc-editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  padding: 20px 24px 28px;
+}
+
+/* The doc, as a page. */
+.doc-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 28px 8px 20px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.doc-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 2px 0 2px 40px;
+  border-left: 3px solid transparent;
+}
+.doc-row.is-changed {
+  border-left-color: var(--pin-draft);
+  background: color-mix(in srgb, var(--pin-draft-bg) 70%, transparent);
+}
+.doc-row.is-added {
+  border-left-color: var(--decided);
+  background: color-mix(in srgb, var(--decided-bg) 70%, transparent);
+}
+.doc-row.is-removed {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-bg) 55%, transparent);
+}
+.doc-text {
+  position: relative;
+  min-width: 0;
+}
+.doc-list-mark {
+  position: absolute;
+  top: 5px;
+  width: 20px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: right;
+  padding-right: 6px;
+  user-select: none;
+}
+.doc-input,
+.doc-removed {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 5px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.doc-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.doc-row:focus-within {
+  border-left-color: var(--focus);
+}
+.doc-row.is-changed:focus-within {
+  border-left-color: var(--pin-draft);
+}
+.doc-removed {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent);
+}
+.doc-input.is-title,
+.doc-removed.is-title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  padding: 6px 0 8px;
+}
+.doc-input.is-subtitle,
+.doc-removed.is-subtitle {
+  font-size: 16px;
+  color: var(--muted);
+}
+.doc-input.is-h1,
+.doc-removed.is-h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  padding-top: 14px;
+}
+.doc-input.is-h2,
+.doc-removed.is-h2 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  padding-top: 12px;
+}
+.doc-input.is-h3,
+.doc-removed.is-h3,
+.doc-input.is-h4,
+.doc-removed.is-h4 {
+  font-size: 15px;
+  font-weight: 600;
+  padding-top: 10px;
+}
+.doc-was {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.doc-was-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Who changed it, and what can be done about it, in the right margin. */
+.doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding-right: 10px;
+}
+.doc-state {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.doc-state.is-changed {
+  color: var(--open-ink);
+}
+.doc-state.is-added {
+  color: var(--decided-ink);
+}
+.doc-state.is-removed {
+  color: var(--danger);
+}
+.doc-style {
+  padding: 2px 4px;
+  font-size: 12px;
+}
+.doc-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.doc-actions .btn-small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.doc-remove {
+  opacity: 0;
+}
+.doc-row:hover .doc-remove,
+.doc-row:focus-within .doc-remove {
+  opacity: 1;
+}
+@media (hover: none) {
+  .doc-remove {
+    opacity: 1;
+  }
+}
+
+/* A part Tricot leaves to Google: a table, an image, a chip. */
+.doc-row.is-locked {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.doc-locked {
+  display: grid;
+  gap: 2px;
+  margin-right: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.doc-row.is-locked {
+  grid-template-columns: minmax(0, 1fr);
+}
+.doc-locked-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.doc-locked-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0 43px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.doc-add:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.doc-editor-foot {
+  display: grid;
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--border);
+}
+.doc-note {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.doc-note strong {
+  font-weight: 600;
+}
+.doc-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.doc-editor-hint {
+  margin-right: auto;
+}
+
+.doc-editor-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 200px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Asking for the Docs permission, or saying why the doc can't open. */
+.doc-access {
+  max-width: 520px;
+  margin: 40px auto;
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.doc-access-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  font-size: 16px;
+}
+.doc-access h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+.doc-access p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.doc-access p strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.doc-access-points {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.doc-access-actions {
+  margin-top: 4px;
+}
+
+/* Both versions of a paragraph changed on both sides. */
+.doc-conflicts {
+  max-width: 760px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+.doc-conflict-intro {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.doc-conflict-intro h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.doc-conflict-intro p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.doc-conflict {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.doc-conflict-was {
+  overflow-wrap: anywhere;
+}
+.doc-conflict-was span {
+  text-decoration: line-through;
+}
+.doc-conflict-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.doc-side {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.doc-side.is-theirs {
+  background: var(--exploring-bg);
+  border-color: color-mix(in srgb, var(--exploring) 30%, transparent);
+}
+.doc-side.is-mine {
+  background: var(--pin-draft-bg);
+  border-color: color-mix(in srgb, var(--pin-draft) 35%, transparent);
+}
+.doc-side-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.doc-side-label .actor-name {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.doc-side p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.doc-side p.is-gone {
+  color: var(--faint);
+  font-style: italic;
+}
+
+/* Asking agents about words in a paragraph: the words marked behind the
+   text box (pinned in the pins' blue, being asked about in amber), the
+   canvas's pin prompt under them, a marker by the paragraph, and its thread
+   opening under it. */
+.doc-page {
+  position: relative;
+}
+.doc-field {
+  position: relative;
+}
+.doc-field > .doc-input:not(.doc-marks) {
+  position: relative; /* over the marks */
+}
+.doc-field .doc-input.doc-marks {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+/* Marks take no room of their own, so they sit exactly under the words. */
+.doc-marks .pin-mark {
+  padding: 0;
+  margin: 0;
+  color: transparent;
+}
+.doc-meta .pin-chip {
+  margin-left: 0;
+}
+.doc-pin-chip.is-ask:not(.is-done):not(.is-lost) .pin-chip-status {
+  font-weight: 500;
+}
+.doc-row,
+.doc-gone {
+  scroll-margin-top: 56px; /* opened at a thread: its paragraph, near the top */
+}
+.doc-row-after {
+  grid-column: 1 / -1;
+  padding: 4px 10px 10px 0;
+}
+.pin-prompt.is-inline {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+  box-shadow: var(--shadow-sm);
+  transform-origin: top left;
+}
+.pin-thread-ask {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pin-bg);
+  color: var(--pin-ink);
+  font-size: 11px;
+  font-weight: 500;
+}
+.doc-gone {
+  display: grid;
+  gap: 8px;
+  margin: 14px 10px 0 43px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.doc-gone-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.doc-gone .pin-chip {
+  margin-left: 0;
+}
+
+/* A Google Doc's card: Edit in Tricot, its draft when it has one, and
+   the threads open on its paragraphs. */
+.block-link-draft {
+  color: var(--open-ink);
+  font-weight: 500;
+}
+.block-link-threads {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  margin: 0 6px 0 0;
+  padding: 0 6px;
+  border: none;
+  border-radius: 999px;
+  background: var(--pin-bg);
+  color: var(--pin-ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  vertical-align: 1px;
+  cursor: pointer;
+}
+.block-link-threads:hover {
+  background: color-mix(in srgb, var(--pin) 20%, var(--surface));
+}
+.block-link-threads .icon {
+  width: 11px;
+  height: 11px;
+}
+/* Beside it, the status gives way: the service first, then the draft's. */
+.block-link-threads ~ .block-link-lead {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.block-link-threads ~ .block-link-rest {
+  flex-shrink: 50;
+}
+.block-link-threads.is-new {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pin) 55%, transparent);
+}
+
+@media (max-width: 640px) {
+  .doc-editor-backdrop {
+    padding: 8px;
+  }
+  .doc-editor-body {
+    padding: 12px 8px 20px;
+  }
+  .doc-row {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 14px;
+  }
+  .doc-meta {
+    min-height: 0;
+    padding-bottom: 4px;
+  }
+  .doc-conflict-sides {
+    grid-template-columns: 1fr;
+  }
+  .doc-editor-hint {
+    display: none;
+  }
+}

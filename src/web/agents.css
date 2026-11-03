@@ -1,0 +1,366 @@
+/* The agents in the user menu, and an agent's own panel: a sheet from the
+   right with its skills, what it is working on, and its activity. */
+
+/* ---- the user menu's list ------------------------------------------------------ */
+
+.menu-panel.user-panel {
+  width: min(320px, calc(100vw - 32px));
+}
+.user-agents {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.user-agents-head {
+  padding: 0 10px 4px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.user-agents-empty {
+  margin: 0;
+  padding: 0 10px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.user-agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.user-agent:hover,
+.user-agent:focus-visible {
+  background: var(--surface-2);
+}
+.user-agent .actor-mark {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+.user-agent-text {
+  min-width: 0;
+  display: grid;
+}
+.user-agent-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.user-agent-state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.user-agent-count {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.user-agent-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.user-agent-dot.is-listening {
+  background: var(--decided);
+}
+.user-agent-dot.is-working,
+.user-agent-dot.is-idle {
+  background: var(--open);
+}
+
+/* ---- an agent's panel ---------------------------------------------------------- */
+
+.agent-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--scrim);
+}
+.agent-panel {
+  width: min(480px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  animation: agent-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.agent-panel:focus {
+  outline: none;
+}
+@keyframes agent-in {
+  from {
+    opacity: 0;
+    translate: 24px 0;
+  }
+}
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-head .actor-mark {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+.agent-head-text {
+  min-width: 0;
+}
+.agent-head h2 {
+  font-size: 17px;
+  font-weight: 650;
+}
+.agent-head p {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.agent-close {
+  margin-left: auto;
+  align-self: flex-start;
+  padding: 4px 6px;
+}
+.agent-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 20px 0;
+}
+.agent-tabs button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.agent-tabs button:hover {
+  color: var(--text);
+}
+.agent-tabs button.is-active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.agent-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 20px;
+}
+.agent-empty {
+  padding: 18px 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.agent-search {
+  display: block;
+  width: calc(100% - 40px);
+  margin: 14px 20px 6px;
+  font-size: 13px;
+}
+
+/* ---- skills ---------------------------------------------------------------------- */
+
+.agent-skills {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-skill {
+  display: grid;
+  gap: 2px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-skill.is-editing {
+  background: var(--bg);
+}
+.agent-skill-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.agent-skill-line code {
+  flex: none;
+  padding: 0;
+  background: none;
+  color: var(--exploring-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.agent-skill-tag {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.agent-skill-tag.is-tricot {
+  border-color: color-mix(in srgb, var(--exploring) 35%, var(--border));
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+.agent-skill-edit {
+  flex: none;
+  padding: 0 6px;
+  margin: -3px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.agent-skill-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+.agent-skill-note {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.agent-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(100% - 40px);
+  margin: 14px 20px 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.agent-add:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.agent-add.is-open {
+  display: block;
+  cursor: default;
+  font-weight: inherit;
+  color: inherit;
+}
+.agent-form {
+  display: grid;
+  gap: 10px;
+}
+.agent-form-head {
+  font-weight: 600;
+}
+.agent-field {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.agent-field > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.agent-field input,
+.agent-field textarea {
+  font-size: 13px;
+}
+.agent-form-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--faint);
+}
+.agent-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-form-actions .small {
+  margin-right: auto;
+}
+.agent-delete {
+  color: var(--danger);
+}
+.agent-delete:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+/* ---- working on, and activity ------------------------------------------------------ */
+
+.agent-rows {
+  margin: 0;
+  padding: 6px 0 0;
+  list-style: none;
+}
+.agent-row {
+  display: grid;
+  gap: 1px;
+  padding: 9px 20px;
+  color: inherit;
+  text-decoration: none;
+}
+.agent-row:hover {
+  background: var(--surface-2);
+}
+.agent-row-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.agent-row-ref {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--exploring-ink);
+}
+.agent-row-meta {
+  font-size: 12px;
+  color: var(--faint);
+}
+.agent-activity-head {
+  padding: 14px 20px 0;
+  font-size: 12px;
+  color: var(--faint);
+}

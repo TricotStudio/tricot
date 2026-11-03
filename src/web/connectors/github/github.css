@@ -1,0 +1,141 @@
+/* ---- GitHub: a link card's live details, and the panel on Connectors ------ */
+
+/* Under a link card's title: state, who and where, checks, then its buttons. */
+.gh-details {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 9px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.gh-by {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-spacer {
+  flex: 1;
+}
+.gh-state {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--deferred-bg);
+  color: var(--deferred-ink);
+}
+.gh-state.is-open {
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.gh-state.is-merged {
+  background: var(--merged-bg);
+  color: var(--merged-ink);
+}
+.gh-state.is-closed {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.gh-checks {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.gh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--deferred);
+}
+.gh-checks.is-passing .gh-dot {
+  background: var(--decided);
+}
+.gh-checks.is-failing .gh-dot {
+  background: var(--danger);
+}
+.gh-checks.is-failing {
+  color: var(--danger);
+}
+.gh-checks.is-pending .gh-dot {
+  background: var(--open);
+}
+.gh-refresh {
+  padding-inline: 6px;
+}
+.gh-problem {
+  line-height: 1.35;
+}
+.gh-problem-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-problem.is-not_installed,
+.gh-problem.is-needs_sign_in {
+  color: var(--open-ink);
+}
+
+/* On the Connectors page: signing in by code, or with a token; and the repos. */
+.gh-signin {
+  display: grid;
+  gap: 12px;
+}
+.gh-code {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.gh-code-digits {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  user-select: all;
+}
+.gh-token {
+  display: grid;
+  gap: 8px;
+}
+.gh-token summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+.gh-token input {
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.gh-repos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gh-repos li {
+  padding: 2px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.gh-repos .gh-private {
+  color: var(--faint);
+}

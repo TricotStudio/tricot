@@ -1,0 +1,46 @@
+/* ---- agents tagging each other (agentTalk.tsx) --------------------------------
+   "Claude → Codex": the arrow, in faint ink and the icon family's stroke, then
+   who the message is for, in the author's own type: the actor name's label
+   in a card's discussion, the bold name in a thread's head. */
+
+.said-to {
+  position: relative; /* holds its "to" for screen readers in the discussion that scrolls it, as .delivery does */
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.said-to-arrow {
+  align-self: center;
+  color: var(--faint);
+  font-size: 12px;
+}
+.said-to-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comment-head .said-to-name {
+  font-size: 12px;
+  color: var(--muted);
+}
+.thread-message-head .said-to-name {
+  font-weight: 600;
+}
+.said-to-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The loop guard's line at the foot of a discussion: quiet as the delivery
+   line under a message (delivery.css), faint 12px text. */
+.loop-line {
+  margin: 8px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 18px;
+}
