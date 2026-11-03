@@ -1,0 +1,165 @@
+/* Home's first run (firstRun.tsx): a welcome, one question, one field, and
+   under it how an agent joins, or the agent that will answer. One narrow
+   column; the footer's agents and connectors follow it, a line each. */
+
+.home.is-first-run {
+  max-width: 768px;
+  padding-top: clamp(40px, 9vh, 88px);
+}
+@media (max-width: 900px) {
+  .home.is-first-run {
+    padding-top: 32px;
+  }
+}
+
+/* The welcome, and beside it where Tricot was started; a longer word on a
+   folder that isn't a project's goes under it. */
+.first-welcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 16px;
+  color: var(--muted);
+  font-size: 15px;
+}
+.first-folder {
+  font-size: 13px;
+  color: var(--faint);
+  text-wrap: pretty;
+}
+.first-folder.is-project {
+  color: var(--muted);
+}
+/* Not a project's folder: a sentence, so on its own line under the welcome. */
+.first-folder:not(.is-project) {
+  flex-basis: 100%;
+}
+/* A path, in the mono it is pasted in, without the code chip: it is read here, not copied. */
+.first-path {
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+.first-run h1 {
+  margin-top: 2px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+/* The field and its foot are one sheet, whose edge shows the focus. */
+.first-ask {
+  margin-top: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  transition: border-color 0.12s;
+}
+.first-ask:focus-within {
+  border-color: var(--text);
+}
+.first-ask-field {
+  display: block;
+  min-height: calc(2.5lh + 22px);
+  max-height: 45vh;
+  field-sizing: content;
+  padding: 16px 18px 6px;
+  border: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.6;
+  resize: none;
+}
+.first-ask-field:focus {
+  outline: none;
+}
+.first-ask-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 16px;
+  padding: 6px 10px 10px 18px;
+}
+.first-ask-help {
+  flex: 1 1 240px;
+  font-size: 13px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.first-ask-send {
+  padding: 8px 14px 8px 16px;
+}
+.first-run-error {
+  margin-top: 10px;
+}
+
+/* No agent yet: what to run, with Copy. */
+.first-connect {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.first-connect-text {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.first-connect-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.first-connect .copyline {
+  padding: 7px 7px 7px 14px;
+}
+.first-connect-more {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* An agent has connected: one quiet line, in the working blue while it's here. */
+.first-agent {
+  margin-top: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.first-agent .actor {
+  margin-top: 1px;
+}
+.first-agent.is-listening,
+.first-agent.is-working {
+  color: var(--exploring-ink);
+}
+/* Under it, while it isn't listening: what to say so it does, with Copy. */
+.first-agent-say {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.first-agent-say .say-phrase {
+  color: var(--text);
+}
+
+/* The footer follows the column: agents, connectors, then the version and Source, a line each. */
+.home.is-first-run .home-foot {
+  margin-top: 40px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.home.is-first-run .home-archived-toggle {
+  margin-left: 0;
+}

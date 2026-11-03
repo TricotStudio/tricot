@@ -1,0 +1,166 @@
+/* ---- what a decision could affect (affects.tsx) ------------------------------
+   The other decisions a decision may change or rests on, as quiet rows in one
+   sheet: the question in ink, where it stands by its status square, and why
+   it is listed in faint text, with the tasks built on it as hairline chips.
+   Each row opens its decision; hover sinks it, as hover does elsewhere.
+   After a person decides, the decisions their answer may change are offered
+   in the amber "may be out of date" note, which asks them something. */
+
+.could-affect-head {
+  display: grid;
+  gap: 2px;
+}
+
+.affects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.affects li + li {
+  border-top: 1px solid var(--border);
+}
+
+.affect {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.12s;
+}
+.affect:hover {
+  background: var(--surface-2);
+}
+.affect:focus-visible {
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.affect-question {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+
+.affect-standing {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.affect-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.affect-status::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--marker, var(--faint));
+}
+/* Hollow, as everywhere: retired is set aside for good. */
+.affect.status-retired .affect-status::before {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+}
+.affect-answer {
+  color: var(--text);
+}
+
+.affect-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--faint);
+}
+.affect-why {
+  flex: 1 1 12em;
+  min-width: 0;
+}
+.affect-reason .actor {
+  margin-right: 5px;
+}
+.affect-tasks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.affect-task {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the prompt after deciding ------------------------------------------- */
+
+.revisit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.revisit-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.revisit-what {
+  flex: 1 1 14em;
+  min-width: 0;
+  font-weight: 500;
+  text-wrap: pretty;
+}
+.revisit-what .card-number {
+  color: inherit;
+}
+.revisit-answer {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+}
+.revisit .row {
+  gap: 6px;
+}
+.refresh-note.revisit .btn {
+  margin-top: 0;
+}
+/* A closed card's panel recedes, but this asks something of the person, so
+   its buttons keep their full ink and sheet, as the composer does. */
+.decision-panel.is-closed .revisit {
+  --text: var(--full-text);
+  --surface: var(--full-surface);
+}
+.revisit-asked {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+}
+/* A quiet button leading the row lines its words up with the text above. */
+.revisit .row > .btn-quiet:first-child {
+  margin-left: -10px;
+}

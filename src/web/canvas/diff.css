@@ -1,0 +1,423 @@
+/* Diff blocks: code changes, file by file. Their colours mix from the status
+   tokens in styles.css, so both themes get them: green for added lines, red
+   for removed, blue for hunk headers and pins. */
+
+.block-type-diff .block-body {
+  padding: 0;
+}
+.block-type-diff .block-head .block-title {
+  flex: 0 1 auto;
+}
+.block-type-diff .pin-strip {
+  margin: 8px 12px;
+}
+
+.diff {
+  --diff-add-bg: color-mix(in srgb, var(--decided) 12%, var(--surface));
+  --diff-add-ink: var(--decided-ink);
+  --diff-del-bg: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  --diff-del-ink: var(--danger);
+  --diff-blank: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+  font-size: 12.5px;
+}
+
+/* ---- the header ---- */
+
+.diff-stat {
+  flex: none;
+  margin-right: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.diff-plus {
+  color: var(--decided-ink);
+}
+.diff-minus {
+  color: var(--danger);
+}
+.diff-switch {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  cursor: default;
+}
+.diff-switch button {
+  padding: 1px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.diff-switch button:hover {
+  color: var(--text);
+}
+.diff-switch button.is-on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- the file list ---- */
+
+.diff-note {
+  padding: 6px 12px;
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 12px;
+}
+.diff-file {
+  border-bottom: 1px solid var(--border);
+}
+.diff-file-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 12px;
+  border: none;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.diff-file-head:hover {
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+}
+.diff-file.is-open > .diff-file-head {
+  background: color-mix(in srgb, var(--surface-2) 40%, var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+.diff-chevron {
+  flex: none;
+  display: inline-block;
+  width: 10px;
+  color: var(--faint);
+  text-align: center;
+  transition: rotate 0.12s;
+}
+.diff-file.is-open .diff-chevron {
+  rotate: 90deg;
+}
+.diff-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.diff-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+.diff-tag.is-new {
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.diff-tag.is-deleted {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.diff-tag.is-renamed {
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+.diff-tag.is-too {
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.diff-file-count {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.diff-bar {
+  flex: none;
+  display: inline-flex;
+  gap: 1px;
+}
+.diff-bar i {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  opacity: 0.6;
+}
+.diff-bar i.is-add {
+  background: var(--decided);
+  opacity: 1;
+}
+.diff-bar i.is-del {
+  background: var(--danger);
+  opacity: 1;
+}
+.diff-empty {
+  padding: 8px 12px 10px 30px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.diff-more {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.diff-more:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+}
+
+/* ---- the lines ---- */
+
+/* Long lines scroll sideways inside the file; its hunk headers, threads and
+   "Show all" stay put, at the width of the view (100cqw). */
+.diff-code {
+  container-type: inline-size;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.diff-rows {
+  --diff-num-w: calc(var(--diff-digits, 3ch) + 14px);
+  width: max-content;
+  min-width: 100%;
+}
+.diff-hunk,
+.diff-code > .diff-more,
+.diff-thread {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+}
+.diff-hunk {
+  padding: 2px 12px;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diff-code > .diff-more {
+  font-family: var(--font);
+  border-top: 1px solid var(--border);
+}
+.diff-row {
+  display: grid;
+  grid-template-columns: var(--diff-num-w) var(--diff-num-w) 16px 1fr;
+}
+/* Side by side, each side gets half the view and long lines wrap, keeping
+   their spacing: two sides can't scroll sideways together. */
+.diff.is-split .diff-rows {
+  width: auto;
+}
+.diff-row.is-pair {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.diff-half {
+  display: grid;
+  grid-template-columns: var(--diff-num-w) 16px minmax(0, 1fr);
+}
+.diff.is-split .diff-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff-half:first-child {
+  border-right: 1px solid var(--border);
+}
+.diff-num {
+  padding-right: 8px;
+  color: var(--faint);
+  text-align: right;
+  opacity: 0.8;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.diff-mark {
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.diff-text {
+  padding-right: 16px;
+  white-space: pre;
+}
+.diff-text.is-note {
+  color: var(--faint);
+  font-style: italic;
+}
+.diff-row.is-add,
+.diff-half.is-add {
+  background: var(--diff-add-bg);
+}
+.diff-row.is-del,
+.diff-half.is-del {
+  background: var(--diff-del-bg);
+}
+.diff-half.is-blank {
+  background: var(--diff-blank);
+}
+.diff-row.is-add .diff-mark,
+.diff-half.is-add .diff-mark {
+  color: var(--diff-add-ink);
+}
+.diff-row.is-del .diff-mark,
+.diff-half.is-del .diff-mark {
+  color: var(--diff-del-ink);
+}
+
+/* Syntax: a light tint, never more. */
+.diff .tok-kw {
+  color: var(--provisional-ink);
+}
+.diff .tok-str {
+  color: var(--decided-ink);
+}
+.diff .tok-num {
+  color: var(--open-ink);
+}
+.diff .tok-com {
+  color: var(--faint);
+}
+
+/* Pinning a line: hovering marks its edge, amber while its prompt is open,
+   blue once something is pinned there. */
+.diff-code.is-pinnable [data-line] {
+  cursor: pointer;
+}
+.diff-code.is-pinnable .diff-row[data-line]:hover,
+.diff-code.is-pinnable .diff-half[data-line]:hover {
+  box-shadow: inset 3px 0 0 var(--border-strong);
+}
+.diff-code.is-pinnable [data-line]:hover .diff-num {
+  color: var(--pin-ink);
+  opacity: 1;
+}
+/* Drawn over the row, so a split row's sides don't hide it. */
+.diff-row.is-pinned {
+  position: relative;
+}
+.diff-row.is-pinned::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--pin);
+}
+.diff-row.is-draft,
+.diff-half.is-draft,
+.diff-code.is-pinnable .diff-row.is-draft:hover,
+.diff-code.is-pinnable .diff-half.is-draft:hover {
+  background: var(--pin-draft-bg);
+  box-shadow: inset 3px 0 0 var(--pin-draft);
+}
+.diff-row.is-focus {
+  background: color-mix(in srgb, var(--pin) 22%, var(--surface));
+  animation: pin-focus 0.8s ease-in-out 3;
+}
+
+/* What was said about a line, under it. */
+.diff-thread {
+  padding: 4px 12px 6px calc(2 * var(--diff-num-w) + 4px);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+  cursor: default;
+}
+.diff.is-split .diff-thread {
+  padding-left: calc(var(--diff-num-w) + 4px);
+}
+.diff-thread-card {
+  padding: 7px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+/* Work pinned to a line, with nothing said about it: just its chip. */
+.diff-thread-card:has(> .diff-thread-chips:first-child) {
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+.diff-comments + .diff-comments {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.diff-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.diff-pin-n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--pin);
+  color: var(--primary-text);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.diff-comment-where {
+  color: var(--faint);
+  font-size: 12px;
+}
+.diff-comment-body {
+  margin-top: 1px;
+  overflow-wrap: anywhere;
+}
+.diff-comment-reply,
+.diff-comment-more {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.diff-comment-reply b {
+  color: var(--text);
+}
+.diff-thread-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.diff-thread-chips:first-child {
+  margin-top: 0;
+}
+.diff-thread-chips .pin-chip {
+  margin-left: 0;
+}

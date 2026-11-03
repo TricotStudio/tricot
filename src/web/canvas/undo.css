@@ -1,0 +1,106 @@
+/* The toast after a person deletes something on a canvas: what went, Undo,
+   the shortcut, and a thin bar counting down until it goes. The accent
+   tint in both themes: a soft accent border, Undo a bare accent text button. */
+
+.undo-toast {
+  --toast-bg: var(--exploring-bg);
+  --toast-ink: var(--text);
+  --undo-bar: var(--exploring);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, 100%);
+  background: var(--toast-bg);
+  color: var(--toast-ink);
+  border: 1px solid color-mix(in srgb, var(--exploring) 32%, transparent);
+  border-radius: var(--radius);
+  padding: 7px 8px 9px 16px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  animation: undo-toast-in 160ms ease-out;
+}
+.undo-toast.is-note {
+  padding: 8px 16px 10px;
+}
+.undo-toast-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.undo-toast.is-note .undo-toast-text {
+  white-space: normal;
+}
+.undo-toast-undo {
+  flex: none;
+  font: inherit;
+  font-weight: 600;
+  background: transparent;
+  color: var(--exploring-ink);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.undo-toast-undo:hover {
+  background: color-mix(in srgb, var(--exploring) 16%, transparent);
+}
+.undo-toast-undo:focus-visible {
+  outline: 2px solid var(--undo-bar);
+  outline-offset: 2px;
+}
+.undo-toast-key {
+  flex: none;
+  font: 11px/1.5 var(--font);
+  color: var(--exploring-ink);
+  border: 1px solid color-mix(in srgb, var(--exploring) 35%, transparent);
+  border-radius: var(--radius-xs);
+  padding: 0 5px;
+  margin-right: 4px;
+}
+.undo-toast-bar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--exploring) 18%, transparent);
+  overflow: hidden;
+}
+.undo-toast-bar i {
+  display: block;
+  height: 100%;
+  background: var(--undo-bar);
+  transform-origin: left;
+  animation: undo-countdown 10s linear forwards;
+}
+/* Pointing at it, or tabbing to Undo, holds it. */
+.undo-toast:hover .undo-toast-bar i,
+.undo-toast:focus-within .undo-toast-bar i {
+  animation-play-state: paused;
+}
+
+@keyframes undo-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@keyframes undo-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-toast {
+    animation: none;
+  }
+}

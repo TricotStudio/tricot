@@ -1,0 +1,125 @@
+/* ---- reactions ----------------------------------------------------------- */
+/* Under a comment or a thread message: a chip per emoji naming who left it,
+   the viewer's own in the focus tint, then the smiley-plus that opens the
+   three above it. Chips sit on the surface, so they read on an agent's grey
+   comment as on a person's white one, in both themes. */
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+button.reaction {
+  cursor: pointer;
+}
+button.reaction:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.reaction.is-mine {
+  border-color: color-mix(in srgb, var(--focus) 40%, var(--border));
+  background: color-mix(in srgb, var(--focus) 9%, var(--surface));
+  color: var(--focus);
+}
+button.reaction.is-mine:hover {
+  border-color: color-mix(in srgb, var(--focus) 60%, var(--border));
+  color: var(--focus);
+}
+.reaction-emoji {
+  font-size: 13px;
+}
+
+.reaction-adder {
+  position: relative;
+  display: inline-flex;
+}
+.reaction-add {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--faint);
+  cursor: pointer;
+}
+.reaction-add .icon {
+  width: 16px;
+  height: 16px;
+}
+.reaction-add:hover,
+.reaction-add[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.reaction-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: -4px;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.reaction-picker button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.reaction-picker button:hover,
+.reaction-picker button:focus-visible {
+  background: var(--surface-2);
+}
+.reaction-picker button[aria-checked='true'] {
+  background: color-mix(in srgb, var(--focus) 14%, var(--surface));
+}
+
+.reactions-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reaction-picker {
+    animation: reaction-picker-in 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes reaction-picker-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+  }
+}

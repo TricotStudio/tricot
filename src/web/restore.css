@@ -1,0 +1,52 @@
+/* Restore on a history line that deleted a canvas item. In the activity
+   list it sits beside the row, level with its time. */
+
+.restore-button {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--focus);
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.restore-button:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.restore-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.restore-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.activity-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.activity-entry > .activity-item {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.activity-entry > .restore-button {
+  margin: 0 6px 7px 4px;
+  line-height: 1.45;
+}
+.activity-entry > .activity-divider {
+  flex-basis: 100%;
+}
+.activity-entry > .restore-error {
+  flex-basis: 100%;
+  padding: 0 6px 6px 34px;
+  margin: 0;
+}

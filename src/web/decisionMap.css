@@ -1,0 +1,811 @@
+/* The decision map (decisionMap.tsx): rows by area along time, beside a
+   panel that reads the selected decision. Positions come from
+   core/decisionMap; only how things look is set here. Status colours and
+   surfaces are the tokens in styles.css, so dark mode follows them. */
+
+.dmap {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+/* In the Decisions tab it takes the room the table would. */
+.decisions > .dmap {
+  flex: 1;
+  height: auto;
+}
+
+/* ---- the map ------------------------------------------------------------ */
+
+.dmap-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.dmap-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding-bottom: var(--bar-room, 0px); /* the foot of the map scrolls clear of the chat bar */
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--border-strong) 70%, transparent) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+  background-position: 10px 10px;
+  background-attachment: local;
+}
+.dmap-content {
+  position: relative;
+}
+
+/* Time: a dashed band at each label, squeezed quiet stretches, and now. */
+.dmap-band {
+  position: absolute;
+  bottom: 0;
+  border-left: 1px dashed var(--border-strong);
+}
+.dmap-gap {
+  position: absolute;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--border-strong) 55%, transparent) 6px 7px
+  );
+  border-inline: 1px solid var(--border);
+}
+.dmap-now {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px solid var(--text);
+  z-index: 1;
+}
+.dmap-axis {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+.dmap-axis-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 26px;
+  background: linear-gradient(var(--bg) 70%, color-mix(in srgb, var(--bg) 0%, transparent));
+}
+.dmap-tick {
+  position: absolute;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--faint);
+  white-space: nowrap;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+.dmap-tick strong {
+  color: var(--muted);
+  font-weight: 600;
+}
+.dmap-quiet {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--faint);
+  white-space: nowrap;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bg);
+}
+.dmap-now-label {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--primary-text);
+  background: var(--text);
+  padding: 0 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Rows: a label that stays in view as the map scrolls sideways, and a rule
+   under each. */
+.dmap-row {
+  position: absolute;
+  left: 0;
+  border-bottom: 1px dashed var(--border);
+  pointer-events: none;
+}
+.dmap-row-label {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  display: inline-block;
+  max-width: 172px;
+  margin: 12px 0 0;
+  padding: 2px 10px 3px 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  background: linear-gradient(90deg, var(--bg) 85%, color-mix(in srgb, var(--bg) 0%, transparent));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.dmap-row-label > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dmap-row.is-none .dmap-row-label {
+  color: var(--muted);
+  font-style: italic;
+}
+.dmap-row.is-none .dmap-row-label > span {
+  font-style: normal;
+}
+
+/* Bars: how long an open card has waited. */
+.dmap-bar {
+  position: absolute;
+  z-index: 1;
+  height: 6px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: color-mix(in srgb, var(--open) 50%, transparent);
+}
+.dmap-bar.b-exploring {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--exploring) 55%, transparent) 0 10px,
+    color-mix(in srgb, var(--exploring) 22%, transparent) 10px 14px
+  );
+}
+.dmap-bar.b-provisional {
+  background: color-mix(in srgb, var(--provisional) 45%, transparent);
+}
+.dmap-bar-label {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--open-ink);
+}
+.dmap-bar-label.l-exploring {
+  color: var(--exploring-ink);
+}
+.dmap-bar-label.l-provisional {
+  color: var(--provisional-ink);
+}
+
+/* Lines between things. */
+.dmap-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+.dmap-edges path {
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 1.25;
+}
+.dmap-edges path.e-asked {
+  stroke-dasharray: 3 3;
+}
+.dmap-edges path.e-replaced {
+  stroke: var(--deferred);
+  stroke-dasharray: 1 3.5;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+.dmap-edges path.e-depends {
+  stroke: var(--muted);
+  stroke-width: 1.6;
+}
+
+/* Decisions. */
+.dmap-node {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  padding: 5px 10px 6px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  --marker: var(--decided);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.dmap-node:hover {
+  border-color: var(--border-strong);
+}
+.dmap-node:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.dmap-node.s-open { --marker: var(--open); }
+.dmap-node.s-exploring { --marker: var(--exploring); }
+.dmap-node.s-provisional { --marker: var(--provisional); }
+.dmap-node.s-deferred,
+.dmap-node.s-retired { --marker: var(--deferred); }
+.dmap-node-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+}
+.dmap-node-top::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--marker);
+}
+.dmap-node-top .num {
+  flex: none;
+  color: var(--faint);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.dmap-node-title,
+.dmap-node-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dmap-node-sub {
+  font-size: 11px;
+  color: var(--faint);
+  padding-left: 13px;
+}
+.dmap-node-pinned {
+  flex: none;
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--exploring);
+  font-size: 12px;
+}
+/* Settled and set aside: they recede. */
+.dmap-node:is(.s-deferred, .s-retired) {
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+  box-shadow: none;
+}
+.dmap-node:is(.s-deferred, .s-retired) .dmap-node-top {
+  color: var(--muted);
+}
+.dmap-node.s-retired .dmap-node-top::before {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+}
+/* An answer since replaced: hollow, sunk, and linked by a dotted line. */
+.dmap-node.is-replaced {
+  background: color-mix(in srgb, var(--surface) 40%, var(--bg));
+  border-style: dashed;
+  box-shadow: none;
+}
+.dmap-node.is-replaced .dmap-node-top {
+  color: var(--muted);
+  font-weight: 500;
+}
+.dmap-node.is-replaced .dmap-node-top::before {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+}
+/* An agent's call waiting to be confirmed. */
+.dmap-node.s-provisional {
+  background: color-mix(in srgb, var(--provisional-bg) 45%, var(--surface));
+  border-color: color-mix(in srgb, var(--provisional) 35%, var(--border));
+}
+/* Open and exploring: wider, the question to the fore, lifted. */
+.dmap-node.is-pending {
+  gap: 3px;
+  padding: 6px 11px 7px;
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.dmap-node.is-pending .dmap-node-top {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.dmap-node.is-pending .dmap-node-sub {
+  padding-left: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dmap-node.is-pending.s-exploring:not(.is-call) {
+  background: color-mix(in srgb, var(--exploring-bg) 55%, var(--surface));
+  border-color: color-mix(in srgb, var(--exploring) 40%, var(--border));
+}
+/* Waiting on the viewer: the needs-you amber, as on cards and in the inbox. */
+.dmap-node.is-call {
+  background: color-mix(in srgb, var(--open-bg) 75%, var(--surface));
+  border-color: color-mix(in srgb, var(--open) 55%, var(--border));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--open) 16%, transparent), var(--shadow);
+}
+.dmap-node.is-call .dmap-node-top {
+  color: color-mix(in srgb, var(--open-ink) 70%, var(--muted));
+}
+.dmap-node.is-call .num {
+  color: color-mix(in srgb, var(--open-ink) 40%, var(--faint));
+}
+.dmap-node.is-selected,
+.dmap-node.is-selected:hover {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text), 0 0 0 5px color-mix(in srgb, var(--marker) 22%, transparent), var(--shadow);
+  z-index: 3;
+}
+
+/* Tasks: small chips after the decision they build on. */
+.dmap-chip {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 7px;
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  --marker: var(--decided);
+}
+.dmap-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.dmap-chip::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 1px;
+  border-radius: 50%;
+  background: var(--marker);
+}
+.dmap-chip b {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dmap-chip.t-done {
+  background: color-mix(in srgb, var(--surface) 50%, var(--bg));
+}
+.dmap-chip.t-blocked { --marker: var(--danger); }
+.dmap-chip.t-in_progress { --marker: var(--exploring); }
+.dmap-chip.t-in_review { --marker: var(--provisional); }
+.dmap-chip:is(.t-todo, .t-backlog)::before {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--deferred);
+}
+
+/* Approvals: ticks on the Commits track along the bottom. */
+.dmap-commits {
+  position: absolute;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--border-strong);
+  z-index: 2;
+}
+.dmap-commits > .dmap-row-label {
+  margin: 0;
+  transform: translateY(-50%);
+}
+.dmap-commit {
+  position: absolute;
+  top: 0;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  padding: 0;
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  --marker: var(--decided);
+}
+.dmap-commit i {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+  color: var(--marker);
+}
+.dmap-commit i .icon {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2;
+}
+.dmap-commit:is(.c-open, .c-exploring) { --marker: var(--open); }
+.dmap-commit.c-provisional { --marker: var(--provisional); }
+.dmap-commit:is(.c-deferred, .c-retired) { --marker: var(--deferred); }
+.dmap-commit span {
+  position: absolute;
+  top: 19px;
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dmap-commit.is-up span {
+  top: auto;
+  bottom: 19px;
+}
+.dmap-commit:hover span,
+.dmap-commit.is-selected span {
+  color: var(--text);
+  font-weight: 600;
+}
+.dmap-commit.is-selected i {
+  box-shadow: inset 0 0 0 1.5px var(--marker), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text);
+}
+
+.dmap-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Floating over the map: the toolbar, top left, and the legend, bottom left. */
+.dmap-tool {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  z-index: 8;
+  pointer-events: none;
+}
+.dmap-tool .dmap-toolbar {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  gap: 2px;
+  pointer-events: auto;
+}
+.dmap-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.dmap-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dmap-filter:hover {
+  background: var(--surface-2);
+}
+.dmap-filter select {
+  appearance: none;
+  field-sizing: content; /* as wide as the choice shown, where supported */
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0 18px 0 0;
+  margin-right: -18px;
+  cursor: pointer;
+}
+.dmap-filter select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.dmap-filter > .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.dmap-toggle {
+  color: var(--muted);
+}
+.dmap-toggle.is-on {
+  color: var(--text);
+  font-weight: 500;
+}
+.dmap-check {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+  color: var(--primary-text);
+}
+.dmap-toggle.is-on .dmap-check {
+  background: var(--text);
+  box-shadow: none;
+}
+.dmap-check .icon {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.2;
+}
+
+.dmap-legend {
+  position: absolute;
+  z-index: 8;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  max-width: calc(100% - 28px);
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.dmap-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.dmap-legend .lg-sq {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--m);
+}
+.dmap-legend .lg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--decided);
+}
+.dmap-legend .lg-line {
+  width: 20px;
+  height: 0;
+  border-top: 1.5px solid var(--faint);
+}
+.dmap-legend .lg-line.dash {
+  border-top-style: dashed;
+}
+.dmap-legend .lg-line.strong {
+  border-top: 2px solid var(--muted);
+}
+.dmap-legend .lg-line.dot {
+  border-top: 2px dotted var(--deferred);
+}
+
+/* ---- the panel ---------------------------------------------------------- */
+
+.dmap-panel {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 18px 20px calc(24px + var(--bar-room, 0px));
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.dmap-panel .card-number {
+  font-size: 12.5px;
+}
+.dmap-panel-q {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+.dmap-panel-hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+.dmap-waiting {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: -6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.dmap-waiting.is-mine {
+  color: var(--open-ink);
+}
+.dmap-waiting .icon {
+  width: 14px;
+  height: 14px;
+}
+.dmap-sec {
+  display: grid;
+  gap: 7px;
+}
+.dmap-sec h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.dmap-sec p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.dmap-options {
+  gap: 6px;
+}
+.dmap-options .tag {
+  margin-left: auto;
+}
+.dmap-why {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 12.5px !important;
+}
+.dmap-chain {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.dmap-chain-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dmap-chain-label {
+  flex: none;
+  width: 76px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+.dmap-chain-row .t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dmap-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dmap-ctx .icon {
+  color: var(--exploring);
+}
+.dmap-area {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -6px;
+  font-size: 13px;
+}
+.dmap-area-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 90px);
+  padding: 2px 8px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.dmap-area-button:hover {
+  border-color: var(--border-strong);
+}
+.dmap-area-button .icon {
+  width: 12px;
+  height: 12px;
+  color: var(--faint);
+}
+.dmap-area input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 4px 8px;
+}
+.dmap-area .error {
+  flex-basis: 100%;
+}
+.dmap-quote {
+  display: grid;
+  gap: 6px;
+}
+.dmap-quote .actor {
+  justify-self: start;
+}
+.dmap-quote p {
+  color: var(--text);
+}
+.dmap-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+/* ---- too narrow --------------------------------------------------------- */
+
+.dmap.dmap-is-narrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px 16px;
+}
+.dmap-narrow {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 320px;
+  padding: 28px 24px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}

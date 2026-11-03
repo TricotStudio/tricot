@@ -1,0 +1,221 @@
+/* ---- dragging task cards ------------------------------------------------
+   A lifted card follows the pointer, tilted, with a shadow; its spot keeps a
+   dashed placeholder; the lane it would land in is tinted, with a slot that
+   says what dropping does; lanes it can't go to recede. */
+
+.task-card[tabindex] {
+  -webkit-touch-callout: none;
+}
+.task-card[tabindex]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.task-card .task-title {
+  -webkit-user-drag: none;
+}
+
+body.is-task-dragging,
+body.is-task-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  display: grid;
+  pointer-events: none;
+  will-change: transform;
+}
+.task-ghost-card {
+  margin: 0;
+  rotate: -2deg;
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  box-shadow: var(--shadow-lg);
+  animation: task-lift 0.14s ease-out;
+}
+.task-ghost-card:hover {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+/* What dropping does, under the card. */
+.task-ghost-label {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px 0 0 10px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--focus);
+  color: var(--surface);
+  box-shadow: var(--shadow);
+}
+.task-ghost-label[data-state='off'] {
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 500;
+}
+.task-ghost-label[data-state='none'],
+.task-ghost-label:empty {
+  display: none;
+}
+@keyframes task-lift {
+  from {
+    rotate: 0deg;
+    scale: 0.99;
+  }
+}
+
+/* The card's own spot while it's away: an outline of it. */
+.task-card.is-drag-source {
+  background: transparent;
+  border: 1.5px dashed var(--border-strong);
+  box-shadow: none;
+}
+.task-card.is-drag-source > * {
+  visibility: hidden;
+}
+.task-card.is-drag-source.is-collapsed {
+  display: none;
+}
+/* Picked up from the keyboard: it stays put, marked, while the slot moves. */
+.task-card.is-lifted {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  box-shadow: var(--shadow-lg);
+}
+/* Dropped, on its way to the server. */
+.task-card.is-moving {
+  opacity: 0.7;
+}
+
+.lanes.is-dragging .lane {
+  transition: opacity 0.12s;
+}
+.lane.is-drop-off {
+  opacity: 0.4;
+}
+.lane.is-drop-off .lane-hint {
+  color: var(--muted);
+}
+/* The tint reaches past the cards with shadows, so nothing shifts. Below
+   the cards, the lane still takes a drop. */
+.lanes.is-dragging .lane-cards {
+  flex: 1 1 auto;
+  border-radius: var(--radius);
+  transition: background 0.12s, box-shadow 0.12s;
+}
+.lane.is-drop-target .lane-cards {
+  --tint: color-mix(in srgb, var(--exploring-bg) 75%, transparent);
+  background: var(--tint);
+  box-shadow:
+    0 0 0 6px var(--tint),
+    0 0 0 8px color-mix(in srgb, var(--focus) 40%, transparent);
+}
+
+.drop-slot {
+  display: grid;
+  place-items: center;
+  padding: 8px 12px;
+  border: 2px dashed color-mix(in srgb, var(--focus) 55%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--exploring-bg) 60%, transparent);
+  color: var(--exploring-ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
+  animation: slot-in 0.12s ease-out;
+}
+@keyframes slot-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The question a drop asks, at the drop. */
+.drop-ask {
+  position: fixed;
+  z-index: 1001;
+  width: min(272px, calc(100vw - 24px));
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  box-shadow: var(--shadow-lg);
+  animation: slot-in 0.12s ease-out;
+}
+.drop-ask h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.drop-ask-lead {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.drop-ask-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+}
+.drop-ask-actions .btn {
+  width: 100%;
+}
+.drop-ask-row {
+  grid-template-columns: 1fr auto;
+}
+.drop-ask-row .btn {
+  width: auto;
+}
+.drop-ask textarea {
+  font-size: 13px;
+}
+
+.drag-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 24px;
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 13px;
+}
+.drag-error .btn {
+  margin-left: auto;
+}
+
+.drag-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-ghost-card {
+    rotate: none;
+    animation: none;
+  }
+  .drop-slot,
+  .drop-ask {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .drag-error {
+    margin: 0 16px;
+  }
+}

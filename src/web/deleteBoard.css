@@ -1,0 +1,92 @@
+/* Deleting a board for good: a small dialog, centred over a veil of the page. */
+.delete-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 18vh 16px 16px;
+  background: var(--scrim);
+}
+.delete-dialog {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.delete-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.delete-dialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.delete-dialog p.error {
+  color: var(--danger);
+}
+.delete-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.delete-dialog input {
+  font: inherit;
+  padding: 7px 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.delete-dialog input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  opacity: 0.88;
+}
+.btn.btn-danger:disabled {
+  opacity: 1;
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--faint);
+}
+
+/* What another page on a deleted board shows. */
+.board-deleted {
+  margin: 15vh auto;
+  max-width: 420px;
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+}
+.board-deleted h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text);
+}
+.board-deleted p {
+  margin: 0;
+}

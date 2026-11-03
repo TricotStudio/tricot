@@ -1,0 +1,222 @@
+// What a kind of canvas block is, in one contract: everything the board knows
+// how to do with a note, a table, a chart… is asked of its kind, and nothing
+// else switches on a block's type. A kind lives in its own folder
+// (core/blocks/<type>/), which is the whole of it on this side; the registry
+// (registry.ts) lists them, one line each. Its web half (the drawing, the
+// editor, its Add menu entry) is in web/canvas/blocks/<type>/.
+//
+// This is the core half: no React, no Express, no MCP server. It is internal:
+// kinds are code in this repository, not something third parties load.
+
+import type { z } from 'zod';
+
+// The fields a kind reads, by name, each with its schema.
+export type Shape = Record<string, z.ZodType>;
+import type { Assets } from '../store/assets';
+import type { BlockContent, Located, PinPart } from '../store/inputs';
+import type { PinPlace } from '../pins';
+import type { Block, BlockBase, Canvas, Pin, PinAnchor } from '../types';
+
+export interface Size {
+  w: number;
+  h: number;
+}
+
+// The types a kind is written in. `fields` is what a block of it has besides
+// what every block has (and its type); `snapshot` what a version of it keeps;
+// `input` what making one takes; `patch` the fields a change to one names.
+// The board's Block, BlockSnapshot, BlockContent and BlockPatch types are made
+// from these, so a kind adds its own to them by being registered. Its fields
+// can't be named as a block's own are (id, rev, x, y, w, h, author…) or as a
+// version's (rev, at, by), nor title or type.
+export interface KindTypes {
+  type: string;
+  fields: object;
+  snapshot: object;
+  input: object;
+  patch: object;
+}
+
+export type BlockOf<T extends KindTypes> = BlockBase & { type: T['type'] } & T['fields'];
+export type SnapshotOf<T extends KindTypes> = { title?: string; type: T['type'] } & T['snapshot'];
+export type InputOf<T extends KindTypes> = { type: T['type'] } & T['input'];
+
+// The board's types, made from the kinds that are registered: a union of what
+// every kind has, and for a change, every field any of them takes.
+type KindTypesOf<K> = K extends { readonly types?: infer T } ? Extract<T, KindTypes> : never;
+type EachKind<K, Make extends 'block' | 'snapshot' | 'input'> =
+  KindTypesOf<K> extends infer T
+    ? T extends KindTypes
+      ? Make extends 'block'
+        ? BlockOf<T>
+        : Make extends 'snapshot'
+          ? SnapshotOf<T>
+          : InputOf<T>
+      : never
+    : never;
+type Intersection<U> = (U extends unknown ? (member: U) => void : never) extends (member: infer I) => void ? I : never;
+
+export type BlocksOf<K> = EachKind<K, 'block'>;
+export type SnapshotsOf<K> = EachKind<K, 'snapshot'>;
+export type InputsOf<K> = EachKind<K, 'input'>;
+export type PatchesOf<K> = Intersection<KindTypesOf<K> extends infer T ? (T extends KindTypes ? T['patch'] : never) : never>;
+
+// What a change to any block can name.
+export interface CommonPatch {
+  title?: string;
+  optionId?: string | null;
+  groupId?: string | null;
+}
+
+// ---- making and changing ------------------------------------------------------
+
+export interface CreateContext {
+  assets: Assets;
+  located: Located;
+}
+
+export interface ChangeContext<T extends KindTypes> {
+  block: BlockOf<T>; // as it is: nothing has changed yet
+  patch: T['patch'] & CommonPatch;
+  assets: Assets;
+  canvas: Canvas;
+  restoring?: SnapshotOf<T>; // the version being brought back, when the change is a restore
+}
+
+// A change to a block's content, checked: `change` throws if it is refused,
+// before anything has changed; `apply` then makes it.
+export interface Change {
+  // Returns true when it changed how the block looks and not what it says
+  // (a link folding or opening), which is kept without a new version.
+  apply(): boolean | void;
+  // After the change, with the canvas's pins: pins on parts that moved follow them.
+  settle?(pins: Pin[]): void;
+}
+
+// ---- pins ------------------------------------------------------------------------
+
+export interface PinHooks<T extends KindTypes> {
+  // The anchor and quote for a part of this kind of block, or undefined when
+  // the part is not one it has (the caller then says which kinds have it).
+  anchor?(block: BlockOf<T>, part: PinPart, pins: Pin[]): { anchor: PinAnchor; quote: string } | undefined;
+  // Where a pin's part is now: null once it has changed past finding;
+  // undefined when it is not a pin on a part this kind has.
+  place?(block: BlockOf<T>, pin: Pin): PinPlace | null | undefined;
+  // A card people pin whole, like a link, as against a block (the words they use).
+  whole?: { word: 'card'; quote(block: BlockOf<T>): string };
+}
+
+// ---- what agents send ------------------------------------------------------------
+
+// What the MCP shell gives a kind to read what an agent sent: the file reading
+// and asset saving that only it can do.
+export interface AgentIo {
+  readImage(path?: string, base64?: string): Buffer;
+  saveAsset(data: Uint8Array): string;
+}
+
+// The sentences about a kind in add_block's and update_block's descriptions,
+// said where they have always been said.
+export interface AgentDocs {
+  add: string; // its entry in "Fields by type", without the ; or . that ends it
+  guide?: string; // advice after those entries
+  more?: string; // advice after the advice about a task's canvas
+  update?: string; // its fields as update_block lists them, in a row
+  updateSpecial?: string; // a clause of their own after that row
+}
+
+export interface AgentHalf<T extends KindTypes> {
+  addShape: Shape; // the add_block fields it reads
+  updateShape: Shape; // the update_block fields it reads
+  // Types agents may still name that make a block of this kind: a kind that
+  // became part of this one (a checklist is a note with a task list).
+  aliases?: readonly string[];
+  docs: AgentDocs;
+  // Reads what an agent sent as a block of this kind, refusing what is wrong
+  // with it now. It returns what saves anything pending (an image's file) and
+  // gives its content, so a call with a bad block saves nothing.
+  read(args: Record<string, unknown>, io: AgentIo): () => InputOf<T>;
+  // What an update_block call changes in a block of this kind.
+  patch?(args: Record<string, unknown>, io: AgentIo): T['patch'];
+  // Advice after adding one, or after updating one with these fields.
+  adviceAdded?(block: BlockOf<T>, args: Record<string, unknown>): string[];
+  adviceUpdated?(block: BlockOf<T>, args: Record<string, unknown>): string[];
+  // Something worth telling an agent about what an update did (to the pins, say).
+  noticeUpdated?(before: BlockOf<T>, block: BlockOf<T>, pins: Pin[]): string;
+  // The picture a block is, to attach when an agent reads the canvas.
+  picture?(block: BlockOf<T>): string | undefined;
+  // The pin tool's fields it reads, and what part of it they name, given its
+  // block: undefined when none of its fields are in `args`.
+  pinShape?: Shape;
+  // It reads them whatever the block (and refuses, saying so, a block that isn't its kind).
+  pinPart?(block: Block, args: Record<string, unknown>): PinPart | undefined;
+}
+
+// What a person can make from a block with a button ("Make a chart" on a
+// table): another block, put beside it.
+export interface Derive<T extends KindTypes> {
+  readonly from: string; // what the block has to be, for the refusal: "is not a table"
+  // The new block's content, and which of the block's parts it left out (said in words).
+  // Throws a BoardError when there is nothing to make of it.
+  make(block: BlockOf<T>): { content: BlockContent; left: string[] };
+}
+
+// What people send: how the browser makes one (a zod object with the type
+// literal, as the REST body has it) and what a change to one may name.
+export interface PeopleHalf {
+  create?: z.ZodObject;
+  patch?: Shape;
+}
+
+// ---- the kind --------------------------------------------------------------------
+
+export interface BlockKind<T extends KindTypes = any> {
+  readonly types?: T; // type-level only: what the board's types are made from
+  readonly type: T['type'];
+  readonly label: string; // "Note": what people and search call it
+  readonly defaultSize: Size;
+  readonly titled?: false; // a code block is named by its path: it has no title
+
+  // How it is called when it has no title ("code block" aside, the title comes first).
+  named?(block: BlockOf<T>): string | undefined; // before the title
+  untitled?(block: BlockOf<T>): string | undefined; // when there is none; else "untitled <type>"
+  // The size of a new one: from its content, and the width and height asked for.
+  sizeFor?(fields: T['fields'], asked: { w?: number; h?: number }): Size;
+
+  create(input: T['input'], context: CreateContext): T['fields'];
+  // The names of the patch fields it takes; a change naming one a block's kind
+  // doesn't take is refused, in those words.
+  readonly patchFields: readonly string[];
+  change?(context: ChangeContext<T>): Change | undefined;
+  // What changed from one version of a block to the next, in the words agents read.
+  describe(before: BlockOf<T>, after: BlockOf<T>): string[];
+  snapshot(block: BlockOf<T>): T['snapshot'];
+  // A block's fields as a version had them.
+  fromSnapshot(version: SnapshotOf<T>, block: BlockBase & { type: string }): T['fields'];
+  restorePatch(version: SnapshotOf<T>): T['patch'];
+
+  digest(block: BlockOf<T>, full: boolean): string; // what agents read of its content
+  readonly inline?: true; // a digest short enough to sit on the block's own line
+  searchText(block: BlockOf<T>): (string | undefined)[];
+  readonly briefInFull?: true; // a task's brief carries its content whole
+  // The files of pictures it holds, whether in a block or in a version of one.
+  assets?(shown: BlockOf<T> | SnapshotOf<T>): string[];
+  // What people are sent of it, when that is less than what agents get.
+  forPeople?(block: BlockOf<T>): object;
+
+  readonly pins?: PinHooks<T>;
+  readonly agent: AgentHalf<T>;
+  readonly people?: PeopleHalf;
+  readonly derive?: Derive<T>;
+}
+
+// What of a kind only the server uses (REST, MCP, the store): making and
+// changing blocks, what agents read of them, what people send. It lives in the
+// kind's server.ts, which the web build leaves out; the rest of the kind
+// (what the browser needs to name, place and show a block) is in its index.ts.
+export type ServerHalf<T extends KindTypes = any> = Pick<
+  BlockKind<T>,
+  'create' | 'patchFields' | 'change' | 'describe' | 'snapshot' | 'restorePatch' | 'digest' | 'inline' | 'searchText' | 'briefInFull' | 'assets' | 'forPeople' | 'agent' | 'people' | 'derive'
+> & { anchor?: PinHooks<T>['anchor'] };
+
+export type AnyKind = BlockKind<any>;

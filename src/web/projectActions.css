@@ -1,0 +1,136 @@
+/* Changing a board from its row on Home (projectActions.tsx): the ⋯ menu, the
+   fields that rename it in place, an archived row's buttons, and the toast
+   that offers to undo an archive. Loaded before styles.css, so a rule here
+   that overrides one there names an extra class. */
+
+/* The menu drops out of its row, so the list doesn't clip it; its first and
+   last rows round their own corners instead. */
+.sheet.projects-list {
+  overflow: visible;
+}
+.projects-list > li:first-child {
+  border-top-left-radius: calc(var(--radius) - 1px);
+  border-top-right-radius: calc(var(--radius) - 1px);
+}
+.projects-list > li:last-child {
+  border-bottom-left-radius: calc(var(--radius) - 1px);
+  border-bottom-right-radius: calc(var(--radius) - 1px);
+}
+
+/* The ⋯ sits above the row's link, as the squares do, and shows while the
+   row is pointed at or holds the keyboard's focus; always on a touch screen. */
+.project-menu {
+  position: relative;
+  z-index: 2;
+  justify-self: end;
+}
+.menu-button.project-menu-button {
+  width: 30px;
+  height: 28px;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+}
+.project:hover .project-menu-button,
+.project:has(:focus-visible) .project-menu-button,
+.project-menu-button[aria-expanded='true'] {
+  opacity: 1;
+}
+.menu-button.project-menu-button:hover,
+.menu-button.project-menu-button[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+@media (hover: none) {
+  .menu-button.project-menu-button {
+    opacity: 1;
+  }
+}
+.menu-panel.project-menu-panel {
+  top: calc(100% + 6px);
+  width: 210px;
+}
+
+/* A menu item of one line: its name, and the key that runs it at the right. */
+.menu-item.is-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.menu-item kbd {
+  font: 11px/16px var(--font);
+  color: var(--faint);
+}
+/* The item the arrow keys are on. */
+.menu-item:focus-visible {
+  background: var(--surface-2);
+  outline-offset: -2px;
+}
+.menu-rule {
+  height: 1px;
+  margin: 4px;
+  background: var(--border);
+}
+
+/* Renaming in place: the title's field in the title's type, the goal's
+   under it, then Save and Cancel. */
+.project-edit {
+  display: grid;
+  gap: 6px;
+}
+.project-edit input {
+  padding: 5px 8px;
+}
+.project-edit .project-edit-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.project-edit .project-edit-goal {
+  font-size: 13px;
+  color: var(--muted);
+}
+.project-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.project-edit-hint {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.error.project-edit-error,
+.error.project-row-error {
+  font-size: 12.5px;
+}
+.project-row-error {
+  margin-top: 4px;
+}
+.project.is-editing:hover {
+  background: none;
+}
+
+/* Delete… on an archived row: a quiet outline in the danger colour; the
+   dialog it opens says what deleting means. */
+.btn.btn-delete {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+.btn.btn-delete:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+/* The Undo toast after archiving, near the foot of the window, as on a board. */
+.home-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 60;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+}

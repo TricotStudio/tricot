@@ -1,0 +1,146 @@
+/* ---- what became of a message (delivery.tsx) ---------------------------------
+   One quiet row under a person's latest message to agents, in faint text:
+   "Delivered · Claude is listening", then "Claude · Running npm test", and
+   the "working on it" stitch (stitch.css), which takes no more height than
+   the words. It shares a row with the message's reactions, at their height, so an
+   agent's 👀 arriving moves nothing; it never wraps, and what doesn't fit
+   ends in an ellipsis, the whole line in its tooltip with when it was
+   asked. */
+
+.said-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0; /* a long line ends in an ellipsis rather than widening the message */
+  min-height: 24px; /* a reaction chip's height, before one comes */
+  margin-top: 4px;
+}
+.said-foot .reactions {
+  margin-top: 0;
+}
+
+.delivery {
+  flex: 1 1 14em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 18px;
+}
+.delivery-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: delivery-in 140ms ease-out;
+}
+.delivery.is-working .delivery-text {
+  color: var(--muted);
+}
+.delivery .stitch {
+  margin-left: 2px;
+}
+/* The reply has landed: the words fade while the stitch unravels. */
+.delivery.is-leaving .delivery-text {
+  animation: delivery-out 320ms ease-in forwards;
+}
+
+/* Retry, Edit, Connect one: quiet text buttons in the line. */
+.delivery-action {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.delivery-action:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+.delivery.is-failed {
+  color: var(--danger);
+}
+
+/* Nobody on the board has it: the agent to tell and the words to say, with
+   Copy (wake.tsx). The one line that may wrap: its words are the point. */
+.delivery.is-unheard {
+  display: block;
+  animation: delivery-in 140ms ease-out;
+}
+.say-phrase {
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap; /* the words to say stay together */
+}
+.delivery-action.say-copy {
+  margin-left: 2px;
+}
+
+/* What screen readers hear: the state, once, not every step or second. */
+.delivery-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A message on its way is drawn a little faint, and settles when the server
+   has it; one not sent stays faint. */
+.comment.is-sending > :not(.said-foot),
+.thread-message.is-sending .thread-message-main > :not(.said-foot),
+.comment.is-unsent > :not(.said-foot),
+.thread-message.is-unsent .thread-message-main > :not(.said-foot) {
+  opacity: 0.6;
+}
+.comment > *,
+.thread-message-main > * {
+  transition: opacity 120ms ease-out;
+}
+
+/* An agent's reply arriving where the line was. */
+.comment.is-arriving,
+.thread-message.is-arriving {
+  animation: delivery-in 150ms ease-out;
+}
+
+@keyframes delivery-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes delivery-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .delivery.is-leaving .delivery-text {
+    animation: none;
+    opacity: 0;
+  }
+  .delivery-text,
+  .delivery.is-unheard,
+  .comment.is-arriving,
+  .thread-message.is-arriving {
+    animation: none;
+  }
+  .comment > *,
+  .thread-message-main > * {
+    transition: none;
+  }
+}

@@ -1,0 +1,91 @@
+/* What an agent is doing now, in its "taking a look" cue (looking.tsx,
+   steps.tsx): "Claude · Running npm test". One line that ends in an ellipsis
+   rather than growing the card; each new step fades in; the cue dims when
+   the steps stop, or the agent's turn ends. */
+.looking.has-step {
+  transition: opacity 600ms ease;
+}
+.looking.has-step .looking-text,
+.looking.has-step .looking-end {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.looking-sep {
+  flex: none;
+  white-space: pre;
+  opacity: 0.55;
+}
+.looking-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+  animation: looking-step-in 240ms ease-out;
+}
+/* The "working on it" stitch (stitch.css) ends the cue, after its last
+   word; resting, it takes a soft ink of the pill's own. */
+.looking {
+  --stitch-rest: color-mix(in oklab, var(--exploring-ink) 50%, var(--exploring-bg));
+}
+.looking-text .stitch {
+  margin-left: 6px;
+}
+.looking.is-dim {
+  opacity: 0.55;
+}
+/* Words for screen readers only, such as the agent's name where its mark says it. */
+.step-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* A path in a step gives way in its middle (StepText): the folders shrink
+   first, then what follows the path, then the file's name down to an
+   ellipsis before its end, which stays. */
+.step-text {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.step-lead,
+.step-tail {
+  flex: none;
+  white-space: pre;
+}
+.step-dirs,
+.step-head,
+.step-after {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.step-dirs {
+  flex: 0 10000 auto;
+}
+.step-after {
+  flex: 0 1000 auto;
+}
+.step-head {
+  flex: 0 1 auto;
+  min-width: 2.2ch; /* a letter and the ellipsis */
+}
+@keyframes looking-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .looking-step {
+    animation: none;
+  }
+  .looking.has-step {
+    transition: none;
+  }
+}
