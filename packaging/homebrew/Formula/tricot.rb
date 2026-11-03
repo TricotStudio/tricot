@@ -1,8 +1,8 @@
 class Tricot < Formula
   desc "Shared planning board where humans and agents make decisions together"
   homepage "https://tricotstudio.com"
-  url "https://github.com/TricotStudio/tricot/releases/download/v0.1.0/tricot-0.1.0.tgz"
-  sha256 "5384704cddc960941ed142bf0b152ddda810d44d7204f1bf856187e0c05fcbf3"
+  url "https://github.com/TricotStudio/tricot/releases/download/v0.1.1/tricot-0.1.1.tgz"
+  sha256 "6a27200becbb7d13beffec1e44696f1132502c8b78c02f7481a158f91272d597"
   license "AGPL-3.0-only"
 
   livecheck do
