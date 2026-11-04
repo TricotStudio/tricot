@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A shared planning board where humans and agents make decisions together, over MCP",
-  "releaseNotes": "Type # in a comment to link a task or decision. Agents can now hand each other questions on the board. The threads panel stays open while you work, and updates come straight from GitHub, so they work even where npm is blocked.",
+  "releaseNotes": "Pair with an agent on anything in a card's full view. Run your agents side by side in one terminal with tricot claude codex. Agent approvals now come to the board, and only browsers you let in can act as you. Tricot is now under the Apache 2.0 licence.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
