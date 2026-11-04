@@ -15,7 +15,8 @@ export type Shape = Record<string, z.ZodType>;
 import type { Assets } from '../store/assets';
 import type { BlockContent, Located, PinPart } from '../store/inputs';
 import type { PinPlace } from '../pins';
-import type { Block, BlockBase, Canvas, Pin, PinAnchor } from '../types';
+import type { ConnectorPins } from '../connectors/connector';
+import type { Block, BlockBase, Board, Canvas, Pin, PinAnchor } from '../types';
 
 export interface Size {
   w: number;
@@ -73,6 +74,9 @@ export interface CommonPatch {
 export interface CreateContext {
   assets: Assets;
   located: Located;
+  // Whether a block may name what is on this computer (a folder, a local dev
+  // server): only while the server listens on this computer alone.
+  localFiles: boolean;
 }
 
 export interface ChangeContext<T extends KindTypes> {
@@ -81,6 +85,7 @@ export interface ChangeContext<T extends KindTypes> {
   assets: Assets;
   canvas: Canvas;
   restoring?: SnapshotOf<T>; // the version being brought back, when the change is a restore
+  localFiles: boolean; // as in CreateContext
 }
 
 // A change to a block's content, checked: `change` throws if it is refused,
@@ -104,7 +109,18 @@ export interface PinHooks<T extends KindTypes> {
   place?(block: BlockOf<T>, pin: Pin): PinPlace | null | undefined;
   // A card people pin whole, like a link, as against a block (the words they use).
   whole?: { word: 'card'; quote(block: BlockOf<T>): string };
+  // Its parts that people comment on and may ask agents to act on (a
+  // website's elements, a code block's lines): what agents are told of them,
+  // said as a connector says it of its parts (core/parts.ts). Server-only.
+  part?: PartWords;
 }
+
+// What a kind of part says of itself, as a connector's pins do. `kind` names
+// the part where a request or a pairing session says which (a comment's
+// askPart, a session's part). Its pins are anchored by that name ('site'),
+// or, for parts pinned with anchors other kinds share (a code block's lines
+// are 'line' anchors, as a diff's are), by `anchors`.
+export type PartWords = Pick<ConnectorPins, 'kind' | 'where' | 'label' | 'missing' | 'seen' | 'ask'> & { anchors?: readonly PinAnchor['kind'][] };
 
 // ---- what agents send ------------------------------------------------------------
 
@@ -150,6 +166,9 @@ export interface AgentHalf<T extends KindTypes> {
   pinShape?: Shape;
   // It reads them whatever the block (and refuses, saying so, a block that isn't its kind).
   pinPart?(block: Block, args: Record<string, unknown>): PinPart | undefined;
+  // People's requests on its parts that wait on an agent (a website's
+  // elements), for get_board and the agent's updates.
+  asks?(board: Board, viewer?: string): string | undefined;
 }
 
 // What a person can make from a block with a button ("Make a chart" on a
@@ -217,6 +236,6 @@ export interface BlockKind<T extends KindTypes = any> {
 export type ServerHalf<T extends KindTypes = any> = Pick<
   BlockKind<T>,
   'create' | 'patchFields' | 'change' | 'describe' | 'snapshot' | 'restorePatch' | 'digest' | 'inline' | 'searchText' | 'briefInFull' | 'assets' | 'forPeople' | 'agent' | 'people' | 'derive'
-> & { anchor?: PinHooks<T>['anchor'] };
+> & { anchor?: PinHooks<T>['anchor']; part?: PinHooks<T>['part'] };
 
 export type AnyKind = BlockKind<any>;

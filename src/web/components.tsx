@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { OMP_FILE, OMP_WHY, OPENCODE_FILE, panelTexts, type PanelTool } from '../core/connect';
+import { sessionCommand, type SessionAgent } from '../core/sessions';
 import type { Actor, Status, Task } from '../core/types';
 import { api, type AgentPresence } from './api';
 import { AgentPanel, AgentsMenu } from './agents';
 import { useDismiss } from './hooks';
 import { LiveStepsHint } from './liveSteps';
 import { RefChip } from './refs';
+import { SeatsPanel } from './seats';
 import { setTheme, useTheme } from './theme';
 import { themes } from './themes/registry';
+import { CheckForUpdates } from './update';
 
 export const STATUS_META: Record<Status, { label: string; hint: string }> = {
   open: { label: 'Open', hint: 'Waiting on you' },
@@ -91,8 +94,46 @@ const ICONS = {
       <path d="M13 1.75v3.5M11.25 3.5h3.5" />
     </>
   ),
+  // A globe, for a website on the canvas.
+  globe: (
+    <>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M2.5 8h11M8 2.5c1.55 1.5 2.35 3.35 2.35 5.5S9.55 12 8 13.5C6.45 12 5.65 10.15 5.65 8S6.45 4 8 2.5Z" />
+    </>
+  ),
+  // A screen and a phone, for the width a website is shown at.
+  desktop: <path d="M2.75 3h10.5a.75.75 0 0 1 .75.75v6.5a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75v-6.5A.75.75 0 0 1 2.75 3ZM5.75 13.5h4.5M8 11v2.5" />,
+  phone: <path d="M5.25 1.75h5.5a1 1 0 0 1 1 1v10.5a1 1 0 0 1-1 1h-5.5a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1ZM7.25 12h1.5" />,
+  // Two bars, for an agent paused until you give it your OK.
+  pause: <path d="M6 4v8M10 4v8" />,
   // A bin, for deleting a thread.
   trash: <path d="M3 4.5h10M6.25 4.5V3.25h3.5V4.5M4.5 4.5l.55 8.1a1 1 0 0 0 1 .9h3.9a1 1 0 0 0 1-.9l.55-8.1M6.75 7v4M9.25 7v4" />,
+  // Pieces of a canvas in their full view: code, a note, a diagram, an image.
+  code: <path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5M9 3 7 13" />,
+  note: <path d="M4 2.5h5.25L12 5.25v8.25H4ZM9 2.75V5.5h2.75M6 8.5h4M6 11h2.5" />,
+  diagram: (
+    <>
+      <rect x="2" y="2.5" width="5" height="4" rx="1" />
+      <rect x="9" y="9.5" width="5" height="4" rx="1" />
+      <path d="M4.5 6.5v3.5a1.5 1.5 0 0 0 1.5 1.5h3" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <circle cx="5.75" cy="6.5" r="1.1" />
+      <path d="m2.5 12 3.5-3.5 2.5 2.5 2-2 3 3" />
+    </>
+  ),
+  // …and a table, a chart, a 3D scene.
+  table: (
+    <>
+      <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+      <path d="M2 6h12M2 9.75h12M6.5 6v7.5" />
+    </>
+  ),
+  chart: <path d="M2.5 13.5h11M4.5 13.5V9M8 13.5V4.5M11.5 13.5V7" />,
+  scene: <path d="M8 1.75 13.5 4.75v6.5L8 14.25 2.5 11.25v-6.5ZM2.5 4.75 8 7.75l5.5-3M8 7.75v6.5" />,
 } satisfies Record<string, ReactNode>;
 
 export function Icon({ name, className }: { name: keyof typeof ICONS; className?: string }) {
@@ -265,10 +306,13 @@ export function LiveIndicator({ live, agents = [], tasks = [] }: { live: boolean
   );
 }
 
-// You, at the end of the top bar: the chip opens your menu, with your name and the theme.
+// You, at the end of the top bar: the chip opens your menu, with your name,
+// the theme, your browsers and terminals (seats.tsx), the version running
+// with Check for updates (update.tsx), and the agents.
 export function UserChip({ name, onRename }: { name: string; onRename: () => void }) {
   const [open, setOpen] = useState(false);
   const [agent, setAgent] = useState<string | null>(null); // whose panel is open
+  const [seats, setSeats] = useState(false); // your browsers and terminals, open
   const root = useRef<HTMLDivElement>(null);
   const theme = useTheme();
   const close = useCallback(() => setOpen(false), []);
@@ -291,6 +335,16 @@ export function UserChip({ name, onRename }: { name: string; onRename: () => voi
             <strong>Change your name</strong>
             <span>How people and agents see you on every board.</span>
           </button>
+          <button
+            className="menu-item"
+            onClick={() => {
+              setOpen(false);
+              setSeats(true);
+            }}
+          >
+            <strong>Your browsers and terminals</strong>
+            <span>The ones you let act for you, and removing one.</span>
+          </button>
           <div className="user-theme">
             <span>Theme</span>
             <div className="connect-tabs" role="group" aria-label="Theme">
@@ -301,6 +355,7 @@ export function UserChip({ name, onRename }: { name: string; onRename: () => voi
               ))}
             </div>
           </div>
+          <CheckForUpdates onShow={close} />
           <AgentsMenu
             onOpen={(agentName) => {
               setOpen(false);
@@ -310,6 +365,7 @@ export function UserChip({ name, onRename }: { name: string; onRename: () => voi
         </div>
       )}
       {agent && <AgentPanel name={agent} person={name} onClose={() => setAgent(null)} />}
+      {seats && <SeatsPanel name={name} onClose={() => setSeats(false)} />}
     </div>
   );
 }
@@ -387,6 +443,7 @@ export function ConnectAgent({ boardId }: { boardId?: string }) {
         <>
           <p>Run once in a terminal; Claude Code then has the board in every session.</p>
           <CopyLine text={texts.claude} />
+          <OneSession agent="claude" name="Claude Code" boardId={boardId} />
         </>
       )}
       {tool === 'codex' && (
@@ -397,6 +454,7 @@ export function ConnectAgent({ boardId }: { boardId?: string }) {
             Codex asks before each board tool unless you approve them for this server in its settings. It shows on the board
             as “Codex”.
           </p>
+          <OneSession agent="codex" name="Codex" boardId={boardId} />
         </>
       )}
       {tool === 'pi' && (
@@ -440,6 +498,7 @@ export function ConnectAgent({ boardId }: { boardId?: string }) {
             OpenCode 1 adds a server only by asking questions; <code>tricot connect opencode</code> also prints OpenCode 2's
             one-line command. It shows on the board as “OpenCode”.
           </p>
+          <OneSession agent="opencode" name="OpenCode" boardId={boardId} />
         </>
       )}
       {tool === 'other' && (
@@ -459,6 +518,16 @@ export function ConnectAgent({ boardId }: { boardId?: string }) {
         </>
       )}
     </div>
+  );
+}
+
+// The other way in: `tricot claude` starts the agent with the board for one
+// session, its settings left alone (core/sessions.ts).
+function OneSession({ agent, name, boardId }: { agent: SessionAgent; name: string; boardId?: string }) {
+  return (
+    <p className="muted small connect-session">
+      Or start {name} with the board for one session, its settings left alone: <code>{sessionCommand(agent, boardId)}</code>
+    </p>
   );
 }
 

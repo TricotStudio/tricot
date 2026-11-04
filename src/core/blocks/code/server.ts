@@ -4,7 +4,8 @@
 import { z } from 'zod';
 import type { CodeTypes } from './index';
 import { type CodeInput, codeAdvice, codeLineOf, CodeError, type CodeFields, codeChanges, codeDigest, codeFields, codeLineAt, linesText, samePath } from './code';
-import type { AgentHalf, BlockOf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
 import { highlightType, plainText } from '../schema';
 import { missing } from '../shared';
 import { blockLabel } from '../../canvas';
@@ -26,18 +27,24 @@ function codeContent(input: CodeInput, previous?: CodeFields): CodeFields {
   }
 }
 
-// A code block's line, by its number, as the block shows it. `file`, if
-// given, is its path or the end of it; an agent may leave it out.
-function lineAnchor(block: CodeBlock, part: { file?: string; line: number; side?: 'new' | 'old' }) {
+// A code block's line, by its number, as the block shows it, or a range of
+// its lines, `line` to `last`. `file`, if given, is its path or the end of
+// it; an agent may leave it out.
+function lineAnchor(block: CodeBlock, part: { file?: string; line: number; side?: 'new' | 'old'; last?: number }) {
   if (part.side === 'old') throw new BoardError(`${blockLabel(block)} is a code block: its lines have no old side. Pin a line with line alone.`);
   if (part.file && !samePath(block.path, part.file)) {
     throw new BoardError(`${blockLabel(block)} shows ${block.path}, not ${clip(part.file, 80)}. Pin its lines with line (and file, its path).`);
   }
+  const missingLine = (line: number) =>
+    new BoardError(`${blockLabel(block)} has no line ${line}: it holds ${linesText(block)}${block.start ? ', numbered as in the file' : ''}.`);
   const text = Number.isInteger(part.line) ? codeLineAt(block, part.line) : undefined;
-  if (text === undefined) {
-    throw new BoardError(`${blockLabel(block)} has no line ${part.line}: it holds ${linesText(block)}${block.start ? ', numbered as in the file' : ''}.`);
+  if (text === undefined) throw missingLine(part.line);
+  const last = part.last !== undefined && part.last !== part.line ? part.last : undefined;
+  if (last !== undefined) {
+    if (!Number.isInteger(last) || last < part.line) throw new BoardError(`A range of lines runs down: from line ${part.line} to a later one.`);
+    if (codeLineAt(block, last) === undefined) throw missingLine(last);
   }
-  return { anchor: { kind: 'line' as const, file: block.path, line: part.line, side: 'new' as const }, quote: lineQuote(text) };
+  return { anchor: { kind: 'line' as const, file: block.path, line: part.line, side: 'new' as const, ...(last ? { last } : {}) }, quote: lineQuote(text) };
 }
 
 // The fields add_block and update_block read for a code block, the same for both.
@@ -54,6 +61,44 @@ const SHAPE = {
 const span = z.tuple([z.number().int(), z.number().int()]);
 
 type CodeBlock = BlockOf<CodeTypes>;
+
+// A long hash as people read it: its first seven characters.
+const shortCommit = (commit: string) => (/^[0-9a-f]{12,}$/i.test(commit) ? commit.slice(0, 7) : commit);
+
+// Its lines take requests (core/parts.ts): people point at a line, or drag
+// over a range of them, in its full view, and ask an agent to change them.
+// The agent changes the block's text, and the file it shows when that is in
+// its repository: a code block names its file by its path in the repo, at a
+// commit when it says (the board never reads the repo itself).
+const part: PartWords = {
+  kind: 'code',
+  anchors: ['line'],
+  ask: {
+    verb: 'change',
+    asking: 'asking agents to change it in the code block',
+    doing: "Change the code block's text with update_block (and the file it shows, if it is in your repository), then reply",
+    act: "change the code block's text with update_block (and the file it shows, if it is in your repository), then ",
+    request: 'request to change the code, ',
+    what: "a code block's lines",
+  },
+};
+
+const ask: AskWords = {
+  part({ pin, block }) {
+    const { anchor } = pin;
+    const range = anchor.kind === 'line' && anchor.last && anchor.last > anchor.line;
+    const lines =
+      anchor.kind !== 'line' ? 'the code' : range ? `lines ${anchor.line}–${anchor.last} (from "${clip(pin.quote, 80)}")` : `line ${anchor.line} ("${clip(pin.quote, 80)}")`;
+    return `${lines} of ${blockNamed(block, 'code block')}`;
+  },
+  how({ block }) {
+    const update = `update_block (block_id: ${block.id}, text: the lines it shows, changed)`;
+    if (block.type !== 'code' || !block.path) return `Change the block's text with ${update}`;
+    const at = block.commit ? ` (the block shows it at ${shortCommit(block.commit)})` : '';
+    return `Change ${clip(block.path, 200)} in your repository if you have it there${at}, and the block's text with ${update}`;
+  },
+  view: 'the code',
+};
 
 export const agent: AgentHalf<CodeTypes> = {
   addShape: SHAPE,
@@ -75,6 +120,7 @@ export const agent: AgentHalf<CodeTypes> = {
     return { path, text, language, start, total, highlight, commit };
   },
   adviceAdded: (block, args) => codeAdvice(block, { title: args.path !== undefined ? (args.title as string | undefined) : undefined, highlight: args.highlight }),
+  asks: partAsksDigest(part, ask),
   pinShape: {
     file: z.string().optional().describe("A code block's lines need only line"),
     line: z.number().int().min(1).optional().describe("In a code block, the line's number as it shows"),
@@ -141,11 +187,11 @@ export const server: ServerHalf<CodeTypes> = {
         for (const name of CODE_FIELDS) delete block[name];
         Object.assign(block, content);
       },
-      // A code block's pinned lines are where they read the same now, under its path now.
+      // A code block's pinned lines are where they read the same now, under its path now; a range keeps its length.
       settle(pins) {
         for (const pin of pins.filter((p) => p.blockId === block.id && p.anchor.kind === 'line')) {
           const place = placePin(block, pin);
-          if (place?.kind === 'line' && pin.anchor.kind === 'line') Object.assign(pin.anchor, { file: place.file, line: place.line });
+          if (place?.kind === 'line' && pin.anchor.kind === 'line') Object.assign(pin.anchor, { file: place.file, line: place.line, ...(place.last ? { last: place.last } : {}) });
         }
       },
     };
@@ -165,6 +211,7 @@ export const server: ServerHalf<CodeTypes> = {
   searchText: (block) => [block.path], // the file it shows, not every line
 
   anchor: (block, part) => (part.kind === 'line' ? lineAnchor(block, part) : undefined),
+  part,
 
   agent,
   people,

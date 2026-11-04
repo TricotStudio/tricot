@@ -3,7 +3,7 @@
 // categories (or x values), each other column a series. People pin its bars,
 // points and slices.
 
-import { type ChartContent, type ChartInput, findPoint } from './chart';
+import { type ChartContent, type ChartInput, findPoint, findSeries } from './chart';
 import type { BlockKind } from '../kind';
 import { server } from './server';
 
@@ -27,9 +27,16 @@ export const chart: BlockKind<ChartTypes> = {
   },
   pins: {
     anchor: server.anchor,
+    part: server.part,
+    // Found again by its category's and series' names, whatever their numbers now; a whole series by its name.
     place(block, pin) {
       if (pin.anchor.kind !== 'point') return undefined;
-      const at = findPoint(block, pin.anchor.category, pin.anchor.series);
+      const { category, series } = pin.anchor;
+      if (category === undefined) {
+        const found = series === undefined ? null : findSeries(block, series);
+        return found === null ? null : { kind: 'point', row: null, series: found };
+      }
+      const at = findPoint(block, category, series);
       return at && { kind: 'point', ...at };
     },
   },

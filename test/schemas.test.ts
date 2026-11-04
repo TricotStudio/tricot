@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { describeIssues, LIMITS, people, tools } from '../src/core/schemas';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { z } from 'zod';
 
 // One schema set stands behind REST and MCP: the same bad input is refused in
@@ -412,6 +413,9 @@ const CASES: Case[] = [
   },
 ];
 
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
+
 describe('REST and MCP refuse the same input in the same words', () => {
   let dir: string;
   let server: Server;
@@ -423,7 +427,7 @@ describe('REST and MCP refuse the same input in the same words', () => {
   async function rest(method: 'GET' | 'POST', route: string, body?: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign(method, `/api${route}`, method === 'POST' ? JSON.stringify(body ?? {}) : '') },
       body: method === 'POST' ? JSON.stringify(body ?? {}) : undefined,
     });
     return { status: response.status, json: (await response.json()) as Record<string, any> };
@@ -439,6 +443,7 @@ describe('REST and MCP refuse the same input in the same words', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

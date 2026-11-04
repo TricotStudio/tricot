@@ -14,9 +14,11 @@
 // likeness of wording on its own is dropped.
 //
 // Once a person answers the decision, the listed ones settled before it may
-// no longer hold: mayChange says which to offer to revisit. Whether an answer
-// contradicts another can't be known, so it is offered as "may change", and
-// revisiting is asking agents to re-check it (a refresh), never changing it.
+// no longer hold: mayChange says which to offer to revisit, and revisitGroups
+// which of those are likely (linked on purpose or through a task) and which
+// only share an area or wording. Whether an answer contradicts another can't
+// be known, so it is offered as "may change", and revisiting is asking agents
+// to re-check them (a refresh each, asked together), never changing them.
 
 import { describeChoice, listNames, samePerson } from './format';
 import { similarDecisions } from './search';
@@ -162,6 +164,32 @@ export function mayChange(decision: Decision, listed: Affected[], viewer?: strin
     const named = reasons.some((r) => r.kind === 'named');
     return named || !reasons.some((r) => r.kind === 'dependsOn');
   });
+}
+
+// Linked to it on purpose or through the work: an agent named it, a
+// dependency, or a task builds on both. A likeness of area or wording alone
+// may be chance.
+const LINKED: ReadonlySet<AffectReason['kind']> = new Set<AffectReason['kind']>(['named', 'neededBy', 'dependsOn', 'sharedTask']);
+export const isLikely = (affected: Affected) => affected.reasons.some((r) => LINKED.has(r.kind));
+
+// The decisions offered to revisit, as the prompt groups them: the likely
+// ones, which start ticked, and those only in the same area or worded alike,
+// which start unticked. Each keeps the order it was listed in.
+export function revisitGroups(offered: Affected[]): { likely: Affected[]; lessLikely: Affected[] } {
+  return { likely: offered.filter(isLikely), lessLikely: offered.filter((a) => !isLikely(a)) };
+}
+
+// Why the prompt lists a decision, in a small line under it: "a task builds
+// on both", "same area", "similar wording", or the agent's own words.
+export function revisitWhy(reason: AffectReason): string {
+  switch (reason.kind) {
+    case 'sharedTask':
+      return reason.tasks.length === 1 ? 'a task builds on both' : `${reason.tasks.length} tasks build on both`;
+    case 'area':
+      return 'same area';
+    default:
+      return reasonWords(reason);
+  }
 }
 
 // What the refresh asked for a decision to revisit says, for the agents who re-check it.

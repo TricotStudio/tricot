@@ -21,6 +21,7 @@ export const diagram: BlockKind<DiagramTypes> = {
   fromSnapshot: (version) => ({ source: version.source }),
   pins: {
     anchor: server.anchor,
+    part: server.part,
     place(block, pin) {
       const { anchor } = pin;
       if (anchor.kind === 'node') {

@@ -60,6 +60,10 @@ export interface RefreshRequest {
   by: Actor;
   at: string;
   before: CardSnapshot; // the card as it was asked about
+  // The decision a person had just answered, which may change this one, when
+  // they asked from its prompt (affects.tsx): asked together with the others
+  // it may change, which agents are told of as one request (refreshDigest).
+  after?: string;
 }
 
 // The last refresh an agent finished: what it changed since it was asked (or
@@ -144,8 +148,12 @@ export interface Comment {
   // as it read, which the comment quotes even after the pin is gone.
   pin?: { id: string; quote: string };
   // A person asking agents to act on the pinned part rather than just
-  // commenting: on a Google Doc's paragraph, to edit it in the draft.
+  // commenting: on a Google Doc's paragraph, to edit it in the draft; on a
+  // website's element, to change its file.
   ask?: true;
+  // The kind of part it asks about, when it isn't a Google Doc's paragraph
+  // (a website's element: 'site'), for the words agents read about it.
+  askPart?: string;
   // The board's agents and people it @-mentions, by name (core/mentions.ts).
   mentions?: string[];
   // A person's request that agents run one of their skills (core/skills.ts).
@@ -158,6 +166,9 @@ export interface Comment {
   // since a person last wrote. It reads to the agents it names as news, not
   // as asked of them, and wakes none of them.
   held?: number;
+  // The line a person's pairing session left as they left it (core/pairing.ts):
+  // the agent they paired with and the block. It reads as news, asking nobody.
+  paired?: { agent: string; blockId: string };
 }
 
 // One person's or agent's 👍, 👎 or 👀 on a comment or a thread message: one
@@ -323,8 +334,10 @@ export type PinAnchor =
   | { kind: 'arrow'; from: string; to: string; n: number; label?: string }
   // A line of a diff: in `file`, numbered `line` on its side of the change,
   // found again by its text (the pin's quote) nearest that number. A code
-  // block's line is the same, on its new side, with its path as `file`.
-  | { kind: 'line'; file: string; line: number; side: DiffSide }
+  // block's line is the same, on its new side, with its path as `file`; on a
+  // code block, `last` makes it a range of lines, `line` to `last`, found
+  // again by its first line and keeping its length.
+  | { kind: 'line'; file: string; line: number; side: DiffSide; last?: number }
   // Words in a paragraph of the Google Doc a link block points to: the
   // paragraph by its id at a revision of the doc (p7, or n2 for one added in
   // the draft), and the words by the text around them. When a save or a newer
@@ -333,8 +346,9 @@ export type PinAnchor =
   | { kind: 'doc'; paragraph: string; revision: string; prefix: string; suffix: string; title?: string; gone?: true }
   // A chart's bar, point or slice: its category (the first column's value) and,
   // on a chart of several series, the series (its column's name), found again
-  // by name when the data changes.
-  | { kind: 'point'; category: string; series?: string }
+  // by name when the data changes. A series alone, with no category, is the
+  // whole series (picked in the legend).
+  | { kind: 'point'; category?: string; series?: string }
   // A spot on a 3D scene: on one of its named objects (`object` its uuid when
   // it has one, `name` what it is called, found again by either), as a point
   // in that object's own coordinates, so the spot moves with the object; or,
@@ -342,6 +356,15 @@ export type PinAnchor =
   // from, in the scene's coordinates, which the scene turns back to. `n`
   // numbers it on the scene: spot 1, spot 2.
   | { kind: 'spot'; n: number; x: number; y: number; z: number; object?: string; name?: string; view?: SceneView }
+  // An element on a page of a website block (core/blocks/site): the page's
+  // path, a CSS selector that finds it (its id, or a short path from the
+  // nearest ancestor with one), its tag, and its text as it read, clipped.
+  // On a site whose files are on this computer, `file` and `line` are where
+  // it starts in the page's file, from the folder. A person's view of the
+  // page finds it again by the selector, then by its text, and shows it lost
+  // when neither does; that stays in the view, as the page's own scripts
+  // could say anything of it.
+  | { kind: 'site'; page: string; selector: string; tag: string; text: string; file?: string; line?: number }
   | { kind: 'block' }; // the whole block, e.g. a link card
 
 // Where a 3D scene is seen from: the camera's place and the point it looks at.
@@ -477,6 +500,11 @@ export interface Task {
   // One agent's first take on a card a person added to the backlog
   // (core/firstLook.ts). None on tasks agents plan, and on older boards.
   firstLook?: FirstLook;
+  // An agent opened it in the backlog (plan_tasks with backlog), for people to
+  // shape and mark ready: a note a person asked for, or a bug it noticed. It
+  // needs no first look, as that agent wrote down what it found. Kept once
+  // it's marked ready, so the card still says who opened it.
+  openedInBacklog?: true;
   dropped?: Note; // who dropped it as work that won't be done, and why, while it is dropped
   comments: Comment[]; // discussion with the agent doing the work
   canvas: Canvas; // context and results for this piece of work
@@ -549,7 +577,10 @@ export type EventType =
   | 'thread_restored'
   | 'task_dropped'
   | 'task_brought_back'
-  | 'card_deleted';
+  | 'card_deleted'
+  | 'pairing_started' // a person began pairing with an agent on a piece of the canvas (core/pairing.ts)
+  | 'pairing_ended' // …and stopped, with nothing asked or on the board context: else the card's summary comment says so
+  | 'seats_changed'; // a person let a browser or terminal act for them, removed one, or said no to one (server/seats.ts): on every board in use, waking no agent
 
 export interface BoardEvent {
   seq: number;

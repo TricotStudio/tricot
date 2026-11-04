@@ -46,6 +46,8 @@ The suggestion is only a start. Read the subjects, and the bodies when a subject
 - **minor**: something people can now do, or a visible change to how something works.
 - **patch**: only fixes.
 
+Until Tricot's public launch, `PRE_LAUNCH` in `lib.mjs` keeps releases on 0.1.x (#90): `propose` suggests the next patch whatever the commits read as, and says so. Propose that patch and say what the commits read as; the person can still ask for any version, and one that leaves 0.1.x gets a `warn` line.
+
 Tell the person the version you propose and why, in a sentence or two, with the other choices. Change nothing until they confirm a version. If they give a different one, run `propose <version>` again to check it.
 
 ## 3. Write the release notes

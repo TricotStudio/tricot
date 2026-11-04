@@ -11,6 +11,7 @@ import { showsLooking } from '../src/core/assignee';
 import { Store } from '../src/core/store';
 import type { Actor, Comment, Task } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 
 // On a task assigned to one agent, that agent alone follows it (core/assignee.ts):
 // its comments and changes come to its updates and no other agent's, only it
@@ -19,6 +20,9 @@ import { createApp } from '../src/server/app';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type Agent = 'Claude' | 'Codex';
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('A task assigned to one agent, over MCP and REST', () => {
   let dir: string;
@@ -34,7 +38,7 @@ describe('A task assigned to one agent, over MCP and REST', () => {
     return result.content.map((c) => c.text).join('\n');
   };
   const post = async (route: string, body: Record<string, unknown>) => {
-    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   };
 
@@ -43,6 +47,7 @@ describe('A task assigned to one agent, over MCP and REST', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

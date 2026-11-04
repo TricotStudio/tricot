@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build, type Plugin } from 'esbuild';
 import { elkjsImported, isElkjs, withoutElkLayouts } from '../scripts/elkLeftOut';
+import { isKindServerImport, KIND_SERVER_STUB } from '../scripts/kindServerHalf';
 
 // Mermaid draws in a browser (it measures text as it lays a diagram out), so
 // the diagram tests ask headless Chrome, when there is one: CHROME_PATH, or
@@ -32,9 +33,25 @@ export const elkLeftOut: Plugin = {
   },
 };
 
+// The rest of what the web build does (vite.config.ts), for a page that
+// imports the board's own components: a kind's or a connector's server half
+// is an empty module, and import.meta.glob (the themes' stylesheets) loads nothing.
+const asWebBuild: Plugin = {
+  name: 'as-web-build',
+  setup(b) {
+    b.onResolve({ filter: /^\.\/server$/ }, (args) => (isKindServerImport(args.path, args.importer) ? { path: args.importer, namespace: 'kind-server-half' } : undefined));
+    b.onLoad({ filter: /.*/, namespace: 'kind-server-half' }, () => ({ contents: KIND_SERVER_STUB, loader: 'js' }));
+    b.onLoad({ filter: /[\\/]src[\\/]web[\\/].*\.tsx?$/ }, (args) => {
+      const source = readFileSync(args.path, 'utf8');
+      if (!source.includes('import.meta.glob(')) return undefined;
+      return { contents: source.replace(/import\.meta\.glob\([^)]*\)/g, '({})'), loader: args.path.endsWith('.tsx') ? 'tsx' : 'ts' };
+    });
+  },
+};
+
 // Bundles a page script (TypeScript, imports resolved from the repository
-// root), runs it in headless Chrome and returns what it left, as JSON, in a
-// <pre id="results"> it appends to the page.
+// root, as the web build bundles them), runs it in headless Chrome and
+// returns what it left, as JSON, in a <pre id="results"> it appends to the page.
 export async function runInChrome<T>(script: string): Promise<T> {
   if (!CHROME) throw new Error('No Chrome or Chromium here (set CHROME_PATH).');
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-diagram-'));
@@ -44,7 +61,7 @@ export async function runInChrome<T>(script: string): Promise<T> {
       bundle: true,
       format: 'iife',
       outfile: path.join(dir, 'page.js'),
-      plugins: [elkLeftOut],
+      plugins: [elkLeftOut, asWebBuild],
       logLevel: 'silent',
     });
     const page = path.join(dir, 'index.html');

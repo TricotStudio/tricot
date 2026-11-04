@@ -42,6 +42,6 @@ export const googlePins: NonNullable<ConnectorServerHalf['pins']> = {
     doing: 'Edit the draft with edit_google_doc, then reply',
     act: 'change the draft with edit_google_doc, then ',
     request: 'request to edit the paragraph, ',
-    refusal: 'Agents are asked to act on the paragraphs of a Google Doc; comment on other parts.',
+    what: 'the paragraphs of a Google Doc',
   },
 };

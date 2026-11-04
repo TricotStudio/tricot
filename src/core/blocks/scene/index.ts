@@ -39,6 +39,7 @@ export const scene: BlockKind<SceneTypes> = {
   fromSnapshot: (version) => ({ scene: version.scene }),
   pins: {
     anchor: server.anchor,
+    part: server.part,
     // A spot on a named object holds while the scene has that object (by its
     // uuid, or its name), wherever the object has moved: its point is in the
     // object's own coordinates. One on no object holds as long as the scene.

@@ -15,10 +15,14 @@ import { Store } from '../src/core/store';
 import { laneTasks } from '../src/core/taskOrder';
 import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('Dropping a task as work that won\'t be done', () => {
   let dir: string;
@@ -208,6 +212,7 @@ describe('Dropping a task over the API and MCP', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -225,7 +230,7 @@ describe('Dropping a task over the API and MCP', () => {
   });
 
   const post = async (route: string, body: Record<string, unknown>) => {
-    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
   const tool = async (name: string, args: Record<string, unknown> = {}) => {

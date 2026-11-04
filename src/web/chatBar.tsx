@@ -1,5 +1,6 @@
 import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { LISTEN_PHRASE, notListeningHere, sayTo } from '../core/delivery';
+import { ApprovalChip } from './approvals';
 import { listNames } from '../core/format';
 import { THREAD_TEXT_LIMIT } from '../core/threads';
 import { listeningLabel } from './chatDoor';
@@ -80,6 +81,7 @@ export function ChatBar(props: Props) {
         placeholder={placeholder}
         aria-label={label}
       />
+      <ApprovalChip />
       <Listening quiet={docked} />
       <button type="submit" className={`chat-send${ready ? ' is-ready' : ''}`} disabled={!ready} aria-label={sendLabel} title={`${sendLabel} (Enter)`}>
         <Icon name="arrow-up" />

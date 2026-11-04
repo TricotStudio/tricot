@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { couldAffect, mayChange, reasonWords, revisitNote, standingWords, type Affected } from '../core/affects';
+import { useId, useMemo, useState } from 'react';
+import { couldAffect, isLikely, mayChange, reasonWords, revisitGroups, revisitWhy, standingWords, type Affected } from '../core/affects';
 import { describeChoice, listNames } from '../core/format';
 import type { Board, Decision } from '../core/types';
 import { api } from './api';
@@ -104,9 +104,12 @@ function saveDismissed(decisionId: string, answerAt: string): void {
 
 // Once a person has answered a decision, the listed decisions settled before
 // it that the answer may change (core/affects.ts mayChange): for a day, it
-// offers them to ask agents to check each one still holds (a refresh), and
-// never changes them. Those asked here stay in it, marked asked, until all
-// are; "Not now" sets it aside for this answer.
+// offers to ask agents to check they still hold (a refresh of each), and never
+// changes them. Several are ticked and asked about with one button: the
+// likely ones (linked on purpose or through a task) start ticked, those that
+// only share an area or wording don't (revisitGroups). One is asked about
+// with its own button, as a question. Once asked, it says so for the rest of
+// the visit, and asking, like "Not now", sets it aside for this answer.
 export function RevisitPrompt({ board, decision, name }: { board: Board; decision: Decision; name: string }) {
   const readOnly = useReadOnly();
   const listed = useMemo(() => couldAffect(board, decision), [board, decision]);
@@ -114,35 +117,44 @@ export function RevisitPrompt({ board, decision, name }: { board: Board; decisio
   const answerAt = decision.resolution?.at;
   const [notNowAt, setNotNowAt] = useState(() => readDismissed()[decision.id]);
   const [asked, setAsked] = useState<{ at: string; ids: string[] }>({ at: '', ids: [] });
+  // The ticks the person changed, for this answer; the rest keep their starting tick.
+  const [ticks, setTicks] = useState<{ at: string; changed: Record<string, boolean> }>({ at: '', changed: {} });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (readOnly || !answerAt || notNowAt === answerAt) return null;
-  const askedHere = asked.at === answerAt ? asked.ids : [];
-  const items = listed.filter((a) => offered.includes(a) || askedHere.includes(a.decision.id));
-  if (items.length === 0) return null;
-  const isAsked = (a: Affected) => askedHere.includes(a.decision.id);
-  const refs = (affected: Affected[]) => listNames(affected.map((a) => `#${a.decision.number}`));
+  const headingId = useId();
+  if (readOnly || !answerAt) return null;
 
-  if (items.every(isAsked)) {
+  const askedHere = asked.at === answerAt ? board.decisions.filter((d) => asked.ids.includes(d.id)).sort((a, b) => a.number - b.number) : [];
+  if (askedHere.length > 0) {
     return (
       <div className="refresh-note is-done revisit" role="status">
         <p>
           <Icon name="check" className="sync-check" />
           <span>
-            Asked agents to check <RefText text={refs(items)} /> still {items.length === 1 ? 'holds' : 'hold'}. Nothing changes unless a
-            person decides it again.
+            Asked agents to check <RefText text={listNames(askedHere.map((d) => `#${d.number}`))} /> still {askedHere.length === 1 ? 'holds' : 'hold'}.
+            Nothing changes unless a person decides it again.
           </span>
         </p>
       </div>
     );
   }
+  if (notNowAt === answerAt || offered.length === 0) return null;
 
-  const ask = async (other: Decision) => {
+  const changed = ticks.at === answerAt ? ticks.changed : {};
+  const isTicked = (a: Affected) => changed[a.decision.id] ?? isLikely(a);
+  const ticked = offered.filter(isTicked);
+  const tick = (affected: Affected, on: boolean) => setTicks({ at: answerAt, changed: { ...changed, [affected.decision.id]: on } });
+  const selectAll = () => setTicks({ at: answerAt, changed: Object.fromEntries(offered.map((a) => [a.decision.id, true])) });
+
+  const ask = async (them: Affected[]) => {
     setBusy(true);
     setError(null);
     try {
-      await api.requestRefresh(other.id, name, revisitNote(decision));
-      setAsked((was) => ({ at: answerAt, ids: [...(was.at === answerAt ? was.ids : []), other.id] }));
+      const ids = them.map((a) => a.decision.id);
+      await api.revisit(decision.id, name, ids);
+      // Asked, it is done with this answer: the confirmation shows for this visit.
+      saveDismissed(decision.id, answerAt);
+      setAsked({ at: answerAt, ids });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -153,55 +165,97 @@ export function RevisitPrompt({ board, decision, name }: { board: Board; decisio
     saveDismissed(decision.id, answerAt);
     setNotNowAt(answerAt);
   };
-  const one = items.length === 1 ? items[0].decision : null;
+  const notNow = (
+    <button className="btn btn-quiet btn-small" onClick={dismiss}>
+      Not now
+    </button>
+  );
 
-  return (
-    <div className="refresh-note is-drift revisit" role="status">
-      <p>
-        <span>
-          {one ? (
-            <>
-              This may change <RefText text={`#${one.number}`} />, settled before it. Ask for a refresh of <RefText text={`#${one.number}`} />?
-            </>
-          ) : (
-            `This may change ${items.length} decisions settled before it. Ask for a refresh of the ones to check?`
-          )}
-        </span>
-      </p>
-      <ul className="revisit-list">
-        {items.map((affected) => {
-          const other = affected.decision;
-          return (
-            <li key={other.id}>
-              <span className="revisit-what">
-                {!one && <span className="card-number">#{other.number}</span>} {other.question}
-                <span className="revisit-answer">{standingWords(other)}</span>
-              </span>
-              {!one &&
-                (isAsked(affected) ? (
-                  <span className="revisit-asked">
-                    <Icon name="check" /> Asked
-                  </span>
-                ) : (
-                  <button className="btn btn-small" disabled={busy} onClick={() => void ask(other)}>
-                    <Icon name="sync" /> Ask for a refresh
-                  </button>
-                ))}
-            </li>
-          );
-        })}
-      </ul>
-      {error && <p className="error">{error}</p>}
-      <div className="row">
-        {one && (
-          <button className="btn btn-small" disabled={busy} onClick={() => void ask(one)}>
+  if (offered.length === 1) {
+    const [affected] = offered;
+    const one = affected.decision;
+    return (
+      <div className="refresh-note is-drift revisit" role="status">
+        <p>
+          <span>
+            This may change <RefText text={`#${one.number}`} />, settled before it. Ask for a refresh of <RefText text={`#${one.number}`} />?
+          </span>
+        </p>
+        <ul className="revisit-list">
+          <li>
+            <RevisitWhat affected={affected} numbered={false} />
+          </li>
+        </ul>
+        {error && <p className="error">{error}</p>}
+        <div className="row">
+          <button className="btn btn-small" disabled={busy} onClick={() => void ask(offered)}>
             <Icon name="sync" /> Ask for a refresh of #{one.number}
           </button>
-        )}
-        <button className="btn btn-quiet btn-small" onClick={dismiss}>
-          Not now
-        </button>
+          {notNow}
+        </div>
       </div>
-    </div>
+    );
+  }
+
+  const { likely, lessLikely } = revisitGroups(offered);
+  const group = (title: string, members: Affected[]) =>
+    members.length > 0 && (
+      <fieldset className="revisit-group" disabled={busy}>
+        <legend>{title}</legend>
+        <ul className="revisit-list">
+          {members.map((affected) => (
+            <li key={affected.decision.id}>
+              <label className="revisit-pick">
+                <input type="checkbox" checked={isTicked(affected)} onChange={(e) => tick(affected, e.target.checked)} />
+                <RevisitWhat affected={affected} numbered />
+              </label>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
+    );
+
+  return (
+    <section className="refresh-note is-drift revisit" aria-labelledby={headingId}>
+      <p id={headingId}>
+        <span>This may change {offered.length} decisions settled before it. Ask agents to check the ones that matter still hold.</span>
+      </p>
+      {group('Likely', likely)}
+      {group('Less likely: same area or similar words', lessLikely)}
+      {error && <p className="error">{error}</p>}
+      <div className="row">
+        <button className="btn btn-primary btn-small" disabled={busy || ticked.length === 0} onClick={() => void ask(ticked)}>
+          <Icon name="sync" /> Ask for a refresh of {ticked.length}
+        </button>
+        <button className="btn btn-quiet btn-small" disabled={busy || ticked.length === offered.length} onClick={selectAll}>
+          Select all
+        </button>
+        {notNow}
+      </div>
+    </section>
+  );
+}
+
+const SHOWN_WHY = 2;
+
+// A decision the prompt offers: its question, where it stands, and why it is listed.
+function RevisitWhat({ affected, numbered }: { affected: Affected; numbered: boolean }) {
+  const { decision, reasons } = affected;
+  const shown = reasons.slice(0, SHOWN_WHY);
+  return (
+    <span className="revisit-what">
+      <span className="revisit-question">
+        {numbered && <span className="card-number">#{decision.number}</span>} {decision.question}
+      </span>
+      <span className="revisit-answer">{standingWords(decision)}</span>
+      <span className="revisit-why" title={reasons.map(reasonTitle).join('\n')}>
+        {shown.map((reason, i) => (
+          <span key={reason.kind}>
+            {i > 0 && <span aria-hidden> · </span>}
+            {revisitWhy(reason)}
+          </span>
+        ))}
+      </span>
+    </span>
   );
 }

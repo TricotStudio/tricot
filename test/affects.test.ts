@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { COULD_AFFECT_CAP, couldAffect, couldAffectLines, mayChange, reasonWords, revisitNote, standingWords, type Affected } from '../src/core/affects';
-import { decisionDetail } from '../src/core/digest';
+import { COULD_AFFECT_CAP, couldAffect, couldAffectLines, isLikely, mayChange, reasonWords, revisitGroups, revisitNote, revisitWhy, standingWords, type Affected } from '../src/core/affects';
+import { decisionDetail, refreshDigest } from '../src/core/digest';
 import { keyWords, similarDecisions } from '../src/core/search';
 import { Store } from '../src/core/store';
 import type { Actor, Board, Decision } from '../src/core/types';
@@ -266,6 +266,89 @@ describe('What a decision could affect', () => {
       });
       decide(licence);
       assert.deepEqual(mayChange(licence, couldAffect(board(), licence)).map((a) => a.decision.number), [1]);
+    });
+
+    // #93 on the roadmap: six came up, and only one had a real link.
+    it('groups what it offers: linked ones likely and ticked to start, a shared area or wording alone less likely', () => {
+      const site = decidedAgo(post('What does the website promise?'), 50); // #1, named by an agent
+      const tiers = decidedAgo(post('Which pricing tiers do we offer?', { area: 'Launch' }), 40); // #2, a task builds on both
+      decidedAgo(post('How should people install Tricot?', { area: 'Launch' }), 30); // #3, the area alone
+      decidedAgo(post('Which board opens first when it starts?'), 20); // #4, the wording alone
+      const later = decidedAgo(post('Who writes the launch post?'), 10); // #5, depends on it
+      const join = post('Which board should the agent join when Tricot starts?', {
+        area: 'Launch',
+        affects: [{ decisionId: site.id, why: 'the site shows the picker' }],
+      });
+      store.updateDecision(later.id, { dependsOn: [join.id] }, claude);
+      decide(join);
+      const [task] = store.planTasks(boardId, [{ title: 'Ship the picker', decisionIds: [join.id, tiers.id] }], claude);
+
+      const offered = mayChange(join, couldAffect(board(), join));
+      const { likely, lessLikely } = revisitGroups(offered);
+      const why = (listed: Affected[]) => listed.map((a) => `#${a.decision.number} ${a.reasons.map(revisitWhy).join(' · ')}`);
+      assert.deepEqual(why(likely), ['#1 the site shows the picker', '#5 depends on this', '#2 a task builds on both · same area']);
+      assert.deepEqual(why(lessLikely), ['#3 same area', '#4 similar wording']);
+      // The likely ones start ticked; the rest wait for "Select all".
+      assert.deepEqual(offered.filter(isLikely).map((a) => a.decision.number), [1, 5, 2]);
+      assert.equal(revisitWhy({ kind: 'sharedTask', tasks: [task, task] }), '2 tasks build on both');
+    });
+
+    it('asks agents to check the ones picked as one request, a refresh on each card', () => {
+      const tiers = decidedAgo(post('Which pricing tiers do we offer?', { options: [{ label: 'Free and Pro' }, { label: 'Per seat' }] }), 30);
+      const site = decidedAgo(post('What does the website promise?'), 20);
+      const logo = decidedAgo(post('What colour is the logo?'), 10);
+      const open = post('Who writes the launch post?');
+      const licence = post('Which licence should the core ship under?', {
+        options: [{ label: 'MIT' }, { label: 'AGPL-3.0' }],
+        affects: [
+          { decisionId: tiers.id, why: 'pricing assumes an open core' },
+          { decisionId: site.id, why: 'the site names the licence' },
+        ],
+      });
+      const ask = (ids: string[], by: Actor = wassim) => () => store.askToRevisit(licence.id, ids, by);
+      assert.throws(ask([tiers.id]), /has no answer standing: decide it before asking agents to check what it may change/);
+      decide(licence, 'b');
+      const before = store.events(boardId, { order: 'asc' }).length;
+      assert.throws(ask([tiers.id], claude), /Only people ask for a refresh/);
+      assert.throws(ask([]), /Pick at least one decision to check/);
+      assert.throws(ask([tiers.id, 'nope']), /No decision "nope" on this board/);
+      assert.throws(ask([licence.id]), /can't be asked to check itself/);
+      assert.throws(ask([tiers.id, open.id]), /#4 ".+" is open; only decided and provisional cards are checked against a new answer/);
+      assert.equal(tiers.refreshRequest, undefined, 'a refused request asks about none of them');
+      assert.equal(store.events(boardId, { order: 'asc' }).length, before);
+
+      const asked = store.askToRevisit(licence.id, [tiers.id, site.id, tiers.id], wassim);
+      assert.deepEqual(asked.map((d) => d.number), [1, 2], 'each once');
+      // One event, on the decision answered, naming them all.
+      const events = store.events(boardId, { order: 'asc' }).slice(before);
+      assert.deepEqual(
+        events.map((e) => [e.type, e.decisionId, e.summary]),
+        [['refresh_requested', licence.id, 'asked agents to check #1 and #2 still hold, after deciding #5 "Which licence should the core ship under?": b) AGPL-3.0']],
+      );
+      // Each card carries its own request, as one asked alone does, and leaves the prompt.
+      for (const d of [tiers, site]) {
+        assert.equal(d.status, 'decided');
+        assert.deepEqual([d.refreshRequest?.by.name, d.refreshRequest?.text, d.refreshRequest?.after], ['Wassim', revisitNote(licence), licence.id]);
+      }
+      assert.equal(logo.refreshRequest, undefined);
+      assert.deepEqual(mayChange(licence, couldAffect(board(), licence)), []);
+
+      // Agents are told of them together, with ids; one asked alone keeps its own line.
+      store.requestRefresh(logo.id, 'Check the logo still fits', wassim);
+      assert.equal(
+        refreshDigest(board()),
+        [
+          `Wassim asked you to check #1 [id: ${tiers.id}] and #2 [id: ${site.id}] still hold, after deciding #5 [id: ${licence.id}] (b) AGPL-3.0), which may change them: re-check each against the board and the app as they are now (get_decision says how), then update_decision on each with refreshed: true and a note saying whether it holds.`,
+          `Refresh requested on #3 [id: ${logo.id}] by Wassim ("Check the logo still fits"): re-check each against the app as it is now (get_decision says how), then update_decision with refreshed: true.`,
+        ].join('\n'),
+      );
+      assert.match(decisionDetail(board(), tiers), /## Refresh requested\nBy Wassim \(human\) at \S+: "#5 was just decided: b\) AGPL-3\.0\. It may change this one: check it still holds\."\nIt is decided/);
+
+      // An agent answers each as any refresh; the line names those still waiting.
+      store.updateDecision(tiers.id, { refreshed: true, note: 'Still holds: Pro stays per seat.' }, claude);
+      assert.equal(tiers.refreshRequest, undefined);
+      assert.equal(tiers.refreshed?.requestedBy?.name, 'Wassim');
+      assert.match(refreshDigest(board()) ?? '', new RegExp(`^Wassim asked you to check #2 \\[id: ${site.id}\\] still holds, after deciding #5 \\[id: ${licence.id}\\] \\(b\\) AGPL-3\\.0\\), which may change it: re-check it .+ update_decision on it with refreshed: true`));
     });
 
     it('asks agents to check with a note that says what was decided', () => {

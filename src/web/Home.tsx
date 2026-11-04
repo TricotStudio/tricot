@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { waitingSentence } from '../core/approvals';
 import type { BusyState } from '../core/delivery';
 import { firstRunShows } from '../core/firstRun';
 import { samePerson } from '../core/format';
 import { SQUARE_WORDS, type AgentAround, type AgentHere, type BoardWork, type NeedsReport, type Project, type Square } from '../core/needs';
 import type { BoardSummary } from '../core/types';
 import { api } from './api';
+import { useApprovals } from './approvals';
 import { archiveBoard } from './boardChanges';
 import { ConnectAgent, Icon, Popover, timeAgo, UserChip, Wordmark } from './components';
 import { ConnectorsLine } from './connectors';
@@ -134,24 +136,25 @@ export function Home({ name, onRename }: { name: string; onRename: () => void })
   );
 }
 
-// "5 things need you", and where: the projects, and what agents are doing now.
+// "5 things need you", and where: the projects, and what agents are doing
+// now. An agent waiting for your OK (approvals.tsx) is one of them, and said first.
 function Headline({ report }: { report: NeedsReport }) {
+  const approvals = useApprovals();
+  const total = report.total + approvals.length;
   const needing = report.projects.filter((p) => p.needs > 0);
   const busy = report.agents.filter((a) => a.state !== 'away').slice(0, 2);
+  const waiting = waitingSentence(approvals);
   const where = needing.length === 0 ? null : needing.length === 1 ? `In ${needing[0].title}.` : `Across ${needing.length} projects.`;
+  const lead = [waiting, where].filter(Boolean).join(' ') || null;
   return (
     <section className="home-head">
-      <h1>
-        {report.total === 0
-          ? 'Nothing needs you right now'
-          : `${report.total} ${report.total === 1 ? 'thing needs' : 'things need'} you`}
-      </h1>
-      {(where || busy.length > 0) && (
+      <h1>{total === 0 ? 'Nothing needs you right now' : `${total} ${total === 1 ? 'thing needs' : 'things need'} you`}</h1>
+      {(lead || busy.length > 0) && (
         <p className="home-sub">
-          {where}
+          {lead}
           {busy.map((agent, i) => (
             <Fragment key={agent.name}>
-              {i === 0 ? (where ? ' ' : '') : ', and '}
+              {i === 0 ? (lead ? ' ' : '') : ', and '}
               <strong>{agent.name}</strong> {agentWhere(agent)}
               {i === busy.length - 1 && '.'}
             </Fragment>
@@ -164,7 +167,7 @@ function Headline({ report }: { report: NeedsReport }) {
 
 // The end of the footer: the Tricot that runs, and a link to its source (the
 // repository in its package.json), so anyone using it, over a network too,
-// can find the code (the AGPL's section 13). Quiet, and nothing until it's known.
+// can find the code. Quiet, and nothing until it's known.
 function About() {
   const [info, setInfo] = useState<{ version?: string; source?: string }>();
   useEffect(() => {

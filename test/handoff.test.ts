@@ -20,6 +20,8 @@ import {
   type ServerPlace,
 } from '../src/server/handoff';
 import { pidAlive, readLock } from '../src/server/lock';
+import { Seats } from '../src/server/seats';
+import { letIn, type TestSeat } from './seatHelper';
 import {
   fakeReleases,
   freePort,
@@ -327,12 +329,14 @@ describe('Updating in place', () => {
   let scratch: string;
   let dataDir: string;
   let port: number;
+  let browser: TestSeat; // the person's browser, let in before the board starts: its seat is in the data folder
   const pids: number[] = [];
 
   beforeEach(async () => {
     scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-handoff-'));
     dataDir = path.join(scratch, `data dir "quoted" it's`);
     mkdirSync(dataDir, { recursive: true });
+    browser = letIn(new Seats({ dataDir }));
     port = await freePort();
   });
   afterEach(async () => {
@@ -341,8 +345,11 @@ describe('Updating in place', () => {
   });
 
   const state = async (url: string) => (await (await fetch(`${url}/api/update`)).json()) as { current: string; available?: { version: string }; how?: unknown; updating?: string; failed?: { version: string; message: string; log: string } };
-  const update = (url: string, version: string) =>
-    fetch(`${url}/api/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version }) });
+  // Updating is consequential: the page asks from a browser the person let in, signed.
+  const update = (url: string, version: string) => {
+    const body = JSON.stringify({ version });
+    return fetch(`${url}/api/update`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: url, ...browser.sign('POST', '/api/update', body) }, body });
+  };
   const ready = (url: string) => until(async () => ((await state(url)).how && (await state(url)).available ? true : undefined), 10_000, () => 'no update was offered');
   const start = async (installed: Installed, env?: NodeJS.ProcessEnv) => {
     const old = await startInstalled(installed, { port, dataDir, latest: '0.2.0', env });

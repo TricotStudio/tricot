@@ -4,6 +4,8 @@ import { api, type LiveBoard } from './api';
 import { onBoardsChanged } from './boardChanges';
 import { feedFor } from './events';
 import { BoardSession } from './liveBoard';
+import { approvalsStore } from './approvalsStore';
+import { admissionsStore, TicketedSource } from './seat';
 import { StepsStore } from './steps';
 
 export type Route =
@@ -272,7 +274,8 @@ export function useBoard(boardId: string) {
       feed: (next) => feedFor(boardKey(next)),
       fetchBoard: () => api.board(boardId),
       fetchLive: () => api.live(boardId),
-      open: (url) => new EventSource(url),
+      // With a ticket while this browser is one of the person's seats (seat.ts).
+      open: (url) => new TicketedSource(url),
       onBoard: (next) => {
         shown.current = next;
         setBoard(next);
@@ -281,6 +284,8 @@ export function useBoard(boardId: string) {
       onLive: setLive,
       onDeleted: () => setDeleted(true),
       onSteps: (latest) => steps.set(latest),
+      onApprovals: (list) => approvalsStore.set(list),
+      onAdmissions: (list) => admissionsStore.set(list),
     });
     const recheck = () => document.visibilityState === 'visible' && session.recheck();
     document.addEventListener('visibilitychange', recheck);

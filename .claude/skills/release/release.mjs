@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { checkNotes, compareVersions, githubRepo, NOTES_MAX, parseVersion, pushCommand, releaseCommitMessage, resolveTarget, suggestBump, withReleaseNotes } from './lib.mjs';
+import { checkNotes, compareVersions, githubRepo, NOTES_MAX, parseVersion, preLaunchWarning, pushCommand, releaseCommitMessage, resolveTarget, suggestBump, withReleaseNotes } from './lib.mjs';
 
 const { values: flags, positionals } = parseArgs({
   allowPositionals: true,
@@ -190,7 +190,9 @@ async function propose(wanted) {
   const suggestion = suggestBump(commits, current);
   console.log(`\n${commits.length} commit${commits.length === 1 ? '' : 's'} since ${tag ?? 'the start'} (newest first), with what each reads as:`);
   for (const c of suggestion.commits) console.log(`  ${c.kind.padEnd(5)}  ${c.subject}`);
-  console.log(`\nSuggested: ${suggestion.kind}, because ${suggestion.reason}.\n`);
+  const { readAs } = suggestion;
+  if (readAs) console.log(`\nOn the commits alone: ${readAs.kind}, because ${readAs.reason}.\nSuggested: ${suggestion.kind}. ${suggestion.reason}\n`);
+  else console.log(`\nSuggested: ${suggestion.kind}, because ${suggestion.reason}.\n`);
 
   const target = resolveTarget(current, wanted, suggestion.kind);
   if (target.error) {
@@ -198,6 +200,8 @@ async function propose(wanted) {
     return finish();
   }
   const version = target.version;
+  const offLine = preLaunchWarning(current, version);
+  if (offLine) warn(offLine);
   if (tag && parseVersion(tag.slice(1)) && compareVersions(version, tag.slice(1)) <= 0) stop(`${version} isn't after the last tag, ${tag}.`);
   if (git('rev-parse', '-q', '--verify', `refs/tags/v${version}`).status === 0) stop(`There is already a tag v${version} here.`);
   else ok(`There's no tag v${version} here.`);

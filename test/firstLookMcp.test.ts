@@ -35,7 +35,7 @@ describe('First looks, over MCP and REST', () => {
   async function post(route: string, body: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base },
       body: JSON.stringify(body),
     });
     return { status: response.status, json: await response.json() };

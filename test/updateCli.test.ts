@@ -5,6 +5,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { runCli, updatesFor, type CliContext } from '../src/cli/main';
 import { readLock } from '../src/server/lock';
+import { Seats } from '../src/server/seats';
+import type { AdmissionView } from '../src/core/seats';
+import { letIn } from './seatHelper';
 import type { RunningServer } from '../src/server/start';
 import {
   fakeReleases,
@@ -211,11 +214,32 @@ describe('tricot --version and tricot update', () => {
   });
 
   describe('with a board running', () => {
-    it('hands the running board over to the new version, and waits for it', async () => {
+    it('hands the running board over to the new version, once the person lets this terminal in from their browser, and waits for it', async () => {
       const npx = installedWithNpx(scratch);
+      // The person's browser, let in before: its seat is in the data folder the board reads.
+      const browser = letIn(new Seats({ dataDir }));
       const old = await startInstalled(npx, { port, dataDir, latest: '0.2.0' });
       pids.push(old.pid);
+      // Updating is consequential: `tricot update` asks to be let in, and says the code; the browser shows the same, and allows it.
+      const allowing = (async () => {
+        for (;;) {
+          const code = /code (\d{4})/.exec(said())?.[1];
+          if (code) {
+            const waiting = (await (await fetch(`${old.url}/api/seats/admissions`, { headers: { 'Sec-Fetch-Site': 'same-origin', ...browser.sign('GET', '/api/seats/admissions') } })).json()) as AdmissionView[];
+            const terminal = waiting.find((a) => a.code === code);
+            if (terminal) {
+              const route = `/api/seats/admissions/${terminal.id}/answer`;
+              const body = JSON.stringify({ actor: 'Wassim', allow: true });
+              await fetch(`${old.url}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: old.url, ...browser.sign('POST', route, body) }, body });
+              return terminal.label;
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      })();
       const { exitCode } = await run(npx, ['update']);
+      assert.equal(await allowing, "Tricot's terminal (tricot update)");
+      assert.match(said(), /Allow this terminal in Tricot's page, in a browser you've let in: it shows code \d{4}\. Waiting for you there…/);
       const lock = readLock(dataDir);
       if (lock) pids.push(lock.pid);
       // The updater has seen it answer too, and is done: stopping it any sooner would be a failed start, to the updater.
@@ -229,7 +253,7 @@ describe('tricot --version and tricot update', () => {
       assert.equal(lock?.version, '0.2.0');
     });
 
-    it("says what to run when the running board can't update itself", async () => {
+    it("says what to run when the running board can't update itself, asking no one to let it in", async () => {
       const source = path.join(scratch, 'checkout');
       mkdirSync(source);
       writeFileSync(path.join(source, 'package.json'), '{"name":"tricot","version":"0.1.0"}');

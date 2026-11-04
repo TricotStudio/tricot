@@ -18,9 +18,10 @@ import './scene.css';
 
 export type SceneBlock = Extract<Block, { type: 'scene' }>;
 
-// three.js and the viewer, fetched once, the first time a scene is on screen.
+// three.js and the viewer, fetched once, the first time a scene is on screen
+// (on the canvas, or in its full view, sceneView.tsx).
 let viewerModule: Promise<typeof import('./viewer')> | undefined;
-function loadViewer() {
+export function loadViewer() {
   viewerModule ??= import('./viewer').catch((error: unknown) => {
     viewerModule = undefined; // a failed fetch is tried again next time
     throw error;
@@ -36,7 +37,7 @@ const lastViews = new Map<string, SceneView>();
 const editors = new Map<string, () => void>();
 export const editScene = (blockId: string) => editors.get(blockId)?.();
 
-function factsOf(source: string): SceneFacts | null {
+export function factsOf(source: string): SceneFacts | null {
   try {
     return readScene(source).facts;
   } catch {

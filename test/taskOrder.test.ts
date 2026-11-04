@@ -12,6 +12,7 @@ import { Store } from '../src/core/store';
 import { MIN_GAP, laneOrder, laneTasks, moveFor, ordinal, placeAt, rankBetween, spotLabel, type Move } from '../src/core/taskOrder';
 import type { Actor, Task, TaskStatus } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -31,6 +32,9 @@ function drop(lane: Task[], moving: Task, index: number): Task[] {
 }
 
 const ids = (tasks: Task[]) => tasks.map((t) => t.id);
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('Task order', () => {
   it('ranks between neighbours, at the top and at the end', () => {
@@ -256,7 +260,7 @@ describe('Dragging tasks over REST, as agents see it', () => {
   const post = async (route: string, body: Record<string, unknown>) => {
     const response = await fetch(`${base}/api${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) },
       body: JSON.stringify(body),
     });
     return { status: response.status, json: await response.json() };
@@ -272,6 +276,7 @@ describe('Dragging tasks over REST, as agents see it', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

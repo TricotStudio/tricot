@@ -5,7 +5,10 @@ import { z } from 'zod';
 import type { DiagramTypes } from './index';
 import { arrowQuote } from './quote';
 import { readFlowchart, type Flowchart } from './flowchart';
-import type { AgentHalf, BlockOf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
+import { pinWhere } from '../../digest';
+import { pinPart } from '../../pins';
 import { missing, more } from '../shared';
 import { BoardError } from '../../store/errors';
 import { blockLabel } from '../../canvas';
@@ -46,6 +49,28 @@ const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
 
 type DiagramBlock = BlockOf<DiagramTypes>;
 
+// A flowchart's nodes and arrows take requests (core/parts.ts): people point
+// at a box, an arrow or its label in its full view and ask an agent to change
+// it, which it does in the diagram's Mermaid source.
+const part: PartWords = {
+  kind: 'diagram',
+  anchors: ['node', 'arrow'],
+  ask: {
+    verb: 'change',
+    asking: 'asking agents to change it in the diagram',
+    doing: "Change the diagram's source with update_block, then reply",
+    act: "change the diagram's source with update_block, then ",
+    request: 'request to change the diagram, ',
+    what: 'the nodes and arrows of a diagram',
+  },
+};
+
+const ask: AskWords = {
+  part: ({ pin, block }) => `${pinPart(pin, block)}${pinWhere(pin)} of ${blockNamed(block, 'diagram')}`,
+  how: ({ block }) => `Change the diagram's Mermaid source with update_block (block_id: ${block.id}, source: the whole source)`,
+  view: 'the diagram',
+};
+
 export const agent: AgentHalf<DiagramTypes> = {
   addShape: { source: z.string().optional().describe('Mermaid diagram source, e.g. "flowchart LR\\n  A --> B"') },
   updateShape: { source: z.string().optional() },
@@ -56,6 +81,7 @@ export const agent: AgentHalf<DiagramTypes> = {
     return () => ({ type: 'diagram', source });
   },
   patch: (args) => ({ source: args.source as string | undefined }),
+  asks: partAsksDigest(part, ask),
   pinShape: {
     node: z.string().optional().describe('A flowchart node, by its id in the Mermaid source (or its text)'),
     to_node: z.string().optional().describe('With node: the arrow from node to this node; occurrence picks one of several'),
@@ -128,6 +154,7 @@ export const server: ServerHalf<DiagramTypes> = {
     const anchor: PinAnchor = { kind: 'arrow', from: arrow.from, to: arrow.to, n: arrow.n, ...(arrow.label ? { label: arrow.label } : {}) };
     return { anchor, quote: arrowQuote(chart, arrow) };
   },
+  part,
 
   agent,
   people,

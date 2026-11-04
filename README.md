@@ -32,6 +32,16 @@ tricot
 
 This starts the board (or finds the one already running), opens it in your browser, and prints how to connect an agent.
 
+Or start the board and your agent together, in one command:
+
+```sh
+tricot claude      # or: tricot codex, tricot opencode
+```
+
+It asks which board to work on (`--board <id>` skips the question), opens it, and starts the agent in this terminal with the board for this session only, so the agent's own settings stay as they are. Anything after `--` goes to the agent, and the board keeps running when the agent quits.
+
+Name several (`tricot claude codex`) and they share this terminal: Tricot's own tab shows first, with your agents, the requests for permission to answer with a key, and the board's latest activity; one tab shows at a time, a strip at the bottom says what each agent is doing, and Ctrl+\ switches ([more](docs/cli.md#several-agents-in-one-terminal)).
+
 ## Connect an agent
 
 Tricot works with any agent that speaks MCP. Run the line for yours once, then start a new session:
@@ -74,7 +84,9 @@ Any other MCP client connects to `http://127.0.0.1:4545/mcp` over Streamable HTT
 
 ## License
 
-Tricot is open source under the [AGPL-3.0](LICENSE), free for everyone. The licence doesn't cover the name "Tricot": a fork needs its own. Contributions are welcome under the [CLA](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md).
+Tricot is open source under the [Apache License 2.0](LICENSE), free for anyone, companies included. The licence doesn't cover the name "Tricot" or its logo: a fork needs its own. Contributions are welcome under the [CLA](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Versions 0.1.0 and 0.1.1 were released under AGPL-3.0-only; later versions are under Apache-2.0.
 
 Copyright © 2026 Tricot Studio.
 

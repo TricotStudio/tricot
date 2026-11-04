@@ -92,8 +92,8 @@ export type PinPart =
   | { kind: 'box'; x: number; y: number; w: number; h: number }
   | { kind: 'node'; nodeId: string }
   | { kind: 'arrow'; from: string; to: string; n?: number }
-  | { kind: 'line'; file: string; line: number; side?: DiffSide } // a diff's line, on its new side unless said
-  | { kind: 'point'; category: string; series?: string } // a chart's category, and series on a chart of several, by name
+  | { kind: 'line'; file: string; line: number; side?: DiffSide; last?: number } // a diff's line, on its new side unless said; on a code block, lines `line` to `last`
+  | { kind: 'point'; category?: string; series?: string } // a chart's category, and series on a chart of several, by name; a series alone is the whole series
   // A spot on a 3D scene: a named object (by name or uuid), and a point, in
   // its coordinates (its middle, if none); or a point in the scene; and the
   // view it was seen from.
@@ -101,6 +101,9 @@ export type PinPart =
   // Words in a Google Doc's paragraph, checked against the doc by the caller
   // (DocDrafts), which has it: the paragraph id at the doc's revision.
   | { kind: 'doc'; paragraph: string; revision: string; quote: string; prefix?: string; suffix?: string; title?: string }
+  // An element on a page of a website block, as a person's view of the page
+  // found it: checked against the block by its kind (core/blocks/site).
+  | { kind: 'site'; page: string; selector: string; tag: string; text?: string; file?: string; line?: number }
   | { kind: 'block' };
 
 // What a pin links to: one task or one decision on the block's board.

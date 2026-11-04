@@ -1,5 +1,6 @@
 // Table blocks: columns and rows, edited cell by cell, each cell a line of
-// inline Markdown. Picking cells pins them.
+// inline Markdown. Picking cells pins them. Open shows it full screen, to
+// pair with an agent on its cells, rows and columns (tableView.tsx).
 
 import { useRef, useState, type MouseEvent } from 'react';
 import { cellsQuote } from '../../../../core/blocks/table/quote';
@@ -10,6 +11,7 @@ import { EditableText, useCanvas, type PinDraft } from '../../context';
 import { useClickPick, type PlacedPin } from '../../pins';
 import { draftOf, selecting } from '../interaction';
 import type { ToolsProps, WebBlockKind } from '../kind';
+import { TableView } from './tableView';
 
 type TableBlock = Extract<Block, { type: 'table' }>;
 
@@ -170,13 +172,19 @@ function TableBody(props: { block: Extract<Block, { type: 'table' }>; selected: 
   );
 }
 
-// A table can be made into a chart of its numbers, beside it.
-function TableTools({ block }: ToolsProps<TableBlock>) {
+// Open: its full view, to read it all or pair with an agent on its cells. A
+// table can be made into a chart of its numbers, beside it.
+function TableTools({ block, viewing }: ToolsProps<TableBlock>) {
   const canvas = useCanvas();
   return (
-    <button onClick={() => canvas.perform((actor) => api.deriveBlock(block.id, actor))} title="Make a bar chart of this table's numbers, next to it">
-      Make a chart
-    </button>
+    <>
+      <button onClick={() => canvas.openOverlay(block.id, { version: viewing ?? undefined })} title="Open it full screen, to read it all or pair with an agent on its cells, rows and columns (Enter)">
+        Open
+      </button>
+      <button onClick={() => canvas.perform((actor) => api.deriveBlock(block.id, actor))} title="Make a bar chart of this table's numbers, next to it">
+        Make a chart
+      </button>
+    </>
   );
 }
 
@@ -229,5 +237,7 @@ export const table: WebBlockKind<TableBlock> = {
   Body: TableBody,
   Tools: TableTools,
   PinScope: TablePinScope,
+  overlay: { Component: TableView, refocus: true }, // its full view, in the pairing shell
+  activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Table', add: () => ({ content: { type: 'table', columns: ['Column 1', 'Column 2'], rows: [['', '']] } }) },
 };

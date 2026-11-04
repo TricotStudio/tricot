@@ -71,7 +71,13 @@ export function liveStepsContext(h: HooksEnv): LiveStepsContext {
   };
 }
 
-const WHAT_IT_SENDS = 'Each hook sends Tricot one line per step, never file contents, command output or your prompts, and does nothing while Tricot is closed.';
+const WHAT_IT_SENDS =
+  "Each hook sends Tricot one line per step, never file contents, command output or your prompts, and does nothing while Tricot is closed. Claude Code's status line and Codex's hook also pass on plan usage, numbers only.";
+
+// The agents whose permission prompts come to the board as well, said apart:
+// those carry the command or change the agent asks about.
+const approvalsSaid = (names: string[]) =>
+  `${listNames(names)} also ${names.length === 1 ? 'brings' : 'bring'} each permission prompt to the board, with the command or change it asks about, for you to answer there; while Tricot is closed, the terminal asks as usual.`;
 
 // ---- the first `tricot` ----------------------------------------------------------
 
@@ -110,6 +116,8 @@ export async function askOnFirstRun(h: HooksEnv): Promise<void> {
     out('  Every file and line: tricot --verbose');
   }
   out(WHAT_IT_SENDS);
+  const asking = plans.filter((plan) => liveStepsInstaller(plan.agent).approvals).map((plan) => plan.name);
+  if (asking.length) out(approvalsSaid(asking));
   out("Turn them off any time with `tricot hooks off`, or with the Live steps switch in an agent's panel.");
   const yes = await ctx.ask("Show your agents' steps live on your boards? [Y/n] ", true);
   remember(h.dataDir, yes ? 'yes' : 'no', 'asked');

@@ -15,6 +15,8 @@ import { securePrivateDir } from './dataDir';
 import { takeFailure } from './handoff';
 import { builtPagePolicy, devPagePolicy } from './headers';
 import { acquireLock, publishLock, releaseLock } from './lock';
+import { Seats } from './seats';
+import { SiteServer } from './sites/siteServer';
 import { startFolder } from './startFolder';
 import { Updates, type UpdatesOptions } from './updates';
 
@@ -47,6 +49,9 @@ export interface RunningServer {
   port: number;
   host: string;
   dataDir: string;
+  // What the pages' policy may frame of the board's websites
+  // (sites/siteServer.ts): http://*.localhost:<port>. None on the network.
+  siteFrames?: string;
   close(): Promise<void>;
 }
 
@@ -87,13 +92,25 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     // Live steps go in the person's own agent settings, in their home folder;
     // the folder Tricot started in is where a project's own Claude hook is looked for.
     const liveSteps = options.hooksDir ? { target: { home: os.homedir(), project: process.cwd(), env: process.env }, source: options.hooksDir, url } : undefined;
-    const pagePolicy = options.setupWeb ? devPagePolicy : builtPagePolicy(path.join(webDir, 'index.html'));
+    // The board's websites are served from an address of their own on this
+    // computer (sites/siteServer.ts): picked now, so the pages' policy may
+    // frame it, and listened on once a page shows a website. Tricot on the
+    // network serves none.
+    const loopback = isLoopbackHost(host);
+    const sites = loopback
+      ? new SiteServer({ store, tricot: () => [`http://127.0.0.1:${port}`, `http://localhost:${port}`], reserved: () => [port] })
+      : undefined;
+    await sites?.reserve();
+    const frames = () => (sites?.frameSource ? [sites.frameSource] : []);
+    const pagePolicy = options.setupWeb ? () => devPagePolicy(frames()) : builtPagePolicy(path.join(webDir, 'index.html'), frames);
     const folder = startFolder(process.cwd(), os.homedir());
     // An update that didn't finish is told once, here and on the page.
     const failed = takeFailure(dataDir);
     if (failed) console.warn(`${failed.message} (${failed.log})`);
     const updates = new Updates({ check: false, ...options.updates, current: options.version ?? '0.0.0', place: { port, host, dataDir, flags: options.updates?.flags } }, failed);
-    const app = createApp(store, { host, mcpUrl, connectors, version: options.version, source: options.source, token, liveSteps, pagePolicy, folder, updates });
+    // The browsers and terminals the person let in (seats.ts), kept in the data folder.
+    const seats = new Seats({ dataDir });
+    const app = createApp(store, { host, mcpUrl, connectors, version: options.version, source: options.source, token, liveSteps, pagePolicy, folder, updates, sites, seats });
     const httpServer = createServer(app);
     if (options.setupWeb) {
       await options.setupWeb(app, httpServer);
@@ -126,12 +143,13 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     const close = () =>
       (closing ??= (async () => {
         updates.stop();
+        await sites?.close();
         await store.flush();
         releaseLock(dataDir);
         httpServer.closeAllConnections();
         await new Promise<void>((resolve) => httpServer.close(() => resolve()));
       })());
-    return { url, mcpUrl, token, port, host, dataDir, close };
+    return { url, mcpUrl, token, port, host, dataDir, siteFrames: sites?.frameSource, close };
   } catch (error) {
     releaseLock(dataDir);
     throw error;

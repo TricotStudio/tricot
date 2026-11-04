@@ -9,6 +9,9 @@ import {
   compareVersions,
   githubRepo,
   NOTES_MAX,
+  PRE_LAUNCH,
+  preLaunchNote,
+  preLaunchWarning,
   pushCommand,
   releaseCommitMessage,
   resolveTarget,
@@ -90,20 +93,57 @@ describe('the release skill: what the commits call for', () => {
     assert.equal(kind('feat!: a new MCP schema'), 'major');
   });
 
-  it('suggests the biggest kind among them, and a minor for a breaking change before 1.0.0', () => {
+  it('after the launch, suggests the biggest kind among them, and a minor for a breaking change before 1.0.0', () => {
+    const launched = { preLaunch: false };
     const commits = [{ subject: 'Fix a crash' }, { subject: 'Charts on the canvas' }, { subject: 'docs: typo' }];
-    const suggestion = suggestBump(commits, '0.1.0');
+    const suggestion = suggestBump(commits, '0.1.0', launched);
     assert.equal(suggestion.kind, 'minor');
+    assert.equal(suggestion.reason, 'there are new or changed features');
+    assert.equal(suggestion.readAs, undefined, 'the suggestion is what the commits call for');
     assert.deepEqual(
       suggestion.commits.map((c) => c.kind),
       ['patch', 'minor', 'none'],
     );
-    assert.equal(suggestBump([{ subject: 'Fix a crash' }], '0.1.0').kind, 'patch');
-    assert.equal(suggestBump([{ subject: 'A lean README' }], '0.1.0').kind, 'patch', 'nothing user-facing is still at least a patch');
-    const breaking = suggestBump([{ subject: 'feat!: new schema' }], '0.4.2');
+    assert.equal(suggestBump([{ subject: 'Fix a crash' }], '0.1.0', launched).kind, 'patch');
+    assert.equal(suggestBump([{ subject: 'A lean README' }], '0.1.0', launched).kind, 'patch', 'nothing user-facing is still at least a patch');
+    const breaking = suggestBump([{ subject: 'feat!: new schema' }], '0.4.2', launched);
     assert.equal(breaking.kind, 'minor');
     assert.match(breaking.reason, /before 1\.0\.0/);
-    assert.equal(suggestBump([{ subject: 'feat!: new schema' }], '1.4.2').kind, 'major');
+    assert.equal(suggestBump([{ subject: 'feat!: new schema' }], '1.4.2', launched).kind, 'major');
+    assert.equal(preLaunchWarning('0.1.1', '0.2.0', launched), undefined, 'leaving 0.1.x is no longer worth a warning');
+    assert.equal(preLaunchWarning('0.1.1', '1.0.0', launched), undefined);
+  });
+
+  it('before the public launch, suggests the next patch whatever they call for, and says why', () => {
+    const early = { preLaunch: true };
+    const commits = [{ subject: 'Fix a crash' }, { subject: 'Charts on the canvas' }, { subject: 'docs: typo' }];
+    const suggestion = suggestBump(commits, '0.1.1', early);
+    assert.equal(suggestion.kind, 'patch');
+    assert.equal(suggestion.reason, "Before the public launch, releases stay on 0.1.x (#90); ask for another version if you need one.");
+    assert.equal(suggestion.reason, preLaunchNote('0.1.1'));
+    assert.deepEqual(suggestion.readAs, { kind: 'minor', reason: 'there are new or changed features' }, 'and what the commits read as');
+    assert.deepEqual(
+      suggestion.commits.map((c) => c.kind),
+      ['patch', 'minor', 'none'],
+    );
+    assert.deepEqual(resolveTarget('0.1.1', '', suggestion.kind), { version: '0.1.2' });
+    const breaking = suggestBump([{ subject: 'feat!: new schema' }], '0.1.1', early);
+    assert.equal(breaking.kind, 'patch');
+    assert.equal(breaking.readAs?.kind, 'minor');
+    assert.equal(suggestBump([{ subject: 'Homebrew formula for 0.1.1' }], '0.1.1', early).readAs?.kind, 'patch', 'nothing user-facing');
+    assert.equal(suggestBump(commits, '0.1.1').kind, PRE_LAUNCH ? 'patch' : 'minor', 'PRE_LAUNCH is the default');
+  });
+
+  it('before the public launch, still takes any version asked for, and warns when it leaves 0.1.x', () => {
+    const early = { preLaunch: true };
+    assert.deepEqual(resolveTarget('0.1.1', 'minor', 'patch'), { version: '0.2.0' }, 'not blocked');
+    assert.deepEqual(resolveTarget('0.1.1', 'major', 'patch'), { version: '1.0.0' });
+    assert.match(preLaunchWarning('0.1.1', '0.2.0', early)!, /^0\.2\.0 leaves 0\.1\.x: before the public launch, releases stay on 0\.1\.x \(#90\)\.$/);
+    assert.match(preLaunchWarning('0.1.1', '1.0.0', early)!, /leaves 0\.1\.x/);
+    assert.match(preLaunchWarning('0.1.1', '0.2.0-beta.1', early)!, /leaves 0\.1\.x/);
+    assert.equal(preLaunchWarning('0.1.1', '0.1.2', early), undefined);
+    assert.equal(preLaunchWarning('0.1.1', '0.1.7', early), undefined, 'a later patch the person names stays on 0.1.x');
+    assert.equal(preLaunchWarning('0.1', '0.2.0', early), undefined, "resolveTarget stops a current version that isn't one");
   });
 });
 

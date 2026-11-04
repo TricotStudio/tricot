@@ -7,3 +7,5 @@ export { UnreadableSettings } from './installer';
 export { detectedHookInstallers, findHookInstaller, hookInstallers } from './registry';
 export { applyLiveSteps, compactFiles, liveStepsAgent, liveStepsAgents, LiveStepsError, liveStepsInstaller, planLiveSteps } from './liveSteps';
 export type { LiveStepsApplied, LiveStepsContext, LiveStepsOptions, LiveStepsPlan } from './liveSteps';
+export { claudeSessionSettings, installedHooks } from './session';
+export type { InstalledHooks, SessionHooksOptions } from './session';

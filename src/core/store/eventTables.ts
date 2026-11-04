@@ -23,6 +23,7 @@ export interface EventQuery {
   // unless it @-mentions this one (as eventLog.ts forReader).
   exclude?: Actor;
   byAgent?: string; // only what this agent did, as an agent's panel shows
+  after?: string; // only events at or after this time (ISO), as its Usage section counts them
   unseenBy?: string; // what others changed that this person hasn't seen: not what isn't news (NOT_NEWS), nor their own doing
   order?: 'asc' | 'desc';
 }
@@ -79,6 +80,7 @@ export class EventTables {
       add(`(${FOR_AGENT} IS NULL OR ${SAME_PERSON}(${FOR_AGENT}, ?) OR ${mentioned})`, query.exclude.name, query.exclude.name);
     }
     if (query.byAgent !== undefined) add(`actor_kind = 'agent' AND ${SAME_PERSON}(actor_name, ?)`, query.byAgent);
+    if (query.after !== undefined) add('at >= ?', query.after);
     if (query.unseenBy !== undefined) {
       const news = `type NOT IN (${NOT_NEWS.map(() => '?').join(', ')})`;
       add(`${news} AND NOT (actor_kind = 'human' AND ${SAME_PERSON}(actor_name, ?))`, ...NOT_NEWS, query.unseenBy);

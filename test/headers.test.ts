@@ -33,12 +33,13 @@ const page = (theme: string) =>
   `<!doctype html><html><head><title>Tricot</title>\n    <script>${theme}</script>\n    <script type="module" crossorigin src="/assets/main.js"></script></head><body><div id="root"></div></body></html>`;
 const hashOf = (script: string) => `'sha256-${createHash('sha256').update(script).digest('base64')}'`;
 
-// The whole policy of a page whose one script written in is `script`.
-const policyWith = (script: string) =>
+// The whole policy of a page whose one script written in is `script`, on a
+// Tricot whose websites are served from `sites` (server/sites/).
+const policyWith = (script: string, sites: string) =>
   "default-src 'self'; " +
   `script-src 'self' ${hashOf(script)} https://apis.google.com; ` +
   "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; " +
-  'frame-src https://www.youtube-nocookie.com https://www.loom.com https://www.figma.com https://docs.google.com; ' +
+  `frame-src https://www.youtube-nocookie.com https://www.loom.com https://www.figma.com https://docs.google.com ${sites}; ` +
   "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -98,14 +99,14 @@ describe('Headers on every response', () => {
     for (const address of ['/', '/index.html', '/assets/main.js', '/b/roadmap']) {
       const res = await send(`${server.url}${address}`);
       assert.equal(res.status, 200, address);
-      assert.equal(assertSafe(res, address), policyWith(THEME_SCRIPT), address);
+      assert.equal(assertSafe(res, address), policyWith(THEME_SCRIPT, server.siteFrames!), address);
       assert.deepEqual(res.headers['referrer-policy'], ['strict-origin-when-cross-origin'], address);
     }
     // Asked again, the browser hears that nothing changed, under the same policy.
     const first = await send(`${server.url}/`);
     const again = await send(`${server.url}/`, { headers: { 'If-None-Match': first.headers.etag[0] } });
     assert.equal(again.status, 304);
-    assert.equal(assertSafe(again, 'the page, unchanged'), policyWith(THEME_SCRIPT));
+    assert.equal(assertSafe(again, 'the page, unchanged'), policyWith(THEME_SCRIPT, server.siteFrames!));
   });
 
   it('follows the page when it is built again with its theme script edited', async () => {
@@ -116,7 +117,7 @@ describe('Headers on every response', () => {
     try {
       const res = await send(`${server.url}/`);
       assert.ok(res.body.includes("'paper'"));
-      assert.equal(assertSafe(res, 'the page, rebuilt'), policyWith(edited));
+      assert.equal(assertSafe(res, 'the page, rebuilt'), policyWith(edited, server.siteFrames!));
     } finally {
       writeFileSync(file, page(THEME_SCRIPT));
       utimesSync(file, new Date(), new Date(Date.now() + 10_000));
@@ -151,7 +152,7 @@ describe('Headers on every response', () => {
   });
 
   it("on an asset, keeping its own policy with framing refused", async () => {
-    const upload = await send(`${server.url}/api/assets`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG });
+    const upload = await send(`${server.url}/api/assets`, { method: 'POST', headers: { 'Content-Type': 'image/png', Origin: server.url }, body: PNG });
     assert.equal(upload.status, 201);
     assertSafe(upload, 'POST /api/assets');
     const { assetId } = JSON.parse(upload.body) as { assetId: string };
@@ -215,7 +216,7 @@ describe('Requests from another site', () => {
     for (const address of ['/', '/b/roadmap']) {
       const res = await send(`${server.url}${address}`, { headers: from('cross-site', 'navigate', 'document') });
       assert.equal(res.status, 200, address);
-      assert.equal(assertSafe(res, address), policyWith(THEME_SCRIPT));
+      assert.equal(assertSafe(res, address), policyWith(THEME_SCRIPT, server.siteFrames!));
     }
     const back = await send(`${server.url}/api/connectors/google/callback?error=access_denied`, { headers: from('cross-site', 'navigate', 'document') });
     assert.match(back.body, /Not connected to Google/);
@@ -261,7 +262,7 @@ describe('The UI in development', () => {
 
   it('allows the scripts written into its page, and holds the rest of the policy', async () => {
     const policy = assertSafe(await send(`${server.url}/`), 'the page in development');
-    assert.equal(policy, pagePolicy(["'unsafe-inline'"]));
+    assert.equal(policy, pagePolicy(["'unsafe-inline'"], [server.siteFrames!]));
     assert.match(policy, /script-src 'self' 'unsafe-inline' https:\/\/apis\.google\.com;/);
     assert.doesNotMatch(policy, /sha256-/, "a hash would turn 'unsafe-inline' off");
     assert.equal(assertSafe(await send(`${server.url}/api/boards`), 'the API in development'), "frame-ancestors 'none'");

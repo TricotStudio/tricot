@@ -42,7 +42,7 @@ The board is a boundary object, after Maggie Appleton's *Planning with Agents*: 
 - Human identity is a self-chosen name stored in the browser; agents are labelled by `?agent=Name` or their MCP client name.
 - Connectors are internal, not plugins: Google Docs (the person picks each doc), GitHub and Figma, plus link cards that recognise common sites without signing in.
 - Terminology to keep: *board*, *decision*, *option* (lettered a, b, c), *recommendation*, *finding*, *criteria* and *marks*, *ask*, *task*, *stale*, *project context*, *canvas*, *block*, *group*, *link*, *pin*, *thread*, *live steps*, *Needs you*.
-- Open source: the core and the `tricot` command are under AGPL-3.0-only, with a commercial licence for anyone who can't meet it (`COMMERCIAL.md`), and contributions come under the CLA. The source is at https://github.com/TricotStudio/tricot, and every running Tricot links to it from Home. Tricot Studio's desktop app and its team features (shared boards, sign-in, roles and sync) are separate products, closed source.
+- Open source: the core and the `tricot` command are under Apache-2.0, free for anyone, companies included, and contributions come under the CLA. The source is at https://github.com/TricotStudio/tricot, and every running Tricot links to it from Home.
 
 ## Brand Commitments
 

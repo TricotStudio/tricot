@@ -1,0 +1,39 @@
+/* ---- a note's full view (noteView.tsx) -------------------------------------------
+   The note on a sheet, at a reading size, its prose stopping at a reading
+   width. While pairing, a selection shows in the amber of a part being
+   asked about. */
+
+.note-full-sheet {
+  width: min(760px, calc(100% - 48px));
+  padding: 36px 48px 44px;
+}
+.note-full {
+  font-size: 15px;
+  line-height: 1.6;
+}
+.note-full .pin-mark {
+  cursor: pointer;
+}
+.note-full .pin-mark.is-open {
+  background: color-mix(in srgb, var(--pin) 26%, var(--surface));
+}
+.note-full.is-pointing {
+  cursor: text;
+}
+.note-full.is-pointing .pin-mark {
+  cursor: text;
+}
+.note-full.is-pointing ::selection {
+  background: var(--pin-draft-bg);
+}
+.note-full .pin-chip {
+  vertical-align: 2px;
+}
+.note-full-empty {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .note-full-sheet {
+    padding: 24px 20px;
+  }
+}

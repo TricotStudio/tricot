@@ -1,4 +1,4 @@
-<!-- A lawyer should review this agreement before the first outside contribution is accepted and before any commercial licence is sold. -->
+<!-- A lawyer should review this agreement before the first outside contribution is accepted. -->
 
 # Contributor Licence Agreement
 
@@ -6,7 +6,7 @@ This agreement is between you ("You") and Tricot Studio (the "Licensor"). It cov
 
 1. **You keep your copyright.** You own what You wrote. This agreement does not transfer ownership.
 
-2. **Licence to the Licensor.** You grant the Licensor a perpetual, worldwide, non-exclusive, royalty-free, irrevocable licence to use, copy, modify, publish, distribute and sublicense Your Contributions and derivative works of them, **under any licence terms the Licensor chooses, including commercial and proprietary terms**, and to relicense them under a different licence at any time. This includes the right to include them in versions of Tricot released under the GNU Affero General Public License, in versions offered under a commercial licence, and in Tricot Studio's own closed-source products built on Tricot.
+2. **Licence to the Licensor.** You grant the Licensor a perpetual, worldwide, non-exclusive, royalty-free, irrevocable licence to use, copy, modify, publish, distribute and sublicense Your Contributions and derivative works of them, **under any licence terms the Licensor chooses, including commercial and proprietary terms**, and to relicense them under a different licence at any time. This includes the right to include them in versions of Tricot released under the Apache License, Version 2.0, in versions offered under other terms, and in Tricot Studio's own closed-source products built on Tricot.
 
 3. **Patents.** You grant the Licensor, and everyone who receives Tricot from it, a perpetual, worldwide, non-exclusive, royalty-free, irrevocable patent licence to make, use, sell, import and otherwise transfer the Contribution, for patents You own or control that the Contribution necessarily infringes. If You start a patent claim saying Tricot or a Contribution infringes Your patent, this patent licence ends for You.
 

@@ -9,12 +9,16 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { INSTRUCTIONS, MAX_INSTRUCTIONS } from '../src/server/mcp';
 import { eventsOf, versionsOf } from './tables';
 
 type ToolResult = { content: { type: string; text: string; data?: string; mimeType?: string }[]; isError?: boolean };
 
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('MCP + REST end to end', () => {
   let dir: string;
@@ -36,7 +40,7 @@ describe('MCP + REST end to end', () => {
   async function post(route: string, body: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) },
       body: JSON.stringify(body),
     });
     return { status: response.status, json: await response.json() };
@@ -48,6 +52,7 @@ describe('MCP + REST end to end', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -456,7 +461,7 @@ describe('MCP + REST end to end', () => {
 
   it('accepts only real images over REST and serves them inertly', async () => {
     const upload = (body: Buffer, type: string) =>
-      fetch(`${base}/api/assets`, { method: 'POST', headers: { 'Content-Type': type }, body: new Uint8Array(body) });
+      fetch(`${base}/api/assets`, { method: 'POST', headers: { 'Content-Type': type, Origin: base }, body: new Uint8Array(body) });
     const bad = await upload(Buffer.from('<svg onload="alert(1)"/>'), 'image/svg+xml');
     assert.equal(bad.status, 400);
 
@@ -964,7 +969,7 @@ describe('MCP + REST end to end', () => {
       again,
       new RegExp(`\\n\\nAdvice \\(nothing was rejected\\):\\n- You already have image "Connect screen \\(mock\\)" \\[id: ${shot}\\] here\\. If this is a new version of it, update that block instead and remove this one with remove_item\\.$`),
     );
-    const assetId = (await (await fetch(`${base}/api/assets`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: new Uint8Array(Buffer.from(PNG_BASE64, 'base64')) })).json()).assetId;
+    const assetId = (await (await fetch(`${base}/api/assets`, { method: 'POST', headers: { 'Content-Type': 'image/png', Origin: base }, body: new Uint8Array(Buffer.from(PNG_BASE64, 'base64')) })).json()).assetId;
     await post('/canvas/blocks', { actor: 'Wassim', taskId, title: 'Settings screen', content: { type: 'image', assetId } });
     const quiet = [
       await callText('add_block', { task_id: taskId, type: 'image', title: 'Settings screen (mock)', image_base64: PNG_BASE64 }), // a person's

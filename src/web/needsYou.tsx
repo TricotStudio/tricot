@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { approvalAction, approvalsOn, type Approval } from '../core/approvals';
 import type { Need, NeedKind } from '../core/needs';
+import { showApproval, useApprovals } from './approvals';
 import { Icon } from './components';
 import { useDismiss } from './hooks';
 import { DismissNeed, needHash, StatusSquare, urgent } from './needs';
@@ -10,6 +12,9 @@ import { openThread } from './threads';
 // (a blocking question, blocked work) called out as urgent. It opens those
 // cards grouped by what they need, each one click from its card. The same set
 // Home and the bell's Everywhere tab list (core/needs.ts), one entry per card.
+// An agent waiting for the person's OK on this board (approvals.tsx) counts
+// too, first and urgent, as it holds the agent up: its row brings the
+// request into view, to answer there.
 
 const GROUP: Record<NeedKind, string> = {
   blocking: 'Blocking',
@@ -39,18 +44,20 @@ function openNeed(e: MouseEvent, need: Need, close: () => void): void {
   openThread(target.id, undefined, { boardId: need.boardId, view: target.view });
 }
 
-export function NeedsYou({ needs, name }: { needs: Need[]; name: string }) {
+export function NeedsYou({ needs, name, board }: { needs: Need[]; name: string; board: string }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, root);
+  const waiting = approvalsOn(useApprovals(), board);
+  const total = needs.length + waiting.length;
   // Everything handled elsewhere while it was open: it doesn't reopen later.
   useEffect(() => {
-    if (needs.length === 0) setOpen(false);
-  }, [needs.length]);
-  if (needs.length === 0) return <span className="needs-none">Nothing needs you</span>;
-  const pressing = needs.filter(urgent);
-  const label = `${needs.length} need${needs.length === 1 ? 's' : ''} you${pressing.length ? `, ${pressing.length} urgent` : ''}`;
+    if (total === 0) setOpen(false);
+  }, [total]);
+  if (total === 0) return <span className="needs-none">Nothing needs you</span>;
+  const pressing = [...waiting.map((a) => a.on?.card ?? a.agent), ...needs.filter(urgent).map((n) => n.ref)];
+  const label = `${total} need${total === 1 ? 's' : ''} you${pressing.length ? `, ${pressing.length} urgent` : ''}`;
   return (
     <div className="needs-summary" ref={root}>
       <button
@@ -59,15 +66,16 @@ export function NeedsYou({ needs, name }: { needs: Need[]; name: string }) {
         aria-haspopup="dialog"
         aria-label={label}
         onClick={() => setOpen(!open)}
-        title={pressing.length ? `${pressing.map((n) => n.ref).join(', ')} holding agents up` : undefined}
+        title={pressing.length ? `${pressing.join(', ')} holding agents up` : undefined}
       >
-        <span className="needs-pill-count">{needs.length}</span>
-        {needs.length === 1 ? 'needs you' : 'need you'}
+        <span className="needs-pill-count">{total}</span>
+        {total === 1 ? 'needs you' : 'need you'}
         {pressing.length > 0 && <span className="tag tag-blocking">{pressing.length} urgent</span>}
         <Icon name="chevron-down" />
       </button>
       {open && (
         <div className="needs-panel" role="dialog" aria-label={label}>
+          {waiting.length > 0 && <WaitingForYou approvals={waiting} close={close} />}
           {byKind(needs).map(([kind, items]) => (
             <section key={kind} className="needs-group">
               <h3 className={`needs-group-head${urgent(items[0]) ? ' is-urgent' : ''}`}>
@@ -92,5 +100,37 @@ export function NeedsYou({ needs, name }: { needs: Need[]; name: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+// The agents waiting for your OK on this board: each row closes the menu and
+// brings its request into view (the toast, or the card's panel), to answer.
+function WaitingForYou({ approvals, close }: { approvals: Approval[]; close: () => void }) {
+  return (
+    <section className="needs-group">
+      <h3 className="needs-group-head is-urgent">
+        Waiting for your OK <span className="needs-group-count">{approvals.length}</span>
+      </h3>
+      <ol className="needs-items">
+        {approvals.map((approval) => (
+          <li key={approval.id} className="need-line">
+            <button
+              type="button"
+              className="needs-item approval-need"
+              onClick={() => {
+                close();
+                showApproval(approval.id);
+              }}
+            >
+              <Icon name="pause" className="approval-need-mark" />
+              <span className="needs-item-title">
+                {approval.on?.card && <span className="need-ref">{approval.on.card}</span>} {approval.agent}: {approvalAction(approval)}
+              </span>
+              <span className="btn btn-small needs-item-act">Answer</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

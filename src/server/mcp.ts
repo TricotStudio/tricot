@@ -17,9 +17,9 @@ import { decisionDiscussion, Shown, taskDiscussion } from '../core/answering';
 import { blockLabel, blockName, syncedBlocks } from '../core/canvas';
 import { agentKind, contentFields, fieldsByType, guideSentences, moreSentences } from '../core/blocks/agent';
 import { kindOf, kinds } from '../core/blocks/registry';
-import { connectorAsks, connectorPinning } from '../core/connectors';
 import { deletedLately } from '../core/deletions';
 import { canvasName, pinPart, pinTarget } from '../core/pins';
+import { partAsks, partOf } from '../core/parts';
 import { requestsDigest } from '../core/requests';
 import { threadAsRead, threadDetail, threadsDigest, workName } from '../core/threads';
 import { FIRST_LOOK_MS, firstLooksDigest } from '../core/firstLook';
@@ -28,7 +28,7 @@ import { sentNote, type Talk } from '../core/agentTalk';
 import { SKILLS_NUDGE } from '../core/skills';
 import { taskBrief } from '../core/brief';
 import { searchDigest, searchStore } from '../core/search';
-import { IN_THREAD, MAX_INLINE_IMAGES, ONE_CANVAS, describeIssues, namesOneCanvas, tools, type BlockArgs, type PinArgs } from '../core/schemas';
+import { IN_THREAD, LIMITS, MAX_INLINE_IMAGES, ONE_CANVAS, describeIssues, namesOneCanvas, tools, type BlockArgs, type PinArgs } from '../core/schemas';
 import { clip, listNames, peopleOn } from '../core/format';
 import {
   blockContentDigest,
@@ -56,6 +56,7 @@ import {
 import { boardKey, type Actor, type Block, type Board, type BoardEvent, type Thread } from '../core/types';
 import { describe as hookStep } from '../../hooks/tricot-describe.mjs';
 import type { ConnectorTool } from './connectors/connector';
+import type { PairingSessions } from './pairing';
 import type { AgentFocus, Presence } from './presence';
 import type { Steps } from './steps';
 
@@ -168,6 +169,8 @@ export interface McpOptions {
   steps?: Steps;
   // The connectors: which are connected, for list_boards (never a token), and the tools they add once there is a store.
   connectors?: { line(): string; tools(store: Store): ConnectorTool[] };
+  // Who is pairing with this agent (pairing.ts): said in get_board and its updates while it lasts.
+  pairing?: PairingSessions;
 }
 
 // The board a tool call is about, from whichever id it was given.
@@ -336,6 +339,7 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
     told.begin();
     const digest = eventsDigest(events, cursor, { board, viewer, shown: told }, more);
     const pending = [
+      ...(options.pairing?.lines(boardKey(board), viewer) ?? []),
       syncDigest(board),
       requestsDigest(board, viewer),
       threadsDigest(board, viewer, told),
@@ -343,7 +347,7 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
       firstLooksDigest(board, viewer, store.now()),
       refreshDigest(board),
       commitsDigest(board, viewer),
-      connectorAsks(board, viewer),
+      partAsks(board, viewer),
       waited === undefined ? undefined : readyWork(board, viewer),
     ].filter(Boolean);
     const quiet = waited !== undefined && events.length === 0 ? `\nNothing yet after ${waited}s; call again to keep waiting.` : '';
@@ -419,7 +423,8 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
       told.begin();
       const digest = boardDigest(board, getActor().name, store.now(), told);
       store.seeComments(board.id, getActor()); // 👀 on what people asked of it, which the digest quotes
-      return text(`${digest}${renamed}${nudge}`);
+      const pairing = (options.pairing?.lines(boardKey(board), getActor().name) ?? []).map((line) => `\n\n${line}`).join('');
+      return text(`${digest}${pairing}${renamed}${nudge}`);
     },
   );
 
@@ -624,20 +629,28 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
           'When decisions settle (decided or provisional), break the work into tasks, each linked to the decisions it implements. People see them on the Tasks tab, and the tasks go stale if one of those decisions changes.',
           'A task can also stand alone (a bug, a chore), but link it whenever it implements a decision: only linked tasks are flagged stale when a decision changes. Keep each small enough to finish and review on its own.',
           'When a person asks for a task plan on a decision, do that first. Search first, so you don\'t plan a task twice. You can hand a task to an agent with assignee.',
+          `When a person asks you to note something for later, or you notice a bug or follow-up outside your current work, open a backlog card with backlog: true instead of planning it into to do. Write down what you found in its detail: it gets no first look, and a person marks it ready. At most ${LIMITS.backlogCards} an hour.`,
           IN_THREAD,
         ].join(' '),
       inputSchema: tools.plan_tasks,
     },
-    async ({ board_id, tasks, thread_id }) => {
+    async ({ board_id, tasks, backlog, thread_id }) => {
       const thread = thread_id ? store.threadOn(thread_id, store.getBoard(board_id)) : undefined;
       const planned = store.planTasks(
         board_id,
         tasks.map((t) => ({ title: t.title, detail: t.detail, decisionIds: t.decision_ids ?? [], assignee: t.assignee })),
         getActor(),
+        { backlog },
       );
       for (const task of planned) if (thread) store.addThreadWork(thread.id, { kind: 'task', id: task.id }, getActor());
       const line = (t: (typeof planned)[number]) => `T${t.number} [id: ${t.id}] ${t.title}${t.assignee ? ` (assigned to ${t.assignee})` : ''}`;
       const shown = thread ? ` ${planned.length === 1 ? 'It shows' : 'They show'} in ${inThread(thread)}.` : '';
+      if (backlog) {
+        const one = planned.length === 1;
+        return text(
+          `Opened ${planned.map(line).join('; ')} in the backlog.${shown} People shape ${one ? 'it' : 'them'} and mark ${one ? 'it' : 'them'} ready; don't claim or build ${one ? 'it' : 'them'} until then. Carry on with your current work.`,
+        );
+      }
       return text(`Planned ${planned.map(line).join('; ')}.${shown} claim_task before starting one, then hand it to a subagent with the brief from brief_task.`);
     },
   );
@@ -804,7 +817,7 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
       title: 'Comment',
       description:
         [
-          "Reply in a decision's or a task's discussion thread (pass decision_id or task_id), e.g. to answer a person's question or report on work they sent back, or in the comment thread on a pinned part (pin_id), such as a line of a diff or code block, or a person's request to edit a Google Doc's paragraph.",
+          "Reply in a decision's or a task's discussion thread (pass decision_id or task_id), e.g. to answer a person's question or report on work they sent back, or in the comment thread on a pinned part (pin_id), such as a line of a diff or code block, a person's request to edit a Google Doc's paragraph, or a person's request to change an element of a website (edit its file first).",
           "A comment people make on a pinned part of a task's or decision's canvas is in that card's discussion, quoting the part: reply there as usual. On the board context it starts a thread on the pin, which get_canvas lists: reply with pin_id, and if it needs a person's call, post a decision and pin it to the same part with pin(pin_id).",
           'To tell a person something on a card, mention them (@Sam): it shows as new for them until they have seen it, and nothing waits on them. To ask, use ask_people, which waits for an answer. Refer to cards as #N for a decision and TN for a task (e.g. "posted as #32", "done in T35"): the board turns them into links.',
           `To hand another agent a question or a piece of work, mention it (@Codex): it reads as asked of it, and its reply comes through your updates. Answer another agent's mention as you would a person's. ${AGENT_TALK}`,
@@ -828,7 +841,7 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
         const { board, canvas, task, decision } = store.canvasOf(pin.id);
         const block = canvas.blocks.find((b) => b.id === pin.blockId)!;
         const card = task ? `T${task.number}` : decision ? `#${decision.number}` : undefined;
-        const owner = connectorPinning(pin.anchor.kind)?.pins;
+        const owner = partOf(block, pin.anchor.kind);
         const part = `${pinPart(pin, block)} in ${owner?.label?.(block, pin) ?? blockLabel(block)}`;
         const asks = toAgentsNote(board, comment);
         if (card) return text(advise(`Commented on ${card} about ${part}, in its discussion.${asks}`));

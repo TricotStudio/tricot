@@ -4,10 +4,9 @@
 // route has (access.ts: this server's own pages, and the token beyond this
 // machine):
 //
-// - Changing is for a person in Tricot's page: a preview or an apply must
-//   come from the page (a browser sends its Origin, which access.ts has
-//   already checked is this server's). Agents and scripts send none and are
-//   refused; there is no MCP tool for it either.
+// - Changing is for a person, from one of their seats (access.ts asPerson,
+//   tier B): a browser or Tricot terminal they let in. Agents and scripts
+//   are refused; there is no MCP tool for it either.
 // - From the computer Tricot runs on only, as it is that computer's files.
 // - Turning steps on or off is for every project, and never touches a
 //   project's settings; a project's own hook from earlier is only taken out,
@@ -23,19 +22,14 @@ import { Router, type ErrorRequestHandler, type Request, type Response } from 'e
 import { ZodError } from 'zod';
 import type { LiveStepsPreview, LiveStepsReport, LiveStepsResult } from '../core/liveSteps';
 import { describeIssues, liveSteps as bodies } from '../core/schemas';
+import { asPerson, fromThisMachine, type PersonGate, type Tier } from './access';
 import { applyLiveSteps, liveStepsAgents, LiveStepsError, planLiveSteps, UnreadableSettings, type LiveStepsContext } from './hooks';
-
-const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-
-// The request came from this computer: its connection's own address is a loopback one.
-export const fromThisMachine = (req: Request): boolean => LOOPBACK_ADDRESSES.has(req.socket.remoteAddress ?? '');
 
 export interface LiveStepsRoutesOptions extends LiveStepsContext {
   fromThisMachine?: (req: Request) => boolean; // tests stand in for another device
+  person?: PersonGate; // who is a person (access.ts); the app's, with its terminals, unless given
 }
 
-export const NOT_FROM_PAGE =
-  "Refused: live steps are turned on or off by a person, in an agent's panel in Tricot or with `tricot hooks` in a terminal. Agents can't change them.";
 export const NOT_FROM_HERE =
   "Live steps change files on the computer Tricot runs on, so they are turned on or off from that computer: open Tricot there, or run `tricot hooks` in its terminal.";
 const CHANGED =
@@ -44,17 +38,18 @@ const CHANGED =
 export function createLiveStepsRouter(options: LiveStepsRoutesOptions): Router {
   const router = Router();
   const local = options.fromThisMachine ?? fromThisMachine;
+  const person = options.person ?? ((req: Request, tier?: Tier) => asPerson(req, tier, { local }));
   const context: LiveStepsContext = { target: options.target, source: options.source, url: options.url };
   // Signs each preview's digest, so a fingerprint can only come from a
   // preview this server gave; a new key each time it starts.
   const key = randomBytes(32);
   const sign = (digest: string) => createHmac('sha256', key).update(digest).digest('hex');
 
-  // Only a person, in the page, on this computer, may change it.
+  // Only a person, from one of their seats, on this computer, may change it.
   const mayChange = (req: Request, res: Response): boolean => {
-    const site = req.headers['sec-fetch-site'];
-    if (!req.headers.origin || (site !== undefined && site !== 'same-origin')) {
-      res.status(403).json({ error: NOT_FROM_PAGE });
+    const verdict = person(req, 'B');
+    if (!verdict.ok) {
+      res.status(403).json({ error: verdict.error, ...(verdict.code && { code: verdict.code }) });
       return false;
     }
     if (!local(req)) {

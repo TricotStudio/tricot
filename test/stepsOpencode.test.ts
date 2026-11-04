@@ -236,7 +236,7 @@ describe('the OpenCode plugin, as installed', () => {
     };
     const cleanup = await withFetch(send, () => plugin.setup(ctx));
     assert.deepEqual([...handlers.keys()], ['execute.before', 'execute.after']);
-    assert.deepEqual(asked.types, ['session.created', 'session.idle', 'session.status', 'permission.asked']);
+    assert.deepEqual(asked.types, ['session.created', 'session.idle', 'session.status', 'permission.asked', 'session.step.ended', 'session.usage.updated']);
 
     const call = { tool: 'shell', sessionID: 'v2-session', agent: 'build', messageID: 'm', id: 'call-1', input: { command: 'npm test -- --token SECRET' } };
     assert.equal(await handlers.get('execute.before')!(call), undefined, 'nothing to wait on');

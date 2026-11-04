@@ -12,13 +12,14 @@ import { diff } from './diff';
 import { image } from './image';
 import { link } from './link';
 import { scene } from './scene';
+import { site } from './site';
 import { note } from './note';
 import { table } from './table';
 
 // Their order is the order listings read in (what REST says a block may be).
 // It is a function so the kinds are read once they have all loaded, however
 // the modules happen to be imported.
-const registered = () => [note, table, image, diagram, comparison, link, diff, code, chart, scene] as const;
+const registered = () => [note, table, image, diagram, comparison, link, diff, code, chart, scene, site] as const;
 
 export type RegisteredKinds = ReturnType<typeof registered>[number];
 

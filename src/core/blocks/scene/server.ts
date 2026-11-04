@@ -3,7 +3,9 @@
 
 import { z } from 'zod';
 import type { SceneTypes } from './index';
-import type { AgentHalf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
+import { pinWhere } from '../../digest';
 import { missing, more } from '../shared';
 import { BoardError } from '../../store/errors';
 import { blockLabel } from '../../canvas';
@@ -60,6 +62,30 @@ function safeFacts(source: string): SceneFacts | undefined {
   }
 }
 
+// Its named objects take requests (core/parts.ts): people click one in its
+// full view and ask an agent to change it, which it does by sending the
+// scene's JSON whole. Spots stay on their objects while the scene keeps
+// them, by uuid or name, wherever they move.
+const part: PartWords = {
+  kind: 'scene',
+  anchors: ['spot'],
+  ask: {
+    verb: 'change',
+    asking: 'asking agents to change it in the 3D scene',
+    doing: "Change the scene's JSON with update_block, keeping its objects' names, then reply",
+    act: "change the scene's JSON with update_block, keeping its objects' names, then ",
+    request: 'request to change the 3D scene, ',
+    what: "a 3D scene's objects",
+  },
+};
+
+const ask: AskWords = {
+  part: ({ pin, block }) => `${pin.quote}${pinWhere(pin)} of ${blockNamed(block, '3D scene')}`,
+  how: ({ block }) =>
+    `Change the scene with update_block (block_id: ${block.id}, scene: its whole three.js JSON, as get_block gives it), keeping the name (and uuid) of each object you keep: spots stay on their objects by them`,
+  view: 'the scene',
+};
+
 export const agent: AgentHalf<SceneTypes> = {
   addShape: {
     scene: z
@@ -80,6 +106,7 @@ export const agent: AgentHalf<SceneTypes> = {
   patch: (args) => ({ scene: args.scene as string | undefined }),
   adviceAdded: (block) => unnamedAdvice(block.scene),
   adviceUpdated: (block, args) => (args.scene !== undefined ? unnamedAdvice(block.scene) : []),
+  asks: partAsksDigest(part, ask),
   pinShape: {
     object: z.string().optional().describe('A named object in a 3D scene: its name (or uuid)'),
   },
@@ -143,6 +170,7 @@ export const server: ServerHalf<SceneTypes> = {
     const on = named && { name: named.name, ...(named.uuid ? { object: named.uuid } : {}) };
     return { anchor: { kind: 'spot', n, x: at[0], y: at[1], z: at[2], ...on, ...(view ? { view } : {}) }, quote: spotQuote(n, named?.name) };
   },
+  part,
 
   agent,
   people,

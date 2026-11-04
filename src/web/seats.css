@@ -1,0 +1,224 @@
+/* The person's seats (seats.tsx): letting this browser in, answering one
+   that asks, and the list. A dialog over a veil of the page, as deleting a
+   board; the code large and set in figures, as the terminal shows it; a
+   browser asking, a sheet at the top right with an amber edge, as anything
+   that waits on you. */
+
+.seat-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16vh 16px 16px;
+  background: var(--scrim);
+}
+.seat-dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.seat-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.seat-dialog p {
+  margin: 0;
+}
+.seat-lead {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.seat-lead kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+.seat-lead code {
+  white-space: nowrap;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.seat-code {
+  justify-self: start;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.seat-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.seat-faint {
+  color: var(--faint);
+}
+.seat-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+.seat-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+.seat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--open);
+  animation: seat-wait 1.4s ease-in-out infinite;
+}
+@keyframes seat-wait {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seat-dot {
+    animation: none;
+  }
+}
+
+/* A browser or terminal asking, in a browser let in. */
+.admission-banners {
+  position: fixed;
+  top: 72px;
+  right: 16px;
+  z-index: 75;
+  display: grid;
+  gap: 10px;
+  width: min(400px, calc(100vw - 32px));
+}
+.admission {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--open) 45%, var(--border));
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.admission p {
+  margin: 0;
+  color: var(--muted);
+}
+.admission-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.admission-mark {
+  flex: none;
+  color: var(--open);
+}
+.admission-code {
+  color: var(--text);
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.admission-actions {
+  display: flex;
+  gap: 8px;
+}
+.admission-error {
+  font-size: 13px;
+}
+
+/* The list. */
+.seats-panel {
+  width: min(520px, 100%);
+}
+.seats-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+.seats-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.seats-mark {
+  flex: none;
+  color: var(--muted);
+}
+.seats-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.seats-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.seats-you {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.seats-meta {
+  color: var(--faint);
+  font-size: 12px;
+}
+.seats-remove {
+  flex: none;
+  color: var(--danger);
+}

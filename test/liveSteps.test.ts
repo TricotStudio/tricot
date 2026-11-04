@@ -11,9 +11,11 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { liveStepsAgentFor, liveStepsLabel, type LiveStepsAgent, type LiveStepsPreview, type LiveStepsReport, type LiveStepsResult } from '../src/core/liveSteps';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { applyLiveSteps, compactFiles, liveStepsAgents, planLiveSteps, type LiveStepsContext } from '../src/server/hooks';
 import { claude } from '../src/server/hooks/claude';
-import { NOT_FROM_HERE, NOT_FROM_PAGE } from '../src/server/liveStepsRoutes';
+import { NOT_A_PERSON } from '../src/server/access';
+import { NOT_FROM_HERE } from '../src/server/liveStepsRoutes';
 
 // Every agent folder here is in a home made for the test, and PATH is empty:
 // nothing reads or writes a real agent's settings, and no agent is run.
@@ -115,11 +117,17 @@ describe('Live steps, for the person', () => {
       [
         ['~/.claude/hooks/tricot-steps.mjs', 'write'],
         ['~/.claude/hooks/tricot-describe.mjs', 'write'],
+        ['~/.claude/hooks/tricot-approve.mjs', 'write'],
+        ['~/.claude/hooks/tricot-usage.mjs', 'write'],
+        ['~/.claude/hooks/tricot-usage.json', 'write'],
         ['~/.claude/settings.json', 'add'],
       ],
     );
-    assert.match(plan.files[2].lines!, /"PreToolUse"/);
-    assert.equal(compactFiles(plan.files), '~/.claude/hooks/{tricot-steps.mjs, tricot-describe.mjs}, ~/.claude/settings.json');
+    assert.match(plan.files[5].lines!, /"PreToolUse"/);
+    assert.match(plan.files[5].lines!, /"PermissionRequest"/, 'the approval hook, in the lines shown');
+    assert.match(plan.files[5].lines!, /"statusLine"/);
+    assert.ok(plan.notes.some((n) => /permission to run something, the request comes to the card/.test(n)), 'and said in words');
+    assert.equal(compactFiles(plan.files), '~/.claude/hooks/{tricot-steps.mjs, tricot-describe.mjs, tricot-approve.mjs, tricot-usage.mjs, tricot-usage.json}, ~/.claude/settings.json');
     assert.equal(existsSync(settings), false, 'a plan writes nothing');
     assert.equal(planLiveSteps(ctx, 'claude', 'on', { name: 'Claude' }).digest, plan.digest, 'the same plan, the same digest');
     assert.notEqual(planLiveSteps(ctx, 'claude', 'on', { name: 'Other' }).digest, plan.digest);
@@ -137,9 +145,13 @@ describe('Live steps, for the person', () => {
         ['~/.claude/settings.json', 'remove'],
         ['~/.claude/hooks/tricot-steps.mjs', 'delete'],
         ['~/.claude/hooks/tricot-describe.mjs', 'delete'],
+        ['~/.claude/hooks/tricot-approve.mjs', 'delete'],
+        ['~/.claude/hooks/tricot-usage.mjs', 'delete'],
+        ['~/.claude/hooks/tricot-usage.json', 'delete'],
       ],
     );
     assert.match(off.files[0].lines!, /tricot-steps\.mjs/, 'the lines it takes out');
+    assert.match(off.files[0].lines!, /tricot-approve\.mjs/, 'the approval hook with them');
     assert.match(off.text, /take out of ~\/\.claude\/settings\.json/);
     assert.equal(applyLiveSteps(ctx, off).agent.state, 'off');
     assert.deepEqual(json(settings), {}, 'nothing of Tricot left');
@@ -217,19 +229,21 @@ describe('The live steps routes', () => {
   let server: Server;
   let base: string;
   let local: boolean;
+  let seat: TestSeat; // the person's browser, let in: changing live steps needs one of their seats
 
   const listen = async (options: Parameters<typeof createApp>[1]) => {
     const store = new Store(dir);
     store.load();
     const app = createApp(store, options);
+    seat = letIn(app);
     await new Promise<void>((resolve) => {
       server = app.listen(0, '127.0.0.1', () => resolve());
     });
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   };
   const page = () => ({ 'Content-Type': 'application/json', Origin: base, 'Sec-Fetch-Site': 'same-origin' });
-  const post = (url: string, body: unknown, headers: Record<string, string> = page()) =>
-    fetch(`${base}${url}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const post = (url: string, body: unknown, headers?: Record<string, string>) =>
+    fetch(`${base}${url}`, { method: 'POST', headers: headers ?? { ...page(), ...seat.sign('POST', url, JSON.stringify(body)) }, body: JSON.stringify(body) });
   const preview = async (agent: string, body: Record<string, unknown>) => {
     const res = await post(`/api/live-steps/${agent}/preview`, { actor: 'Wassim', ...body });
     assert.equal(res.status, 200, await res.clone().text());
@@ -266,7 +280,7 @@ describe('The live steps routes', () => {
     assert.equal(shown.sendsAs, 'Codex');
     assert.deepEqual(
       shown.files.map((f) => f.path),
-      ['~/.codex/hooks/tricot-steps.mjs', '~/.codex/hooks/tricot-describe.mjs', '~/.codex/hooks.json'],
+      ['~/.codex/hooks/tricot-steps.mjs', '~/.codex/hooks/tricot-describe.mjs', '~/.codex/hooks/tricot-approve.mjs', '~/.codex/hooks/tricot-usage.mjs', '~/.codex/hooks.json'],
     );
     assert.ok(shown.notes.some((n) => /trust/.test(n)), "Codex's /hooks is said before");
     assert.equal(existsSync(path.join(ctx.home, '.codex/hooks.json')), false, 'a preview writes nothing');
@@ -292,7 +306,7 @@ describe('The live steps routes', () => {
     assert.equal(json(path.join(ctx.home, '.codex/hooks.json')).hooks.PreToolUse.length, 1);
 
     const off = await preview('codex', { action: 'off' });
-    assert.deepEqual(off.files.map((f) => f.does), ['remove', 'delete', 'delete']);
+    assert.deepEqual(off.files.map((f) => f.does), ['remove', 'delete', 'delete', 'delete', 'delete']);
     const removed = (await (await post('/api/live-steps/codex/apply', { actor: 'Wassim', action: 'off', fingerprint: off.fingerprint })).json()) as LiveStepsResult;
     assert.equal(removed.agent.state, 'off');
     assert.match(removed.summary, /^Turned off\. Codex stops sending steps/);
@@ -321,14 +335,14 @@ describe('The live steps routes', () => {
   it("refuses agents and scripts: changes come from a person in Tricot's page", async () => {
     const requests: Record<string, string>[] = [
       { 'Content-Type': 'application/json' }, // an agent with curl
-      // Not from Tricot's own page (one from another site is refused before this, as on every route).
-      { 'Content-Type': 'application/json', Origin: base, 'Sec-Fetch-Site': 'same-site' },
+      // Not from Tricot's own page (one from another site or page is refused before this, as on every route).
+      { 'Content-Type': 'application/json', Origin: base, 'Sec-Fetch-Site': 'none' },
     ];
     for (const headers of requests) {
       for (const route of ['preview', 'apply']) {
         const res = await post(`/api/live-steps/claude/${route}`, { actor: 'Wassim', action: 'on', fingerprint: 'a'.repeat(64) }, headers);
         assert.equal(res.status, 403, `${route} ${JSON.stringify(headers)}`);
-        assert.equal(((await res.json()) as { error: string }).error, NOT_FROM_PAGE);
+        assert.equal(((await res.json()) as { error: string }).error, NOT_A_PERSON);
       }
     }
     const elsewhere = await post('/api/live-steps/claude/preview', { actor: 'Wassim', action: 'on' }, { ...page(), Origin: 'https://evil.example' });

@@ -88,6 +88,15 @@ describe('Changes: what pages are sent instead of the board', () => {
     store.reopen(decision.id, sam);
     store.requestRefresh(decision.id, 'Check it', sam);
     same('asking for a refresh');
+
+    // Several cards asked about at once, with the event on the one decided.
+    const others = ['Backoff?', 'Jitter?'].map((question) => store.postDecision(boardId, { question, options: [{ label: 'A' }, { label: 'B' }] }, claude));
+    for (const d of others) store.resolve(d.id, { optionId: 'a' }, sam);
+    const answered = store.postDecision(boardId, { question: 'Timeouts?', options: [{ label: 'A' }, { label: 'B' }] }, claude);
+    store.resolve(answered.id, { optionId: 'b' }, sam);
+    store.askToRevisit(answered.id, others.map((d) => d.id), sam);
+    same('asking for several to be checked together');
+    assert.deepEqual(last().events?.map((e) => [e.type, e.decisionId]), [['refresh_requested', answered.id]]);
   });
 
   it('keeps a page equal through tasks, claims, reviews and reordering', () => {

@@ -1,0 +1,66 @@
+/* ---- a 3D scene's full view (sceneView.tsx) ----------------------------------------
+   The scene fills the stage, on the block's own soft backdrop (scene.css);
+   its spots are drawn over it, larger; the markers of its spots in a row
+   under it. Pointing, the cursor says a click picks. */
+
+.scene-full-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scene-stage.scene-full {
+  flex: 1 1 auto;
+  margin: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.scene-stage.scene-full.is-pointing {
+  cursor: crosshair;
+}
+.scene-stage.scene-full.is-pointing:active {
+  cursor: grabbing;
+}
+.scene-full .scene-spot {
+  margin: -12px 0 0 -12px;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+}
+.scene-full .scene-spot.is-open {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 5px color-mix(in srgb, var(--pin) 35%, transparent), 0 1px 4px rgb(0 0 0 / 0.25);
+}
+.scene-full .scene-reset {
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  opacity: 1;
+}
+.scene-full-note {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100% - 32px));
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.scene-full-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px 14px;
+}
+.scene-full-chips .pin-chip {
+  margin-left: 0;
+}

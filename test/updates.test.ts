@@ -7,16 +7,23 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import express from 'express';
 import { Store } from '../src/core/store';
-import type { UpdateState } from '../src/core/update';
+import type { CheckedState, UpdateState } from '../src/core/update';
 import { createApp } from '../src/server/app';
 import { startServer } from '../src/server/start';
-import { createUpdateRouter, NOT_HERE } from '../src/server/updateRoutes';
+import { asPerson, HOST_KEY_HEADER, keepRawBody, NOT_A_PERSON } from '../src/server/access';
+import { SEAT_NEEDED } from '../src/core/seats';
+import { Seats } from '../src/server/seats';
+import { letIn, type TestSeat } from './seatHelper';
+import { AnswerHosts } from '../src/server/answerHosts';
+import { createUpdateRouter } from '../src/server/updateRoutes';
 import {
   CHECK_EVERY_MS,
   checkOff,
   fetchLatest,
   fetchRelease,
   githubRepo,
+  neverChecks,
+  NoAnswer,
   notesFromBody,
   REGISTRY_URL,
   releaseFileFor,
@@ -25,13 +32,15 @@ import {
   releasesFromEnv,
   releasesUrl,
   RETRY_MS,
+  SHARE_ANSWER_MS,
   sourceLink,
   UpdateChecker,
   Updates,
+  whyNoAnswer,
   type Found,
   type Timer,
 } from '../src/server/updates';
-import { freePort, githubRelease, integrity, registrySays, sha256, tricotTarball } from './updateFixtures';
+import { fakeReleases, freePort, githubRelease, integrity, registrySays, sha256, tricotTarball, type FakeReleases } from './updateFixtures';
 
 const RELEASES = releasesUrl('TricotStudio/tricot');
 const fileUrl = (version: string) => `https://github.com/TricotStudio/tricot/releases/download/v${version}/tricot-${version}.tgz`;
@@ -228,6 +237,28 @@ describe('Asking GitHub, then npm', () => {
     await assert.rejects(fetchLatest({}, stand(403, new TypeError('fetch failed')).fetch), { message: 'fetch failed' }, 'npm alone');
   });
 
+  it('says in plain words why neither answered, for the person who asked', async () => {
+    const offline = () => new TypeError('fetch failed');
+    const slow = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const why = async (github: Record<string, unknown> | number | Error, npm: Record<string, unknown> | number | Error, where: { releases?: string } = { releases: RELEASES }) => {
+      const error = await fetchLatest(where, stand(github, npm).fetch).then(
+        () => assert.fail('it found a release'),
+        (e: unknown) => e,
+      );
+      assert.ok(error instanceof NoAnswer);
+      return whyNoAnswer(error);
+    };
+    assert.equal(await why(offline(), offline()), "GitHub and the npm registry can't be reached", 'offline');
+    assert.equal(await why(slow(), slow()), "GitHub and the npm registry didn't answer in time");
+    assert.equal(await why(403, offline()), "GitHub answered 403, and the npm registry can't be reached");
+    assert.equal(await why(slow(), offline()), "GitHub didn't answer in time, and the npm registry can't be reached");
+    assert.equal(await why(503, 503), 'GitHub answered 503, and the registry answered 503');
+    assert.equal(await why(githubRelease('0.3.0', { assets: [] }), { name: 'tricot' }), "GitHub's release v0.3.0 has no tricot-0.3.0.tgz yet, and the registry's answer has no version");
+    assert.equal(await why(403, offline(), {}), "the npm registry can't be reached", 'npm alone');
+    assert.equal(await why(403, 500, {}), 'the registry answered 500');
+    assert.equal(whyNoAnswer(new Error('something else')), 'something else');
+  });
+
   it("asks npm alone for a Tricot whose repository isn't on GitHub", async () => {
     const { fetch: fake, asked } = stand(githubRelease('0.3.0'));
     assert.equal((await fetchLatest({}, fake)).source, 'npm');
@@ -282,6 +313,16 @@ describe('When the check is off', () => {
     assert.equal(checkOff({ TRICOT_RELEASES_URL: 'http://127.0.0.1:5087/x' }, 'source'), undefined, 'a stand-in GitHub');
     assert.equal(checkOff({ TRICOT_RELEASES_URL: 'http://evil.example/x' }, 'source'), 'a source checkout', 'not one it refuses');
     assert.equal(checkOff({ TRICOT_RELEASES_URL: 'http://127.0.0.1:5087/x', TRICOT_NO_UPDATE_CHECK: '1' }, 'npm-global'), 'TRICOT_NO_UPDATE_CHECK');
+  });
+
+  it('still lets a person check by hand when only the flag or the variable turned it off, but not in tests or from a checkout', () => {
+    assert.equal(neverChecks({}, 'npm-global'), undefined);
+    assert.equal(neverChecks({ TRICOT_NO_UPDATE_CHECK: '1' }, 'brew'), undefined, 'the daily check alone is off');
+    assert.equal(neverChecks({}, 'source'), 'a source checkout');
+    assert.equal(neverChecks({ NODE_TEST_CONTEXT: 'child-v8' }, 'npx'), 'tests');
+    assert.equal(neverChecks({ TRICOT_RELEASES_URL: 'http://127.0.0.1:5087/x' }, 'source'), undefined, 'a stand-in GitHub');
+    assert.equal(neverChecks({ TRICOT_UPDATE_URL: 'data:,{}', NODE_TEST_CONTEXT: 'child-v8' }, 'npx'), undefined, 'trying the notice out');
+    assert.equal(neverChecks({ TRICOT_RELEASES_URL: 'http://evil.example/x' }, 'source'), 'a source checkout', 'not one it refuses');
   });
 });
 
@@ -425,6 +466,66 @@ describe('The daily check', () => {
     check.stop();
     assert.ok(timers.every((t) => t.cancelled));
   });
+
+  it('asks now when a person asks, and shares an answer a few seconds old', async () => {
+    const check = checker();
+    assert.equal((await Promise.all([check.checkNow(), check.checkNow()]))[1].release.version, '0.2.0');
+    assert.equal(asked, 1, 'presses together share one request');
+    now += SHARE_ANSWER_MS - 1;
+    answers.push('0.3.0');
+    assert.equal((await check.checkNow()).release.version, '0.2.0', 'the answer of a moment ago');
+    assert.equal(asked, 1);
+    now += 1;
+    assert.equal((await check.checkNow()).release.version, '0.3.0', 'a few seconds on, it asks again');
+    assert.equal(asked, 2);
+    assert.equal(check.available()?.version, '0.3.0');
+    assert.equal(JSON.parse(readFileSync(path.join(dataDir, 'update-check.json'), 'utf8')).release.version, '0.3.0', 'kept, as the daily check keeps it');
+    assert.equal(timers.length, 0, 'with the daily check off, nothing is scheduled');
+  });
+
+  it('shares a failure a few seconds old too, and keeps what it found before', async () => {
+    const check = checker();
+    await check.checkNow();
+    now += SHARE_ANSWER_MS;
+    answers.push(new TypeError('fetch failed'));
+    await assert.rejects(check.checkNow(), { message: 'fetch failed' });
+    await assert.rejects(check.checkNow(), { message: 'fetch failed' }, 'the same answer, not another request');
+    assert.equal(asked, 2);
+    assert.equal(check.available()?.version, '0.2.0');
+  });
+
+  it("shares the daily check's answer, under way or just in", async () => {
+    const check = checker();
+    check.start();
+    const due = timers.at(-1)!;
+    due.run(); // the daily check starts asking
+    assert.equal((await check.checkNow()).release.version, '0.2.0');
+    assert.equal(asked, 1, 'joined the request under way');
+    await check.checkNow();
+    assert.equal(asked, 1, 'and its answer, just in');
+  });
+
+  it('puts the next daily check a day after an answer to a person, and leaves it be after a failure', async () => {
+    const check = checker();
+    check.start();
+    await tick();
+    assert.equal(timers.at(-1)!.ms, CHECK_EVERY_MS);
+    now += 5 * 60 * 60 * 1000;
+    await check.checkNow();
+    assert.equal(asked, 2);
+    const next = timers.filter((t) => !t.cancelled);
+    assert.equal(next.length, 1, 'one daily check ahead');
+    assert.equal(next[0].ms, CHECK_EVERY_MS, 'a day from this answer');
+
+    now += SHARE_ANSWER_MS;
+    answers.push(new TypeError('fetch failed'));
+    await assert.rejects(check.checkNow());
+    assert.equal(timers.filter((t) => !t.cancelled).at(-1), next[0], 'the same daily check, at the same time');
+    check.stop();
+    now += SHARE_ANSWER_MS;
+    await check.checkNow();
+    assert.ok(timers.every((t) => t.cancelled), 'nothing scheduled once stopped');
+  });
 });
 
 describe('GET and POST /api/update', () => {
@@ -432,18 +533,23 @@ describe('GET and POST /api/update', () => {
   let server: Server;
   let base: string;
   const latest = (version: string) => (async () => new Response(JSON.stringify({ name: 'tricot', version }))) as unknown as typeof fetch;
+  let seat: TestSeat | undefined; // the person's browser, let in: updating needs one of their seats
   const listen = async (updates: Updates, router?: express.Router) => {
     const store = new Store(dataDir);
     store.load();
-    const app = router ? express().use(express.json()).use('/api/update', router) : createApp(store, { host: '127.0.0.1', mcpUrl: 'http://127.0.0.1/mcp', updates });
+    const app = router ? express().use(express.json({ verify: keepRawBody })).use('/api/update', router) : createApp(store, { host: '127.0.0.1', mcpUrl: 'http://127.0.0.1/mcp', updates });
+    seat = router ? undefined : letIn(app);
     server = app.listen(0, '127.0.0.1');
     await new Promise((resolve) => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   };
   const updatesFor = (options: Partial<ConstructorParameters<typeof Updates>[0]> = {}) =>
     new Updates({ check: false, current: '0.1.0', place: { port: 4545, host: '127.0.0.1', dataDir }, launch: { kind: 'npx' }, self: { command: 'node', args: ['tricot.js'] }, fetch: latest('0.2.0'), ...options });
-  const post = (version: unknown, headers: Record<string, string> = {}, extra: object = {}) =>
-    fetch(`${base}/api/update`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ ...extra, version }) });
+  // As Tricot's page asks: with its own Origin, from a browser the person let in.
+  const post = (version: unknown, headers?: Record<string, string>, extra: object = {}) => {
+    const body = JSON.stringify({ ...extra, version });
+    return fetch(`${base}/api/update`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(headers ?? { Origin: base, ...seat?.sign('POST', '/api/update', body) }) }, body });
+  };
   const until = async <T>(check: () => Promise<T | undefined>): Promise<T> => {
     for (let i = 0; i < 100; i++) {
       const value = await check();
@@ -554,7 +660,7 @@ describe('GET and POST /api/update', () => {
   it('asks only where it was started to ask, whatever a page sends', async () => {
     const { fetch: fake, asked } = stand(githubRelease('0.2.0'));
     await listen(updatesFor({ releases: RELEASES, fetch: fake }));
-    const res = await post('0.3.0', {}, { releases: 'http://evil.example/latest', url: 'http://evil.example/npm', file: 'http://evil.example/x.tgz' });
+    const res = await post('0.3.0', undefined, { releases: 'http://evil.example/latest', url: 'http://evil.example/npm', file: 'http://evil.example/x.tgz' });
     assert.equal(res.status, 409);
     assert.deepEqual(
       asked.map((a) => a.url),
@@ -562,19 +668,35 @@ describe('GET and POST /api/update', () => {
     );
   });
 
-  it("refuses another site's page, and a program on another computer", async () => {
+  it("refuses another site's page, and a plain program; takes a person in the page, or at a Tricot terminal", async () => {
     await listen(updatesFor());
     const res = await post('0.2.0', { Origin: 'http://evil.example' });
     assert.equal(res.status, 403);
+    const plain = await post('0.2.0', {});
+    assert.equal(plain.status, 403, 'a program on this computer, acting as a person (access.ts asPerson)');
+    assert.equal(((await plain.json()) as { error: string }).error, NOT_A_PERSON);
     server.close();
 
     const updates = updatesFor();
-    await listen(updates, createUpdateRouter(updates, { fromThisMachine: () => false }));
-    const remote = await post('0.2.0');
-    assert.equal(remote.status, 403);
-    assert.equal(((await remote.json()) as { error: string }).error, NOT_HERE);
-    const page = await post('0.3.0', { Origin: base });
-    assert.equal(page.status, 409, "a person in Tricot's page, from another device, gets as far as the version check");
+    const hosts = new AnswerHosts();
+    const registered = hosts.register();
+    assert.ok('key' in registered);
+    const seats = new Seats();
+    const browser = letIn(seats);
+    await listen(updates, createUpdateRouter(updates, { person: (req, tier) => asPerson(req, tier, { hosts, seats }) }));
+    for (const headers of [{ Origin: base }, { [HOST_KEY_HEADER]: registered.key }] as Record<string, string>[]) {
+      const res = await post('0.3.0', headers);
+      assert.deepEqual([res.status, ((await res.json()) as { code?: string }).code], [403, SEAT_NEEDED], `${Object.keys(headers)[0]}: updating is consequential, so the page or terminal is let in first`);
+    }
+    const body = JSON.stringify({ version: '0.3.0' });
+    const seated = await post('0.3.0', { Origin: base, ...browser.sign('POST', '/api/update', body) });
+    assert.equal(seated.status, 409, 'one of your seats gets as far as the version check');
+    server.close();
+    await listen(updates, createUpdateRouter(updates, { person: (req, tier) => asPerson(req, tier, { hosts, seats, local: () => false, device: () => true }) }));
+    const device = await post('0.3.0', { Origin: base });
+    assert.equal(device.status, 409, 'on the network, another device with the token gets as far too');
+    const remote = await post('0.3.0', { [HOST_KEY_HEADER]: registered.key });
+    assert.equal(remote.status, 409, 'the token stands for the person there, whatever else it sends');
   });
 
   it('tells the next start about an update that did not finish, once', async () => {
@@ -595,6 +717,193 @@ describe('GET and POST /api/update', () => {
       assert.deepEqual(said.failed, { version: '0.2.0', at: '2026-11-03T10:00:00.000Z', message: "Tricot 0.2.0 didn't start.", log: path.join(dataDir, 'update.log') });
       assert.equal(said.check, false, 'npm start and npm run dev never ask npm');
       assert.equal(existsSync(path.join(dataDir, 'update-failed.json')), false);
+    } finally {
+      await running.close();
+    }
+  });
+});
+
+// "Check for updates", from the menu under your name: the same check as the
+// daily one, now, against the stand-in GitHub and npm as a data: URL.
+describe('POST /api/update/check', () => {
+  let dataDir: string;
+  let server: Server | undefined;
+  let base: string;
+  let github: FakeReleases;
+  const npmSays = (version: string) => registrySays({ name: 'tricot', version });
+  const listen = async (updates: Updates, router?: express.Router) => {
+    await new Promise((resolve) => (server ? server.close(resolve) : resolve(undefined)));
+    const store = new Store(dataDir);
+    store.load();
+    const app = router ? express().use(express.json({ verify: keepRawBody })).use('/api/update', router) : createApp(store, { host: '127.0.0.1', mcpUrl: 'http://127.0.0.1/mcp', updates });
+    server = app.listen(0, '127.0.0.1');
+    await new Promise((resolve) => server!.once('listening', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  };
+  // A Tricot run with npx, its daily check off, that a person may check by hand.
+  const updatesFor = (options: Partial<ConstructorParameters<typeof Updates>[0]> = {}) =>
+    new Updates({
+      check: false,
+      manual: true,
+      current: '0.1.0',
+      place: { port: 4545, host: '127.0.0.1', dataDir },
+      launch: { kind: 'npx' },
+      self: { command: 'node', args: ['tricot.js'] },
+      releases: github.latest,
+      url: npmSays('0.2.0'),
+      ...options,
+    });
+  // As Tricot's page asks: with its own Origin.
+  const press = async (headers: Record<string, string> = { Origin: base }) => {
+    const res = await fetch(`${base}/api/update/check`, { method: 'POST', headers });
+    return { status: res.status, body: (await res.json()) as CheckedState & { error?: string; how?: UpdateState['how'] } };
+  };
+  const nobodyListens = async () => `http://127.0.0.1:${await freePort()}/tricot/latest`;
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), 'tricot-check-now-'));
+    github = await fakeReleases();
+  });
+  afterEach(async () => {
+    await new Promise((resolve) => (server ? server.close(resolve) : resolve(undefined)));
+    server = undefined;
+    await github.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('says so when the version running is the latest, asking GitHub with the same plain request', async () => {
+    github.set({ latest: githubRelease('0.1.0', { base: github.base }) });
+    await listen(updatesFor());
+    const { status, body } = await press();
+    assert.equal(status, 200);
+    assert.deepEqual(body.checked, { latest: true });
+    assert.equal(body.current, '0.1.0');
+    assert.equal(body.available, undefined);
+    assert.ok(body.checkedAt);
+    assert.deepEqual(
+      github.asked.map((a) => a.path),
+      ['/repos/TricotStudio/tricot/releases/latest'],
+    );
+    const { headers } = github.asked[0];
+    assert.equal(headers.accept, 'application/vnd.github+json');
+    assert.equal(headers['user-agent'], 'tricot');
+    assert.equal(headers.authorization, undefined, 'no token');
+  });
+
+  it('finds a newer release on GitHub, and answers the state the notice shows it from', async () => {
+    github.set({ latest: githubRelease('0.2.0', { base: github.base }) });
+    await listen(updatesFor());
+    const { status, body } = await press();
+    assert.equal(status, 200);
+    const release = { version: '0.2.0', notes: 'Boards open faster.', link: 'https://github.com/TricotStudio/tricot/releases/tag/v0.2.0' };
+    assert.deepEqual(body.checked, { newer: release });
+    assert.deepEqual(body.available, release);
+    assert.deepEqual(body.how, { self: true, via: 'npx' }, 'its Update button updates it');
+    const kept = JSON.parse(readFileSync(path.join(dataDir, 'update-check.json'), 'utf8'));
+    assert.equal(kept.source, 'github', 'kept as the daily check keeps it');
+    assert.equal(kept.file.url, `${github.base}/TricotStudio/tricot/releases/download/v0.2.0/tricot-0.2.0.tgz`);
+    const later = (await (await fetch(`${base}/api/update`)).json()) as UpdateState;
+    assert.deepEqual(later.available, release, 'every page hears of it');
+  });
+
+  it("asks npm when GitHub can't say", async () => {
+    github.set({ latest: 403 });
+    await listen(updatesFor());
+    const { body } = await press();
+    assert.deepEqual(body.checked, { newer: { version: '0.2.0', link: 'https://www.npmjs.com/package/tricot/v/0.2.0' } });
+    assert.equal(github.asked.length, 1);
+    assert.equal(JSON.parse(readFileSync(path.join(dataDir, 'update-check.json'), 'utf8')).source, 'npm');
+  });
+
+  it('says why in plain words when neither answers', async () => {
+    github.set({ latest: 503 });
+    await listen(updatesFor({ url: await nobodyListens() }));
+    let { status, body } = await press();
+    assert.equal(status, 200, 'the check ran; this is what it found');
+    assert.deepEqual(body.checked, { error: "GitHub answered 503, and the npm registry can't be reached" });
+    assert.equal(body.available, undefined);
+    assert.equal(existsSync(path.join(dataDir, 'update-check.json')), false);
+
+    await listen(updatesFor({ releases: (await nobodyListens()).replace('/tricot/latest', '/repos/TricotStudio/tricot/releases/latest'), url: await nobodyListens() }));
+    ({ body } = await press());
+    assert.deepEqual(body.checked, { error: "GitHub and the npm registry can't be reached" });
+  });
+
+  it('shares one request between presses a few seconds apart', async () => {
+    github.set({ latest: githubRelease('0.2.0', { base: github.base }) });
+    await listen(updatesFor());
+    const answers = await Promise.all([press(), press(), press()]);
+    assert.equal(github.asked.length, 1, 'presses together');
+    assert.ok(answers.every((a) => a.status === 200 && 'newer' in a.body.checked));
+    github.set({ latest: githubRelease('0.3.0', { base: github.base }) });
+    const again = await press();
+    assert.equal(github.asked.length, 1, 'a press a moment later');
+    assert.deepEqual(again.body.checked, answers[0].body.checked);
+  });
+
+  it('works with the daily check off, since the person is asking', async () => {
+    github.set({ latest: githubRelease('0.2.0', { base: github.base }) });
+    const updates = updatesFor({ check: false });
+    updates.start(); // the daily check stays off
+    await listen(updates);
+    const { status, body } = await press();
+    assert.equal(status, 200);
+    assert.equal(body.check, false);
+    assert.equal(body.available?.version, '0.2.0');
+    assert.equal(github.asked.length, 1);
+    updates.stop();
+  });
+
+  it("refuses another site's page, and a plain program; takes a person in the page, or at a Tricot terminal", async () => {
+    await listen(updatesFor());
+    const elsewhere = await press({ Origin: 'http://evil.example' });
+    assert.equal(elsewhere.status, 403);
+    assert.match(elsewhere.body.error!, /came from a web page at http:\/\/evil\.example/);
+    const plain = await press({});
+    assert.equal(plain.status, 403, 'a program on this computer, acting as a person (access.ts asPerson)');
+    assert.equal(plain.body.error, NOT_A_PERSON);
+    assert.equal(github.asked.length, 0, 'nobody was asked');
+
+    const updates = updatesFor();
+    const hosts = new AnswerHosts();
+    const registered = hosts.register();
+    assert.ok('key' in registered);
+    await listen(updates, createUpdateRouter(updates, { person: (req, tier) => asPerson(req, tier, { hosts, local: () => false }) }));
+    const page = await press();
+    assert.equal(page.status, 200, "a person in Tricot's page, from another device");
+    assert.equal((await press({ [HOST_KEY_HEADER]: registered.key })).status, 403, "a terminal's key, from another computer");
+    await listen(updates, createUpdateRouter(updates, { person: (req, tier) => asPerson(req, tier, { hosts }) }));
+    const here = await press({ [HOST_KEY_HEADER]: registered.key });
+    assert.equal(here.status, 200, 'a Tricot terminal on this computer (tricot update)');
+  });
+
+  it("tells a source checkout, and tests, that they don't check, and asks no one", async () => {
+    await listen(updatesFor({ manual: false, launch: { kind: 'source' } }));
+    const checkout = await press();
+    assert.equal(checkout.status, 409);
+    assert.equal(checkout.body.error, "This Tricot runs from a copy of its source code, so it doesn't check for updates: update it with git pull && npm install && npm run build.");
+    assert.equal(checkout.body.how && !checkout.body.how.self && checkout.body.how.command, 'git pull && npm install && npm run build');
+
+    await listen(updatesFor({ manual: false }));
+    const tests = await press();
+    assert.equal(tests.status, 409);
+    assert.equal(tests.body.error, "This Tricot runs for tests, so it doesn't check for updates.");
+    assert.equal(github.asked.length, 0);
+
+    // npm start and npm run dev: the server from source, with no update options.
+    const port = await freePort();
+    const warn = console.warn;
+    console.warn = () => {}; // no built UI here, which it says
+    let running;
+    try {
+      running = await startServer({ port, dataDir: path.join(dataDir, 'dev'), version: '0.1.0', webDir: path.join(dataDir, 'web') });
+    } finally {
+      console.warn = warn;
+    }
+    try {
+      const res = await fetch(`${running.url}/api/update/check`, { method: 'POST', headers: { Origin: running.url } });
+      assert.equal(res.status, 409);
+      assert.match(((await res.json()) as { error: string }).error, /^This Tricot runs from a copy of its source code/);
     } finally {
       await running.close();
     }

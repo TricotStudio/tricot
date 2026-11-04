@@ -1,41 +1,17 @@
 // Diagram blocks: Mermaid source drawn as a diagram; a flowchart's nodes and
-// arrows can be pinned. Double-click edits the source.
+// arrows can be pinned. Double-click edits the source; Open shows it full
+// screen, to pair with an agent on its parts (diagramView.tsx).
 
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { arrowQuote } from '../../../../core/blocks/diagram/quote';
-import { readFlowchart, type Flowchart } from '../../../../core/blocks/diagram/flowchart';
+import { readFlowchart } from '../../../../core/blocks/diagram/flowchart';
 import type { Block } from '../../../../core/types';
-import { useCanvas, type PinDraft } from '../../context';
+import { useCanvas } from '../../context';
 import { useClickPick, type PlacedPin } from '../../pins';
 import { dragged, selecting, useLongEdit } from '../interaction';
-import type { WebBlockKind } from '../kind';
+import type { ToolsProps, WebBlockKind } from '../kind';
+import { DiagramView } from './diagramView';
 import { Mermaid } from './Mermaid';
-
-// A drawn flowchart node's id in the source: Mermaid draws Retry as
-// <g class="node" id="mermaid-3-flowchart-Retry-4">.
-function nodeIdOf(element: Element): string | undefined {
-  return element.id.match(/flowchart-(.+)-\d+$/)?.[1];
-}
-
-// The drawn parts of a node or an arrow (its line and its text).
-function drawnParts(svg: SVGSVGElement, part: { nodeId: string } | { arrowId: string }): Element[] {
-  if ('nodeId' in part) return [...svg.querySelectorAll('g.node')].filter((node) => nodeIdOf(node) === part.nodeId);
-  const id = CSS.escape(part.arrowId);
-  return [...svg.querySelectorAll(`path[data-edge="true"][data-id="${id}"], g.label[data-id="${id}"]`)];
-}
-
-// The node or arrow under a click, as a part to pin.
-function diagramPart(chart: Flowchart, blockId: string, target: Element): PinDraft | null {
-  const node = target.closest('g.node');
-  if (node) {
-    const found = chart.nodes.find((n) => n.id === nodeIdOf(node));
-    return found ? { blockId, part: { kind: 'node', nodeId: found.id }, quote: found.label } : null;
-  }
-  const id = target.closest('[data-id]')?.getAttribute('data-id');
-  const arrow = chart.arrows.find((a) => a.id === id);
-  if (!arrow) return null;
-  return { blockId, part: { kind: 'arrow', from: arrow.from, to: arrow.to, n: arrow.n }, quote: arrowQuote(chart, arrow) };
-}
+import { diagramPart, drawnParts, useArrowTwins } from './parts';
 
 // Clicking a flowchart's node or arrow pins it: amber while its prompt is
 // open, blue once linked, with its chip in the strip under the diagram.
@@ -50,19 +26,7 @@ function DiagramBody({ block, placed }: { block: Extract<Block, { type: 'diagram
   const pinnable = Boolean(chart) && !canvas.readOnly;
   const draft = canvas.draft?.blockId === block.id ? canvas.draft.part : null;
 
-  // Arrows are thin lines: each gets a wider, unseen twin to click.
-  useLayoutEffect(() => {
-    if (!svg || !pinnable) return;
-    const twins = [...svg.querySelectorAll<SVGPathElement>('path[data-edge="true"]')].map((line) => {
-      const twin = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      twin.setAttribute('d', line.getAttribute('d') ?? '');
-      twin.setAttribute('class', 'pin-hit');
-      twin.setAttribute('data-id', line.getAttribute('data-id') ?? '');
-      line.after(twin);
-      return twin;
-    });
-    return () => twins.forEach((twin) => twin.remove());
-  }, [svg, pinnable]);
+  useArrowTwins(svg, pinnable);
 
   // The part being pinned in amber, linked parts in blue.
   useLayoutEffect(() => {
@@ -135,9 +99,22 @@ function DiagramBody({ block, placed }: { block: Extract<Block, { type: 'diagram
   );
 }
 
+// Open: its full view, to see it large or pair with an agent on its parts.
+function DiagramTools({ block, viewing }: ToolsProps<Extract<Block, { type: 'diagram' }>>) {
+  const canvas = useCanvas();
+  return (
+    <button onClick={() => canvas.openOverlay(block.id, { version: viewing ?? undefined })} title="Open it full screen, to see it large or pair with an agent on its boxes and arrows (Enter)">
+      Open
+    </button>
+  );
+}
+
 export const diagram: WebBlockKind<Extract<Block, { type: 'diagram' }>> = {
   type: 'diagram',
   Body: DiagramBody,
+  Tools: DiagramTools,
+  overlay: { Component: DiagramView, refocus: true }, // its full view, in the pairing shell
+  activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Diagram', add: () => ({ content: { type: 'diagram', source: 'flowchart LR\n  A[Start] --> B[Next]' } }) },
   added: (block, canvas) => canvas.edit(block.id),
 };

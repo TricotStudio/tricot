@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { collectNotices, FLAGGED, inlinedIn, licenceAllowed, licenceRefused, noticesMarkdown, packageDirOf, recordBundle } from '../scripts/notices.mjs';
+import { collectNotices, FLAGGED, inlinedIn, licenceAllowed, licenceRefusal, licenceRefused, noticesMarkdown, packageDirOf, recordBundle } from '../scripts/notices.mjs';
 
 // The third-party notices (scripts/notices.mjs) come from what the bundlers
 // say they bundled; these check how that becomes the notices, on made-up packages.
@@ -24,22 +24,28 @@ describe('Third-party notices', () => {
     return dir;
   };
 
-  it('lets in licences that sit well in an AGPL-3.0-only program, and nothing else', () => {
-    for (const ok of ['MIT', 'ISC', 'BSD-3-Clause', 'Apache-2.0', '(MPL-2.0 OR Apache-2.0)', 'Apache-2.0 WITH LLVM-exception', 'MIT AND ISC']) {
+  it('lets in licences that sit well in an Apache-2.0 program, and nothing else', () => {
+    for (const ok of ['MIT', 'ISC', 'BSD-3-Clause', 'Apache-2.0', '(MPL-2.0 OR Apache-2.0)', 'Apache-2.0 WITH LLVM-exception', 'MIT AND ISC', 'MIT OR GPL-3.0-only']) {
       assert.equal(licenceAllowed(ok), true, ok);
     }
-    for (const no of ['EPL-2.0', 'UNKNOWN', 'MIT AND EPL-2.0', 'SEE LICENSE IN LICENSE', '']) {
+    for (const no of ['EPL-2.0', 'UNKNOWN', 'MIT AND EPL-2.0', 'SEE LICENSE IN LICENSE', '', 'GPL-3.0-only', 'AGPL-3.0-only', 'LGPL-2.1-or-later', 'MPL-2.0']) {
       assert.equal(licenceAllowed(no), false, no);
     }
   });
 
-  it('refuses the Eclipse Public License for good, unless the GPL is offered beside it', () => {
-    for (const no of ['EPL-2.0', 'EPL-1.0', 'MIT AND EPL-2.0', '(EPL-2.0 AND MIT)']) {
+  it('refuses the GPL and the AGPL for good, and the Eclipse Public License while #86 stands', () => {
+    const copyleft = ['GPL-3.0-only', 'GPL-2.0+', 'GPL-2.0-or-later', 'AGPL-3.0-only', 'AGPL-3.0-or-later', 'MIT AND GPL-3.0-or-later'];
+    const eclipse = ['EPL-2.0', 'EPL-1.0', 'MIT AND EPL-2.0', '(EPL-2.0 AND MIT)'];
+    for (const no of [...copyleft, ...eclipse, 'EPL-2.0 OR GPL-2.0-or-later', '(EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0)']) {
       assert.equal(licenceRefused(no), true, no);
     }
-    for (const yes of ['EPL-2.0 OR GPL-2.0-or-later', '(EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0)', 'EPL-2.0 OR MIT', 'MIT', 'UNKNOWN', '']) {
+    for (const yes of ['EPL-2.0 OR MIT', 'MIT OR GPL-3.0-only', 'LGPL-2.1-only', 'MPL-2.0', 'MIT', 'UNKNOWN', '']) {
       assert.equal(licenceRefused(yes), false, yes);
+      assert.equal(licenceRefusal(yes), undefined, yes);
     }
+    for (const no of copyleft) assert.match(licenceRefusal(no) ?? '', /^its copyleft would put the whole bundle, Tricot's Apache-2\.0 code with it, under its terms$/, no);
+    for (const no of eclipse) assert.match(licenceRefusal(no) ?? '', /^the Eclipse Public License stays out of the bundles while #86 stands$/, no);
+    assert.match(licenceRefusal('EPL-2.0 OR GPL-2.0-or-later') ?? '', /^the Eclipse .+ #86 stands, and its copyleft would put the whole bundle/, 'neither side of the OR can ship');
   });
 
   it('finds the package a bundled file comes from, scoped and nested ones too', () => {
@@ -81,7 +87,7 @@ describe('Third-party notices', () => {
     );
     assert.equal(problems.length, 2, problems.join('\n'));
     assert.match(problems.join('\n'), /delta 1\.0\.0 \(MIT\): it comes without its licence text/);
-    assert.match(problems.join('\n'), /gamma 1\.0\.0 \(EPL-2\.0\): its licence doesn't mix with AGPL-3\.0-only .*so it can't ship/);
+    assert.match(problems.join('\n'), /gamma 1\.0\.0 \(EPL-2\.0\): it can't ship, even in FLAGGED: the Eclipse Public License stays out of the bundles while #86 stands\./);
 
     const markdown = noticesMarkdown(entries);
     assert.match(markdown, /\| alpha \| 1\.0\.0 \| MIT \| the web page and the command \|/);
@@ -90,24 +96,44 @@ describe('Third-party notices', () => {
     assert.match(markdown, /MIT \(its package\.json names none; this is its licence file's\), in the web page/);
   });
 
-  it('lets a library it has flagged through with a warning, but never one under the EPL alone', () => {
+  it('lets a library it has flagged through with a warning, but never one under a licence it refuses', () => {
     pkg('epsilon', { license: 'SEE LICENSE IN LICENSE' }, { LICENSE: 'Custom terms' });
     pkg('zeta', { license: 'EPL-2.0' }, { LICENSE: 'Eclipse Public License' });
-    pkg('eta', { license: 'EPL-2.0 OR GPL-2.0-or-later' }, { LICENSE: 'Eclipse Public License, or the GPL' });
+    pkg('eta', { license: 'MPL-2.0' }, { LICENSE: 'Mozilla Public License' });
+    pkg('kappa', { license: 'GPL-3.0-or-later' }, { COPYING: 'GNU General Public License' });
     const lists = path.join(scratch, 'lists');
     const file = (name: string) => path.join(scratch, 'node_modules', name, 'dist/index.js');
-    recordBundle('web', [file('epsilon'), file('zeta'), file('eta')], lists);
+    recordBundle('web', [file('epsilon'), file('zeta'), file('eta'), file('kappa')], lists);
     recordBundle('cli', [], lists);
 
-    Object.assign(FLAGGED, { epsilon: 'Its terms are being read.', zeta: 'Let it through.', eta: 'The GPL is offered beside the EPL.' });
+    Object.assign(FLAGGED, { epsilon: 'Its terms are being read.', zeta: 'Let it through.', eta: 'Its files stay under the MPL, with their source offered.', kappa: 'Let it through.' });
     try {
       const { problems, flagged } = collectNotices(lists);
-      assert.deepEqual(flagged, ['epsilon 1.0.0 (SEE LICENSE IN LICENSE): Its terms are being read.', 'eta 1.0.0 (EPL-2.0 OR GPL-2.0-or-later): The GPL is offered beside the EPL.']);
-      assert.equal(problems.length, 1, problems.join('\n'));
-      assert.match(problems[0], /^zeta 1\.0\.0 \(EPL-2\.0\): .*can't ship, even in FLAGGED/);
+      assert.deepEqual(flagged, ['epsilon 1.0.0 (SEE LICENSE IN LICENSE): Its terms are being read.', 'eta 1.0.0 (MPL-2.0): Its files stay under the MPL, with their source offered.']);
+      assert.equal(problems.length, 2, problems.join('\n'));
+      assert.match(problems[0], /^kappa 1\.0\.0 \(GPL-3\.0-or-later\): it can't ship, even in FLAGGED: its copyleft would put the whole bundle/);
+      assert.match(problems[1], /^zeta 1\.0\.0 \(EPL-2\.0\): it can't ship, even in FLAGGED: .*#86/);
     } finally {
-      for (const name of ['epsilon', 'zeta', 'eta']) delete FLAGGED[name];
+      for (const name of ['epsilon', 'zeta', 'eta', 'kappa']) delete FLAGGED[name];
     }
+  });
+
+  it('takes the licence of a package that publishes none from its copy in scripts/licences, at its version alone', () => {
+    pkg('theta', { license: 'MIT', repository: 'github:someone/theta' });
+    pkg('iota', { license: 'MIT', version: '2.0.0' });
+    const copies = path.join(scratch, 'licences');
+    mkdirSync(path.join(copies, 'theta@1.0.0'), { recursive: true });
+    writeFileSync(path.join(copies, 'theta@1.0.0/LICENSE'), MIT('Theta People'));
+    mkdirSync(path.join(copies, 'iota@1.0.0'), { recursive: true });
+    writeFileSync(path.join(copies, 'iota@1.0.0/LICENSE'), MIT('Iota People'));
+    const lists = path.join(scratch, 'lists');
+    const file = (name: string) => path.join(scratch, 'node_modules', name, 'dist/index.js');
+    recordBundle('web', [], lists);
+    recordBundle('cli', [file('theta'), file('iota')], lists);
+    const { entries, problems } = collectNotices(lists, copies);
+    assert.deepEqual(problems.length, 1, problems.join('\n'));
+    assert.match(problems[0], /^iota 2\.0\.0 \(MIT\): it comes without its licence text\. .*keep a copy of its licence from its source in scripts\/licences\/iota@2\.0\.0\//, 'not an older version’s');
+    assert.match(noticesMarkdown(entries), /## theta 1\.0\.0\n\nMIT, in the command\. Source: https:\/\/github\.com\/someone\/theta Its package carries no licence file, so this is the one its source has\.\n\nLICENSE:\n\n~~~text\nMIT License\n\nCopyright \(c\) 2024 Theta People/);
   });
 
   it('asks for the whole build when one bundle has no record', () => {

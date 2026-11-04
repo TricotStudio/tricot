@@ -1,0 +1,69 @@
+/* ---- a block's full view, in the pairing shell --------------------------------
+   Code, a note, a diagram, an image: the piece fills the stage, scrolling in
+   it; the prompt and the open thread float over it by their part, as on a
+   website. Parts the piece can't find any more are listed under it. */
+
+.piece-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The prompt and threads, over the piece, by their part. */
+.piece-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.piece-layer .pin-prompt {
+  pointer-events: auto;
+}
+.piece-layer .pin-thread {
+  max-height: min(420px, calc(100% - 24px));
+}
+/* A part's marker, by its part. */
+.pair-pin-chip.is-ask:not(.is-done):not(.is-lost) .pin-chip-status {
+  font-weight: 500;
+}
+
+/* The agent's change landing: blue, as anything new since you looked. */
+.piece-view .pair-band.is-changed {
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+
+.piece-apart {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  max-height: 45%;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow: auto;
+}
+.piece-apart-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.piece-apart .pin-chip {
+  margin-left: 0;
+}
+
+/* A piece on a sheet: the paper round it, the sheet the width of its reading. */
+.piece-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.piece-sheet {
+  margin: 24px auto 48px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

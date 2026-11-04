@@ -16,6 +16,7 @@ export interface Said {
   id: string;
   author: Actor;
   body: string;
+  paired?: object; // the line a pairing session left on the card (core/pairing.ts): news, asking nobody
 }
 
 // A card's comments, a thread's messages, or the comment thread on a pin in

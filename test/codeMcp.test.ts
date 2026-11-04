@@ -32,7 +32,7 @@ describe('Code blocks over MCP and REST', () => {
   async function request(method: string, route: string, body?: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base },
       body: body && JSON.stringify(body),
     });
     return { status: response.status, json: await response.json() };

@@ -11,6 +11,7 @@ import { TaskAssignee } from './assignee';
 import { ActorBadge, Icon, timeAgo } from './components';
 import { useReadOnly } from './hooks';
 import { useSeenOnBoard, type JustMade } from './justMade';
+import { CardApprovals } from './approvals';
 import { FirstLookCue, TakingALook } from './looking';
 import { RefChip, RefText } from './refs';
 import { DropSlot, useTaskDrag, type CardDragProps } from './taskDrag';
@@ -185,6 +186,7 @@ function TaskCard(props: {
       {task.detail && <p className="task-detail"><RefText text={task.detail} /></p>}
       <TaskAssignee task={task} name={name} />
       <TakingALook kind="task" id={task.id} task={task} />
+      <CardApprovals kind="task" id={task.id} />
       <FirstLookCue board={board} task={task} />
       {waits.map((d) => (
         <p key={d.id} className={`task-waits${!readOnly && askedOfMe(d) ? ' is-asked' : ''}`}>

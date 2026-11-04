@@ -8,6 +8,13 @@
 // joining its lines into one paragraph (shortNotes in src/server/updates.ts).
 export const NOTES_MAX = 280;
 
+// Before Tricot's public launch, with its website, releases stay on 0.1.x
+// (decision #90). While this is true, the suggestion is always the next patch,
+// whatever the commits read as, and propose warns when the version asked for
+// leaves the current line (0.2.0, 1.0.0); asking for one still works. Set it
+// to false at the launch, and the suggestion is what the commits call for again.
+export const PRE_LAUNCH = true;
+
 export const BUMPS = ['patch', 'minor', 'major'];
 const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
 
@@ -99,8 +106,11 @@ export function classifyCommit({ subject, body = '' }) {
 
 // The kind of release these commits call for, and why. Before 1.0.0 a
 // breaking change bumps the minor version (0.1.x to 0.2.0), as npm's ^0.y
-// ranges expect; going to 1.0.0 is a choice to make on purpose.
-export function suggestBump(commits, current) {
+// ranges expect; going to 1.0.0 is a choice to make on purpose. Before the
+// public launch (preLaunch, PRE_LAUNCH by default) it is a patch whatever they
+// call for: reason is then preLaunchNote's sentence, and readAs holds the
+// kind and reason the commits alone would give.
+export function suggestBump(commits, current, { preLaunch = PRE_LAUNCH } = {}) {
   const classified = commits.map((commit) => ({ ...commit, ...classifyCommit(commit) }));
   const top = classified.reduce((best, c) => (RANK[c.kind] > RANK[best] ? c.kind : best), 'none');
   const v = parseVersion(current);
@@ -115,7 +125,27 @@ export function suggestBump(commits, current) {
   } else {
     reason = { major: 'a change says it breaks something', minor: 'there are new or changed features', patch: 'there are only fixes' }[top];
   }
+  if (preLaunch) return { kind: 'patch', reason: preLaunchNote(current), readAs: { kind, reason }, commits: classified };
   return { kind, reason, commits: classified };
+}
+
+// "0.1.x": the line a version is on, which pre-launch releases stay on.
+function releaseLine(version) {
+  const v = parseVersion(version);
+  return v ? `${v.major}.${v.minor}.x` : undefined;
+}
+
+// Why the suggestion is a patch before the public launch, for propose to print.
+export function preLaunchNote(current) {
+  return `Before the public launch, releases stay on ${releaseLine(current) ?? 'patch versions'} (#90); ask for another version if you need one.`;
+}
+
+// A warning when the version asked for leaves the current line before the
+// public launch (0.1.1 to 0.2.0), or undefined. Not a stop: it's allowed.
+export function preLaunchWarning(current, version, { preLaunch = PRE_LAUNCH } = {}) {
+  const line = releaseLine(current);
+  if (!preLaunch || !line || !releaseLine(version) || releaseLine(version) === line) return undefined;
+  return `${version} leaves ${line}: before the public launch, releases stay on ${line} (#90).`;
 }
 
 // The version to release: `wanted` is a version (with or without the "v"), a

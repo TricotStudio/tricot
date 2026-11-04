@@ -300,6 +300,20 @@ export class Steps {
     if (changed) this.announce(board);
   }
 
+  // Where a step from this session would go now, and the agent's name as the
+  // board knows it: for its request for permission (approvals.ts), which
+  // shows on the card its steps are on. A subagent with no card of its own
+  // yet goes where its session is.
+  placeOfSession(agent: string, session?: string, worker?: string): (Place & { name: string }) | undefined {
+    const now = this.now();
+    const keyOf = (w?: string) => [agent.toLowerCase(), session ?? '', w ?? ''].join('\u0000');
+    const own = worker !== undefined ? this.bindings.get(keyOf(worker)) : undefined;
+    const place = this.placeOf(own || worker === undefined ? keyOf(worker) : keyOf(), agent, undefined, now);
+    if (!place) return undefined;
+    const name = this.presence?.list(place.board).find((a) => a.name.toLowerCase() === agent.toLowerCase())?.name ?? agent;
+    return { ...place, name };
+  }
+
   // A board's latest steps, newest first: one per agent session.
   list(boardKey: string): AgentStep[] {
     const now = this.now();

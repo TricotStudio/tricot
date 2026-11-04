@@ -15,9 +15,9 @@ export function inBlock<T>(index: number, build: () => T): T {
 }
 
 // A new block's own content, checked, as its kind makes it.
-export function blockContent(assets: Assets, content: BlockContent, located: Located) {
+export function blockContent(assets: Assets, content: BlockContent, located: Located, localFiles: boolean) {
   const { type, ...input } = content;
   const kind = findKind(type);
   if (!kind) throw new BoardError(`Unknown block type "${type}".`);
-  return { type: kind.type, ...kind.create(input, { assets, located }) };
+  return { type: kind.type, ...kind.create(input, { assets, located, localFiles }) };
 }

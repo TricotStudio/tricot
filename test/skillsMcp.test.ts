@@ -45,7 +45,7 @@ describe('Skills called with "/", over MCP and REST', () => {
   }
 
   async function post(route: string, body: Record<string, unknown>) {
-    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   }
 

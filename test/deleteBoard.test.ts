@@ -11,6 +11,7 @@ import { Store } from '../src/core/store';
 import { DATABASE_FILE } from '../src/core/store/boardDb';
 import { openDatabase } from '../src/core/store/migrations';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import type { Actor } from '../src/core/types';
 import { namesBoard } from '../src/core/format';
 
@@ -42,6 +43,9 @@ function rowsOf(dir: string, key: string): Record<string, number> {
     db.close();
   }
 }
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('Deleting an archived board for good', () => {
   let dir: string;
@@ -239,6 +243,7 @@ describe('Deleting a board over the API', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -256,7 +261,7 @@ describe('Deleting a board over the API', () => {
   });
 
   const post = async (route: string, body: Record<string, unknown>) => {
-    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
   const tool = async (name: string, args: Record<string, unknown> = {}) => {

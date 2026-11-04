@@ -198,6 +198,12 @@ export const tools = {
       }),
       { max: [LIMITS.tasks, `Plan at most ${LIMITS.tasks} tasks at once.`] },
     ).min(1),
+    backlog: z
+      .boolean()
+      .optional()
+      .describe(
+        `Open them in the backlog for people to shape and mark ready, not in to do: a note a person asks for, or a bug or follow-up outside your current work. You can't claim them until a person marks them ready. At most ${LIMITS.backlogCards} an hour`,
+      ),
     thread_id: threadId,
   },
   get_task: { task_id: z.string() },

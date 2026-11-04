@@ -79,7 +79,7 @@ export function Discussion({ board, where, comments, pins, place, name, unreadSi
   const [body, setBody] = useState('');
   const field = useRef<HTMLTextAreaElement>(null);
   const names = useMentionable(name);
-  const placeKey = 'task' in where ? `task:${where.task.id}` : 'decision' in where ? `decision:${where.decision.id}` : `thread:${where.thread.id}`;
+  const placeKey = 'task' in where ? `task:${where.task.id}` : 'decision' in where ? `decision:${where.decision.id}` : 'thread' in where ? `thread:${where.thread.id}` : 'board-context';
   const drawn = withOutgoing(comments, useOutgoing(placeKey), name, (o) => draftComment(o, name, names));
   // What the board has now, the outbox lets go (under the same key).
   const settled = settledKeys(drawn).join();
@@ -142,7 +142,7 @@ export function Discussion({ board, where, comments, pins, place, name, unreadSi
                 <MessageFoot
                   board={board}
                   where={where}
-                  said={{ id: comment.id, author: comment.author, at: comment.createdAt, mentions: comment.mentions, reactions: comment.reactions, held: comment.held }}
+                  said={{ id: comment.id, author: comment.author, at: comment.createdAt, mentions: comment.mentions, reactions: comment.reactions, held: comment.held, paired: comment.paired }}
                   after={drawn.slice(i + 1).map((x) => x.item)}
                   onItsWay={way}
                   outgoing={d.outgoing}

@@ -14,6 +14,7 @@ import { linkCardSize } from '../src/core/blocks/link/link';
 import { linkSource } from '../src/core/sources';
 import type { Actor, Block } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { drawPng, FakeFigma, FILE_KEY, FRAME, NO_USER_SCOPE_TOKEN, OTHER_TOKEN, VALID_TOKEN } from './fakeFigma';
 import { versionsOf } from './tables';
@@ -24,6 +25,9 @@ const FILE_URL = `https://www.figma.com/design/${FILE_KEY}/Onboarding`;
 const FRAME_ID = `${FILE_KEY}:${FRAME}`;
 
 type ToolResult = { content: { type: string; text?: string; data?: string; mimeType?: string }[]; isError?: boolean };
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('Figma links', () => {
   it('reads the file and the frame from the address', () => {
@@ -65,7 +69,7 @@ describe('Figma connector', () => {
   const tokenFile = () => path.join(dir, 'connectors', 'figma.json');
 
   const rest = async (method: string, route: string, body?: object) => {
-    const response = await fetch(`${base}${route}`, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+    const response = await fetch(`${base}${route}`, { method, headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign(method, route, body ? JSON.stringify(body) : '') }, body: body && JSON.stringify(body) });
     const text = await response.text();
     return { status: response.status, text, json: text ? (JSON.parse(text) as any) : {} };
   };
@@ -89,6 +93,7 @@ describe('Figma connector', () => {
     boardId = store.createBoard({ title: 'Onboarding' }, sam).id;
     const connectors = new Connectors({ dataDir: dir, now: () => now, figma: { api: figma.base }, google: { builtIn: null } });
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

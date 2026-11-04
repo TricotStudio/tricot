@@ -81,13 +81,15 @@ export interface ConnectorPins {
 }
 
 // The words around a request for agents to act on a pinned part, said where
-// agents read the board and its updates.
+// agents read the board and its updates. A kind of block whose parts take
+// requests (a website's elements) says them too (core/parts.ts).
 export interface ConnectorAsk {
+  verb?: string; // what agents are asked to do to it, in the activity: "change"; "edit" if not said
   asking: string; // after a comment's pin: "asking agents to edit it in the doc"
   doing: string; // an update about one: "Edit the draft with edit_google_doc, then reply"
   act: string; // under a pin: "change the draft with edit_google_doc, then "
   request: string; // under a pin: "request to edit the paragraph, "
-  refusal: string; // when a comment that isn't on such a part asks
+  what: string; // the parts it takes requests on, when a comment on another part asks: "the paragraphs of a Google Doc"
 }
 
 // ---- the server's half in core -----------------------------------------------------

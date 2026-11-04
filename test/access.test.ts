@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { loadToken, tokenFile } from '../src/server/access';
+import { loadToken, NOT_A_PERSON, tokenFile } from '../src/server/access';
 import { securePrivateDir } from '../src/server/dataDir';
 import { lockFile } from '../src/server/lock';
 import { startServer, type RunningServer } from '../src/server/start';
@@ -107,10 +107,14 @@ describe('Access', () => {
       assert.equal(mcp.status, 200);
     });
 
-    it('lets requests with no Origin through (agents, curl), and asks for no token', async () => {
+    it('lets requests with no Origin through (agents, curl), and asks for no token, but takes what a person does from the page alone', async () => {
       const { url, token } = await start();
       assert.equal(token, undefined);
-      assert.equal((await createBoard(url)).status, 201);
+      const plain = await createBoard(url);
+      assert.equal(plain.status, 403, 'a plain call acting as a person (access.ts asPerson)');
+      assert.equal(((await plain.json()) as { error: string }).error, NOT_A_PERSON);
+      assert.equal((await createBoard(url, { Origin: url })).status, 201);
+      assert.equal((await fetch(`${url}/api/boards`)).status, 200);
       assert.equal((await fetch(url)).status, 200);
       const client = new Client({ name: 'agent', version: '1' });
       await client.connect(new StreamableHTTPClientTransport(new URL(`${url}/mcp?agent=Planner`)));
@@ -202,7 +206,7 @@ describe('Access', () => {
       mkdirSync(dataDir, { mode: 0o755 });
       const server = await start('0.0.0.0');
       const base = `http://127.0.0.1:${server.port}`;
-      const auth = { Authorization: `Bearer ${server.token}` };
+      const auth = { Authorization: `Bearer ${server.token}`, Origin: base }; // as Tricot's page sends them
       const created = await fetch(`${base}/api/boards`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth },

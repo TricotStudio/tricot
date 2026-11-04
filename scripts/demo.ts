@@ -17,10 +17,12 @@ async function tool(name: string, args: Record<string, unknown>): Promise<string
   return result.content[0].text;
 }
 
+// As Tricot's page sends it, with its Origin: the board takes what a person
+// does from its page alone (src/server/access.ts asPerson).
 async function as_human(route: string, body: Record<string, unknown>) {
   const response = await fetch(`${base}/api${route}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: base },
     body: JSON.stringify({ actor: human, ...body }),
   });
   if (!response.ok) throw new Error(`${route}: ${(await response.json()).error}`);

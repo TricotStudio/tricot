@@ -55,6 +55,7 @@ export const table: BlockKind<TableTypes> = {
   fromSnapshot: (version) => ({ columns: version.columns, rows: version.rows }),
   pins: {
     anchor: server.anchor,
+    part: server.part,
     place: (block, pin) => (pin.anchor.kind === 'cells' ? placeCells(block, pin.anchor) : undefined),
   },
 

@@ -10,7 +10,9 @@
 //
 // It only listens: to tool_execution_start and tool_execution_end, which
 // can't block or change a tool (tool_call can, and fails closed when a
-// handler throws), and to agent_end. Each handler returns at once, having
+// handler throws), to agent_end, and to message_end, whose usage (token
+// counts and cost, never the message) it adds up per session and sends at
+// each turn's end for the agent's panel. Each handler returns at once, having
 // started a request it doesn't wait for, which gives up after a second; every
 // error is caught, as an uncaught one in a detached promise can end an OMP
 // session. So it never holds the agent up, and when Tricot isn't running
@@ -19,7 +21,7 @@
 // token a board listening beyond this machine needs. No dependencies.
 
 import { readFileSync } from 'node:fs';
-import { describe, type HookStep } from './tricot-describe.mjs';
+import { describe } from './tricot-describe.mjs';
 
 const SEND_TIMEOUT_MS = 1000;
 const DEFAULT_URL = 'http://127.0.0.1:4545';
@@ -142,20 +144,87 @@ export function hookEvent(name: string, event: Args, ctx: StepsContext, open: Op
 
 const EVENTS = ['tool_execution_start', 'tool_execution_end', 'agent_end'];
 
+// ---- tokens and cost --------------------------------------------------------------
+
+// The session's tokens and cost so far, from each reply's usage (message_end:
+// an assistant message's usage { input, output, cacheRead, cacheWrite,
+// reasoning?, totalTokens, cost.total }), sent to Tricot at the end of each
+// turn for the agent's panel (POST /api/agents/:name/usage). Numbers only:
+// nothing of the message itself is read.
+export interface SessionUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+  total: number;
+  cost: number;
+}
+export type SessionTotals = Map<string, SessionUsage>;
+const MAX_SESSIONS = 16;
+
+const amount = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0);
+
+// Adds one reply's usage to its session's totals; anything else is left alone.
+export function addUsage(totals: SessionTotals, session: string, event: Args): void {
+  const message = event.message && typeof event.message === 'object' ? (event.message as Args) : undefined;
+  const usage = message?.usage && typeof message.usage === 'object' ? (message.usage as Args) : undefined;
+  if (!usage || message?.role !== 'assistant') return;
+  const before = totals.get(session) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 0, cost: 0 };
+  const input = amount(usage.input);
+  const output = amount(usage.output);
+  const cacheRead = amount(usage.cacheRead);
+  const cacheWrite = amount(usage.cacheWrite);
+  const next: SessionUsage = {
+    input: before.input + input,
+    output: before.output + output,
+    cacheRead: before.cacheRead + cacheRead,
+    cacheWrite: before.cacheWrite + cacheWrite,
+    reasoning: before.reasoning + amount(usage.reasoning),
+    total: before.total + (amount(usage.totalTokens) || input + output + cacheRead + cacheWrite),
+    cost: before.cost + amount(usage.cost && typeof usage.cost === 'object' ? (usage.cost as Args).total : undefined),
+  };
+  totals.delete(session);
+  totals.set(session, next);
+  if (totals.size > MAX_SESSIONS) totals.delete(totals.keys().next().value!);
+}
+
+// The body POST /api/agents/:name/usage takes, from a session's totals.
+export function usageBody(totals: SessionUsage, source: 'pi' | 'omp', at = Date.now()) {
+  const { cost, ...tokens } = totals;
+  const round = (n: number) => Math.round(n);
+  return {
+    usage: {
+      source,
+      tokens: { input: round(tokens.input), output: round(tokens.output), cacheRead: round(tokens.cacheRead), cacheWrite: round(tokens.cacheWrite), reasoning: round(tokens.reasoning), total: round(tokens.total) },
+      ...(cost > 0 && { costUsd: cost }),
+    },
+    at,
+  };
+}
+
+const sessionOf = (ctx: StepsContext) => {
+  try {
+    return text(ctx.sessionManager?.getSessionId?.()) ?? '';
+  } catch {
+    return '';
+  }
+};
+
 // The extension, with its settings and the fetch it sends with given (tests
 // give a fake one). Every handler returns undefined at once.
 export function stepsExtension(settings: StepsSettings = {}, send: Fetch | undefined = globalThis.fetch as Fetch | undefined) {
   const url = (text(settings.url) ?? DEFAULT_URL).replace(/\/+$/, '');
-  const post = (step: HookStep, ctx: StepsContext) => {
+  const post = (route: 'steps' | 'usage', body: unknown, ctx: StepsContext) => {
     if (typeof send !== 'function') return;
     const name = text(settings.name) ?? (ctx.agent ? 'OMP' : 'Pi');
     const token = typeof process === 'undefined' ? undefined : process.env.TRICOT_TOKEN;
     const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(SEND_TIMEOUT_MS) : undefined;
     void Promise.resolve(
-      send(`${url}/api/agents/${encodeURIComponent(name)}/steps`, {
+      send(`${url}/api/agents/${encodeURIComponent(name)}/${route}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-        body: JSON.stringify({ ...step, at: Date.now() }),
+        body: JSON.stringify(body),
         ...(signal && { signal }),
       }),
     )
@@ -164,17 +233,33 @@ export function stepsExtension(settings: StepsSettings = {}, send: Fetch | undef
   };
   return (pi: ExtensionApi): void => {
     const open: OpenCalls = new Map();
+    const totals: SessionTotals = new Map();
     for (const name of EVENTS) {
       pi.on(name, (event, ctx) => {
         try {
           const hook = hookEvent(name, event && typeof event === 'object' ? event : {}, ctx ?? {}, open);
           const step = hook && describe(hook);
-          if (step) post(step, ctx ?? {});
+          if (step) post('steps', { ...step, at: Date.now() }, ctx ?? {});
         } catch {
           // a step that can't be told is skipped; the agent never hears of it
         }
+        // The end of a turn (not a subagent's): the session's tokens and cost so far.
+        if (name !== 'agent_end' || ctx?.agent?.kind === 'sub') return;
+        try {
+          const session = totals.get(sessionOf(ctx ?? {}));
+          if (session) post('usage', usageBody(session, ctx?.agent ? 'omp' : 'pi'), ctx ?? {});
+        } catch {
+          // never the agent's problem
+        }
       });
     }
+    pi.on('message_end', (event, ctx) => {
+      try {
+        addUsage(totals, sessionOf(ctx ?? {}), event && typeof event === 'object' ? event : {});
+      } catch {
+        // a reply that can't be counted is left out
+      }
+    });
   };
 }
 

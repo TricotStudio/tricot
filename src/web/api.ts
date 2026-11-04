@@ -26,11 +26,16 @@ import type { BlockContent as StoreBlockContent, BlockPatch as StoreBlockPatch }
 import type { ConnectorStatus } from '../core/connectors';
 import type { DeletionSummary } from '../core/deletions';
 import type { StartFolder } from '../core/firstRun';
-import type { UpdateState } from '../core/update';
+import type { CheckedState, UpdateState } from '../core/update';
 import type { Dismissed, NeedsReport } from '../core/needs';
 import type { AgentSkills, AgentTask, TricotSkill } from '../core/skills';
 import type { SearchKind, SearchResponse } from '../core/search';
 import type { LiveStepsAction, LiveStepsPreview, LiveStepsReport, LiveStepsResult, LiveStepsScope } from '../core/liveSteps';
+import type { AgentUsageReport } from '../core/usage';
+import type { PairingSession } from '../core/pairing';
+import type { ApprovalReply } from '../core/approvals';
+import { SEAT_GONE, SEAT_NEEDED, type AdmissionView, type SeatView } from '../core/seats';
+import { forgetSeat, letThisBrowserIn, signedHeaders } from './seat';
 
 // Turning one agent's live steps on or off: which way, the name it sends
 // steps as, and the scope (every project, or tidying up a project's own hook).
@@ -108,9 +113,10 @@ export type PinPart =
   | { kind: 'node'; nodeId: string }
   | { kind: 'arrow'; from: string; to: string; n: number }
   | { kind: 'block' }
-  | { kind: 'line'; file: string; line: number; side: 'new' | 'old' } // a line of a diff or a code block
-  | { kind: 'point'; category: string; series?: string } // a chart's bar, point or slice
-  | { kind: 'spot'; object?: string; x: number; y: number; z: number; view?: SceneView }; // a point on a 3D scene (on a named object, in its coordinates), and the view it was seen from
+  | { kind: 'line'; file: string; line: number; side: 'new' | 'old'; last?: number } // a line of a diff or a code block; on a code block, lines `line` to `last`
+  | { kind: 'point'; category?: string; series?: string } // a chart's bar, point or slice; a series alone, from its legend
+  | { kind: 'spot'; object?: string; x: number; y: number; z: number; view?: SceneView } // a point on a 3D scene (on a named object, in its coordinates), and the view it was seen from
+  | { kind: 'site'; page: string; selector: string; tag: string; text?: string; file?: string; line?: number }; // an element of a website's page
 
 export interface Move {
   id: string;
@@ -125,13 +131,27 @@ export interface Move {
 // (a connector's, such as no_docs_permission).
 export type RequestError = Error & { status?: number; code?: string };
 
+// What is consequential needs this browser to be one of the person's seats
+// (seat.ts, T187): Tricot refuses it unsigned (seat_needed), and the request
+// goes again signed, once this browser is let in, which it asks for then.
 export async function request<T>(method: 'GET' | 'POST', url: string, body?: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await response.json().catch(() => ({}));
+  const text = body ? JSON.stringify(body) : undefined;
+  const send = async (signed?: Record<string, string>) => {
+    const response = await fetch(url, {
+      method,
+      headers: { ...(text && { 'Content-Type': 'application/json' }), ...signed },
+      body: text,
+    });
+    return { response, data: await response.json().catch(() => ({})) };
+  };
+  let { response, data } = await send();
+  for (let tries = 0; response.status === 403 && (data.code === SEAT_NEEDED || data.code === SEAT_GONE) && tries < 2; tries++) {
+    if (data.code === SEAT_GONE) await forgetSeat();
+    let signed = await signedHeaders(method, url, text ?? '');
+    if (!signed && (await letThisBrowserIn())) signed = await signedHeaders(method, url, text ?? '');
+    if (!signed) break;
+    ({ response, data } = await send(signed));
+  }
   if (!response.ok) {
     const error: RequestError = new Error(data.error ?? `Request failed (${response.status})`);
     error.status = response.status;
@@ -159,6 +179,8 @@ export const api = {
   update: () => request<UpdateState>('GET', '/api/update'),
   // Update to the version the person was shown: 202 and the handover begins.
   startUpdate: (version: string) => request<UpdateState>('POST', '/api/update', { version }),
+  // Ask GitHub, then npm, now: the state, and what the check found.
+  checkForUpdates: () => request<CheckedState>('POST', '/api/update/check'),
   boards: () => request<BoardSummary[]>('GET', '/api/boards'),
   // What needs this person across boards; `seen` is the last event they saw on each (away.ts).
   needs: (name: string, seen: Record<string, number>) =>
@@ -171,6 +193,13 @@ export const api = {
   agents: (boardId?: string) => request<AgentSkills[]>('GET', `/api/agents${boardId ? `?${new URLSearchParams({ board: boardId })}` : ''}`),
   // What an agent has claimed and not finished, on every board in use.
   agentWork: (name: string) => request<AgentTask[]>('GET', `/api/agents/${encodeURIComponent(name)}/work`),
+  // An agent's plan usage, as its harness last said it, and with a board what
+  // it did there since `day` and `week` (the person's today and week, ms).
+  agentUsage: (name: string, query: { board?: string; day: number; week: number }) =>
+    request<AgentUsageReport>(
+      'GET',
+      `/api/agents/${encodeURIComponent(name)}/usage?${new URLSearchParams({ ...(query.board && { board: query.board }), day: String(query.day), week: String(query.week) })}`,
+    ),
   // The skills people add in Tricot, for one agent or (no agent) every agent.
   addSkill: (actor: string, skill: { name: string; description: string; instructions: string; agent?: string }) =>
     request<TricotSkill>('POST', '/api/skills', { actor, ...skill }),
@@ -184,6 +213,15 @@ export const api = {
     request<LiveStepsPreview>('POST', `/api/live-steps/${encodeURIComponent(agent)}/preview`, { actor, ...change }),
   applyLiveSteps: (agent: string, actor: string, change: LiveStepsChange & { fingerprint: string }) =>
     request<LiveStepsResult>('POST', `/api/live-steps/${encodeURIComponent(agent)}/apply`, { actor, ...change }),
+  // A person's answer to an agent waiting for their OK (server/approvalsRoutes.ts).
+  answerApproval: (id: string, actor: string, reply: ApprovalReply) =>
+    request<{ answered: true }>('POST', `/api/approvals/${encodeURIComponent(id)}/answer`, { actor, ...reply }),
+  // The browsers and terminals that act for the person (server/seatsRoutes.ts):
+  // the list, removing one, and answering one that asks to be let in.
+  seats: () => request<SeatView[]>('GET', '/api/seats'),
+  removeSeat: (id: string, actor: string) => request<SeatView[]>('POST', `/api/seats/${encodeURIComponent(id)}/remove`, { actor }),
+  admissions: () => request<AdmissionView[]>('GET', '/api/seats/admissions'),
+  answerAdmission: (id: string, actor: string, allow: boolean) => request<unknown>('POST', `/api/seats/admissions/${encodeURIComponent(id)}/answer`, { actor, allow }),
   board: (id: string) => request<LiveBoard>('GET', `/api/boards/${encodeURIComponent(id)}`),
   // Where the board is on the server, to check a page against.
   live: (id: string) => request<LiveState>('GET', `/api/boards/${encodeURIComponent(id)}/live`),
@@ -245,6 +283,8 @@ export const api = {
   setArea: (id: string, actor: string, area: string) => request<Decision>('POST', decisionRoute(id, 'area'), { actor, area }),
   requestRefresh: (id: string, actor: string, note?: string) =>
     request<Decision>('POST', decisionRoute(id, 'refresh'), { actor, note }),
+  // After deciding `id`, asks agents to check the decisions it may change still hold, together.
+  revisit: (id: string, actor: string, decisionIds: string[]) => request<Decision[]>('POST', decisionRoute(id, 'revisit'), { actor, decisionIds }),
   cancelRefresh: (id: string, actor: string) => request<Decision>('POST', decisionRoute(id, 'refresh/cancel'), { actor }),
   retire: (id: string, actor: string, note: string) => request<Decision>('POST', decisionRoute(id, 'retire'), { actor, note }),
   resolve: (
@@ -344,7 +384,8 @@ export const api = {
       actor,
       ...input,
     }),
-  pinComment: (blockId: string, actor: string, input: { part: PinPart; body: string }) =>
+  // ask: a request for agents to act on the part, where its kind takes one (a website's element).
+  pinComment: (blockId: string, actor: string, input: { part: PinPart; body: string; ask?: boolean }) =>
     request<{ pin: Pin; comment: Comment }>('POST', `/api/canvas/blocks/${encodeURIComponent(blockId)}/pins/comment`, {
       actor,
       ...input,
@@ -353,6 +394,14 @@ export const api = {
     request<{ pin: Pin; comment: Comment }>('POST', `/api/canvas/pins/${encodeURIComponent(pinId)}/comments`, { actor, body }),
   resolvePin: (pinId: string, actor: string, resolved: boolean) =>
     request<Pin>('POST', `/api/canvas/pins/${encodeURIComponent(pinId)}/resolve`, { actor, resolved }),
+  // Pairing with an agent on a piece in its full view (server/pairing.ts):
+  // starting, the page's beat (active: the person did something since), and leaving.
+  startPairing: (actor: string, input: { blockId: string; part: string; agent: string }) => request<PairingSession>('POST', '/api/pairing', { actor, ...input }),
+  pairingBeat: (id: string, actor: string, active: boolean) => request<PairingSession>('POST', `/api/pairing/${encodeURIComponent(id)}/beat`, { actor, active }),
+  endPairing: (id: string, actor: string) => request<{ summary?: string }>('POST', `/api/pairing/${encodeURIComponent(id)}/end`, { actor }),
+  // Leaving as the page goes away: sent even as it unloads.
+  leavePairing: (id: string, actor: string) =>
+    void fetch(`/api/pairing/${encodeURIComponent(id)}/end`, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actor }) }).catch(() => undefined),
   // Removing an item keeps it aside for 30 days; restoring puts it back with
   // the same id, with notes on anything that couldn't come back.
   removeItem: (id: string, actor: string) =>

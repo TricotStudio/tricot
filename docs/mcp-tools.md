@@ -16,7 +16,7 @@ Back to the [README](../README.md).
 | `react` | 👍, 👎 or 👀 on a comment or thread message (the latest by someone else, or by its id): 👍 or 👎 answers one that asks you. People's reactions to the agent's own comments come through its updates. |
 | `get_updates`, `wait_for_updates` | Activity since a cursor from anyone else; the second blocks until something happens, for at most 4 minutes per call (MCP clients drop longer silent calls), sending progress while it waits. |
 | `get_canvas`, `get_block` | Read a canvas in reading order, by group, with links and images attached; or one block in full. |
-| `add_block`, `update_block` | Add a note (task lists included), table, diagram, image, link or comparison (auto-placed, optionally in a group and pinned to an option); edit it in place. `update_block` takes the `rev` the agent last read and is refused, with the current content, if someone changed the block since. |
+| `add_block`, `update_block` | Add a note (task lists included), table, diagram, image, link, comparison or website (auto-placed, optionally in a group and pinned to an option); edit it in place. `update_block` takes the `rev` the agent last read and is refused, with the current content, if someone changed the block since. |
 | `add_group`, `link`, `remove_item` | Name a group, draw a labelled link, remove a block, group, link or pin. |
 | `pin` | Link an existing task or decision to part of a block: words in a note, a task in its task list (`item`, by its words), table cells, a row or a column, a box on an image, a flowchart node or arrow, or a whole card; or, with `pin_id`, the same part as another pin, e.g. a decision posted from a comment thread. |
 

@@ -7,6 +7,10 @@
 // alone may take it, else the agents its text or a person's comment on it
 // @-mentions, else any agent. These are the rules for that, and how agents and
 // people read it. The store applies them (Store.takeFirstLook).
+//
+// A card an agent opens in the backlog (plan_tasks with backlog) gets none:
+// that agent wrote down what it found. A person who wants another agent's
+// view @-mentions it on the card, which asks it as any comment does.
 
 import { clip, listNames, samePerson } from './format';
 import { addressedTo, agentsIn } from './mentions';
@@ -61,6 +65,13 @@ export function firstLookLapsed(look: FirstLook | undefined, now: number): boole
   return due !== undefined && now >= due;
 }
 
+// The agent that opened a card in the backlog, if one did; `actor`, only if
+// it was that one.
+export function openedBy(task: Task, actor?: Actor): Actor | undefined {
+  const by = task.openedInBacklog && task.createdBy.kind === 'agent' ? task.createdBy : undefined;
+  return by && (!actor || (actor.kind === 'agent' && samePerson(by.name, actor.name))) ? by : undefined;
+}
+
 // The first look a backlog card opens with, if it gets one: only a card a
 // person adds to the backlog. `mentions` are the agents its text names.
 export function openFirstLook(actor: Actor, backlog: boolean, at: string, mentions: string[]): FirstLook | undefined {
@@ -74,6 +85,8 @@ export function takeFirstLookRefusal(board: Board, task: Task, actor: Actor): st
   const t = `T${task.number}`;
   if (actor.kind !== 'agent') return 'Only agents take a first look; people comment on the card as usual.';
   const look = task.firstLook;
+  const opener = openedBy(task);
+  if (!look && opener) return `${t} needs no first look: ${opener.name} opened it with what it found. Comment on it if you have something to add.`;
   if (!look) return `${t} needs no first look: only cards people add to the backlog get one. Comment on it if you have something to say.`;
   if (look.status === 'done') return `${t} already had its first look: ${look.by.name} gave it. Comment on it if you have something to add.`;
   if (task.status === 'dropped') return `${t} was dropped as work that won't be done, so it needs no first look.`;
@@ -146,9 +159,12 @@ export function firstLooksDigest(board: Board, viewer: string | undefined, now =
   return lines.length ? lines.join('\n') : undefined;
 }
 
-// A card's first look in get_board's task list, in a few words.
+// A card's first look in get_board's task list, in a few words, or who
+// opened it, needing none.
 export function firstLookNote(board: Board, task: Task, viewer: string | undefined): string | undefined {
   const look = task.firstLook;
+  const opener = openedBy(task);
+  if (!look && opener && task.status === 'backlog') return `opened by ${yours(opener, viewer)}, needs no first look`;
   if (!look || task.status !== 'backlog') return undefined;
   if (look.status === 'done') return `first look given by ${look.by.name}`;
   if (look.status === 'taken') return viewer && samePerson(look.by.name, viewer) ? "you're taking its first look" : `${look.by.name} is taking its first look`;
@@ -160,6 +176,12 @@ export function firstLookNote(board: Board, task: Task, viewer: string | undefin
 // The same in get_task, with what to do about it.
 export function firstLookDetail(board: Board, task: Task, viewer: string | undefined, now = Date.now()): string | undefined {
   const look = task.firstLook;
+  const opener = openedBy(task);
+  if (!look && opener && task.status === 'backlog') {
+    return viewer && samePerson(opener.name, viewer)
+      ? 'Needs no first look: you opened it with what you found. Only a person marks it ready.'
+      : `Needs no first look: ${opener.name} opened it with what it found.`;
+  }
   if (!look) return undefined;
   if (look.status === 'done') return `First look given by ${look.by.name} at ${look.doneAt}.`;
   if (task.status !== 'backlog') return undefined;
@@ -173,6 +195,8 @@ export function firstLookDetail(board: Board, task: Task, viewer: string | undef
   return `Needs a first look: take it with take_first_look, then ${WHAT}.`;
 }
 
+const yours = (by: Actor, viewer: string | undefined) => (viewer && samePerson(by.name, viewer) ? 'you' : by.name);
+
 // ---- how people read it -------------------------------------------------------
 
 // The quiet line on a backlog card while its first look is to come: waiting
@@ -183,4 +207,12 @@ export function firstLookCue(board: Board, task: Task): { text: string; by?: str
   if (look.status === 'taken') return { text: `${look.by.name} is taking the first look`, by: look.by.name };
   const agents = firstLookAgents(board, task);
   return { text: agents.length ? `Waiting for ${listNames(agents)}'s first look` : "Waiting for an agent's first look" };
+}
+
+// The same line on a backlog card an agent opened, which needs no first look:
+// "Opened by Claude".
+export function openedCue(task: Task): { text: string; by: string } | undefined {
+  const opener = openedBy(task);
+  if (!opener || task.status !== 'backlog' || task.firstLook) return undefined;
+  return { text: `Opened by ${opener.name}`, by: opener.name };
 }

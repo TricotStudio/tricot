@@ -11,9 +11,14 @@
 //
 // Tricot writes hooks.json and never config.toml, which can hold hooks too
 // ([hooks] tables); when it does, Codex runs both, and says so when it starts.
+//
+// Its permission prompts come to the board too: a second PermissionRequest
+// entry runs hooks/tricot-approve.mjs --codex, copied beside the steps
+// script, which Codex waits for while the person answers on the board
+// (core/approvals.ts). Codex has no "for this session" yet: allow or deny.
 
 import path from 'node:path';
-import { commandHookInstaller, scriptCommand } from './commandHooks';
+import { approveCommand, commandHookInstaller, scriptCommand } from './commandHooks';
 import { readText, shellPath, type HookEvents, type HookTarget } from './installer';
 
 // The tools whose step lasts: a command, a subagent (spawn_agent matches as Agent).
@@ -21,6 +26,9 @@ export const CODEX_LONG_TOOLS = '^(Bash|Agent)$';
 
 export const CODEX_TRUST =
   "Codex runs a new or changed hook only once you trust it: open /hooks in Codex and trust Tricot's (again whenever Tricot changes them).";
+
+export const CODEX_USAGE =
+  "At the end of each turn the hook also reads Codex's plan usage from the end of Codex's own session file: how much of each window is used and when it resets, the plan and the token totals. Only those numbers reach Tricot; nothing else of the file is kept or sent.";
 
 export function codexHooks(command: string): HookEvents {
   const run = [{ type: 'command', command, async: true }];
@@ -47,10 +55,14 @@ export const codex = commandHookInstaller({
   scopes: ['user'],
   folder: codexFolder,
   settings: 'hooks.json',
-  run: (script, setup) => scriptCommand(shellPath(script), setup.url, setup.name),
+  // --usage: at each turn's end, its plan usage from the end of its own session file (hooks/tricot-usage.mjs).
+  run: (script, setup) => scriptCommand(shellPath(script), setup.url, setup.name, false, true),
   hooks: (command) => codexHooks(command),
+  approvals: (script, setup) => approveCommand(shellPath(script), setup.url, setup.name, true),
+  usage: 'flag',
   notes: (_target, folder) => [
     CODEX_TRUST,
+    CODEX_USAGE,
     ...(INLINE_HOOKS.test(readText(path.join(folder, 'config.toml')) ?? '')
       ? ['Your config.toml has hooks of its own: Codex runs them as well as hooks.json\'s, and warns about having both when it starts.']
       : []),

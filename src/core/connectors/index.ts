@@ -8,8 +8,7 @@
 // registry.ts; this is what the rest of the app asks of all of them.
 
 import { listNames } from '../format';
-import type { Board } from '../types';
-import type { ConnectorAccess, ConnectorAsk, ConnectorStatus } from './connector';
+import type { ConnectorAccess, ConnectorStatus } from './connector';
 import { connectorKinds, findConnector } from './registry';
 
 export type { ConnectorAccess, ConnectorId, ConnectorKind, ConnectorState, ConnectorStatus } from './connector';
@@ -65,20 +64,4 @@ export function connectorsLine(statuses: ConnectorStatus[]): string {
   });
   const said = connected.flatMap((s) => findConnector(s.id)?.agent?.summary(s) ?? []);
   return `Connectors (app-wide): ${each.join('; ')}. People's link cards show ${said.map((s) => s.shows).join(' and ')}; ${said.map((s) => s.tools).join('; ')}.`;
-}
-
-// ---- pins on a connector's content ---------------------------------------------------
-
-// The words for a request people pinned to a connector's content. A comment
-// doesn't say which connector's content it is on, so these are the first
-// connector's that takes requests; a second one would carry its kind on the comment.
-export function askingWords(): ConnectorAsk | undefined {
-  return connectorKinds().find((kind) => kind.pins?.ask)?.pins?.ask;
-}
-
-// People's requests to a connector's agents, waiting on one: named when an
-// agent reads the board, catches up or waits.
-export function connectorAsks(board: Board, viewer?: string): string | undefined {
-  const lines = connectorKinds().flatMap((kind) => kind.agent?.asks?.(board, viewer) ?? []);
-  return lines.length ? lines.join('\n') : undefined;
 }

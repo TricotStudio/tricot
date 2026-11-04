@@ -4,12 +4,14 @@ import { flushSync } from 'react-dom';
 // go of it as it closes (threads.tsx; the choreography is in chatBar.css).
 // One view transition carries it: the bar and its Send keep a shared name
 // across the change, so the floating bar morphs into the panel's composer
-// (place, width and corners in one motion) while the panel slides in, its
-// column growing as the board's narrows, live. The panel's contents rise
-// after it lands. Closing, they fade first; then the composer travels back to
-// the bottom centre as the panel slides out, and settles with a touch of
-// overshoot. Reduced motion is a quick crossfade. A browser without view
-// transitions gets the panel's slide, and the bar rising in its new place.
+// (place, width and corners in one motion) while the panel slides in as a
+// picture of itself, the board beside it taking its new width at once,
+// underneath. The panel's contents rise after it lands. Closing, they fade
+// first; then the composer travels back to the bottom centre as the panel
+// slides out, and settles with a touch of overshoot. Only pictures move, by
+// transform and opacity, so the board is not laid out again on every frame.
+// Reduced motion is a quick crossfade. A browser without view transitions
+// gets the panel's slide, and the bar rising in its new place.
 //
 // The change runs inside, flushed at once, so the field the bar ends up in
 // has the focus and its caret (`placed`) before the new state is drawn.
@@ -18,7 +20,8 @@ export type DockMove = 'open' | 'close';
 
 // How long the panel's contents take to fade before it lets go of the bar,
 // and how long a move without view transitions keeps the page's moving state
-// (the longest animation then, chatBar.css).
+// (the longest animation then, chatBar.css). At full length, like the
+// durations there: both are scaled by the move's pace (pace()).
 const FADE_FIRST_MS = 90;
 const PLAIN_MS = 420;
 // The transition draws the bar's box while it moves; this is what draws it.
@@ -28,6 +31,14 @@ let moving = 0; // the latest move, so an earlier one's end doesn't end it
 
 function reducedMotion(): boolean {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// The move's pace (--dock-pace, chatBar.css), which scales all its timings,
+// so these timers keep in step with the motion they wait for. Full length
+// without it.
+function pace(): number {
+  const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-pace'));
+  return value > 0 ? value : 1;
 }
 
 export function moveDock(direction: DockMove, change: () => void, placed: () => void): void {
@@ -58,15 +69,20 @@ export function moveDock(direction: DockMove, change: () => void, placed: () => 
     if (typeof document.startViewTransition !== 'function') {
       root.dataset.dockPlain = '';
       apply();
-      setTimeout(end, PLAIN_MS);
+      setTimeout(end, PLAIN_MS * pace());
       return;
     }
-    root.dataset.dockBox = '';
     // The box sets off as the bar looks: lit while its field has the focus,
     // at rest once a click elsewhere has taken it.
     if (document.activeElement?.closest('.chat-bar')) delete root.dataset.dockRest;
     else root.dataset.dockRest = '';
-    const transition = document.startViewTransition(apply);
+    // The bar gives its box to the transition, which draws it while the bar
+    // moves, once the picture of the bar as it was is taken: the frame shown
+    // as it's taken still has the bar whole (T177).
+    const transition = document.startViewTransition(() => {
+      root.dataset.dockBox = '';
+      apply();
+    });
     transition.ready.then(() => {
       const box = document.getAnimations().find((a) => (a.effect as KeyframeEffect | null)?.pseudoElement === BOX);
       if (box) box.finished.then(boxBack, boxBack);
@@ -81,6 +97,6 @@ export function moveDock(direction: DockMove, change: () => void, placed: () => 
   };
   if (direction === 'close' && !reducedMotion()) {
     root.dataset.dockLeaving = '';
-    setTimeout(run, FADE_FIRST_MS);
+    setTimeout(run, FADE_FIRST_MS * pace());
   } else run();
 }

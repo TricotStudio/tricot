@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { stepText, type BusyState } from '../core/delivery';
 import { pathParts } from '../core/format';
+import type { Approval } from '../core/approvals';
+import { nextChange, phaseOf, type StepPhase } from '../core/stepPhase';
 import type { AgentStep } from './api';
+import { approvalsStore } from './approvalsStore';
+import { admissionsStore, TicketedSource } from './seat';
+import type { AdmissionView } from '../core/seats';
 
 // What agents are doing now, a line at a time, from a hook in their harness
 // (server/steps.ts): "Running npm test" on the card the agent works on, as
@@ -41,43 +46,13 @@ export function useSteps(): AgentStep[] {
   return useSyncExternalStore(store.subscribe, store.get);
 }
 
-// A step stays as it came while the agent may still be on it (a step that
-// says nothing more until it ends, after a quiet stretch), then dims, then
-// goes. One the hook says is running (a test run, a subagent) stays live
-// until its end comes, for up to RUNNING_LIVE_MS. The end of a turn dims at
-// once and goes soon after. Ages are by the hook's clock, which is this
-// machine's when Tricot runs here.
-export const LIVE_MS = 45_000;
-export const GONE_MS = 120_000;
-export const DONE_GONE_MS = 15_000;
-export const RUNNING_LIVE_MS = 10 * 60_000;
-export const RUNNING_GONE_MS = 12 * 60_000; // server/steps.ts RUNNING_KEEP_MS
-
-export type StepPhase = 'live' | 'dim';
-
-function marksOf(step: AgentStep): number[] {
-  if (step.done) return [DONE_GONE_MS];
-  return step.running ? [RUNNING_LIVE_MS, RUNNING_GONE_MS] : [LIVE_MS, GONE_MS];
-}
-
-export function phaseOf(step: AgentStep, now: number): StepPhase | undefined {
-  const age = Math.max(0, now - Date.parse(step.at));
-  const [live, gone] = marksOf(step);
-  if (gone === undefined) return age < live ? 'dim' : undefined; // a turn's end: dim until it goes
-  if (age < live) return 'live';
-  return age < gone ? 'dim' : undefined;
-}
+// How long a step shows, live then dim (core/stepPhase.ts, shared with the
+// strip `tricot claude codex` shows in the terminal).
+export { DONE_GONE_MS, GONE_MS, LIVE_MS, nextChange, phaseOf, RUNNING_GONE_MS, RUNNING_LIVE_MS, type StepPhase } from '../core/stepPhase';
 
 // The "working on it" stitch beside a step (stitch.tsx): moving while the step
 // is live, resting once it dims.
 export const busyOfPhase = (phase: StepPhase): BusyState => (phase === 'live' ? 'working' : 'resting');
-
-// When a step next changes phase, for the timer that redraws it.
-export function nextChange(step: AgentStep, now: number): number {
-  const age = Math.max(0, now - Date.parse(step.at));
-  const next = marksOf(step).find((mark) => mark > age);
-  return next === undefined ? Infinity : next - age;
-}
 
 // A step as its line says it: an ended one with how long it took, "Ran npm
 // test (42 s)"; what the agent said, quoted (core/delivery.ts).
@@ -154,13 +129,17 @@ export const StepsByBoardProvider = ByBoardContext.Provider;
 export function useStepsEverywhere(): StepsByBoard {
   const [store] = useState(() => new StepsByBoard());
   useEffect(() => {
-    const source = new EventSource('/api/steps/stream');
+    const source = new TicketedSource('/api/steps/stream');
     // Joining again, the stream sends what shows now: what was held may be over.
     source.onopen = () => store.clear();
     source.addEventListener('steps', (event) => {
       const { board, steps } = JSON.parse((event as MessageEvent<string>).data) as { board: string; steps: BoardStep[] };
       store.set(board, steps);
     });
+    // The agents waiting for your OK come on the same stream (approvals.tsx).
+    source.addEventListener('approvals', (event) => approvalsStore.set(JSON.parse(event.data) as Approval[]));
+    // And, to one of the person's seats, what asks to act for them (seats.tsx).
+    source.addEventListener('admissions', (event) => admissionsStore.set(JSON.parse(event.data) as AdmissionView[]));
     return () => source.close();
   }, [store]);
   return store;

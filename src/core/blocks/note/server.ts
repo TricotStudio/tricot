@@ -3,7 +3,8 @@
 
 import { z } from 'zod';
 import type { NoteTypes } from './index';
-import type { AgentHalf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
 import { plainText } from '../schema';
 import { blockIs, missing, more, wordsPin } from '../shared';
 import { noteAdvice } from '../../advice';
@@ -27,6 +28,28 @@ const itemsShape = z
   .describe("A note's task list, as a checklist's items: strings, or {text, done}");
 
 const toItems = (items: unknown): TaskInput[] => (items as (string | TaskInput)[]).map((item) => (typeof item === 'string' ? { text: item } : item));
+
+// Its words take requests (core/parts.ts): people select a sentence or any
+// words in its full view and ask an agent to rewrite them, which it does in
+// the note's text.
+const part: PartWords = {
+  kind: 'note',
+  anchors: ['text'],
+  ask: {
+    verb: 'rewrite',
+    asking: 'asking agents to rewrite it in the note',
+    doing: "Rewrite the note's text with update_block, then reply",
+    act: "rewrite the note's text with update_block, then ",
+    request: 'request to rewrite the words, ',
+    what: "a note's words",
+  },
+};
+
+const ask: AskWords = {
+  part: ({ pin, block }) => `"${clip(pin.quote, 200)}" in ${blockNamed(block, 'note')}`,
+  how: ({ block }) => `Rewrite the note's text with update_block (block_id: ${block.id}, text: the whole note, in Markdown)`,
+  view: 'the note',
+};
 
 // What an agent that asked for a checklist is told it got.
 const CHECKLIST_NOW = 'Checklists are notes now: its items are the note\'s task list, "- [ ]" lines people tick. update_block with items, or text, changes them.';
@@ -61,6 +84,7 @@ export const agent: AgentHalf<NoteTypes> = {
   // A list of steps is no wall of prose: the advice reads what is around it.
   adviceAdded: (block, args) => [...(args.type === 'checklist' ? [CHECKLIST_NOW] : []), ...noteAdvice(proseOf(block.text))],
   adviceUpdated: (block, args) => (args.text !== undefined || args.items !== undefined ? noteAdvice(proseOf(block.text)) : []),
+  asks: partAsksDigest(part, ask),
   pinShape: { item: z.string().optional().describe("A task in a note's task list (a checklist's item), by its words") },
   pinPart(block, args) {
     if (args.item === undefined) return undefined;
@@ -144,6 +168,7 @@ export const server: ServerHalf<NoteTypes> = {
   anchor(block, part) {
     return part.kind === 'text' ? wordsPin(block, part, () => ({ text: noteText(block.text) })) : undefined;
   },
+  part,
 
   agent,
   people,

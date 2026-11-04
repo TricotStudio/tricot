@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { runCli } from '../src/cli/main';
 import { findHookInstaller, hookInstallers, UnreadableSettings, type HookInstaller, type HookTarget } from '../src/server/hooks';
 import { claude } from '../src/server/hooks/claude';
-import { codex, CODEX_TRUST } from '../src/server/hooks/codex';
+import { codex, CODEX_TRUST, CODEX_USAGE } from '../src/server/hooks/codex';
+import { APPROVAL_STATUS, APPROVAL_TIMEOUT_S } from '../src/server/hooks/commandHooks';
 import { gemini, GEMINI_WAITS } from '../src/server/hooks/gemini';
 import { writeFileAtomic } from '../src/server/hooks/installer';
 import { omp } from '../src/server/hooks/omp';
@@ -108,7 +109,12 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     settings: path.join(home, '.claude/settings.json'),
     script: path.join(home, '.claude/hooks/tricot-steps.mjs'),
     describe: path.join(home, '.claude/hooks/tricot-describe.mjs'),
+    approve: path.join(home, '.claude/hooks/tricot-approve.mjs'),
+    usage: path.join(home, '.claude/hooks/tricot-usage.mjs'),
+    kept: path.join(home, '.claude/hooks/tricot-usage.json'),
   });
+  // The note that says permission prompts come to the board.
+  const APPROVALS_SAID = /When Claude Code asks permission to run something, the request comes to the card it is working on in Tricot/;
 
   it('shows the exact files and lines it would write, and writes nothing', () => {
     const target = freshHome();
@@ -120,6 +126,9 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
       [
         ['.claude/hooks/tricot-steps.mjs', 'write', false],
         ['.claude/hooks/tricot-describe.mjs', 'write', false],
+        ['.claude/hooks/tricot-approve.mjs', 'write', false],
+        ['.claude/hooks/tricot-usage.mjs', 'write', false],
+        ['.claude/hooks/tricot-usage.json', 'write', false],
         ['.claude/settings.json', 'add', false],
       ],
     );
@@ -127,7 +136,16 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     assert.ok(preview.text.includes('add to ~/.claude/settings.json'), preview.text);
     assert.ok(preview.text.includes(JSON.stringify(command)), 'the command, as it goes in the JSON');
     assert.match(preview.text, /"async": true/);
-    assert.deepEqual(Object.keys(JSON.parse(preview.changes[2].lines!).hooks), ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStop']);
+    const lines = JSON.parse(preview.changes[5].lines!);
+    assert.deepEqual(Object.keys(lines.hooks), ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStop', 'PermissionRequest']);
+    // The approval hook: one Claude Code waits for, as long as the person takes.
+    assert.deepEqual(lines.hooks.PermissionRequest, [
+      { hooks: [{ type: 'command', command: `node "${files(target.home).approve}" --name Claude --url ${TRICOT_URL}`, timeout: APPROVAL_TIMEOUT_S, statusMessage: APPROVAL_STATUS }] },
+    ]);
+    assert.equal(APPROVAL_TIMEOUT_S, 604_800, 'a week, inside what a JavaScript timer holds');
+    assert.ok(preview.notes.some((n) => APPROVALS_SAID.test(n)), 'said in words before anyone says yes');
+    assert.match(preview.changes[2].what, /permission prompts to the board/);
+    assert.deepEqual(lines.statusLine, { type: 'command', command: `node "${files(target.home).usage}" --name Claude --url ${TRICOT_URL}` });
     assert.equal(existsSync(path.join(target.home, '.claude')), false, 'a preview changes nothing');
     assert.equal(claude.status(target).state, 'off');
   });
@@ -138,7 +156,7 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     write(f.settings, JSON.stringify(theirs, null, 2));
     const first = claude.install(target, { ...setup, name: 'Claude Builder' });
     assert.equal(first.changed, true);
-    assert.deepEqual(first.files, [f.script, f.describe, f.settings]);
+    assert.deepEqual(first.files, [f.script, f.describe, f.approve, f.usage, f.kept, f.settings]);
     const added = json(f.settings);
     assert.deepEqual(added.permissions, theirs.permissions);
     assert.deepEqual(added.hooks.PreToolUse[0], theirs.hooks.PreToolUse[0]);
@@ -147,30 +165,34 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     assert.equal(added.hooks.Stop.length, 2);
     assert.equal(readFileSync(f.script, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-steps.mjs'), 'utf8'));
     assert.equal(readFileSync(f.describe, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-describe.mjs'), 'utf8'));
-    assert.deepEqual(claude.status(target), { state: 'on', where: [f.settings, f.script, f.describe], sendsAs: 'Claude Builder' });
+    assert.equal(readFileSync(f.approve, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-approve.mjs'), 'utf8'));
+    assert.equal(added.hooks.PermissionRequest[0].hooks[0].command, `node "${f.approve}" --name 'Claude Builder' --url ${TRICOT_URL}`);
+    assert.equal(added.hooks.PermissionRequest[0].hooks[0].async, undefined, 'Claude Code waits for it');
+    assert.deepEqual(claude.status(target), { state: 'on', where: [f.settings, f.script, f.describe, f.approve, f.usage, f.kept], sendsAs: 'Claude Builder', usage: 'on' });
 
     // The copy runs from where it was put, with the module beside it.
     const ran = await runScript(f.script, { hook_event_name: 'PreToolUse', session_id: 's', cwd: '/w', tool_name: 'Read', tool_input: { file_path: '/w/src/a.ts' } });
     assert.equal(ran.code, 0);
     assert.equal(JSON.parse(ran.stdout).text, 'Reading src/a.ts');
 
-    const before = mtimes([f.script, f.describe, f.settings]);
+    const before = mtimes([f.script, f.describe, f.approve, f.usage, f.kept, f.settings]);
     const again = claude.install(target, { ...setup, name: 'Claude Builder' });
     assert.equal(again.changed, false, again.message);
     assert.equal(claude.preview(target, { ...setup, name: 'Claude Builder' }).unchanged, true);
-    assert.deepEqual(mtimes([f.script, f.describe, f.settings]), before, 'nothing written again');
+    assert.deepEqual(mtimes([f.script, f.describe, f.approve, f.usage, f.kept, f.settings]), before, 'nothing written again');
 
     const renamed = claude.install(target, { ...setup, name: 'Claude', narration: true });
     assert.deepEqual(renamed.files, [f.settings], 'only the settings change');
     const narrated = json(f.settings);
     assert.equal(narrated.hooks.PreToolUse.length, 2, 'replaced, not added twice');
+    assert.equal(narrated.hooks.PermissionRequest.length, 1, 'the approval hook too');
     assert.match(narrated.hooks.MessageDisplay[0].hooks[0].command, /--narration$/);
-    assert.equal(claude.preview(target, setup).changes[2].does, 'replace');
+    assert.equal(claude.preview(target, setup).changes[5].does, 'replace');
 
     const removed = claude.uninstall(target);
     assert.equal(removed.changed, true);
     assert.deepEqual(json(f.settings), theirs, 'every other setting as it was');
-    assert.equal(existsSync(f.script) || existsSync(f.describe), false);
+    assert.equal(existsSync(f.script) || existsSync(f.describe) || existsSync(f.approve) || existsSync(f.usage) || existsSync(f.kept), false);
     assert.equal(claude.status(target).state, 'off');
     assert.equal(claude.uninstall(target).changed, false);
   });
@@ -182,9 +204,10 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     rmSync(f.describe);
     assert.deepEqual(claude.status(target), {
       state: 'partly',
-      where: [f.settings, f.script, f.describe],
+      where: [f.settings, f.script, f.describe, f.approve, f.usage, f.kept],
       missing: ['~/.claude/hooks/tricot-describe.mjs'],
       sendsAs: 'Claude',
+      usage: 'on',
     });
     const settings = json(f.settings);
     delete settings.hooks.Stop;
@@ -192,6 +215,16 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     assert.deepEqual(claude.status(target).missing, ['the Stop hook in ~/.claude/settings.json', '~/.claude/hooks/tricot-describe.mjs']);
     claude.install(target, setup);
     assert.equal(claude.status(target).state, 'on', 'adding again mends it');
+
+    // Steps set up before approvals came: partly, until turned on again.
+    const older = json(f.settings);
+    delete older.hooks.PermissionRequest;
+    write(f.settings, JSON.stringify(older));
+    rmSync(f.approve);
+    assert.deepEqual(claude.status(target).missing, ['the PermissionRequest approval hook in ~/.claude/settings.json', '~/.claude/hooks/tricot-approve.mjs']);
+    assert.equal(claude.status(target).state, 'partly');
+    claude.install(target, setup);
+    assert.equal(claude.status(target).state, 'on');
   });
 
   it('leaves settings it cannot read alone, and says so', () => {
@@ -273,19 +306,35 @@ describe('Codex steps (~/.codex/hooks.json)', () => {
     hooks: path.join(folder, 'hooks.json'),
     script: path.join(folder, 'hooks/tricot-steps.mjs'),
     describe: path.join(folder, 'hooks/tricot-describe.mjs'),
+    approve: path.join(folder, 'hooks/tricot-approve.mjs'),
   });
   const theirsCodex = { description: 'My hooks', hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'python3 ~/.codex/hooks/start.py', timeout: 3 }] }] } };
 
   it('shows its hooks and that Codex asks to trust them, and writes nothing', () => {
     const target = freshHome();
     const preview = codex.preview(target, setup);
-    assert.deepEqual(preview.notes, [CODEX_TRUST]);
+    assert.equal(preview.notes.length, 3);
+    assert.match(preview.notes[0], /When Codex asks permission to run something, the request comes to the card/);
+    assert.deepEqual(preview.notes.slice(1), [CODEX_TRUST, CODEX_USAGE]);
     assert.ok(preview.text.includes('add to ~/.codex/hooks.json'));
     assert.ok(preview.text.includes('open /hooks in Codex'));
-    const hooks = JSON.parse(preview.changes[2].lines!).hooks;
+    assert.deepEqual(
+      preview.changes.map((c) => path.relative(target.home, c.path)),
+      ['.codex/hooks/tricot-steps.mjs', '.codex/hooks/tricot-describe.mjs', '.codex/hooks/tricot-approve.mjs', '.codex/hooks/tricot-usage.mjs', '.codex/hooks.json'],
+    );
+    const hooks = JSON.parse(preview.changes[4].lines!).hooks;
     assert.deepEqual(Object.keys(hooks), ['PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStop']);
+    // The steps' own entry on it, async, then the approval hook, which Codex waits for.
+    assert.equal(hooks.PermissionRequest.length, 2);
+    assert.equal(hooks.PermissionRequest[0].hooks[0].async, true);
+    assert.deepEqual(hooks.PermissionRequest[1].hooks[0], {
+      type: 'command',
+      command: `node "${files(path.join(target.home, '.codex')).approve}" --name Codex --url ${TRICOT_URL} --codex`,
+      timeout: APPROVAL_TIMEOUT_S,
+      statusMessage: APPROVAL_STATUS,
+    });
     assert.equal(hooks.PostToolUse[0].matcher, '^(Bash|Agent)$');
-    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${files(path.join(target.home, '.codex')).script}" --name Codex --url ${TRICOT_URL}`, async: true });
+    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${files(path.join(target.home, '.codex')).script}" --name Codex --url ${TRICOT_URL} --usage`, async: true });
     assert.equal(existsSync(path.join(target.home, '.codex')), false);
   });
 
@@ -293,7 +342,7 @@ describe('Codex steps (~/.codex/hooks.json)', () => {
     const target = freshHome();
     const toml = '# mine\nmodel = "gpt-5"\n\n[[hooks.PreToolUse]]\nmatcher = "^Bash$"\n';
     write(path.join(target.home, '.codex/config.toml'), toml);
-    assert.equal(codex.preview(target, setup).notes.length, 2);
+    assert.equal(codex.preview(target, setup).notes.length, 4);
     codex.install(target, setup);
     codex.uninstall(target);
     assert.equal(readFileSync(path.join(target.home, '.codex/config.toml'), 'utf8'), toml);
@@ -305,11 +354,13 @@ describe('Codex steps (~/.codex/hooks.json)', () => {
     write(f.hooks, JSON.stringify(theirsCodex));
     const done = codex.install(target, setup);
     assert.equal(done.changed, true);
-    assert.deepEqual(done.notes, [CODEX_TRUST]);
+    assert.deepEqual(done.notes.slice(1), [CODEX_TRUST, CODEX_USAGE]);
     const added = json(f.hooks);
     assert.equal(added.description, 'My hooks');
     assert.deepEqual(added.hooks.SessionStart, theirsCodex.hooks.SessionStart);
     assert.equal(added.hooks.PermissionRequest[0].hooks[0].async, true);
+    assert.match(added.hooks.PermissionRequest[1].hooks[0].command, /tricot-approve\.mjs" --name Codex --url \S+ --codex$/);
+    assert.equal(readFileSync(f.approve, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-approve.mjs'), 'utf8'));
     const status = codex.status(target);
     assert.equal(status.state, 'on');
     assert.match(status.note!, /trusted it in \/hooks/);
@@ -320,12 +371,13 @@ describe('Codex steps (~/.codex/hooks.json)', () => {
     const patch = await runScript(f.script, { hook_event_name: 'PreToolUse', session_id: 's', tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Add File: src/b.ts\n+SECRET\n*** End Patch' } });
     assert.equal(JSON.parse(patch.stdout).text, 'Editing src/b.ts');
     const asking = await runScript(f.script, { hook_event_name: 'PermissionRequest', session_id: 's', tool_name: 'Bash', tool_input: { command: 'rm -rf x' } });
-    assert.equal(JSON.parse(asking.stdout).text, 'Waiting for your permission in the terminal');
+    assert.equal(JSON.parse(asking.stdout).text, 'Waiting for your permission');
 
     assert.equal(codex.install(target, setup).changed, false);
     assert.deepEqual(json(f.hooks), added);
     codex.uninstall(target);
     assert.deepEqual(json(f.hooks), theirsCodex);
+    assert.equal(existsSync(f.approve), false, 'the approval script goes with them');
     assert.equal(codex.status(target).state, 'off');
   });
 

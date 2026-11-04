@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { INSTRUCTIONS_CLIP } from '../src/core/mentions';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type AgentName = 'Claude' | 'Codex';
@@ -17,6 +18,9 @@ type AgentName = 'Claude' | 'Codex';
 const NOTES = 'Read the commits since the last tag.\nGroup them by area.\nWrite them in plain language, no jargon.';
 
 // People add skills in Tricot; a request to run one carries its instructions to the agent, over MCP.
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
+
 describe('Tricot skills, over REST and MCP', () => {
   let dir: string;
   let server: Server;
@@ -35,7 +39,7 @@ describe('Tricot skills, over REST and MCP', () => {
   }
 
   async function post(route: string, body: Record<string, unknown>) {
-    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   }
 
@@ -58,6 +62,7 @@ describe('Tricot skills, over REST and MCP', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

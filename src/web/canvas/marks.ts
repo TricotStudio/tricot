@@ -49,8 +49,10 @@ const BLOCKS = new Set(['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquo
 // same text a person selects, so they land on the right characters however
 // the source marks them up: "Stripe" in "**Stripe** Elements" is the bold
 // word. A chip travels as an empty <mark data-chip>. `chips: false` leaves
-// the chips to the caller, to draw where it likes.
-export function rehypePins({ marks, focus, chips = true }: { marks: QuotedMark[]; focus?: string | null; chips?: boolean }) {
+// the chips to the caller, to draw where it likes. `ids` names the marks
+// covering each <mark> on it, as data-pins (a piece's full view finds a pin's
+// words by it).
+export function rehypePins({ marks, focus, chips = true, ids = false }: { marks: QuotedMark[]; focus?: string | null; chips?: boolean; ids?: boolean }) {
   return (tree: Root) => {
     if (marks.length === 0) return;
     const texts: { node: HastText; parent: Root | Element; block: Root | Element; start: number }[] = [];
@@ -82,7 +84,11 @@ export function rehypePins({ marks, focus, chips = true }: { marks: QuotedMark[]
         return {
           type: 'element',
           tagName: 'mark',
-          properties: { className: markClass(piece.covering, focus).split(' '), dataPinDraft: draft || undefined },
+          properties: {
+            className: markClass(piece.covering, focus).split(' '),
+            dataPinDraft: draft || undefined,
+            dataPins: ids ? piece.covering.map((m) => m.id).join(' ') : undefined,
+          },
           children: [{ type: 'text', value }],
         };
       });

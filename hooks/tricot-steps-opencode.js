@@ -33,8 +33,21 @@ const DEFAULT_NAME = 'OpenCode';
 const MAX_KEPT = 64; // calls under way, subagent sessions: a few dozen at most
 const IDLE_ONCE_MS = 2000; // OpenCode 2 says a session went idle twice (session.idle, session.status)
 
+const OPEN_REPLIES = 8; // replies OpenCode may still be updating, per session; older ones are counted for good
+
 const text = (value) => (typeof value === 'string' && value !== '' ? value : undefined);
 const record = (value) => (value && typeof value === 'object' ? value : {});
+const amount = (value) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0);
+
+// A reply's numbers, from OpenCode's tokens { input, output, reasoning, cache: { read, write } } and cost.
+const numbersOf = (tokens, cost) => {
+  const t = record(tokens);
+  const cache = record(t.cache);
+  return { input: amount(t.input), output: amount(t.output), cacheRead: amount(cache.read), cacheWrite: amount(cache.write), reasoning: amount(t.reasoning), cost: amount(cost) };
+};
+const addTo = (sum, numbers) => {
+  for (const key of Object.keys(sum)) sum[key] += numbers[key];
+};
 const path = (a) => a.filePath ?? a.path;
 
 // OpenCode's own tools (1's names, then 2's) under the names the describe
@@ -93,20 +106,65 @@ function observer(describe, settings, cwd, send = globalThis.fetch) {
   const children = new Map(); // a subagent's session, and its parent's
   const idle = new Map(); // when each session last went idle
 
-  const post = (step) => {
+  // A session's tokens and cost so far: the replies counted for good (base),
+  // the last few, which OpenCode may still update while they stream (open, by
+  // id), and, where OpenCode 2 says a session's whole usage, that (whole, by
+  // session).
+  const usage = new Map();
+
+  const send_ = (route, body) => {
     if (typeof send !== 'function') return;
     const token = typeof process === 'undefined' ? undefined : process.env.TRICOT_TOKEN;
     const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(SEND_TIMEOUT_MS) : undefined;
     void Promise.resolve(
-      send(`${url}/api/agents/${encodeURIComponent(name)}/steps`, {
+      send(`${url}/api/agents/${encodeURIComponent(name)}/${route}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-        body: JSON.stringify({ ...step, at: Date.now() }),
+        body: JSON.stringify(body),
         ...(signal && { signal }),
       }),
     )
       .then((res) => res?.body?.cancel?.()) // the answer isn't read
       .catch(() => {});
+  };
+  const post = (step) => send_('steps', { ...step, at: Date.now() });
+  // A reply's (or a step's) tokens and cost, in its session's total: the
+  // latest numbers for each, as OpenCode updates a reply while it streams. A
+  // subagent's count toward its parent's session.
+  const count = (session, id, tokens, cost, whole = false) => {
+    const root = (text(session) && children.get(session)) || session;
+    if (!text(root) || (!whole && !text(id))) return;
+    const entry = usage.get(root) ?? { base: numbersOf({}, 0), open: new Map(), whole: new Map() };
+    const numbers = numbersOf(tokens, cost);
+    if (whole) keep(entry.whole, session, numbers);
+    else {
+      keep(entry.open, id, numbers);
+      if (entry.open.size > OPEN_REPLIES) {
+        const [oldest, done] = entry.open.entries().next().value;
+        entry.open.delete(oldest);
+        addTo(entry.base, done);
+      }
+    }
+    keep(usage, root, entry);
+  };
+  // The end of a turn: the session's tokens and cost so far, numbers only.
+  const sendUsage = (session) => {
+    const entry = usage.get(session);
+    if (!entry) return;
+    const sum = numbersOf({}, 0);
+    if (entry.whole.size) for (const numbers of entry.whole.values()) addTo(sum, numbers);
+    else for (const numbers of [entry.base, ...entry.open.values()]) addTo(sum, numbers);
+    const total = sum.input + sum.output + sum.cacheRead + sum.cacheWrite + sum.reasoning;
+    if (!total && !sum.cost) return;
+    const round = Math.round;
+    send_('usage', {
+      usage: {
+        source: 'opencode',
+        tokens: { input: round(sum.input), output: round(sum.output), cacheRead: round(sum.cacheRead), cacheWrite: round(sum.cacheWrite), reasoning: round(sum.reasoning), total: round(total) },
+        ...(sum.cost > 0 && { costUsd: sum.cost }),
+      },
+      at: Date.now(),
+    });
   };
   // A subagent's steps are its parent session's, as one of its workers.
   const where = text(cwd) ? { cwd } : {};
@@ -165,6 +223,22 @@ function observer(describe, settings, cwd, send = globalThis.fetch) {
           if (now - (idle.get(session) ?? 0) < IDLE_ONCE_MS) return;
           keep(idle, session, now);
           tell({ hook_event_name: children.has(session) ? 'SubagentStop' : 'Stop', ...who(session) });
+          if (!children.has(session)) sendUsage(session);
+          return;
+        }
+        // A reply's tokens and cost, never its words: OpenCode 1's
+        // message.updated (an assistant message's info), and 2's step and
+        // usage events, which carry the same numbers.
+        case 'message.updated': {
+          const info = record(p.info);
+          if (info.role === 'assistant') count(text(info.sessionID), text(info.id), info.tokens, info.cost);
+          return;
+        }
+        case 'session.step.ended':
+        case 'session.usage.updated': {
+          const tokens = p.tokens ?? record(p.usage).tokens;
+          const whole = type === 'session.usage.updated';
+          if (tokens) count(text(p.sessionID), text(p.stepID) ?? text(p.id) ?? text(p.messageID), tokens, p.cost ?? record(p.usage).cost, whole);
           return;
         }
         case 'permission.asked':
@@ -250,7 +324,7 @@ function tricotSteps(folder) {
       const stop = typeof AbortController === 'undefined' ? undefined : new AbortController();
       const told = quietly((event) => run.event(record(event).type, record(event).data ?? record(event).properties));
       void (async () => {
-        const types = ['session.created', 'session.idle', 'session.status', 'permission.asked'];
+        const types = ['session.created', 'session.idle', 'session.status', 'permission.asked', 'session.step.ended', 'session.usage.updated'];
         for await (const event of ctx.event.subscribe({ types, ...(stop && { signal: stop.signal }) })) void told(event);
       })().catch(() => {});
       return () => {

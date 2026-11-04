@@ -1,10 +1,13 @@
 // The `tricot` executable: wires the command (main.ts) to this terminal and
-// this machine's browser. Built to dist/cli/command.js, which the package's
+// this machine's browser, and runs the agent `tricot claude` starts in this
+// terminal (terminal.ts). Built to dist/cli/command.js, which the package's
 // `bin` (bin.ts, dist/cli/tricot.js) loads once it has checked the Node.js version.
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCli } from './main';
+import { runSwitcher, switcherProblem } from './switcher/run';
+import { runInTerminal, terminalKeys } from './terminal';
 
 const entry = fileURLToPath(import.meta.url);
 // dist/cli/command.js once built, src/cli/tricot.ts from source: either way the
@@ -47,7 +50,13 @@ const { exitCode, server } = await runCli(process.argv.slice(2), {
   err: (line) => console.error(line),
   open: openInBrowser,
   cwd: process.cwd(),
+  launch: runInTerminal,
   ...(process.stdin.isTTY && { ask }),
+  // The board picker draws as it goes, so it needs a terminal to draw on too,
+  // as do several agents run in it together (tricot claude codex).
+  ...(process.stdin.isTTY && process.stdout.isTTY && { keys: terminalKeys(), host: { problem: () => switcherProblem(), run: runSwitcher } }),
+  // Ctrl+C read as a key, while the board's terminal asks y/N: it stops Tricot all the same.
+  interrupt: () => void process.kill(process.pid, 'SIGINT'),
 });
 
 if (server) {

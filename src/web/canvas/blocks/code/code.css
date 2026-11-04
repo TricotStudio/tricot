@@ -191,3 +191,41 @@ button.code-path:hover {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* ---- its full view (codeView.tsx) ----------------------------------------------
+   Every line on a sheet, at a reading size; while pairing, a line under the
+   pointer is marked as one to point at, and a drag over several marks them
+   all. The marker on a pinned line sits at its end. */
+
+.code-full-sheet {
+  width: min(1100px, calc(100% - 48px));
+  padding: 8px 0;
+  overflow: hidden;
+}
+.code-full .diff-code {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.code-full .diff-row {
+  grid-template-columns: var(--diff-num-w) auto 1fr;
+  align-items: center;
+}
+.code-full .diff-row.is-pinned:not(.is-draft) {
+  background: color-mix(in srgb, var(--pin) 7%, var(--surface));
+}
+.code-full .diff-row.is-open:not(.is-draft) {
+  background: var(--pin-bg);
+}
+.code-full.is-pointing .diff-code {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.code-full-chips {
+  display: inline-flex;
+  gap: 4px;
+  padding: 0 12px 0 4px;
+  font-family: var(--font);
+}
+.code-full-chips .pin-chip {
+  margin-left: 0;
+}

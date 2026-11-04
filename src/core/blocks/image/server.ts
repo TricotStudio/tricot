@@ -4,7 +4,9 @@
 import { z } from 'zod';
 import type { ImageOrigin, ImageTypes } from './index';
 import { nextBox } from './boxes';
-import type { AgentHalf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
+import { pinWhere } from '../../digest';
 import { replacedImageNotice } from '../../advice';
 import { BoardError } from '../../store/errors';
 import { checkImage } from './check';
@@ -21,6 +23,30 @@ const origin = (value: ImageOrigin | undefined): ImageOrigin | undefined =>
     fileId: limited(value.fileId, LIMITS.url, 'An image origin'),
     nodeId: limited(value.nodeId, 100, 'An image origin'),
   };
+
+// Boxes drawn on it take requests (core/parts.ts): people drag a box round a
+// region in its full view (or click a spot, a small box) and ask an agent to
+// change it, which it does by sending a new version of the picture. Boxes
+// are fractions of the picture, so they stay where they were drawn.
+const part: PartWords = {
+  kind: 'image',
+  anchors: ['box'],
+  ask: {
+    verb: 'change',
+    asking: 'asking agents to change it in a new version of the image',
+    doing: 'Make a new version of the image with update_block (image_path or image_base64), then reply',
+    act: 'make a new version of the image with update_block (image_path or image_base64), then ',
+    request: 'request to change the image, ',
+    what: 'boxes drawn on an image',
+  },
+};
+
+const ask: AskWords = {
+  part: ({ pin, block }) => `${pin.quote}${pinWhere(pin).replace(/\)$/, ', as fractions of the picture from its top left)')} on ${blockNamed(block, 'image')}`,
+  how: ({ block }) =>
+    `Make a new version of the picture and send it with update_block (block_id: ${block.id}, image_path or image_base64): the one it replaces stays in the block's history, and boxes stay where they were drawn`,
+  view: 'the image',
+};
 
 export const agent: AgentHalf<ImageTypes> = {
   addShape: {
@@ -54,6 +80,7 @@ export const agent: AgentHalf<ImageTypes> = {
   noticeUpdated: (before, block, pins) =>
     replacedImageNotice(block.assetId !== before.assetId ? pins.filter((p) => p.blockId === block.id && p.anchor.kind === 'box').length : 0),
   picture: (block) => block.assetId,
+  asks: partAsksDigest(part, ask),
   pinShape: {
     box: z
       .object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })
@@ -128,6 +155,7 @@ export const server: ServerHalf<ImageTypes> = {
     const n = nextBox(pins, block.id);
     return { anchor: { kind: 'box', x, y, w, h, n }, quote: `box ${n}` };
   },
+  part,
   // An image's picture can't be swapped under its pins, so its boxes hold.
 
   agent,

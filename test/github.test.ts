@@ -13,6 +13,7 @@ import { findConnector } from '../src/core/connectors';
 import { linkSource } from '../src/core/sources';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { GITHUB_APP_SLUG, GITHUB_CLIENT_ID, installUrl } from '../src/server/connectors/github';
 import { summariseChecks } from '../src/server/connectors/github/reader';
@@ -20,6 +21,9 @@ import { CLIENT_ID, DEVICE_TOKEN, FakeGithub, PAT, sha } from './fakeGithub';
 
 const HEAD = sha(7);
 const PATCH = (name: string) => `diff --git a/${name} b/${name}\nindex 111..222 100644\n--- a/${name}\n+++ b/${name}\n@@ -1,2 +1,3 @@\n keep\n-old line\n+new line\n+another line\n`;
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('GitHub as a connector', () => {
   let github: FakeGithub;
@@ -33,7 +37,7 @@ describe('GitHub as a connector', () => {
   let boardId: string;
   const tokenFile = () => path.join(dir, 'connectors', 'github.json');
   const rest = async (method: string, route: string, body?: object, headers: Record<string, string> = {}) => {
-    const res = await fetch(`${base}${route}`, { method, headers: { 'content-type': 'application/json', ...headers }, body: body && JSON.stringify(body) });
+    const res = await fetch(`${base}${route}`, { method, headers: { 'content-type': 'application/json', Origin: base, ...seat.sign(method, route, body ? JSON.stringify(body) : ''), ...headers }, body: body && JSON.stringify(body) });
     const text = await res.text();
     let json: any = {};
     try {
@@ -73,6 +77,7 @@ describe('GitHub as a connector', () => {
     store.load();
     connectors = new Connectors({ dataDir: dir, now: () => now, github: { endpoints: github.endpoints() } });
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

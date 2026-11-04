@@ -497,7 +497,7 @@ describe('Threads over MCP and REST', () => {
   async function request(method: 'GET' | 'POST', route: string, body?: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: body ? { 'Content-Type': 'application/json', Origin: base } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: response.status, json: await response.json() };

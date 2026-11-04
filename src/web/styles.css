@@ -986,6 +986,13 @@ button.live-label:hover,
   background: var(--exploring);
   opacity: 1;
 }
+/* Opened by an agent: a small filled square, as agents are marked (ActorBadge),
+   so it doesn't read as a checkbox. */
+.first-look.is-opened::before {
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.55;
+}
 
 .looking-band {
   flex: none;
@@ -1028,6 +1035,11 @@ button.live-label:hover,
 }
 .connect p {
   overflow-wrap: anywhere;
+}
+/* `tricot claude --board …` moves to a line of its own rather than breaking in two. */
+.connect-session code {
+  display: inline-block;
+  max-width: 100%;
 }
 /* Which agent tool the command is for, like the Decisions tab's Table / Map switch. */
 .connect-tabs {
@@ -1759,8 +1771,16 @@ button.live-label:hover,
 
 /* The tab, the conversation the chat bar opened docked beside it, and the
    activity. The conversation's column is always there, empty while it's
-   closed, so it can grow as the panel slides in and the tab narrows with it
-   (chatBar.css); the panel keeps its width, coming in from the right edge. */
+   closed. It takes its width at once as the panel opens or closes, and the
+   panel slides over it (chatBar.css), so the board is laid out once rather
+   than on every frame of the motion. Its width is the layout's own (not
+   inherited), so changing it restyles the layout alone, not everything on
+   the board (T177). */
+@property --dock-track {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
 .board-layout {
   position: relative; /* the chat bar floats at the foot of its first column (chatBar.css) */
   flex: 1;
@@ -1779,14 +1799,21 @@ button.live-label:hover,
 }
 /* Room under the chat bar floating at the foot of the tab (chatBar.css), so
    the end of every list and the map can be scrolled clear of it. Docked in
-   the conversation's panel, it takes none. */
-.board-layout {
-  --bar-room: 0px;
+   the conversation's panel, it takes none. It isn't inherited: it is set on
+   the layout and on each box that keeps room with it (padding with
+   var(--bar-room)), listed here, so the bar docking or floating again
+   restyles those few boxes rather than everything on the board (T177). */
+@property --bar-room {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
 }
-.board-layout:has(> .chat-float > .chat-bar) {
+.board-layout:has(> .chat-float > .chat-bar),
+.board-layout:has(> .chat-float > .chat-bar) :is(.lane-cards, .dt-scroll, .dmap-scroll, .dmap-panel) {
   --bar-room: 88px;
 }
-.board-layout:has(> .chat-float > .chat-threads-only) {
+.board-layout:has(> .chat-float > .chat-threads-only),
+.board-layout:has(> .chat-float > .chat-threads-only) :is(.lane-cards, .dt-scroll, .dmap-scroll, .dmap-panel) {
   --bar-room: 64px;
 }
 .board-layout > .thread-dock {
@@ -2286,13 +2313,12 @@ button.live-label:hover,
 .dt-fold:hover {
   --row-bg: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
 }
+/* A row's state is a tint across it, with its marker in the row (the blue
+   dot, the amber tag, "just made"), never a stripe down its edge (DESIGN.md,
+   the No Stripes Rule; test/noStripes.test.ts). */
 .dt-row.is-new,
 .dt-fold.is-new {
   --row-bg: color-mix(in srgb, var(--focus) 5%, var(--surface));
-}
-.dt-row.is-new > td:first-child,
-.dt-fold.is-new > td:first-child {
-  box-shadow: inset 3px 0 0 var(--focus);
 }
 .dt-row.is-needs-you,
 .dt-fold.is-needs-you {
@@ -2301,10 +2327,6 @@ button.live-label:hover,
 .dt-row.is-needs-you:hover,
 .dt-fold.is-needs-you:hover {
   --row-bg: var(--open-bg);
-}
-.dt-row.is-needs-you > td:first-child,
-.dt-fold.is-needs-you > td:first-child {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--open) 70%, transparent);
 }
 /* Faint text warms toward the wash, and amber tags step deeper, as on cards. */
 .dt-row.is-needs-you :is(.dt-num, td.dt-w, .dt-built-note) {
@@ -2341,24 +2363,12 @@ button.live-label:hover,
 .dt-row.is-made:hover {
   --row-bg: color-mix(in srgb, var(--focus) 12%, var(--surface));
 }
-.dt-row.is-made > td:first-child {
-  box-shadow: inset 3px 0 0 var(--focus);
-}
 .dt-row.is-made-fading > td {
   animation: dt-made-fade 1.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.dt-row.is-made-fading > td:first-child {
-  animation-name: dt-made-fade-edge;
 }
 @keyframes dt-made-fade {
   0% {
     background: color-mix(in srgb, var(--focus) 8%, var(--surface));
-  }
-}
-@keyframes dt-made-fade-edge {
-  0% {
-    background: color-mix(in srgb, var(--focus) 8%, var(--surface));
-    box-shadow: inset 3px 0 0 var(--focus);
   }
 }
 /* An agent's change washes the row in its status colour, then settles. */
@@ -2633,20 +2643,8 @@ button.live-label:hover,
   .dt-row.is-flash > td {
     animation: none;
   }
-  .dt .dt-row > td:first-child {
-    box-shadow: none;
-  }
-  .dt-row.is-new {
-    box-shadow: inset 3px 0 0 var(--focus);
-  }
-  .dt-row.is-needs-you {
-    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--open) 70%, transparent);
-  }
-  .dt-row.is-made {
-    box-shadow: inset 3px 0 0 var(--focus);
-  }
   .dt-row.is-made-fading {
-    animation: dt-made-fade-edge 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: dt-made-fade 1.8s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .dt-row.is-made-fading > td {
     animation: none;
@@ -6577,11 +6575,13 @@ a.relation {
   align-items: flex-start;
   gap: 8px;
 }
+/* The words quoted take a quote's own mark, neutral (as .md blockquote): the
+   part's highlight on the canvas, and its chip, say it's pinned. */
 .pin-prompt-quote {
   flex: 1;
   min-width: 0;
-  padding: 1px 0 1px 10px;
-  border-left: 3px solid var(--pin-draft);
+  padding: 1px 0 1px 11px;
+  border-left: 2px solid var(--border-strong);
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
@@ -6674,12 +6674,6 @@ a.relation {
 }
 
 /* A board context pin's comment thread, under its chip. */
-.pin-thread .pin-prompt-quote {
-  border-left-color: var(--pin);
-}
-.pin-thread.is-resolved .pin-prompt-quote {
-  border-left-color: var(--border-strong);
-}
 .pin-thread-comments {
   list-style: none;
   margin: 0;
@@ -6768,13 +6762,12 @@ a.relation {
 }
 .pinned-from blockquote {
   margin: 0;
-  padding: 1px 0 1px 10px;
-  border-left: 3px solid var(--pin);
+  padding: 1px 0 1px 11px;
+  border-left: 2px solid var(--border-strong); /* the quote's own mark, neutral */
   font-size: 13.5px;
   overflow-wrap: anywhere;
 }
 .pinned-from blockquote.is-lost {
-  border-left-color: var(--border-strong);
   color: var(--muted);
 }
 .pinned-from-where {

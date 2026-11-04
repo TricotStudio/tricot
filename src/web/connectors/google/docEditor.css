@@ -1,76 +1,12 @@
 /* ---- a Google Doc's draft, edited over the canvas -----------------------
-   A sheet over the canvas: the doc's mark and title, who changed what, the
-   doc as a page of paragraphs, and Save. What the draft changes is marked in
-   the margin in the draft's amber, added paragraphs in green, removed ones in
+   The whole canvas, in the pairing shell (canvas/pairing/pairing.css), which
+   draws the bar with the doc's mark and title: who changed what, the doc as a
+   page of paragraphs, and Save. What the draft changes is marked in the
+   margin in the draft's amber, added paragraphs in green, removed ones in
    red, as the canvas marks a part being pinned. */
 
-.doc-editor-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--bg) 62%, transparent);
-  backdrop-filter: blur(1.5px);
-  animation: doc-editor-fade 0.14s ease-out;
-}
-@keyframes doc-editor-fade {
-  from {
-    opacity: 0;
-  }
-}
 .doc-editor {
-  width: min(860px, 100%);
-  height: 100%;
-  max-height: 940px;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  cursor: default;
-  animation: doc-editor-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes doc-editor-in {
-  from {
-    opacity: 0;
-    translate: 0 6px;
-    scale: 0.99;
-  }
-}
-
-.doc-editor-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 14px 14px 18px;
-  border-bottom: 1px solid var(--border);
-}
-.doc-editor-title {
-  flex: 1;
-  min-width: 0;
-}
-.doc-editor-title h2 {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.doc-editor-title p {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.doc-editor-close {
-  padding: 6px;
-  font-size: 15px;
+  background: var(--bg);
 }
 
 .doc-editor-band {
@@ -116,10 +52,12 @@
   color: var(--exploring-ink);
 }
 
-.doc-editor-head,
 .doc-editor-band,
 .doc-editor-foot {
   flex: none;
+}
+.doc-editor-foot {
+  background: var(--surface);
 }
 .doc-editor-body {
   flex: 1;
@@ -646,9 +584,6 @@
 }
 
 @media (max-width: 640px) {
-  .doc-editor-backdrop {
-    padding: 8px;
-  }
   .doc-editor-body {
     padding: 12px 8px 20px;
   }

@@ -1,0 +1,157 @@
+/* The Usage section of an agent's panel (usage.tsx): its plan's windows as
+   bars, its tokens and cost, and what it did on its board. The bars are
+   neutral ink on the sunk sheet; near the limit they take the amber marker,
+   at it the red, as everything that needs you does, with the words beside
+   them in the matching ink. */
+
+.agent-usage {
+  display: grid;
+  gap: 10px;
+  padding: 12px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-usage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.agent-usage-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.agent-usage-meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ---- the plan's windows ---------------------------------------------------------- */
+
+.usage-windows {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.usage-window {
+  display: grid;
+  gap: 5px;
+}
+.usage-window-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.usage-window-name {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.usage-window-text {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.usage-bar {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.usage-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--muted);
+  transition: width 0.12s ease-out;
+}
+.usage-window.is-near .usage-bar-fill {
+  background: var(--open);
+}
+.usage-window.is-near .usage-window-text {
+  color: var(--open-ink);
+}
+.usage-window.is-at .usage-bar-fill {
+  background: var(--danger);
+}
+.usage-window.is-at .usage-window-text {
+  color: var(--danger);
+}
+@media (prefers-reduced-motion: reduce) {
+  .usage-bar-fill {
+    transition: none;
+  }
+}
+
+/* ---- tokens, cost, and the quiet line ------------------------------------------- */
+
+.usage-extras {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.usage-quiet {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--faint);
+}
+
+/* ---- on its board, today and this week ------------------------------------------ */
+
+.usage-board {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.usage-board caption {
+  padding-bottom: 4px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-board th,
+.usage-board td {
+  padding: 3px 0;
+  border-top: 1px solid var(--border);
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+.usage-board thead th,
+.usage-board thead td {
+  border-top: none;
+  padding-top: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+}
+.usage-board tbody th {
+  text-align: left;
+  color: var(--muted);
+}
+.usage-board td,
+.usage-board thead th {
+  width: 1%; /* as wide as their words; the row's name takes the rest */
+  padding-left: 20px;
+}
+.usage-board tbody td {
+  color: var(--text);
+}

@@ -34,6 +34,14 @@ export interface UpdateState {
   failed?: UpdateFailure; // the last update didn't finish: this Tricot came back instead
 }
 
+// What a check a person asked for found (POST /api/update/check), beside the
+// state: the version running is the latest, a newer one is out (the state's
+// `available` too), or neither GitHub nor npm answered, and why in plain
+// words, to follow "Couldn't check: ".
+export type Checked = { latest: true } | { newer: Release } | { error: string };
+
+export type CheckedState = UpdateState & { checked: Checked };
+
 // What it says on every way to update: a data upgrade keeps a copy first
 // (core/store/migrations.ts).
 export const BACKUP_NOTE = 'If the new version changes how boards are stored, it keeps a copy of them first.';

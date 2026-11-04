@@ -55,7 +55,7 @@ describe('the Pi and OMP extension: their events as steps', () => {
   it("listens only to events that can't hold a tool up", () => {
     const agent = fakeAgent();
     stepsExtension({}, fakeFetch().send)(agent.api);
-    assert.deepEqual([...agent.handlers.keys()], ['tool_execution_start', 'tool_execution_end', 'agent_end']);
+    assert.deepEqual([...agent.handlers.keys()], ['tool_execution_start', 'tool_execution_end', 'agent_end', 'message_end']);
   });
 
   it("describes Pi's tools as the hook script does Claude Code's, without contents or secrets", () => {

@@ -15,8 +15,8 @@
 import type { Element, ElementContent, Root, RootContent } from 'hast';
 import { heldWords } from './agentTalk';
 import { answerContext, decisionDiscussion, pinDiscussion, quote, taskDiscussion, type Discussion, type Shown } from './answering';
-import { askingWords } from './connectors';
 import { clip, listNames, peopleOn, samePerson } from './format';
+import { askingWords } from './parts';
 import { answeredBy } from './reactions';
 import type { Actor, Board, BoardEvent, Comment, Decision, Pin, Reaction, SkillRequest, Task } from './types';
 
@@ -274,7 +274,7 @@ export const onThread = (board: Board, pin: Pin): Where => ({
 
 // Comments asking this agent something it hasn't answered yet, for get_board
 // and its updates: "Sam asked you on T57: "…". Reply with comment(…)."
-// Requests to edit a doc are named on their own (connectorAsks), as are
+// Requests to edit a doc or change a website are named on their own (partAsks), as are
 // requests on the board context (requestsDigest). With the agent's session
 // (`shown`), one it has read says so instead of saying it again, and one an
 // update above gave is left out.
@@ -328,10 +328,12 @@ export function mentionEventLine(event: BoardEvent, board: Board, viewer: string
   const { comment, where } = found;
   if (address.to === 'others') return `${lead} asked ${listNames(address.agents)} on ${where.on} ${where.id}. Not for you; carry on.`;
   if (comment.held) return `${lead} mentioned you on ${where.on} ${where.id}: "${clip(withoutLeadingMentions(comment.body, comment.mentions ?? []), 200)}"; ${heldWords(comment.held)}.`;
-  const doing = comment.ask ? (askingWords()?.doing ?? 'Reply') : 'Reply';
+  const doing = comment.ask ? (askingWords(comment.askPart)?.doing ?? 'Reply') : 'Reply';
+  // A comment on a part of the card's canvas is answered on that part, where the person asked.
+  const reply = comment.pin ? `comment(pin_id: ${comment.pin.id})` : where.reply;
   const line = asksYouToRun(comment.skill, viewer)
-    ? `${lead} ${asksToRun(comment.skill, viewer, `on ${where.on} ${where.id}`, where.reply, where.read)}`
-    : `${lead} asked you on ${where.on} ${where.id}${heard(comment, shown)}. ${doing} with ${where.reply}.`;
+    ? `${lead} ${asksToRun(comment.skill, viewer, `on ${where.on} ${where.id}`, reply, where.read)}`
+    : `${lead} asked you on ${where.on} ${where.id}${heard(comment, shown)}. ${doing} with ${reply}.`;
   return [line, ...answerContext(where.discussion, comment, viewer, shown)].join('\n');
 }
 

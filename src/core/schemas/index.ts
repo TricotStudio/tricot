@@ -9,6 +9,6 @@ export { SKILL_NAME, mustNotBeEmpty, tidy, tooLong } from './rules';
 export { fields } from './fields';
 export * from './shared';
 export { newSkill, skillName, tricotSkill } from './skills';
-export { EVENTS_PAGE, EVENTS_PAGE_MAX, actorName, agentStep, agentStepName, agentsParams, canvas, dismissNeeds, eventsParams, liveSteps, needsParams, people, searchKind, searchParams, seenCursors } from './people';
+export { EVENTS_PAGE, EVENTS_PAGE_MAX, actorName, agentStep, approvals, agentStepName, agentUsage, agentUsageParams, agentsParams, canvas, dismissNeeds, eventsParams, liveSteps, needsParams, people, searchKind, searchParams, seenCursors } from './people';
 export { AREA_HINT, IN_THREAD, MAX_INLINE_IMAGES, THREAD_HINT, blockShape, pinShape, tools } from './agents';
 export type { BlockArgs, PinArgs } from './agents';

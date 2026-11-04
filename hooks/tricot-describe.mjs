@@ -340,8 +340,11 @@ export function describe(event, options = {}) {
       if (event.notification_type === 'permission_prompt') return { text: 'Waiting for your permission in the terminal', ...who };
       if (event.notification_type === 'elicitation_dialog') return { text: 'Waiting for your answer in the terminal', ...who };
       return undefined;
-    case 'PermissionRequest': // Codex's, where Claude Code has a permission_prompt notification
-      return { text: 'Waiting for your permission in the terminal', ...who };
+    // Codex's, where Claude Code has a permission_prompt notification. Its
+    // approval hook (tricot-approve.mjs) brings the request to the board,
+    // and the terminal asks only when Tricot can't be reached: not said here.
+    case 'PermissionRequest':
+      return { text: 'Waiting for your permission', ...who };
     case 'Stop':
       return { text: 'Finished its turn', done: true, ...who };
     case 'SubagentStop':

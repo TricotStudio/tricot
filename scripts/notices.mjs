@@ -12,9 +12,9 @@
 // metafile, see build-cli.mjs) in dist/.notices/<build>.json, which doesn't
 // ship. The command's build runs last and writes the notices from both
 // (writeNotices). A library under a licence that isn't known to sit well in
-// an AGPL-3.0-only program, or that comes without its licence text, stops the
-// build until someone has looked at it (FLAGGED). One under a licence known
-// not to (INCOMPATIBLE) stops it until it is left out.
+// Tricot, an Apache-2.0 program, or that comes without its licence text,
+// stops the build until someone has looked at it (FLAGGED). One under a
+// licence that can't ship in it (INCOMPATIBLE) stops it until it is left out.
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -28,8 +28,10 @@ export const BUILDS = {
   cli: 'the command',
 };
 
-// Licences whose code can be bundled into an AGPL-3.0-only program, its
-// notices kept. OFL-1.1 is the font's: it may be bundled with any software.
+// Licences whose code can be bundled into Tricot, an Apache-2.0 program,
+// asking nothing more than that its notices are kept: permissive ones. Any
+// other (the LGPL, the MPL and the like) needs a person's look first.
+// OFL-1.1 is the font's: it may be bundled with any software.
 export const COMPATIBLE = new Set([
   '0BSD',
   'Apache-2.0',
@@ -64,6 +66,11 @@ const VENDORED = {
 // holds the name, version, license and repository from its package.json and
 // its licence files, as published. fastdom publishes its licence only in its
 // README, so its LICENSE here is that section, word for word.
+//
+// A bundled package that publishes no licence file of its own takes its
+// copy from here too, at its exact version: @xterm/headless ships without
+// one, and its LICENSE here is the xterm.js repository's, which the same
+// project's @xterm/xterm publishes.
 export const LICENCES_DIR = path.join(ROOT, 'scripts/licences');
 
 // Libraries inside a package that its source map can't name: Mermaid's parser
@@ -76,20 +83,41 @@ const ALSO_INSIDE = { '@mermaid-js/parser': ['vscode-uri'] };
 // forgotten until it is settled. None is waiting now.
 export const FLAGGED = {};
 
-// Licences known not to mix with AGPL-3.0-only, which FLAGGED can't let
-// through: the Eclipse Public License, 1.0 and 2.0. EPL-2.0 code may also be
-// offered under the GPL as a Secondary License, which a package says as
-// "EPL-2.0 OR GPL-2.0-or-later" (with an exception, sometimes); that one a
-// person can look at. Without such an alternative, as with elkjs, which
-// Mermaid's ELK layout uses, the library can't ship (#86, see
-// scripts/elkLeftOut.ts).
-export const INCOMPATIBLE = new Set(['EPL-1.0', 'EPL-2.0']);
+// Licences that can't ship in Tricot's bundles, which FLAGGED can't let
+// through, each with why. The GPL and the AGPL ask that a program bundled
+// with their code go out under them as a whole, and Tricot's bundles are
+// Apache-2.0. The Eclipse Public License asks less: its code could ship in
+// an Apache-2.0 program, its own files staying under the EPL with their
+// source offered. It stays out only because #86 decided to leave out elkjs,
+// which Mermaid's ELK layout uses (scripts/elkLeftOut.ts), and holds until
+// #86 is reopened.
+const COPYLEFT = "its copyleft would put the whole bundle, Tricot's Apache-2.0 code with it, under its terms";
+const HELD_OUT = 'the Eclipse Public License stays out of the bundles while #86 stands';
+export const INCOMPATIBLE = new Map([
+  ['GPL-1.0', COPYLEFT],
+  ['GPL-2.0', COPYLEFT],
+  ['GPL-3.0', COPYLEFT],
+  ['AGPL-1.0', COPYLEFT],
+  ['AGPL-3.0', COPYLEFT],
+  ['EPL-1.0', HELD_OUT],
+  ['EPL-2.0', HELD_OUT],
+]);
+
+// A licence's id without "or later" or "only": GPL-2.0+, GPL-2.0-or-later
+// and GPL-2.0-only are all GPL-2.0 here.
+const baseId = (id) => id.replace(/\+$/, '').replace(/-(?:only|or-later)$/, '');
+
+// Why an SPDX expression can't ship, when it can't be met without one of
+// those licences; undefined when it can.
+export function licenceRefusal(expression, refused = INCOMPATIBLE) {
+  const ids = expression.replace(/[()]/g, ' ').split(/\s+/).map(baseId).filter((id) => refused.has(id));
+  if (!ids.length || licenceAllowed(expression, { has: (id) => !refused.has(baseId(id)) })) return undefined;
+  return [...new Set(ids.map((id) => refused.get(id)))].join(', and ');
+}
 
 // Whether an SPDX expression can't be met without one of those licences.
 export function licenceRefused(expression, refused = INCOMPATIBLE) {
-  const ids = expression.replace(/[()]/g, ' ').split(/\s+/).map((id) => id.replace(/\+$/, ''));
-  if (!ids.some((id) => refused.has(id))) return false;
-  return !licenceAllowed(expression, { has: (id) => !refused.has(id) });
+  return licenceRefusal(expression, refused) !== undefined;
 }
 
 // A licence's own files in a package: LICENSE, LICENCE.md, COPYING, NOTICE,
@@ -297,16 +325,23 @@ function fence(text) {
 }
 
 // A package's entry: its name, version, licence, source and licence texts.
-// A bundler helper keeps its own licence only (ownPart).
-function packageEntry(dir, helper = false) {
+// A bundler helper keeps its own licence only (ownPart). One that publishes
+// no licence file takes its copy in scripts/licences at its exact version,
+// when there is one (copied).
+function packageEntry(dir, helper = false, copies = LICENCES_DIR) {
   const pkg = readJson(path.join(dir, 'package.json'));
-  const texts = licenceFiles(dir).map((name) => {
-    const text = readFileSync(path.join(dir, name), 'utf8');
-    return { name, text: helper ? ownPart(text) : text };
-  });
+  const read = (from) =>
+    licenceFiles(from).map((name) => {
+      const text = readFileSync(path.join(from, name), 'utf8');
+      return { name, text: helper ? ownPart(text) : text };
+    });
+  let texts = read(dir);
+  const copy = path.join(copies, `${String(pkg.name).replace('/', '+')}@${pkg.version}`);
+  const copied = !texts.length && existsSync(copy);
+  if (copied) texts = read(copy);
   const license = licenceOf(pkg, texts);
   const fromFile = !pkg.license && !pkg.licenses && license !== 'UNKNOWN';
-  return { name: pkg.name, version: pkg.version, license, fromFile, source: sourceOf(pkg), texts, builds: new Set(), inside: new Set() };
+  return { name: pkg.name, version: pkg.version, license, fromFile, copied, source: sourceOf(pkg), texts, builds: new Set(), inside: new Set() };
 }
 
 // Where to read the licence of a library bundled inside another package:
@@ -322,7 +357,7 @@ function licenceCopyOf({ name, version }) {
 
 // Everything the bundles hold that came from someone else, from the records
 // the builds wrote: one entry per name and version.
-export function collectNotices(listsDir = LISTS_DIR) {
+export function collectNotices(listsDir = LISTS_DIR, copiesDir = LICENCES_DIR) {
   const entries = new Map();
   const problems = [];
   const insides = [];
@@ -339,7 +374,7 @@ export function collectNotices(listsDir = LISTS_DIR) {
     }
     const record = readJson(file);
     for (const dir of record.packages) {
-      const entry = add(packageEntry(dir), build);
+      const entry = add(packageEntry(dir, false, copiesDir), build);
       for (const name of ALSO_INSIDE[entry.name] ?? []) insides.push({ name, version: null, in: entry.name, build });
     }
     for (const dir of record.helpers ?? []) add(packageEntry(dir, true), build);
@@ -376,18 +411,20 @@ export function collectNotices(listsDir = LISTS_DIR) {
   const flagged = [];
   for (const entry of list) {
     const what = `${entry.name} ${entry.version} (${entry.license})`;
-    if (licenceRefused(entry.license)) {
-      problems.push(
-        `${what}: its licence doesn't mix with AGPL-3.0-only (the Eclipse Public License, without the GPL as a Secondary License), so it can't ship, even in FLAGGED. Leave it out of the bundle, as scripts/elkLeftOut.ts does elkjs.`,
-      );
+    const refusal = licenceRefusal(entry.license);
+    if (refusal) {
+      problems.push(`${what}: it can't ship, even in FLAGGED: ${refusal}. Leave it out of the bundle, as scripts/elkLeftOut.ts does elkjs.`);
       continue;
     }
     const issues = [];
-    if (!licenceAllowed(entry.license)) issues.push('its licence is not one known to be compatible with AGPL-3.0-only');
+    if (!licenceAllowed(entry.license)) issues.push('its licence is not one known to sit well in an Apache-2.0 program');
     if (!entry.texts.length) issues.push('it comes without its licence text');
     if (!issues.length) continue;
     if (FLAGGED[entry.name]) flagged.push(`${what}: ${FLAGGED[entry.name]}`);
-    else problems.push(`${what}: ${issues.join(', and ')}. Look at it, then remove it from the bundle or add it to FLAGGED in scripts/notices.mjs with why.`);
+    else {
+      const copy = entry.texts.length ? '' : `, keep a copy of its licence from its source in scripts/licences/${String(entry.name).replace('/', '+')}@${entry.version}/,`;
+      problems.push(`${what}: ${issues.join(', and ')}. Look at it, then remove it from the bundle${copy} or add it to FLAGGED in scripts/notices.mjs with why.`);
+    }
   }
   return { entries: list, problems, flagged };
 }
@@ -410,7 +447,7 @@ export function noticesMarkdown(entries) {
   const lines = [
     '# Third-party notices',
     '',
-    'Tricot is © 2026 Tricot Studio, under the GNU Affero General Public License, version 3 only (see LICENSE), or a commercial licence (see COMMERCIAL.md).',
+    'Tricot is © 2026 Tricot Studio, under the Apache License, Version 2.0 (see LICENSE and NOTICE). The licence doesn\'t cover the name "Tricot" or its logo.',
     '',
     `This package also carries other people's work, each under its own licence: the libraries bundled into the web page (dist/web) and into the command (dist/cli), and the font of the wordmark. Their names, versions and licences follow, and then each one's full licence text.${credits.length ? ` ${credits.join(' ')}` : ''}`,
     '',
@@ -423,7 +460,7 @@ export function noticesMarkdown(entries) {
   for (const entry of entries) {
     lines.push('', '---', '', `## ${entry.name} ${entry.version}`, '');
     const licence = entry.fromFile ? `${entry.license} (its package.json names none; this is its licence file's)` : entry.license;
-    lines.push(`${licence}, in ${where(entry)}.${entry.source ? ` Source: ${entry.source}` : ''}`);
+    lines.push(`${licence}, in ${where(entry)}.${entry.source ? ` Source: ${entry.source}` : ''}${entry.copied ? ' Its package carries no licence file, so this is the one its source has.' : ''}`);
     for (const { name, text } of entry.texts) {
       const body = text.replace(/\r\n?/g, '\n').trimEnd();
       const mark = fence(body);

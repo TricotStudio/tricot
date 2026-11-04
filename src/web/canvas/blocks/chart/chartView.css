@@ -1,0 +1,104 @@
+/* ---- a chart's full view (chartView.tsx) ---------------------------------------
+   The chart drawn large on a sheet, as wide as reads well; the markers of
+   its pinned parts in a row under it. A pinned bar, slice or line is drawn
+   with a blue edge, the one being asked about amber, the open one stronger. */
+
+.chart-full-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.chart-full {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, calc(100% - 48px));
+  min-height: 340px;
+  max-height: 680px;
+  padding: 18px 20px 12px;
+}
+.chart-full > .chart {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.chart-full .chart-top {
+  padding-bottom: 12px;
+}
+.chart-full .chart-legend {
+  font-size: 13px;
+}
+
+/* The legend's items: a series (or a pie's part) to point at. */
+.chart-legend-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -3px -7px;
+  padding: 3px 7px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+.chart-legend.is-pinnable .chart-legend-pick {
+  cursor: pointer;
+}
+.chart-legend.is-pinnable .chart-legend-pick:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.chart-legend li.is-pinned .chart-legend-pick {
+  background: var(--pin-bg);
+  color: var(--pin-ink);
+  box-shadow: inset 0 0 0 1.5px var(--pin);
+}
+.chart-legend li.is-asking .chart-legend-pick {
+  background: var(--pin-draft-bg);
+  color: var(--open-ink);
+  box-shadow: inset 0 0 0 1.5px var(--pin-draft);
+}
+
+/* Marks pinned, and the one asked about. */
+.chart-full .chart-bar.is-pinned,
+.chart-full .chart-slice.is-pinned {
+  stroke: var(--pin);
+  stroke-width: 2px;
+  opacity: 1;
+}
+.chart-full .chart-bar.is-asking,
+.chart-full .chart-slice.is-asking {
+  stroke: var(--pin-draft);
+  stroke-width: 2.5px;
+  opacity: 1;
+}
+.chart-full :is(.chart-bar, .chart-slice).is-open {
+  stroke-width: 3.5px;
+}
+.chart-full .chart-line.is-pinned {
+  stroke-width: 3.5;
+}
+.chart-full .chart-line.is-asking {
+  stroke-width: 4.5;
+}
+.chart-full .chart-pin.is-open {
+  stroke-width: 3;
+}
+.chart-full.is-pointing .chart-hits > * {
+  cursor: pointer;
+}
+
+.chart-full-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px 18px;
+}
+.chart-full-chips .pin-chip {
+  margin-left: 0;
+}

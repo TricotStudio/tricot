@@ -2,7 +2,7 @@
 // the lines that matter highlighted. It is named by its path, so it has no
 // title. People comment on its lines.
 
-import { type CodeFields, type CodeInput, codeBlockSize, findCodeLine, shortPath } from './code';
+import { type CodeFields, type CodeInput, codeBlockSize, codeLines, findCodeLine, shortPath } from './code';
 import type { BlockKind } from '../kind';
 import { server } from './server';
 
@@ -30,10 +30,15 @@ export const code: BlockKind<CodeTypes> = {
   },
   pins: {
     anchor: server.anchor,
+    part: server.part,
+    // Found again by its (first) line's text; a range keeps its length, within the lines the block has.
     place(block, pin) {
       if (pin.anchor.kind !== 'line') return undefined;
       const line = findCodeLine(block, pin.anchor.line, pin.quote);
-      return line === null ? null : { kind: 'line', file: block.path, line, side: 'new' };
+      if (line === null) return null;
+      const { last } = pin.anchor;
+      const end = (block.start ?? 1) + codeLines(block.text).length - 1;
+      return { kind: 'line', file: block.path, line, side: 'new', ...(last && last > pin.anchor.line ? { last: Math.min(end, line + last - pin.anchor.line) } : {}) };
     },
   },
 

@@ -8,7 +8,7 @@ import { type BoardRepository, refOf } from './repository';
 import type { Tasks } from './tasks';
 import { LIMITS, commentText, guardArchived, limited, randomId, required } from './validate';
 import { blockLabel } from '../canvas';
-import { askingWords, connectorPinning } from '../connectors';
+import { askRefusal, partOf } from '../parts';
 import { clip } from '../format';
 import { agentsIn, peopleIn, withoutLeadingMentions } from '../mentions';
 import { canvasName, cleanQuote, partQuote, pinPart } from '../pins';
@@ -65,11 +65,14 @@ export class Pins {
   // discussion, so there it starts a thread on the pin. Commenting on a part
   // that already has comments adds to them.
   // `ask` makes the comment a request for agents to act on the part: to edit
-  // a Google Doc's paragraph in its draft (a part its connector offers).
+  // a Google Doc's paragraph in its draft (a part its connector offers), or
+  // one of the parts a kind offers (core/parts.ts): to change a website's
+  // element, a code block's lines, a diagram's node, to rewrite a note's
+  // words, to make a new version of an image with a box changed.
   pinComment(blockId: string, part: PinPart, body: string, actor: Actor, options: { ask?: boolean } = {}): { pin: Pin; comment: Comment } {
     const { located, block, anchor, quote } = this.preparePin(blockId, part);
     const text = commentText(body);
-    if (options.ask && !connectorPinning(anchor.kind)?.pins?.ask) throw new BoardError(askingWords()?.refusal ?? 'No part of a connector can be asked of agents; comment on it.');
+    if (options.ask && !partOf(block, anchor.kind)?.ask) throw new BoardError(askRefusal());
     const same = located.canvas.pins.find((p) => p.blockId === block.id && p.discussion && samePart(p.anchor, anchor));
     const discussion: PinDiscussion = located.task || located.decision ? {} : { thread: [] };
     // Pinned quietly: the comment is what's worth telling, and it says where.
@@ -105,12 +108,17 @@ export class Pins {
   }
 
   // Adds a comment about a pin's part where its comments go, and says so.
-  // `ask`: a person's request for agents to edit the doc's paragraph.
+  // `ask`: a person's request for agents to act on the part (edit the doc's
+  // paragraph, change the website's element, the code block's lines…). A
+  // part other than a Google Doc's paragraph is named on the comment, by its
+  // part's name ('site', 'code'), for the words agents read.
   private commentAt(located: Located, block: Block, pin: Pin, text: string, actor: Actor, ask = false): Comment {
     const quote = clip(partQuote(pin, block), 200);
-    const asking = ask ? `edit ${pinIn(pin, block)}` : undefined;
-    if (located.task) return this.tasks.addTaskComment(located.task.id, text, actor, { id: pin.id, quote }, asking).comments.at(-1)!;
-    if (located.decision) return this.decisions.addComment(located.decision.id, text, actor, { id: pin.id, quote }, asking).comments.at(-1)!;
+    const part = ask ? partOf(block, pin.anchor.kind) : undefined;
+    const asking = ask ? `${part?.ask?.verb ?? 'edit'} ${pinIn(pin, block)}` : undefined;
+    const askPart = part && part.kind !== 'doc' ? part.kind : undefined;
+    if (located.task) return this.tasks.addTaskComment(located.task.id, text, actor, { id: pin.id, quote }, asking, askPart).comments.at(-1)!;
+    if (located.decision) return this.decisions.addComment(located.decision.id, text, actor, { id: pin.id, quote }, asking, askPart).comments.at(-1)!;
     const now = new Date().toISOString();
     const mentions = this.people.mentionsIn(located.board, text, actor);
     const held = this.people.heldIn(located.board, pin.discussion?.thread ?? [], actor, mentions);
@@ -120,6 +128,7 @@ export class Pins {
       body: text,
       createdAt: now,
       ...(ask ? { ask: true as const } : {}),
+      ...(askPart ? { askPart } : {}),
       ...(mentions.length ? { mentions } : {}),
       ...(held ? { held } : {}),
     };

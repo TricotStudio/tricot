@@ -20,7 +20,7 @@ import './liveSteps.css';
 
 // Each agent's live steps on this machine: null while loading, undefined when
 // this server has none to offer.
-function useLiveSteps(): { report: LiveStepsReport | null | undefined; reload: () => void } {
+export function useLiveSteps(): { report: LiveStepsReport | null | undefined; reload: () => void } {
   const [report, setReport] = useState<LiveStepsReport | null | undefined>(null);
   const [round, setRound] = useState(0);
   useEffect(() => {
@@ -43,8 +43,10 @@ function withCode(text: string): ReactNode[] {
 
 // ---- an agent's panel ---------------------------------------------------------------
 
-export function AgentLiveSteps({ name, person }: { name: string; person: string }) {
-  const { report, reload } = useLiveSteps();
+// The panel reads each agent's live steps once (useLiveSteps), for this
+// switch and for its Usage section (usage.tsx), which says what they pass on.
+export function AgentLiveSteps({ name, person, steps }: { name: string; person: string; steps: ReturnType<typeof useLiveSteps> }) {
+  const { report, reload } = steps;
   const [asking, setAsking] = useState<LiveStepsChange | null>(null);
   const [done, setDone] = useState<LiveStepsResult | null>(null);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -282,8 +284,12 @@ function LiveStepsSheet({
   const lede = tidying
     ? `${agent.name}'s steps are on for every project, so the hook ${project} got earlier isn't needed. Tricot takes out only its own lines there; every other setting stays as it is.`
     : turningOn
-      ? `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project. Tricot adds a small hook to ${agent.name}'s own settings and changes nothing else. It sends no file contents, command output or prompts.`
-      : `${agent.name} stops sending its steps. Tricot takes out only what it added; every other setting stays as it is.`;
+      ? agent.approvals
+        ? `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project${agent.usage ? ', and passes on its plan usage, numbers only, for its panel' : ''}. Its permission prompts come to the board too, with the command or change it asks about, for you to answer there. Tricot changes only what is listed here, and steps carry no file contents, command output or prompts.`
+        : agent.usage
+          ? `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project, and passes on its plan usage, numbers only, for its panel. Tricot changes only what is listed here, and sends no file contents, command output or prompts.`
+          : `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project. Tricot adds a small hook to ${agent.name}'s own settings and changes nothing else. It sends no file contents, command output or prompts.`
+      : `${agent.name} stops sending its steps${agent.approvals ? ', and its permission prompts go back to the terminal' : ''}. Tricot takes out only what it added; every other setting stays as it is.`;
   return (
     <div className="live-sheet-scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onCancel()}>
       <div className="live-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={sheet} tabIndex={-1} onKeyDown={keys}>

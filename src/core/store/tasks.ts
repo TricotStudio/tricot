@@ -9,7 +9,7 @@ import { LIMITS, commentText, guardArchived, limited, optional, randomId, requir
 import { assignedTo, assignmentSummary, claimRefusal, reassignRefusal } from '../assignee';
 import { staleFromDeleted } from '../cardLinks';
 import { emptyCanvas } from '../canvas';
-import { givenSummary, givesFirstLook, openFirstLook } from '../firstLook';
+import { givenSummary, givesFirstLook, openFirstLook, openedBy } from '../firstLook';
 import { clip, listNames } from '../format';
 import { agentsIn } from '../mentions';
 import { LANE_NAMES, isOrdered, laneTasks, placeAt, spotLabel } from '../taskOrder';
@@ -23,13 +23,20 @@ export class Tasks {
     private readonly firstLooks: FirstLooks,
   ) {}
 
-  // `ready` puts a person's tasks straight in to do, for agents to pick up.
-  planTasks(boardId: string, inputs: NewTask[], actor: Actor, options: { ready?: boolean } = {}): Task[] {
+  // `ready` puts a person's tasks straight in to do, for agents to pick up;
+  // `backlog` has an agent open its tasks in the backlog, for people to shape.
+  planTasks(boardId: string, inputs: NewTask[], actor: Actor, options: { ready?: boolean; backlog?: boolean } = {}): Task[] {
     const board = this.repo.getBoard(boardId);
     guardArchived(board);
     if (inputs.length === 0) throw new BoardError('Plan at least one task.');
     if (inputs.length > LIMITS.tasks) throw new BoardError(`Plan at most ${LIMITS.tasks} tasks at once.`);
     if (board.tasks.length + inputs.length > 500) throw new BoardError('A board can hold at most 500 tasks.');
+    const opening = actor.kind === 'agent' && options.backlog === true;
+    const now = new Date(this.repo.now()).toISOString();
+    if (opening) {
+      const refused = openingRefusal(board, actor, inputs.length, Date.parse(now));
+      if (refused) throw new BoardError(refused);
+    }
     // Validate the whole plan first, so a bad task can't leave half of it behind.
     const prepared = inputs.map((input) => ({
       title: limited(required(input.title, 'task title'), LIMITS.taskTitle, 'A task title'),
@@ -38,18 +45,18 @@ export class Tasks {
     }));
     const assignees = inputs.map((input) => (input.assignee?.trim() ? this.people.agentNamed(board, input.assignee, actor) : undefined));
 
-    const now = new Date().toISOString();
     // Planning a decision someone asked to have planned answers their request.
     const requests = new Map(
       board.decisions.filter((d) => d.planRequest && prepared.some((p) => p.decisionIds.includes(d.id))).map((d) => [d.id, d]),
     );
     // Tasks people add wait in the backlog while they shape them, unless they
     // say they're ready; agents plan from settled decisions, so their tasks
-    // are ready to build.
-    const backlog = actor.kind === 'human' && !options.ready;
+    // are ready to build, unless they open them in the backlog: a note a
+    // person asked for, or a bug or follow-up they noticed.
+    const backlog = actor.kind === 'human' ? !options.ready : opening;
     // Each card a person adds to the backlog waits on one agent's first look,
-    // which the agents its text @-mentions take.
-    const mentioned = prepared.map((p) => (backlog ? agentsIn(board, this.people.mentionsIn(board, [p.title, p.detail].filter(Boolean).join('\n'), actor)) : []));
+    // which the agents its text @-mentions take. One an agent opens needs none.
+    const mentioned = prepared.map((p) => (backlog && !opening ? agentsIn(board, this.people.mentionsIn(board, [p.title, p.detail].filter(Boolean).join('\n'), actor)) : []));
     return prepared.map((fields, i) => {
       const assignee = assignees[i];
       const firstLook = openFirstLook(actor, backlog, now, mentioned[i]);
@@ -59,6 +66,7 @@ export class Tasks {
         ...fields,
         ...(assignee ? { assignee, assignedBy: actor } : {}),
         ...(firstLook ? { firstLook } : {}),
+        ...(opening ? { openedInBacklog: true as const } : {}),
         status: backlog ? 'backlog' : 'todo',
         links: [],
         notes: [],
@@ -91,8 +99,11 @@ export class Tasks {
   }
 
   // `pin` is the part of the task's canvas the comment is about, if any;
-  // `ask`, what a person asks agents to do to it ("edit … in Google Doc …").
-  addTaskComment(taskId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string): Task {
+  // `ask`, what a person asks agents to do to it ("edit … in Google Doc …"),
+  // and `askPart`, the kind of part when it isn't a Google Doc's paragraph.
+  // `paired`: the line a pairing session leaves on the card (core/pairing.ts),
+  // for the agent paired with alone.
+  addTaskComment(taskId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string, askPart?: string, paired?: Comment['paired']): Task {
     const { board, task } = this.repo.getTask(taskId);
     guardArchived(board);
     const now = new Date().toISOString();
@@ -110,10 +121,12 @@ export class Tasks {
       createdAt: now,
       ...(pin ? { pin } : {}),
       ...(ask ? { ask: true as const } : {}),
+      ...(askPart ? { askPart } : {}),
       ...(mentions.length ? { mentions } : {}),
       ...(skill ? { skill } : {}),
       ...(via ? { via } : {}),
       ...(held ? { held } : {}),
+      ...(paired ? { paired } : {}),
     };
     task.comments.push(comment);
     task.updatedAt = now;
@@ -135,7 +148,7 @@ export class Tasks {
     const about = pin ? ` about ${clip(pin.quote, 80)}` : '';
     const what = ask ? `asked agents, on ${taskLabel(task)}, to ${ask}` : `commented on ${taskLabel(task)}${about}`;
     const summary = giving ? givenSummary(task, text) : `${what}: "${clip(text, 200)}"`;
-    this.repo.record(board, actor, 'comment_added', summary, task.decisionIds[0], task.id, task.id, now, mentions, comment.id, undefined, Boolean(held));
+    this.repo.record(board, actor, 'comment_added', summary, task.decisionIds[0], task.id, task.id, now, mentions, comment.id, paired?.agent, Boolean(held));
     return task;
   }
 
@@ -144,7 +157,7 @@ export class Tasks {
     guardArchived(board);
     guardDropped(task, actor, 'claim it');
     if (task.status === 'done') throw new BoardError(`${taskLabel(task)} is done.`);
-    if (task.status === 'backlog' && actor.kind === 'agent') throw new BoardError(backlogMessage(task));
+    if (task.status === 'backlog' && actor.kind === 'agent') throw new BoardError(backlogMessage(task, actor));
     const theirs = claimRefusal(task, actor); // another agent's to claim
     if (theirs && !(task.claimedBy && sameActor(task.claimedBy, actor))) throw new BoardError(theirs);
     if (task.stale) throw new BoardError(staleMessage(board, task));
@@ -168,7 +181,7 @@ export class Tasks {
     const moving = patch.status !== undefined && patch.status !== task.status;
     // The backlog is people's triage: only they move a task into it or out of it.
     if (moving && actor.kind === 'agent') {
-      if (task.status === 'backlog') throw new BoardError(backlogMessage(task));
+      if (task.status === 'backlog') throw new BoardError(backlogMessage(task, actor));
       if (patch.status === 'backlog') {
         throw new BoardError('Only people move tasks to the backlog. If it needs a person, mark it blocked with a note saying why.');
       }
@@ -387,8 +400,38 @@ const STATUS_CHANGE: Record<TaskStatus, string> = {
   dropped: 'dropped it', // its own call (TaskLifecycle.drop), never a status sent
 };
 
-function backlogMessage(task: Task): string {
+function backlogMessage(task: Task, actor: Actor): string {
+  if (openedBy(task, actor)) {
+    return `You opened ${taskLabel(task)} in the backlog for people to shape, so only a person marks it ready (it moves to to do); then you can claim it. Until then you can revise it, comment and add to its canvas.`;
+  }
   return `${taskLabel(task)} is in the backlog: a person is still shaping it. You can read it, comment and add to its canvas, and claim it once they mark it ready (it moves to to do).`;
+}
+
+const HOUR = 60 * 60_000;
+
+// Agents open backlog cards a few at a time: LIMITS.backlogCards an hour each,
+// on a board. That's room for what a person asks an agent to note and for the
+// bugs it notices along the way, while a runaway agent, filing a card for every
+// warning it sees, stops after a few that a person clears in a minute. Why a
+// plan of `count` more is refused, or nothing if it isn't.
+function openingRefusal(board: Board, actor: Actor, count: number, now: number): string | undefined {
+  const most = LIMITS.backlogCards;
+  if (count > most) return `An agent opens at most ${most} backlog cards an hour. Open the ${most} that matter most, or gather related ones into one card.`;
+  const recent = board.tasks
+    .filter((t) => openedBy(t, actor) && now - Date.parse(t.createdAt) < HOUR)
+    .map((t) => Date.parse(t.createdAt))
+    .sort((a, b) => a - b);
+  if (recent.length + count <= most) return undefined;
+  const left = most - recent.length;
+  const why = 'so people can keep up with their backlog';
+  if (left > 0) {
+    const room = `${left} more backlog card${left === 1 ? '' : 's'}`;
+    return `You can open ${room} this hour (at most ${most} an hour, ${why}). Open the ones that matter most, or gather related ones into one card.`;
+  }
+  // The card that has to turn an hour old before this plan fits.
+  const minutes = Math.max(1, Math.ceil((recent[recent.length + count - most - 1] + HOUR - now) / 60_000));
+  const more = count === 1 ? 'another' : `${count} more`;
+  return `You've opened ${recent.length} backlog cards on this board in the last hour, the most an agent can (${why}). You can open ${more} in ${minutes} minute${minutes === 1 ? '' : 's'}; until then, add what you found to one you opened (update_task detail), or mention it to a person in a comment.`;
 }
 
 function emptyReviewMessage(task: Task): string {

@@ -3,16 +3,17 @@
 
 import { z } from 'zod';
 import type { ChartTypes } from './index';
-import { CHART_KINDS, type ChartInput, type ChartKind, chartAdvice, ChartError, type ChartContent, chartContent, chartDigest, describeChartChange, findPoint, pointQuote } from './chart';
+import { CHART_KINDS, type ChartInput, type ChartKind, chartAdvice, ChartError, type ChartContent, chartContent, chartDigest, describeChartChange, findPoint, findSeries, pointQuote, seriesQuote } from './chart';
 import { chartHighlight } from './highlight';
 import { cellShape, columnsOfText, rowsOfText, toCells } from '../cells';
-import type { AgentHalf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
 import { highlightType } from '../schema';
 import { missing } from '../shared';
 import { BoardError } from '../../store/errors';
 import { blockLabel } from '../../canvas';
 import { clip, listNames } from '../../format';
-import type { PinAnchor } from '../../types';
+import type { Pin, PinAnchor } from '../../types';
 
 // A chart as sent, checked: refusals say what to change (chart.ts).
 function checkedChart(input: ChartInput, given?: { highlight?: boolean }): ChartContent {
@@ -31,6 +32,47 @@ const SHAPE = {
   unit: z.string().optional().describe('Chart blocks: what the numbers count or measure, e.g. "tasks", "ms", "%" (one unit per chart)'),
   subtitle: z.string().optional().describe('Chart blocks: a line under the title, e.g. "This week, all tasks on the board"'),
   highlight: highlightType.describe('Chart blocks: a category (first-column value) to emphasise; the others recede'),
+};
+
+type ChartBlock = BlockOf<ChartTypes>;
+
+// Its bars, points and slices take requests (core/parts.ts): people click
+// one in its full view (a category, or one series of it), or a series in its
+// legend, and ask an agent to change it, which it does in the chart's data.
+// Pins stay on their category and series by name, whatever their numbers.
+const part: PartWords = {
+  kind: 'chart',
+  anchors: ['point'],
+  ask: {
+    verb: 'change',
+    asking: 'asking agents to change it in the chart',
+    doing: "Change the chart's data with update_block, then reply",
+    act: "change the chart's data with update_block, then ",
+    request: 'request to change the chart, ',
+    what: "a chart's bars and points",
+  },
+};
+
+// What a chart's mark is called: a bar, a point on a line, a slice of a pie.
+const markWord = (block: ChartBlock) => (block.kind === 'pie' ? 'slice' : block.kind === 'line' || block.kind === 'area' ? 'point' : 'bar');
+
+// The pinned part as an agent reads it: the bar "Thu · Done: 49 tasks"
+// (category "Thu", series "Done"); category "Thu" (its bars in every
+// series); series "Done" (its bars in every category).
+function pointWords(pin: Pin, block: ChartBlock): string {
+  if (pin.anchor.kind !== 'point') return pin.quote;
+  const { category, series } = pin.anchor;
+  const mark = markWord(block);
+  if (category === undefined) return `series "${clip(series ?? '', 60)}" (its ${mark}s in every category)`;
+  if (series === undefined && block.columns.length > 2) return `category "${clip(category, 60)}" (its ${mark}s in every series)`;
+  return `the ${mark} "${clip(pin.quote, 80)}" (category "${clip(category, 60)}"${series !== undefined ? `, series "${clip(series, 60)}"` : ''})`;
+}
+
+const ask: AskWords = {
+  part: ({ pin, block }) => `${block.type === 'chart' ? pointWords(pin, block) : pin.quote} of ${blockNamed(block, 'chart')}`,
+  how: ({ block }) =>
+    `Change the chart's data with update_block (block_id: ${block.id}, columns and rows: the whole table, the first column its categories, each other column a series), keeping the names of the categories and series you keep`,
+  view: 'the chart',
 };
 
 export const agent: AgentHalf<ChartTypes> = {
@@ -55,6 +97,7 @@ export const agent: AgentHalf<ChartTypes> = {
   },
   adviceAdded: (block) => chartAdvice(block),
   adviceUpdated: (block, args) => (args.rows !== undefined || args.kind !== undefined ? chartAdvice(block) : []),
+  asks: partAsksDigest(part, ask),
   pinShape: {
     category: z.string().optional().describe("A chart's bar, point or slice: its category, as the first column names it"),
     series: z.string().optional().describe('With category, on a chart of several series: the series, by its column name'),
@@ -135,6 +178,13 @@ export const server: ServerHalf<ChartTypes> = {
 
   anchor(block, part) {
     if (part.kind !== 'point') return undefined;
+    // A series alone, picked in the legend: the whole series.
+    if (part.category === undefined) {
+      if (part.series === undefined) throw new BoardError("Pin a chart's bar, point or slice by its category, or a whole series by its name.");
+      const found = findSeries(block, part.series);
+      if (found === null) throw new BoardError(`${blockLabel(block)} has no series "${clip(part.series, 40)}". Its series: ${listNames(block.columns.slice(1).map((c) => `"${c}"`))}.`);
+      return { anchor: { kind: 'point', series: block.columns[found + 1] }, quote: seriesQuote(block, found) };
+    }
     // On a chart of one series, the category is the point.
     const series = block.columns.length > 2 ? part.series : undefined;
     const at = findPoint(block, String(part.category ?? ''), series);
@@ -151,6 +201,7 @@ export const server: ServerHalf<ChartTypes> = {
     const anchor: PinAnchor = at.series === null ? { kind: 'point', category } : { kind: 'point', category, series: block.columns[at.series + 1] };
     return { anchor, quote: pointQuote(block, at.row, at.series) };
   },
+  part,
 
   agent,
   people,

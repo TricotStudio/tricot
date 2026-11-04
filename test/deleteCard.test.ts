@@ -20,6 +20,7 @@ import { kindOf } from '../src/core/blocks/registry';
 import type { Actor, Block, Board } from '../src/core/types';
 import { peoplesCopy } from '../src/server/api';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -56,6 +57,9 @@ function versionRows(dir: string, blockId: string): number {
 
 // The board as a page gets it over the wire.
 const wire = <T>(value: T): T => JSON.parse(JSON.stringify(value, peoplesCopy));
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('Deleting a card made by mistake, for good', () => {
   let dir: string;
@@ -294,6 +298,7 @@ describe('Deleting a card over the API and MCP', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -311,7 +316,7 @@ describe('Deleting a card over the API and MCP', () => {
   });
 
   const post = async (route: string, body: Record<string, unknown>) => {
-    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
   const tool = async (name: string, args: Record<string, unknown> = {}) => {

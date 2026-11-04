@@ -18,6 +18,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // The prompt under selected words. It doesn't take the focus: the words stay
 // selected in the paragraph, so typing over them edits the doc as usual (and
 // closes an empty prompt). Clicking into it asks.
+// `agent`: the agent paired with (canvas/pairing), whom a request goes to.
 export function DocAskPrompt(props: {
   words: DocWords;
   style: CSSProperties;
@@ -25,11 +26,12 @@ export function DocAskPrompt(props: {
   text: string;
   busy: boolean;
   error: string | null;
+  agent?: string | null;
   onText: (text: string) => void;
   onSubmit: (ask: boolean) => void;
   onClose: () => void;
 }) {
-  const { words, style, above, text, busy, error, onText, onSubmit, onClose } = props;
+  const { words, style, above, text, busy, error, agent, onText, onSubmit, onClose } = props;
   const root = useRef<HTMLDivElement>(null);
   const empty = !text.trim();
 
@@ -69,7 +71,7 @@ export function DocAskPrompt(props: {
       <MentionTextarea
         rows={2}
         value={text}
-        placeholder="Ask an agent to… (e.g. make this shorter, rewrite for a customer); @ to pick one"
+        placeholder={agent ? `Ask ${agent} to… (e.g. make this shorter, rewrite for a customer)` : 'Ask an agent to… (e.g. make this shorter, rewrite for a customer); @ to pick one'}
         aria-label="What should an agent do with these words?"
         onValue={onText}
       />
@@ -80,16 +82,18 @@ export function DocAskPrompt(props: {
       )}
       <div className="pin-prompt-actions">
         <button type="button" className="btn btn-small btn-primary" disabled={empty || busy} onClick={() => onSubmit(true)}>
-          Ask an agent
+          {agent ? `Ask ${agent}` : 'Ask an agent'}
         </button>
         <button type="button" className="btn btn-small" disabled={empty || busy} onClick={() => onSubmit(false)}>
           Comment
         </button>
-        <kbd className="pin-prompt-keys" title={`${MOD}+Enter asks an agent`}>
+        <kbd className="pin-prompt-keys" title={`${MOD}+Enter asks ${agent ?? 'an agent'}`}>
           {MOD === '⌘' ? '⌘↵' : 'Ctrl ↵'}
         </kbd>
       </div>
-      <p className="pin-prompt-hint">An agent edits the draft and replies here. Comment just leaves a note.</p>
+      <p className="pin-prompt-hint">
+        {agent ? `${agent} edits the draft and replies here, with its steps on the pin as it works.` : 'An agent edits the draft and replies here.'} Comment just leaves a note.
+      </p>
     </div>
   );
 }

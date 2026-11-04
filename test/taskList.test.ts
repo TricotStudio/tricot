@@ -435,7 +435,7 @@ describe('Agents asking for checklists, over MCP', () => {
     // A person ticks a task and writes around the list.
     const res = await fetch(`${base}/api/canvas/blocks/${id}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base },
       body: JSON.stringify({ actor: 'Sam', rev: 1, text: 'Before Friday:\n\n- [x] Audit call sites\n- [ ] Ship\n\nAsk Sam first.' }),
     });
     assert.equal(res.status, 200);

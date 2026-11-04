@@ -1,7 +1,25 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { placePin } from '../../../../core/pins';
+// An image block's full view, in the pairing shell (canvas/pairing/piece.tsx):
+// the picture at full size, Fit, Actual size and 200%, zooming around the
+// pointer with the wheel or a pinch. The picture is drawn at its real size on
+// screen, never a small one scaled up, so it stays sharp at every zoom.
+//
+// Viewed on your own, dragging pans it. Paired with an agent, dragging draws
+// a box round a region, and a click takes a small box round the spot, to ask
+// the agent to change it, or to leave a note; the arrow keys still pan. The
+// agent sends a new version of the picture, which the view shows at once,
+// keeping its zoom; boxes are fractions of the picture, so they stay where
+// they were drawn. An earlier version shows as it was, with no boxes.
+
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from 'react';
+import { nextBox } from '../../../../core/blocks/image/boxes';
+import { atVersion } from '../../../../core/canvas';
 import type { Block } from '../../../../core/types';
+import { Icon } from '../../../components';
 import { useCanvas } from '../../context';
+import { PairPinChip } from '../../pairing/ask';
+import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
+import { boxBetween, isClick, spotBox, type Rect } from '../../pairing/pointing';
+import type { OverlayProps } from '../kind';
 import './imageViewer.css';
 
 type ImageBlock = Extract<Block, { type: 'image' }>;
@@ -58,23 +76,17 @@ function clamp(view: View, stage: Size, natural: Size, centre = false): View {
   };
 }
 
-// An image block's picture at full size, over the canvas: Fit, Actual size and
-// 200%, zooming around the pointer with the wheel or a pinch, panning by
-// dragging or with the arrow keys. The picture is drawn at its real size on
-// screen, never a small one scaled up, so it stays sharp at every zoom. Pins
-// drawn on it show, read-only.
-export function ImageViewer(props: { block: ImageBlock; version: number | null; showPins: boolean; onClose: () => void }) {
-  const { block, version, showPins, onClose } = props;
-  const canvas = useCanvas();
-  const stageRef = useRef<HTMLDivElement>(null);
-  const dialogRef = useRef<HTMLElement>(null);
+// Whether a key is typed into something (the prompt, a reply), not said to the picture.
+const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+
+// The zoom and where the picture is: the stage it is drawn on, as it changes.
+function useZoom(stageRef: RefObject<HTMLDivElement | null>, block: ImageBlock) {
   const src = `/api/assets/${encodeURIComponent(block.assetId)}`;
   const stored = block.naturalWidth && block.naturalHeight ? { width: block.naturalWidth, height: block.naturalHeight } : null;
   const [loaded, setLoaded] = useState<{ src: string; size: Size } | null>(null);
   const natural = loaded?.src === src ? loaded.size : stored; // what the browser read wins
   const [stage, setStage] = useState<Size | null>(null);
   const [view, setView] = useState<View>({ scale: 1, x: 0, y: 0, fitted: true });
-  const [dragging, setDragging] = useState(false);
   const [hint, setHint] = useState(true);
   const latest = useRef({ view, stage, natural });
   latest.current = { view, stage, natural };
@@ -82,7 +94,8 @@ export function ImageViewer(props: { block: ImageBlock; version: number | null; 
   // The stage's size, as the window or the canvas changes (on the next frame,
   // so a change it causes doesn't loop back into the observer).
   useLayoutEffect(() => {
-    const element = stageRef.current!;
+    const element = stageRef.current;
+    if (!element) return;
     const measure = () => setStage((s) => (s?.width === element.clientWidth && s.height === element.clientHeight ? s : { width: element.clientWidth, height: element.clientHeight }));
     measure();
     let frame = 0;
@@ -95,7 +108,7 @@ export function ImageViewer(props: { block: ImageBlock; version: number | null; 
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
+  }, [stageRef]);
 
   // Fitted, it stays fitted as the stage or the picture changes; otherwise it is kept in bounds.
   const [naturalWidth, naturalHeight] = [natural?.width ?? 0, natural?.height ?? 0];
@@ -134,12 +147,14 @@ export function ImageViewer(props: { block: ImageBlock; version: number | null; 
 
   // The wheel and a trackpad pinch zoom around the pointer; Safari pinches with gestures.
   useEffect(() => {
-    const element = stageRef.current!;
+    const element = stageRef.current;
+    if (!element) return;
     const local = (e: { clientX: number; clientY: number }) => {
       const rect = element.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
     const onWheel = (e: WheelEvent) => {
+      if ((e.target as HTMLElement).closest('.pin-prompt')) return; // a thread scrolls
       e.preventDefault(); // no page zoom, no scrolling behind
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? element.clientHeight : 1;
       const delta = (Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX) * unit;
@@ -163,90 +178,96 @@ export function ImageViewer(props: { block: ImageBlock; version: number | null; 
       element.removeEventListener('gesturestart', onGestureStart);
       element.removeEventListener('gesturechange', onGestureChange);
     };
-  }, [zoomTo]);
+  }, [stageRef, zoomTo]);
 
-  // Keys, wherever focus is while it's open: Escape closes; arrows pan; + and -
-  // zoom; 0, 1 and 2 pick Fit, Actual size and 200%. Tab stays in the viewer.
-  // Nothing reaches the canvas meanwhile, so Delete can't remove the block.
+  // Keys, unless something is being typed: arrows pan; + and - zoom; 0, 1
+  // and 2 pick Fit, Actual size and 200%. Nothing reaches the canvas
+  // meanwhile, so Delete can't remove the block. Escape is the view's.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const { stage: s } = latest.current;
-      if (e.metaKey || e.ctrlKey || e.altKey) {
-        if (e.key !== 'Escape') return; // the browser's own shortcuts
-      }
       const pan = e.shiftKey && s ? Math.max(PAN, Math.min(s.width, s.height) * 0.8) : PAN;
-      const handled = (() => {
-        switch (e.key) {
-          case 'Escape':
-            onClose();
-            return true;
-          case 'ArrowLeft':
-            panBy(pan, 0);
-            return true;
-          case 'ArrowRight':
-            panBy(-pan, 0);
-            return true;
-          case 'ArrowUp':
-            panBy(0, pan);
-            return true;
-          case 'ArrowDown':
-            panBy(0, -pan);
-            return true;
-          case '+':
-          case '=':
-            zoomTo(latest.current.view.scale * STEP);
-            return true;
-          case '-':
-          case '_':
-            zoomTo(latest.current.view.scale / STEP);
-            return true;
-          case '0':
-            show('fit');
-            return true;
-          case '1':
-            show('actual');
-            return true;
-          case '2':
-            show('double');
-            return true;
-          case 'Tab': {
-            const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button, a[href], [tabindex="0"]') ?? [])];
-            const i = focusable.indexOf(document.activeElement as HTMLElement);
-            const next = e.shiftKey ? (i <= 0 ? focusable.length - 1 : i - 1) : i === focusable.length - 1 ? 0 : i + 1;
-            focusable[next]?.focus();
-            return true;
-          }
-          default:
-            return false;
-        }
-      })();
-      if (handled) e.preventDefault();
-      if (handled || e.key === 'Backspace' || e.key === 'Delete') e.stopPropagation();
+      const keys: Partial<Record<string, () => void>> = {
+        ArrowLeft: () => panBy(pan, 0),
+        ArrowRight: () => panBy(-pan, 0),
+        ArrowUp: () => panBy(0, pan),
+        ArrowDown: () => panBy(0, -pan),
+        '+': () => zoomTo(latest.current.view.scale * STEP),
+        '=': () => zoomTo(latest.current.view.scale * STEP),
+        '-': () => zoomTo(latest.current.view.scale / STEP),
+        _: () => zoomTo(latest.current.view.scale / STEP),
+        '0': () => show('fit'),
+        '1': () => show('actual'),
+        '2': () => show('double'),
+      };
+      const act = keys[e.key];
+      if (act) {
+        act();
+        e.preventDefault();
+      }
+      if (act || e.key === 'Backspace' || e.key === 'Delete') e.stopPropagation();
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose, panBy, show, zoomTo]);
+  }, [panBy, show, zoomTo]);
 
   useEffect(() => {
     stageRef.current?.focus({ preventScroll: true });
     const timer = setTimeout(() => setHint(false), HINT_MS);
     return () => clearTimeout(timer);
-  }, []);
+  }, [stageRef]);
 
-  // Dragging pans; two fingers pinch.
+  const fit = stage && natural ? fitScale(stage, natural) : 1;
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.001;
+  const actual = actualScale();
+  // When Fit is also one of the others, for a small picture, Fit shows.
+  const active: Preset | null = view.fitted || near(view.scale, fit) ? 'fit' : near(view.scale, actual) ? 'actual' : near(view.scale, 2 * actual) ? 'double' : null;
+  const pannable = Boolean(stage && natural && (natural.width * view.scale > stage.width + 0.5 || natural.height * view.scale > stage.height + 0.5));
+  const percent = `${Math.round((view.scale / actual) * 100)}%`; // of the actual size
+  return { src, natural, setLoaded, view, active, fit, actual, pannable, percent, hint, setHint, zoomTo, panBy, show };
+}
+
+type Zoom = ReturnType<typeof useZoom>;
+
+// The picture on its stage, with the boxes drawn on it.
+function Picture({ block, placed, pointing, chosen, open, pick, openPin, zoom, stageRef }: PieceBodyProps<ImageBlock> & { zoom: Zoom; stageRef: RefObject<HTMLDivElement | null> }) {
+  const canvas = useCanvas();
+  const { src, natural, setLoaded, view, active, fit, actual, pannable, percent, hint, setHint, panBy, show, zoomTo } = zoom;
+  const [dragging, setDragging] = useState(false);
+  const [drawing, setDrawing] = useState<Rect | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const from = useRef<{ x: number; y: number } | null>(null);
+  const next = nextBox(canvas.pins.get(block.id) ?? [], block.id);
+  const title = block.title || block.caption || 'Image';
+
+  // Where the pointer is on the picture, as fractions of it.
+  const onPicture = (e: { clientX: number; clientY: number }) => {
+    const rect = sheet.current!.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+  };
+
+  // Reading, dragging pans and two fingers pinch; pairing, dragging draws a box.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ distance: number; scale: number } | null>(null);
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (pointing && natural && sheet.current) {
+      from.current = onPicture(e);
+      setDrawing(boxBetween(from.current, from.current));
+      setHint(false);
+      return;
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
-      pinch.current = { distance: Math.hypot(a.x - b.x, a.y - b.y), scale: latest.current.view.scale };
+      pinch.current = { distance: Math.hypot(a.x - b.x, a.y - b.y), scale: view.scale };
     }
     setDragging(true);
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (from.current) return setDrawing(boxBetween(from.current, onPicture(e)));
     const last = pointers.current.get(e.pointerId);
     if (!last) return;
     const now = { x: e.clientX, y: e.clientY };
@@ -264,114 +285,158 @@ export function ImageViewer(props: { block: ImageBlock; version: number | null; 
     }
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    if (from.current) {
+      const start = from.current;
+      from.current = null;
+      setDrawing(null);
+      if (!natural) return;
+      const shown = { width: natural.width * view.scale, height: natural.height * view.scale };
+      const dragged = boxBetween(start, onPicture(e));
+      const box = isClick(dragged, shown) ? spotBox(start, natural) : dragged;
+      if (box.w <= 0 || box.h <= 0) return;
+      pick({ blockId: block.id, part: { kind: 'box', ...box }, quote: `box ${next}` });
+      return;
+    }
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
     if (pointers.current.size === 0) setDragging(false);
   };
 
-  const fit = stage && natural ? fitScale(stage, natural) : 1;
-  const near = (a: number, b: number) => Math.abs(a - b) < 0.001;
-  const actual = actualScale();
-  // When Fit is also one of the others, for a small picture, Fit shows.
-  const active: Preset | null =
-    view.fitted || near(view.scale, fit) ? 'fit' : near(view.scale, actual) ? 'actual' : near(view.scale, 2 * actual) ? 'double' : null;
-  const pannable = Boolean(stage && natural && (natural.width * view.scale > stage.width + 0.5 || natural.height * view.scale > stage.height + 0.5));
-  const title = block.title || block.caption || 'Image';
-  const percent = `${Math.round((view.scale / actual) * 100)}%`; // of the actual size
-  const meta = [natural && `${natural.width} × ${natural.height}`, version !== null && `v${version}`].filter(Boolean).join(' · ');
-
-  const pins = canvas.pins.get(block.id);
-  const boxes = useMemo(
-    () => (showPins ? (pins ?? []).flatMap((pin) => {
-      const place = placePin(block, pin);
-      return place?.kind === 'box' ? [{ id: pin.id, place }] : [];
-    }) : []),
-    [showPins, pins, block],
-  );
+  const asked = chosen?.part.kind === 'box' ? chosen.part : null;
+  const boxes = [
+    ...placed.flatMap(({ pin, place }) => (place?.kind === 'box' ? [{ key: pin.id, box: place, n: place.n, pin }] : [])),
+    ...(drawing ? [{ key: 'drawing', box: drawing, n: next, pin: undefined }] : asked ? [{ key: DRAFT_ANCHOR, box: asked, n: next, pin: undefined }] : []),
+  ];
+  const cursor = pointing ? ' is-pointing' : dragging ? ' is-dragging' : pannable ? ' is-pannable' : ' is-fitted';
 
   return (
-    <div className="image-viewer-backdrop nowheel nodrag nopan" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section ref={dialogRef} className="image-viewer" role="dialog" aria-modal="true" aria-label={`${title}, full size`}>
-        <header className="image-viewer-bar">
-          <div className="image-viewer-name">
-            <h2 title={title}>{title}</h2>
-            {meta && <span className="image-viewer-meta">{meta}</span>}
-          </div>
-          <span className="image-viewer-zoom" title="Zoom">
-            {percent}
-          </span>
-          <div className="image-viewer-presets" role="radiogroup" aria-label="Zoom">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                role="radio"
-                aria-checked={active === preset.id}
-                className={active === preset.id ? 'is-on' : undefined}
-                title={preset.title}
-                onClick={() => show(preset.id)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <a className="btn btn-small" href={src} target="_blank" rel="noreferrer">
-            Open in a new tab
-          </a>
-          <button type="button" className="btn btn-small" onClick={onClose}>
-            Close
-          </button>
-        </header>
+    <div className="image-full">
+      <div
+        ref={stageRef}
+        className={`image-viewer-stage${cursor}`}
+        tabIndex={0}
+        aria-label={`${title} at ${percent}. Arrow keys move it, plus and minus zoom, 0 fits it.`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={(e) => {
+          from.current = null;
+          setDrawing(null);
+          onPointerUp(e);
+        }}
+        onDoubleClick={(e) => {
+          if (pointing) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+          if (active === 'fit') show(fit < actual - 0.001 ? 'actual' : 'double', at);
+          else show('fit');
+        }}
+      >
         <div
-          ref={stageRef}
-          className={`image-viewer-stage${dragging ? ' is-dragging' : pannable ? ' is-pannable' : ' is-fitted'}`}
-          tabIndex={0}
-          aria-label={`${title} at ${percent}. Arrow keys move it, plus and minus zoom, 0 fits it.`}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onDoubleClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            if (active === 'fit') show(fit < actual - 0.001 ? 'actual' : 'double', at);
-            else show('fit');
-          }}
+          ref={sheet}
+          className="image-viewer-sheet"
+          style={natural ? { left: view.x, top: view.y, width: natural.width * view.scale, height: natural.height * view.scale } : { visibility: 'hidden' }}
         >
-          <div
-            className="image-viewer-sheet"
-            style={
-              natural
-                ? { left: view.x, top: view.y, width: natural.width * view.scale, height: natural.height * view.scale }
-                : { visibility: 'hidden' }
-            }
-          >
-            <img
-              src={src}
-              alt={block.caption ?? block.title ?? ''}
-              width={natural?.width}
-              height={natural?.height}
-              draggable={false}
-              onLoad={(e) => {
-                const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
-                if (width && height) setLoaded({ src, size: { width, height } });
-              }}
-            />
-            {boxes.map(({ id, place }) => (
-              <div
-                key={id}
-                className="pin-box is-linked"
-                style={{ left: `${place.x * 100}%`, top: `${place.y * 100}%`, width: `${place.w * 100}%`, height: `${place.h * 100}%` }}
-              >
-                <span className="pin-box-n">{place.n}</span>
-              </div>
-            ))}
-          </div>
-          <p className={`image-viewer-hint${hint ? '' : ' is-gone'}`} aria-hidden>
-            Scroll or pinch to zoom · drag to pan · Esc to close
-          </p>
+          <img
+            src={src}
+            alt={block.caption ?? block.title ?? ''}
+            width={natural?.width}
+            height={natural?.height}
+            draggable={false}
+            onLoad={(e) => {
+              const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
+              if (width && height) setLoaded({ src, size: { width, height } });
+            }}
+          />
+          {boxes.map(({ key, box, n, pin }) => (
+            <div
+              key={key}
+              className={`pin-box image-full-box ${pin ? 'is-linked' : 'is-draft'}${pin && pin.id === open ? ' is-open' : ''}`}
+              data-pair-anchor={pin ? pin.id : key === DRAFT_ANCHOR ? DRAFT_ANCHOR : undefined}
+              style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%` }}
+            >
+              {pin ? (
+                <button
+                  type="button"
+                  className="pin-box-n"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => openPin(pin.id)}
+                  aria-label={`Box ${n}: what was said about it`}
+                  title={`Box ${n}: what was said about it`}
+                >
+                  {n}
+                </button>
+              ) : (
+                <span className="pin-box-n">{n}</span>
+              )}
+            </div>
+          ))}
         </div>
-      </section>
+        <p className={`image-viewer-hint${hint ? '' : ' is-gone'}`} aria-hidden>
+          {pointing ? 'Drag a box round a part, or click a spot · scroll to zoom' : 'Scroll or pinch to zoom · drag to pan'}
+        </p>
+      </div>
+      {placed.length > 0 && (
+        <div className="image-full-chips">
+          {placed.map(({ pin }) => (
+            <PairPinChip key={pin.id} pin={pin} open={pin.id === open} part={pin.quote} onToggle={() => openPin(pin.id)} />
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Fit, Actual size, 200%, and the picture on its own in a tab.
+function ZoomControls({ zoom }: { zoom: Zoom }) {
+  const { active, percent, show, src } = zoom;
+  return (
+    <>
+      <span className="image-viewer-zoom" title="Zoom">
+        {percent}
+      </span>
+      <div className="pair-segments" role="radiogroup" aria-label="Zoom">
+        {PRESETS.map((preset) => (
+          <button key={preset.id} type="button" role="radio" aria-checked={active === preset.id} className={active === preset.id ? 'is-on' : undefined} title={preset.title} onClick={() => show(preset.id)}>
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      <a className="btn btn-small" href={src} target="_blank" rel="noreferrer">
+        Open in a tab
+        <Icon name="external" />
+      </a>
+    </>
+  );
+}
+
+export function ImageView({ block, name, version, pinId, onClose }: OverlayProps<ImageBlock>) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const shown = (version ? atVersion(block, version) : block) as ImageBlock;
+  const zoom = useZoom(stageRef, shown);
+  const title = block.title || block.caption || 'Image';
+  const rev = version ? version.rev : block.versionCount ? block.rev : null;
+  const from = ['Image', zoom.natural && `${zoom.natural.width} × ${zoom.natural.height}`, rev !== null && `v${rev}`].filter(Boolean).join(' · ');
+  return (
+    <PieceView
+      block={block}
+      name={name}
+      version={version}
+      pinId={pinId}
+      part="image"
+      className="image-full-view"
+      label={`${title}, full size`}
+      icon={<Icon name="image" />}
+      title={title}
+      from={from}
+      browse={{ label: 'View', hint: 'Zoom and pan on your own' }}
+      it="the image"
+      point="drag a box round a part, or click a spot,"
+      does="makes a new version of the image"
+      example="make the button blue, say"
+      controls={<ZoomControls zoom={zoom} />}
+      body={(props) => <Picture {...props} zoom={zoom} stageRef={stageRef} />}
+      onClose={onClose}
+    />
   );
 }

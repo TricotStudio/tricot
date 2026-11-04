@@ -127,6 +127,8 @@ export function liveStepsAgent(ctx: LiveStepsContext, installer: HookInstaller):
     ...(status.problem && { problem: status.problem }),
     ...(status.trust && { trust: status.trust }),
     ...(status.sendsAs && { sendsAs: status.sendsAs }),
+    ...(status.usage && { usage: status.usage }),
+    ...(installer.approvals && { approvals: true }),
     ...(project && { alsoInProject: shown(project, target) }),
   };
 }
@@ -176,7 +178,10 @@ export function planLiveSteps(ctx: LiveStepsContext, id: string, action: LiveSte
     changes = preview.changes;
     notes = preview.notes;
   } else {
-    changes = installer.previewUninstall(target).changes;
+    // With what to know: Claude Code's status line going back to the person's own.
+    const preview = installer.previewUninstall(target);
+    changes = preview.changes;
+    notes = preview.notes;
   }
   const files = changes.map((change) => asFile(change, target));
   const seen = { agent: installer.id, action, scope, sendsAs, files, notes, project };

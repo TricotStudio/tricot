@@ -25,6 +25,7 @@ export const note: BlockKind<NoteTypes> = {
   fromSnapshot: (version) => ({ text: version.text }),
   pins: {
     anchor: server.anchor,
+    part: server.part,
     place(block, pin) {
       if (pin.anchor.kind !== 'text') return undefined;
       const at = findWords(noteText(block.text), pin.quote, pin.anchor);

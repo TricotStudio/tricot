@@ -18,6 +18,7 @@ import { Icon } from './components';
 import { DecisionMap } from './decisionMap';
 import { cardHash, go, useReadOnly } from './hooks';
 import { useSeenOnBoard, type JustMade } from './justMade';
+import { CardApprovals } from './approvals';
 import { TakingALook } from './looking';
 import { RefChip } from './refs';
 
@@ -360,6 +361,7 @@ function DecisionRow(props: {
             </span>
           )}
           <TakingALook kind="decision" id={decision.id} />
+          <CardApprovals kind="decision" id={decision.id} />
         </div>
       </td>
       <td className="dt-a-cell">

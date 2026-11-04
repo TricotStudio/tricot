@@ -118,7 +118,7 @@ export class Blocks {
     const refused = refusedField(kind, patch);
     if (refused) throw new BoardError(`A ${block.type} block has no ${refused}.`);
     // What the kind changes is read and checked before anything changes.
-    const change = kind.change?.({ block, patch, assets: this.assets, canvas, restoring });
+    const change = kind.change?.({ block, patch, assets: this.assets, canvas, restoring, localFiles: this.repo.localFiles });
     if (patch.groupId) this.canvases.findGroup(canvas, patch.groupId);
 
     if (patch.title !== undefined && kind.titled !== false) block.title = optional(limited(patch.title, LIMITS.title, 'A title'));
@@ -156,7 +156,7 @@ export class Blocks {
   private newBlock(located: Located, input: NewBlock, actor: Actor): Block {
     const { canvas } = located;
     if (canvas.blocks.length >= LIMITS.blocks) throw new BoardError(`A canvas can hold at most ${LIMITS.blocks} blocks.`);
-    const content = blockContent(this.assets, input.content, located);
+    const content = blockContent(this.assets, input.content, located, this.repo.localFiles);
     const kind = kindOf(content.type);
     // A code block is named by its path, so it has no title.
     const title = input.title !== undefined && kind.titled !== false ? optional(limited(input.title, LIMITS.title, 'A title')) : undefined;

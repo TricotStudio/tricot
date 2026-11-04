@@ -366,22 +366,35 @@
 /* ---- the bar docking into the panel, and letting go (dockMotion.ts) --------
    One view transition. The bar and its Send keep their names across the
    change, so the floating bar morphs into the panel's composer: its place,
-   width and corners in one motion, on a soft spring. Meanwhile the panel's
-   column grows and the board's narrows, live, under the transition, so the
-   panel slides in a beat ahead of the bar and the board reflows as it goes;
-   then the panel's contents rise, a few tens of milliseconds apart. Closing,
-   the contents fade first; the composer then travels back to the bottom
-   centre as the panel slides out, and settles with a touch of overshoot.
-   The transition draws the bar's box itself while it moves, so the corners
-   and shadow change with its size instead of stretching with a picture of
-   it; what's in the bar crossfades, anchored at its left. */
+   width and corners in one motion, on a soft spring, setting off at once.
+   Meanwhile the panel slides in from the right edge of its column, under
+   the bar; then its contents rise, a few tens of milliseconds apart.
+   Closing, the contents fade first; the composer then travels back to the
+   bottom centre as the panel slides out, and settles with a touch of
+   overshoot. The transition draws the bar's box itself while it moves, so
+   the corners and shadow change with its size instead of stretching with a
+   picture of it; what's in the bar crossfades, anchored at its left, the
+   two pictures handing over so the bar never looks empty.
+   Only pictures move, and only by transform and opacity: the panel slides
+   as a picture of itself, and the board takes its new width at once, under
+   the panel (narrowing as it opens, widening as it closes), so the board is
+   laid out once, not on every frame of the motion.
+   The page itself is not pictured (no root snapshot): it stays live. And
+   the page's moving state (data-dock-*) is only ever read through a named
+   class on the right of a selector here, so setting it restyles those few
+   elements, not the whole page (T177).
+   Every duration and delay of the move is written at full length and scaled
+   by --dock-pace, so its steps keep their order and overlap at any pace, and
+   the move is retimed in that one place; dockMotion.ts scales its timers by
+   it too. At 0.75 the panel slides over 255ms and the bar over 270ms. */
 
 :root {
   --dock-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --dock-settle: cubic-bezier(0.3, 1.3, 0.5, 1); /* the bar settling at the bottom, just past and back */
-  --dock-panel: 340ms;
-  --dock-bar: 360ms;
-  --dock-lag: 30ms; /* the bar leaves a beat after the panel starts */
+  --dock-pace: 0.75;
+  --dock-panel: calc(340ms * var(--dock-pace));
+  --dock-bar: calc(360ms * var(--dock-pace));
+  --dock-lag: calc(30ms * var(--dock-pace)); /* the bar's box settles this long before the bar lands */
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -397,49 +410,43 @@
     border-color: transparent;
     box-shadow: none;
   }
-  :root[data-dock-move='close'] .thread-dock {
+  :root[data-dock-move] .thread-dock {
     view-transition-name: thread-dock;
   }
 
-  /* The board moves itself, live: no picture of the page to fade. */
-  :root[data-dock-move]::view-transition-old(root) {
-    display: none;
-  }
-  :root[data-dock-move]::view-transition-new(root) {
-    animation: none;
-  }
-  :root[data-dock-move]:not([data-dock-plain]) .board-layout {
-    transition: grid-template-columns var(--dock-panel) var(--dock-ease);
+  /* No picture of the page: it stays live under the moving pictures. */
+  :root[data-dock-move] {
+    view-transition-name: none;
   }
 
-  /* The bar and its Send: from where they were to where they land. */
+  /* The bar and its Send: from where they were to where they land, from
+     the first frame, and over the panel all the way (as pictures go, the
+     panel's would be drawn last, over the bar, being new). */
   ::view-transition-group(chat-bar),
   ::view-transition-group(chat-send) {
+    z-index: 1;
     animation-duration: var(--dock-bar);
     animation-timing-function: var(--dock-ease);
-  }
-  :root[data-dock-move='open']::view-transition-group(chat-bar),
-  :root[data-dock-move='open']::view-transition-group(chat-send) {
-    animation-delay: var(--dock-lag);
   }
   :root[data-dock-move='close']::view-transition-group(chat-bar),
   :root[data-dock-move='close']::view-transition-group(chat-send) {
     animation-timing-function: var(--dock-settle);
   }
-  /* Its box, finishing a moment before the move does, when the bar's own
-     box comes back in the same place (dockMotion.ts). */
+  /* Its box, finishing a beat before the move does, when the bar's own box
+     comes back in the same place (dockMotion.ts). The picture of the bar as
+     it was still has its own box, the same as this one where they start,
+     and fades with what's in it. */
   ::view-transition-image-pair(chat-bar) {
     box-sizing: border-box;
     border: 1px solid var(--border-strong);
     border-radius: 14px;
     background: var(--surface);
     overflow: hidden;
-    animation: bar-docks calc(var(--dock-bar) - 30ms) var(--dock-ease) var(--dock-lag) both;
+    animation: bar-docks calc(var(--dock-bar) - var(--dock-lag)) var(--dock-ease) both;
   }
   :root[data-dock-move='close']::view-transition-image-pair(chat-bar) {
     animation-name: bar-floats;
     animation-timing-function: var(--dock-settle);
-    animation-delay: 0s;
   }
   /* Let go of by a click elsewhere, which took the focus: from the field at
      rest, with no focus ring to flash on as it leaves. */
@@ -453,50 +460,62 @@
     object-position: left center;
     mix-blend-mode: normal;
   }
+  /* What's in the bar crossfades as it travels: one picture hands over to
+     the other, their opacities adding up to one all along, so the bar is
+     never empty; the new one is in well before the panel lands. */
   ::view-transition-old(chat-bar) {
-    animation: dock-fade-out 150ms ease-out var(--dock-lag) both;
+    animation: dock-fade-out calc(120ms * var(--dock-pace)) linear calc(75ms * var(--dock-pace)) both;
   }
   ::view-transition-new(chat-bar) {
-    animation: dock-fade-in 190ms ease-in calc(var(--dock-lag) + 120ms) both;
+    animation: dock-fade-in calc(120ms * var(--dock-pace)) linear calc(75ms * var(--dock-pace)) both;
   }
 
-  /* Closing, the panel slides out from under the bar; its contents went first. */
+  /* The panel slides in from the right edge of its column, and back out to
+     it, cut off there: from under the activity when that's open, else from
+     the window's edge. Its column has its width all along, the board beside
+     it already narrowed, or already widened again. */
   ::view-transition-group(thread-dock) {
     animation: none;
+    overflow: clip;
+  }
+  ::view-transition-new(thread-dock) {
+    animation: dock-panel-in var(--dock-panel) var(--dock-ease) both;
   }
   ::view-transition-old(thread-dock) {
     animation: dock-panel-out var(--dock-panel) var(--dock-ease) both;
   }
-  :root[data-dock-leaving] .thread-dock > :not(.dock-foot) {
-    animation: dock-content-out 90ms ease-in both;
+
+  /* Closing, the panel slides out from under the bar; its contents went first. */
+  :root[data-dock-leaving] .thread-dock > :is(.dock-head, .threads-pop, .threads-error, .dock-title, .lens-line, .threads-conversation, .threads-toast) {
+    animation: dock-content-out calc(90ms * var(--dock-pace)) ease-in both; /* FADE_FIRST_MS */
   }
-  :root[data-dock-move='close'] .thread-dock > :not(.dock-foot) {
+  :root[data-dock-move='close'] .thread-dock > :is(.dock-head, .threads-pop, .threads-error, .dock-title, .lens-line, .threads-conversation, .threads-toast) {
     opacity: 0;
   }
 
   /* Opening, the contents rise once the panel has landed: its head, then the
      thread's title, then the conversation. */
   :root[data-dock-move='open'] .thread-dock > :is(.dock-head, .threads-error) {
-    animation: dock-content-in 110ms ease-out 160ms both;
+    animation: dock-content-in calc(110ms * var(--dock-pace)) ease-out calc(160ms * var(--dock-pace)) both;
   }
   :root[data-dock-move='open'] .thread-dock > :is(.dock-title, .lens-line) {
-    animation: dock-content-in 110ms ease-out 195ms both;
+    animation: dock-content-in calc(110ms * var(--dock-pace)) ease-out calc(195ms * var(--dock-pace)) both;
   }
   :root[data-dock-move='open'] .thread-dock > .threads-conversation {
-    animation: dock-content-in 110ms ease-out 230ms both;
+    animation: dock-content-in calc(110ms * var(--dock-pace)) ease-out calc(230ms * var(--dock-pace)) both;
   }
 
-  /* Without view transitions: the panel still slides with its column, and
-     the bar rises in its new place. */
-  :root[data-dock-plain] .board-layout {
-    transition: grid-template-columns var(--dock-panel) var(--dock-ease);
+  /* Without view transitions: the panel itself slides in (closing, it goes
+     at once), and the bar rises in its new place. */
+  :root[data-dock-plain][data-dock-move='open'] .thread-dock {
+    animation: dock-panel-in var(--dock-panel) var(--dock-ease) both;
   }
   :root[data-dock-plain] .chat-bar {
-    animation: dock-content-in 200ms ease-out 120ms both;
+    animation: dock-content-in calc(200ms * var(--dock-pace)) ease-out calc(120ms * var(--dock-pace)) both;
   }
 }
 
-/* Reduced motion: a quick crossfade, nothing travels. */
+/* Reduced motion: a quick crossfade, nothing travels, at its own pace. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(root),
   ::view-transition-old(root),
@@ -551,6 +570,11 @@
     opacity: 0;
   }
 }
+@keyframes dock-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+}
 @keyframes dock-panel-out {
   to {
     transform: translateX(100%);
@@ -602,10 +626,17 @@
     box-shadow: var(--shadow-lg);
   }
 }
-/* There, the sheet rises from the foot, and drops back. */
+/* There, the sheet rises from the foot, and drops back, with its shadow. */
 @media (max-width: 900px) and (prefers-reduced-motion: no-preference) {
-  :root[data-dock-move='open'] .thread-dock {
-    animation: dock-sheet-in var(--dock-panel) var(--dock-ease) both;
+  ::view-transition-group(thread-dock) {
+    overflow: visible;
+  }
+  ::view-transition-new(thread-dock) {
+    animation-name: dock-sheet-in;
+  }
+  /* Apart: a browser without view transitions drops a rule naming them. */
+  :root[data-dock-plain][data-dock-move='open'] .thread-dock {
+    animation-name: dock-sheet-in;
   }
   ::view-transition-old(thread-dock) {
     animation-name: dock-sheet-out;

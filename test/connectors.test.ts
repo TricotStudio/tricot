@@ -13,6 +13,7 @@ import { DRIVE_FILE } from '../src/core/connectors/google/scopes';
 import { linkSource } from '../src/core/sources';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { builtInGoogleClient, findGoogleClient, GOOGLE_SCOPES } from '../src/server/connectors/google';
 import { PendingSignIns, pkceChallenge, pkcePair, SIGN_IN_TTL } from '../src/server/connectors/oauth';
@@ -150,6 +151,9 @@ class FakeGoogle {
   }
 }
 
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
+
 describe('Google client file', () => {
   let dir: string;
   beforeEach(() => {
@@ -264,7 +268,7 @@ describe('Google connector end to end', () => {
     return { status: response.status, text: await response.text() };
   };
   const post = async (route: string) => {
-    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', route, '{}') }, body: '{}' });
     return { status: response.status, json: await response.json() };
   };
   const status = async () => JSON.parse((await get('/api/connectors')).text)[0];
@@ -289,6 +293,7 @@ describe('Google connector end to end', () => {
     store.load();
     connectors = new Connectors({ dataDir: dir, now: () => now, google: { endpoints: google.endpoints(), builtIn: null } });
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -514,6 +519,7 @@ describe("Tricot's own Google client", () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     const listening: Server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -525,7 +531,7 @@ describe("Tricot's own Google client", () => {
     return { status: response.status, text: await response.text() };
   };
   const post = async (route: string) => {
-    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', route, '{}') }, body: '{}' });
     return { status: response.status, json: await response.json() };
   };
   const status = async () => JSON.parse((await get('/api/connectors')).text)[0];

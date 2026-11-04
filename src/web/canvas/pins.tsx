@@ -255,6 +255,14 @@ export function selectedWords(container: HTMLElement, range: Range): (PinPart & 
   return words && { kind: 'text', ...words };
 }
 
+// The text of a pinnable element as people read it, and where a point in it
+// (a caret's node and offset) falls in that text: a note's full view takes
+// the sentence under a click with them.
+export function readText(container: HTMLElement): { text: string; at(node: Node, offset: number): number } {
+  const nodes = textNodes(container);
+  return { text: nodes.map((n) => n.data).join(''), at: (node, offset) => offsetOf(nodes, node, offset) };
+}
+
 // A single click picks a cell or a node, but the first click of a
 // double-click (which edits it) must not: picking waits a moment to see.
 export function useClickPick() {
@@ -437,17 +445,36 @@ export function PinPrompt(props: {
 
 // ---- a part's comment thread, on the board context ------------------------------------
 
+// What agents do with a request on a part, by its kind.
+const ASKED_TO: Record<string, string> = {
+  doc: 'edit the draft',
+  site: "change the site's file",
+  line: 'change the code',
+  text: "rewrite the note's text",
+  node: "change the diagram's source",
+  arrow: "change the diagram's source",
+  box: 'make a new version of the image',
+  cells: 'change the table',
+  point: "change the chart's data",
+  spot: 'change the scene',
+};
+
 // Whether two pins are on the same part, e.g. a thread and the decision an
-// agent posted from it.
+// agent posted from it. A website's element is its page's, whatever it read.
 function samePart(a: Pin, b: Pin): boolean {
-  return a.blockId === b.blockId && JSON.stringify(a.anchor) === JSON.stringify(b.anchor);
+  if (a.blockId !== b.blockId) return false;
+  if (a.anchor.kind === 'site' && b.anchor.kind === 'site') return a.anchor.page === b.anchor.page && a.anchor.selector === b.anchor.selector;
+  return JSON.stringify(a.anchor) === JSON.stringify(b.anchor);
 }
 
 // A board context pin's thread, opened from its chip: the part, its comments,
 // a reply, and resolving it. Work pinned to the same part shows here too.
 // `inline` draws it in place, under what it's about (a doc's paragraph),
 // rather than over the canvas by its chip; there it shows the comments of a
-// card's canvas too, which are in the card's discussion.
+// card's canvas too, which are in the card's discussion. In a piece's full
+// view (canvas/pairing), `live` is said under the comments in place of the
+// note about agents (what the agent is doing about the request), and
+// `address` turns a reply into what is sent (to the agent paired with).
 export function PinThread(props: {
   pin: Pin;
   block?: Block;
@@ -457,8 +484,10 @@ export function PinThread(props: {
   inline?: boolean;
   onClose: () => void;
   onHeight?: (height: number) => void; // how tall it's drawn, to place it
+  live?: (note: ReactNode) => ReactNode; // given the note it would show while a person waits (or nothing)
+  address?: (text: string) => string;
 }) {
-  const { pin, block, name, style, above, inline, onClose, onHeight } = props;
+  const { pin, block, name, style, above, inline, onClose, onHeight, live, address } = props;
   const canvas = useCanvas();
   const { readOnly, pins } = canvas;
   const root = useRef<HTMLDivElement>(null);
@@ -515,7 +544,7 @@ export function PinThread(props: {
       setBusy(false);
     }
   };
-  const send = () => body.trim() && void act(() => api.commentOnPin(pin.id, name, body), () => setBody(''));
+  const send = () => body.trim() && void act(() => api.commentOnPin(pin.id, name, address ? address(body) : body), () => setBody(''));
 
   return (
     <div
@@ -547,11 +576,14 @@ export function PinThread(props: {
           </li>
         ))}
       </ol>
-      {waiting && (
-        <p className="pin-thread-note">
-          {asked ? 'Agents see this request in their updates, edit the draft and reply here.' : 'Agents see this in their updates and reply here.'}
-        </p>
-      )}
+      {(() => {
+        const note = waiting && (
+          <p className="pin-thread-note">
+            {asked ? `Agents see this request in their updates, ${ASKED_TO[pin.anchor.kind] ?? 'act on it'} and reply here.` : 'Agents see this in their updates and reply here.'}
+          </p>
+        );
+        return live ? live(note) : note;
+      })()}
       {alongside.length > 0 && (
         <div className="pin-thread-also">
           <span>Pinned here too</span>

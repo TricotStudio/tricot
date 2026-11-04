@@ -240,7 +240,7 @@ export function BoardView({ boardId, view, decisionId, taskId, name, onRename }:
   const topbar = (on: BoardViewName) => (
     <BoardTopBar board={board} name={name} view={on} live={live} agents={agents} controls={headerControls} onRename={onRename} />
   );
-  const needsYou = !readOnly && <NeedsYou needs={needs} name={name} />;
+  const needsYou = !readOnly && <NeedsYou needs={needs} name={name} board={boardKey(board)} />;
   const archived = <ArchivedBar board={board} name={name} />;
   if (selectedTask) {
     return (

@@ -8,7 +8,11 @@
 // (src/server/hooks/) set it up beside tricot-describe.mjs, which turns the
 // event into the step, and take it away again.
 //
-//   node tricot-steps.mjs [--name Claude] [--url http://127.0.0.1:4545] [--narration] [--dry-run]
+//   node tricot-steps.mjs [--name Claude] [--url http://127.0.0.1:4545] [--narration] [--usage] [--dry-run]
+//
+// With --usage (Codex's hook), at the end of each turn it also sends Codex's
+// plan usage, numbers only, which tricot-usage.mjs (copied beside it) reads
+// from the end of Codex's own session file: see that file for exactly what.
 //
 // It sends a description of the step, never what the agent read or wrote: no
 // file contents, no command output, no prompt text, no query strings. A
@@ -49,25 +53,49 @@ async function readInput() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+// With --usage (Codex), at the end of each turn: Codex's plan usage, read
+// from the end of its own session file by tricot-usage.mjs, beside this
+// file. Only numbers come back from it; undefined when there are none, or
+// the module isn't there.
+async function codexUsage(event) {
+  if (!process.argv.includes('--usage') || event?.hook_event_name !== 'Stop') return undefined;
+  try {
+    const { fromRollout, readTail } = await import('./tricot-usage.mjs');
+    return fromRollout(readTail(event.transcript_path));
+  } catch {
+    return undefined;
+  }
+}
+
 async function main() {
   const raw = await readInput();
   if (!raw) return;
-  const step = describe(JSON.parse(raw), { narration: process.argv.includes('--narration') });
-  if (!step) return;
-  const body = { ...step, at: Date.now() };
+  const event = JSON.parse(raw);
+  const step = describe(event, { narration: process.argv.includes('--narration') });
+  const usage = await codexUsage(event);
+  if (!step && !usage) return;
+  const at = Date.now();
+  const sends = [
+    ...(step ? [['steps', { ...step, at }]] : []),
+    ...(usage ? [['usage', { usage, at }]] : []),
+  ];
   if (process.argv.includes('--dry-run')) {
-    process.stdout.write(`${JSON.stringify(body)}\n`);
+    for (const [, body] of sends) process.stdout.write(`${JSON.stringify(body)}\n`);
     return;
   }
   const url = option('url', 'http://127.0.0.1:4545').replace(/\/+$/, '');
   const name = option('name', 'Claude');
   const token = process.env.TRICOT_TOKEN;
-  await fetch(`${url}/api/agents/${encodeURIComponent(name)}/steps`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
-  });
+  await Promise.allSettled(
+    sends.map(([route, body]) =>
+      fetch(`${url}/api/agents/${encodeURIComponent(name)}/${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      }),
+    ),
+  );
 }
 
 // Whatever happens, it is gone within HARD_LIMIT_MS, and says nothing: a

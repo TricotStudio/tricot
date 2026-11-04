@@ -9,11 +9,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
 // Two agents on one board, Claude and Codex, and a person pointing work at one.
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
+
 describe('Addressing one agent, over MCP and REST', () => {
   let dir: string;
   let server: Server;
@@ -34,7 +38,7 @@ describe('Addressing one agent, over MCP and REST', () => {
   async function post(route: string, body: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify(body)) },
       body: JSON.stringify(body),
     });
     return { status: response.status, json: await response.json() };
@@ -45,6 +49,7 @@ describe('Addressing one agent, over MCP and REST', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

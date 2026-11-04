@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { couldAffect, mayChange, revisitNote } from '../src/core/affects';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type Schema = { properties?: Record<string, Schema>; description?: string; items?: Schema; required?: string[] };
@@ -17,6 +18,9 @@ type Schema = { properties?: Record<string, Schema>; description?: string; items
 // An agent names the decisions a new one could affect over MCP, and reads them
 // back in get_decision; a person answers it on the board, asks for the one it
 // may change to be checked, and the agent answers that refresh.
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
+
 describe('What a decision could affect, over MCP and REST', () => {
   let dir: string;
   let server: Server;
@@ -37,7 +41,7 @@ describe('What a decision could affect, over MCP and REST', () => {
   async function post(route: string, body: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify({ actor: 'Wassim', ...body })) },
       body: JSON.stringify({ actor: 'Wassim', ...body }),
     });
     const json = await response.json();
@@ -52,6 +56,7 @@ describe('What a decision could affect, over MCP and REST', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -156,5 +161,62 @@ describe('What a decision could affect, over MCP and REST', () => {
     assert.match(checked, /^Re-checked #1, which stays decided; people see your note\./);
     assert.equal(store.getDecision(tiers).decision.resolution?.optionId, 'b');
     assert.equal(store.getDecision(tiers).decision.refreshRequest, undefined);
+  });
+
+  it('takes the ones a person picks after deciding as one request, which agents hear as one', async () => {
+    const boardId = (await post('/boards', { title: 'Picker' })).id as string;
+    const posted = async (question: string, extra: Record<string, unknown> = {}) =>
+      idOf(await callText('post_decision', { board_id: boardId, question, options: [{ label: 'Yes' }, { label: 'No' }], ...extra }));
+    const board = await posted('Which board should the agent join?');
+    const install = await posted('How should people install Tricot?');
+    for (const id of [board, install]) {
+      await post(`/decisions/${id}/resolve`, { optionId: 'a' });
+      store.getDecision(id).decision.resolution!.at = new Date(Date.now() - 3_600_000).toISOString();
+    }
+    const picker = await posted('Does the picker show on first run?', {
+      affects: [
+        { decision_id: board, why: 'the picker is how it joins' },
+        { decision_id: install, why: 'first run follows the install' },
+      ],
+    });
+    await post(`/decisions/${picker}/resolve`, { optionId: 'b' });
+    const cursor = Number(/Cursor: (\d+)/.exec(await callText('get_board', { board_id: boardId }))![1]);
+
+    const refused = await fetch(`${base}/api/decisions/${picker}/revisit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: base },
+      body: JSON.stringify({ actor: 'Wassim', decisionIds: [] }),
+    });
+    assert.equal(refused.status, 400);
+    assert.match((await refused.json()).error, /Pick at least one decision to check/);
+
+    const waiting = callText('wait_for_updates', { board_id: boardId, since: cursor, timeout_seconds: 10 });
+    await new Promise((r) => setTimeout(r, 100));
+    const asked = await post(`/decisions/${picker}/revisit`, { decisionIds: [board, install] });
+    assert.deepEqual(
+      asked.map((d: { number: number; refreshRequest: { after: string } }) => [d.number, d.refreshRequest.after]),
+      [
+        [1, picker],
+        [2, picker],
+      ],
+    );
+    const updates = await waiting;
+    const lines = updates.split('\n');
+    // One event, then one line naming both, rather than a line each.
+    assert.deepEqual(
+      lines.filter((line) => /asked agents to check|asked you to check|Refresh requested/.test(line)),
+      [
+        `- (${cursor + 1}) Wassim (human) asked agents to check #1 and #2 still hold, after deciding #3 "Does the picker show on first run?": b) No [id: ${picker}]`,
+        `Wassim asked you to check #1 [id: ${board}] and #2 [id: ${install}] still hold, after deciding #3 [id: ${picker}] (b) No), which may change them: re-check each against the board and the app as they are now (get_decision says how), then update_decision on each with refreshed: true and a note saying whether it holds.`,
+      ],
+    );
+    assert.match(await callText('get_updates', { board_id: boardId, since: cursor }), /Wassim asked you to check #1 \[id: \w+\] and #2/);
+    assert.match(await callText('get_board', { board_id: boardId }), /Wassim asked you to check #1 \[id: \w+\] and #2/);
+
+    // Each is answered on its own card, as any refresh.
+    for (const id of [board, install]) {
+      assert.match(await callText('update_decision', { decision_id: id, refreshed: true, note: 'Still holds.' }), /^Re-checked #\d, which stays decided/);
+    }
+    assert.doesNotMatch(await callText('get_board', { board_id: boardId }), /asked you to check/);
   });
 });

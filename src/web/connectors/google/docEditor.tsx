@@ -6,6 +6,9 @@ import type { Actor, Block, DocConflict, DocDraft, Pin, PinAnchor } from '../../
 import { api, type RequestError } from '../../api';
 import { SourceIcon } from '../../canvas/sources/icon';
 import { useCanvas } from '../../canvas/context';
+import { PinLine } from '../../canvas/pairing/pinLine';
+import { usePairing } from '../../canvas/pairing/session';
+import { PairingShell, panelOpen, reachWords } from '../../canvas/pairing/shell';
 import { DRAFT, MarkedText, PinThread, type TextMark } from '../../canvas/pins';
 import { ActorBadge, Icon, timeAgo } from '../../components';
 import { onConnectorMessage, useLinkFile } from '../live';
@@ -22,7 +25,9 @@ import './docEditor.css';
 // only those paragraphs, and stops (showing both versions) if the doc changed
 // in Google meanwhile. Selecting words in a paragraph opens the canvas's pin
 // prompt, to ask an agent to edit it (or only comment): the thread is pinned
-// to the paragraph, marked by it, and opens under it.
+// to the paragraph, marked by it, and opens under it. It is shown in the
+// pairing shell (canvas/pairing): Read, on your own, or paired with an agent,
+// whom requests then go straight to, with its steps on the pin as it works.
 
 type LinkBlock = Extract<Block, { type: 'link' }>;
 type DocAnchor = Extract<PinAnchor, { kind: 'doc' }>;
@@ -129,6 +134,8 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
   const [justPinned, setJustPinned] = useState<Pin | null>(null); // shown until the board has it
   const page = useRef<HTMLDivElement>(null);
   const selecting = useRef<HTMLTextAreaElement | null>(null);
+  const pairing = usePairing(block, name, 'doc');
+  const pairedWith = pairing.mode === 'pair' ? pairing.agent : null;
 
   const drive = useLinkFile(useMemo(() => linkSource(block.url), [block.url]));
   const title = block.title || view?.doc.title || drive?.name || 'Google Doc';
@@ -177,10 +184,10 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
     };
   }, [waiting, load]);
 
-  // Escape closes the prompt, then an open thread, then the editor.
+  // Escape closes the prompt, then an open thread, then the editor (once the agent picker is closed).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || panelOpen()) return;
       if (asking) setAsking(null);
       else if (thread) setThread(null);
       else if (!confirmDiscard) onClose();
@@ -227,6 +234,17 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
     setThread((open) => (open === id ? null : id));
     seeItem(id);
   };
+  // A request in the session's list: its thread opens under its paragraph, in view.
+  const openRequest = (pin: Pin) => {
+    setThread(pin.id);
+    seeItem(pin.id);
+    requestAnimationFrame(() => {
+      const chip = page.current?.querySelector(`[data-doc-chip="${CSS.escape(pin.id)}"]`);
+      (chip?.closest('.doc-row, .doc-gone') ?? chip)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  };
+  // Under a request on a thread opened here: what the agent is doing about it.
+  const live = (pin: Pin) => (note: ReactNode) => <PinLine pin={pin} fallback={note} />;
 
   // Opened at a thread (or sent to one while open): it comes into view once the doc is drawn.
   const shown = useRef(false);
@@ -479,7 +497,7 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
     try {
       await commit(asking.paragraph);
       await queue.current;
-      const { pin } = await googleApi.pinDocWords(block.id, name, { ...asking, body: askText, ask });
+      const { pin } = await googleApi.pinDocWords(block.id, name, { ...asking, body: ask ? pairing.address(askText) : askText, ask });
       setJustPinned(pin);
       setThread(pin.id);
       setAsking(null);
@@ -557,7 +575,7 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
                   onToggle={() => toggleThread(pin.id)}
                 />
               ))}
-              after={open && <PinThread key={open.id} inline pin={open} block={block} name={name} onClose={() => setThread(null)} />}
+              after={open && <PinThread key={open.id} inline pin={open} block={block} name={name} onClose={() => setThread(null)} live={live(open)} address={pairing.address} />}
               onPress={(e) => {
                 if (e.button === 0) selecting.current = e.currentTarget;
               }}
@@ -594,7 +612,16 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
               ))}
             </div>
             {gone.some((p) => p.id === thread) && (
-              <PinThread key={thread} inline pin={gone.find((p) => p.id === thread)!} block={block} name={name} onClose={() => setThread(null)} />
+              <PinThread
+                key={thread}
+                inline
+                pin={gone.find((p) => p.id === thread)!}
+                block={block}
+                name={name}
+                onClose={() => setThread(null)}
+                live={live(gone.find((p) => p.id === thread)!)}
+                address={pairing.address}
+              />
             )}
           </div>
         )}
@@ -618,6 +645,7 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
             text={askText}
             busy={askBusy}
             error={askError}
+            agent={pairedWith}
             onText={(text) => {
               setAskText(text);
               setAskError(null);
@@ -630,24 +658,78 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
     );
   }
 
+  const choice = pairing.agents.find((a) => a.name === pairing.agent);
   return (
-    <div className="doc-editor-backdrop nowheel nodrag nopan" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section className="doc-editor" role="dialog" aria-modal="true" aria-label={`Edit ${title}`}>
-        <header className="doc-editor-head">
-          <SourceIcon mark="google-docs" />
-          <div className="doc-editor-title">
-            <h2>{title}</h2>
-            <p className="muted small">
-              Google Doc · {view ? (draft ? `draft in Tricot, from the version of ${timeAgo(view.doc.pulledAt)}` : `as Google has it, ${timeAgo(view.doc.pulledAt)}`) : 'in Tricot'}
-            </p>
-          </div>
-          {openInGoogle}
-          <button className="btn btn-small btn-quiet doc-editor-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
-            <Icon name="x" />
-          </button>
-        </header>
-
-        {view && (authors.length > 0 || saved || draft?.rebased) && (
+    <PairingShell
+      pairing={pairing}
+      className="doc-editor"
+      label={`Edit ${title}`}
+      icon={<SourceIcon mark="google-docs" />}
+      title={title}
+      from={`Google Doc · ${view ? (draft ? `draft in Tricot, from the version of ${timeAgo(view.doc.pulledAt)}` : `as Google has it, ${timeAgo(view.doc.pulledAt)}`) : 'in Tricot'}`}
+      browse={{ label: 'Read', hint: 'Read and edit the draft on your own; select words to ask agents or comment' }}
+      pairHint="Select words to ask the agent to change them in the draft, or to comment."
+      pairBand={
+        pairing.agent
+          ? `Pairing with ${pairing.agent}: select words to ask ${pairing.agent} to change them; ${pairing.agent} edits the draft and replies on the pin. ${reachWords(choice, pairing.agent)}`
+          : 'Select words to ask an agent to change them, or to comment.'
+      }
+      controls={openInGoogle}
+      open={thread}
+      onOpenRequest={openRequest}
+      onClose={onClose}
+      foot={
+        <>
+          {view && !conflicts.length && (
+            <footer className="doc-editor-foot">
+              {changed > 0 && !noted && (
+                <p className="doc-note">
+                  <strong>Saving changes only the paragraphs marked here.</strong> Inside a changed paragraph, formatting can simplify: new words
+                  take the style around them, and a link or chip in the changed part goes. Tables, images and comments elsewhere stay as they are.
+                </p>
+              )}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="doc-editor-actions">
+                {confirmDiscard ? (
+                  <>
+                    <span className="small">Discard {plural(changed, 'change')}? Google's doc stays as it is.</span>
+                    <button className="btn btn-small" disabled={busy !== null} onClick={discard}>
+                      Discard
+                    </button>
+                    <button className="btn btn-small btn-quiet" onClick={() => setConfirmDiscard(false)}>
+                      Keep editing
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="faint small doc-editor-hint">Enter adds a paragraph · Shift+Enter breaks a line</span>
+                    <button className="btn btn-small btn-quiet" disabled={!changed || busy !== null} onClick={() => setConfirmDiscard(true)}>
+                      Discard draft
+                    </button>
+                    <button className="btn btn-primary" disabled={!changed || busy !== null} onClick={save}>
+                      {busy === 'save' ? 'Saving to Google…' : changed ? `Save to Google · ${plural(changed, 'paragraph')} changed` : 'Nothing to save yet'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </footer>
+          )}
+          {view && conflicts.length > 0 && error && (
+            <footer className="doc-editor-foot">
+              <p className="error" role="alert">
+                {error}
+              </p>
+            </footer>
+          )}
+        </>
+      }
+      band={
+        view &&
+        (authors.length > 0 || saved || draft?.rebased) && (
           <div className="doc-editor-band">
             {saved && !changed ? (
               <span className="doc-saved" role="status">
@@ -674,57 +756,11 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
               </>
             )}
           </div>
-        )}
-
-        <div className="doc-editor-body">{body}</div>
-
-        {view && !conflicts.length && (
-          <footer className="doc-editor-foot">
-            {changed > 0 && !noted && (
-              <p className="doc-note">
-                <strong>Saving changes only the paragraphs marked here.</strong> Inside a changed paragraph, formatting can simplify: new words
-                take the style around them, and a link or chip in the changed part goes. Tables, images and comments elsewhere stay as they are.
-              </p>
-            )}
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="doc-editor-actions">
-              {confirmDiscard ? (
-                <>
-                  <span className="small">Discard {plural(changed, 'change')}? Google's doc stays as it is.</span>
-                  <button className="btn btn-small" disabled={busy !== null} onClick={discard}>
-                    Discard
-                  </button>
-                  <button className="btn btn-small btn-quiet" onClick={() => setConfirmDiscard(false)}>
-                    Keep editing
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="faint small doc-editor-hint">Enter adds a paragraph · Shift+Enter breaks a line</span>
-                  <button className="btn btn-small btn-quiet" disabled={!changed || busy !== null} onClick={() => setConfirmDiscard(true)}>
-                    Discard draft
-                  </button>
-                  <button className="btn btn-primary" disabled={!changed || busy !== null} onClick={save}>
-                    {busy === 'save' ? 'Saving to Google…' : changed ? `Save to Google · ${plural(changed, 'paragraph')} changed` : 'Nothing to save yet'}
-                  </button>
-                </>
-              )}
-            </div>
-          </footer>
-        )}
-        {view && conflicts.length > 0 && error && (
-          <footer className="doc-editor-foot">
-            <p className="error" role="alert">
-              {error}
-            </p>
-          </footer>
-        )}
-      </section>
-    </div>
+        )
+      }
+    >
+      <div className="doc-editor-body">{body}</div>
+    </PairingShell>
   );
 }
 

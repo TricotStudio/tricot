@@ -1,5 +1,8 @@
-// elkjs, the Eclipse Layout Kernel, is under the EPL-2.0 and names no GPL
-// Secondary License, so it can't be part of an AGPL-3.0-only program (#86).
+// elkjs, the Eclipse Layout Kernel, is under the EPL-2.0, and #86 decided to
+// leave it out. That was decided while Tricot was AGPL-3.0-only, which the
+// EPL doesn't mix with; Tricot is Apache-2.0 now, and the EPL's code could
+// ship in it with its source offered, but elkjs stays out until #86 is
+// reopened (INCOMPATIBLE in scripts/notices.mjs holds the EPL back too).
 // Mermaid 12 brings it in for its ELK layouts, which it also uses by default
 // for flowcharts and class, state, ER and requirement diagrams. The web build
 // leaves them out the way Mermaid's own tiny build does: it doesn't register
@@ -41,4 +44,4 @@ export function withoutElkLayouts(code: string, id: string): string | undefined 
 export const isElkjs = (source: string): boolean => /^elkjs(?:\/|$)/.test(source);
 
 export const elkjsImported = (importer: string | undefined): string =>
-  `${importer ?? 'Something'} imports elkjs, which the web page leaves out: it is under the EPL-2.0, which doesn't mix with Tricot's AGPL-3.0-only (#86). Leave that part out too (scripts/elkLeftOut.ts).`;
+  `${importer ?? 'Something'} imports elkjs, which the web page leaves out: it is under the EPL-2.0, which stays out of Tricot while #86 stands. Leave that part out too (scripts/elkLeftOut.ts).`;

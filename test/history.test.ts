@@ -229,7 +229,7 @@ describe('Events and versions over REST and MCP', () => {
   const get = async (route: string) => (await fetch(`${base}/api${route}`)).json();
   const getStatus = async (route: string) => (await fetch(`${base}/api${route}`)).status;
   const post = async (route: string, body: Record<string, unknown>) =>
-    (await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    (await fetch(`${base}/api${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body) })).json();
 
   before(async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-history-http-'));

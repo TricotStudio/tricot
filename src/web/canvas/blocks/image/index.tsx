@@ -5,7 +5,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
 import { displayWidth, imageBlockSize, naturalImageSize, type PixelSize } from '../../../../core/blocks/image/image';
 import { nextBox } from '../../../../core/blocks/image/boxes';
-import { atVersion } from '../../../../core/canvas';
 import type { Block } from '../../../../core/types';
 import { api } from '../../../api';
 import { InlineMd } from '../../../components';
@@ -13,8 +12,8 @@ import { webConnector } from '../../../connectors/registry';
 import { EditableText, useCanvas } from '../../context';
 import { DRAFT, type PlacedPin } from '../../pins';
 import { dragged, draftOf, selecting } from '../interaction';
-import type { AddContext, OverlayProps, Point, ToolsProps, WebBlockKind } from '../kind';
-import { ImageViewer } from './imageViewer';
+import type { AddContext, Point, ToolsProps, WebBlockKind } from '../kind';
+import { ImageView } from './imageViewer';
 
 type ImageBlock = Extract<Block, { type: 'image' }>;
 
@@ -41,7 +40,8 @@ function usePictureSize(block: Extract<Block, { type: 'image' }>): PixelSize | n
   return kept ?? (read?.assetId === assetId ? read.size : null);
 }
 
-// An image block's menu: View opens its picture at full size; Natural size
+// An image block's menu: View opens its picture at full size (where people
+// pair with an agent on it, imageViewer.tsx); Natural size
 // sizes the block to show the picture at its natural size, at 1x; and what its
 // connector adds, for a picture it brought in (Refresh).
 function ImageTools(props: ToolsProps<ImageBlock>) {
@@ -53,7 +53,7 @@ function ImageTools(props: ToolsProps<ImageBlock>) {
   const FromConnector = block.origin && webConnector(block.origin.connector)?.ImageTools; // what its connector does with a picture it brought in
   return (
     <>
-      <button onClick={() => canvas.openOverlay(block.id, { version: viewing ?? undefined })} title="See the picture at full size (Enter)">
+      <button onClick={() => canvas.openOverlay(block.id, { version: viewing ?? undefined })} title="See the picture at full size, or pair with an agent on it (Enter)">
         View
       </button>
       <button
@@ -208,12 +208,6 @@ async function addImages(files: File[], context: AddContext, at?: Point) {
   }
 }
 
-// The picture at full size, as it is now or as an earlier version had it.
-function ImageOverlay({ block, version, onClose }: OverlayProps<ImageBlock>) {
-  const shown = version ? atVersion(block, version) : block;
-  if (shown.type !== 'image') return null;
-  return <ImageViewer block={shown} version={version ? version.rev : block.versionCount ? block.rev : null} showPins={!version} onClose={onClose} />;
-}
 
 export const image: WebBlockKind<ImageBlock> = {
   type: 'image',
@@ -224,5 +218,5 @@ export const image: WebBlockKind<ImageBlock> = {
   files: { accepts: (file) => file.type.startsWith('image/'), paste: true, add: addImages },
   // Enter or Space on a focused image block opens it at full size.
   activate: (block, canvas) => canvas.openOverlay(block.id),
-  overlay: { Component: ImageOverlay, refocus: true },
+  overlay: { Component: ImageView, refocus: true }, // the picture at full size, in the pairing shell
 };

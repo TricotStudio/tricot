@@ -61,6 +61,9 @@ export interface HookStatus {
   note?: string; // something only the agent knows (Codex: whether you trusted it)
   trust?: string; // it runs only once you've said so in the agent, in a few words: "Needs your OK in Codex's /hooks"
   sendsAs?: string; // the name the hook there sends steps as, when it says
+  // Its plan usage, for an agent that passes it on (usageLine.ts): set up,
+  // not yet, or Claude Code's status line replaced by the person's own since.
+  usage?: 'on' | 'off' | 'replaced';
 }
 
 // One file the installer would write: the whole file (`write`, Tricot's own)
@@ -95,6 +98,7 @@ export interface HookInstaller {
   readonly agentName: string; // its name on the board unless told otherwise: "Claude"
   readonly scopes: readonly HookScope[];
   readonly pickedUp: string; // when the agent starts sending steps, once set up
+  readonly approvals?: boolean; // its permission prompts come to the board too (core/approvals.ts)
   detect(target: HookTarget): HookDetection;
   status(target: HookTarget, scope?: HookScope): HookStatus;
   preview(target: HookTarget, setup: HookSetup, scope?: HookScope): HookPreview;
@@ -168,7 +172,7 @@ export function withoutHooks(settings: HookSettings, isOurs: IsOurs): HookSettin
     if (kept.length) hooks[event] = kept;
   }
   const { hooks: _gone, ...rest } = settings;
-  return Object.keys(hooks).length ? { ...rest, hooks } : rest;
+  return Object.keys(hooks).length ? { ...settings, hooks } : rest; // in its place among the settings
 }
 
 // The settings with Tricot's hooks, once: added again, they replace themselves.
@@ -176,7 +180,8 @@ export function withHooks(settings: HookSettings, add: HookEvents, isOurs: IsOur
   const base = withoutHooks(settings, isOurs);
   const hooks: Record<string, HookGroup[] | undefined> = { ...base.hooks };
   for (const [event, groups] of Object.entries(add)) hooks[event] = [...(hooks[event] ?? []), ...groups];
-  return { ...base, hooks };
+  // In the place the settings had them, so adding again changes nothing.
+  return Object.hasOwn(settings, 'hooks') ? { ...settings, ...base, hooks } : { ...base, hooks };
 }
 
 // Tricot's entries alone, per event, as they are in the settings: what

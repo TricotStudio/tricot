@@ -26,6 +26,13 @@ export interface LiveStepsAgent {
   problem?: string; // its settings can't be read, so Tricot won't change them
   trust?: string; // it runs a new hook only once you trust it (Codex), which Tricot can't see
   sendsAs?: string; // the name the hook there sends steps as
+  // Its plan usage, for Claude Code and Codex (core/usage.ts): set up with its
+  // steps, not yet (an install from before), or, for Claude Code, its status
+  // line replaced by one the person set since, so the numbers stopped.
+  usage?: 'on' | 'off' | 'replaced';
+  // Claude Code and Codex: with live steps on, their permission prompts come
+  // to the board too, for a person to answer there (core/approvals.ts).
+  approvals?: true;
   // Claude Code: the project Tricot was started in (from ~) has its own
   // steps hook from earlier (`tricot connect claude --hooks`). With both,
   // each step still shows once: the server keeps one of the two copies.

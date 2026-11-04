@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { createContent, patchFields } from '../blocks/people';
+import { APPROVAL_HARNESSES, APPROVAL_REASON_LIMIT, APPROVAL_SESSION_ITEM, APPROVAL_SESSION_ITEMS } from '../approvals';
 import { DOORS } from '../doors';
 import { SEARCH_KINDS, type SearchKind } from '../search';
+import { USAGE_SOURCES } from '../usage';
 import { fields } from './fields';
 import { LIMITS } from './limits';
 import { ONE_CANVAS, canvasRef, lensInput, move, namesOneCanvas, newCriterion, newGroup, newTask, optionChange, reactionInput, resolveInput, taskPatch } from './shared';
@@ -55,6 +57,14 @@ export const people = {
   explore: z.object({ ...by, note: fields.longNote.optional() }),
   defer: z.object({ ...by, note: fields.longNote.optional() }),
   note: z.object({ ...by, note: fields.note.optional() }),
+  // The decisions a person asks agents to check still hold, after deciding the one they're on.
+  revisit: z.object({
+    ...by,
+    decisionIds: sized(z.string(), {
+      min: [1, 'Pick at least one decision to check.'],
+      max: [LIMITS.revisit, `Ask about at most ${LIMITS.revisit} decisions at once.`],
+    }),
+  }),
   actorOnly: z.object(by),
   sync: z.object({
     ...by,
@@ -93,6 +103,12 @@ export const people = {
     optionId: z.string(),
     value: z.enum(['yes', 'partly', 'no']).nullable(),
   }),
+  // Pairing (core/pairing.ts): a person starting a session with an agent on a
+  // block's parts of a kind ('site', 'doc'), its page saying it is still there
+  // (active: the person did something since), and leaving it.
+  pairingStart: z.object({ ...by, blockId: z.string().trim().min(1).max(200), part: z.string().trim().min(1).max(20), agent: actorName }),
+  pairingBeat: z.object({ ...by, active: z.boolean().optional() }),
+  pairingEnd: z.object(by),
 };
 
 const span = z.tuple([z.number().int(), z.number().int()]);
@@ -113,8 +129,8 @@ const pinPart = z.discriminatedUnion(
     z.object({ kind: z.literal('node'), nodeId: z.string() }),
     z.object({ kind: z.literal('arrow'), from: z.string(), to: z.string(), n: z.number().int().min(0).optional() }),
     z.object({ kind: z.literal('block') }),
-    z.object({ kind: z.literal('line'), file: z.string(), line: z.number().int().min(1), side: z.enum(['new', 'old']).optional() }),
-    z.object({ kind: z.literal('point'), category: z.string(), series: z.string().optional() }),
+    z.object({ kind: z.literal('line'), file: z.string(), line: z.number().int().min(1), side: z.enum(['new', 'old']).optional(), last: z.number().int().min(1).optional() }),
+    z.object({ kind: z.literal('point'), category: z.string().optional(), series: z.string().optional() }),
     z.object({
       kind: z.literal('spot'),
       object: z.string().optional(),
@@ -123,8 +139,17 @@ const pinPart = z.discriminatedUnion(
       z: z.number().optional(),
       view: sceneView.optional(),
     }),
+    z.object({
+      kind: z.literal('site'),
+      page: z.string(),
+      selector: z.string(),
+      tag: z.string(),
+      text: z.string().optional(),
+      file: z.string().optional(),
+      line: z.number().int().optional(),
+    }),
   ],
-  { error: 'A pinned part\'s kind is one of: text, item, cells, box, node, arrow, block, line, point, spot.' },
+  { error: 'A pinned part\'s kind is one of: text, item, cells, box, node, arrow, block, line, point, spot, site.' },
 );
 
 const placement = { x: z.number().optional(), y: z.number().optional(), w: z.number().optional(), h: z.number().optional() };
@@ -157,7 +182,8 @@ export const canvas = {
   pin: z.object({ ...by, part: pinPart, taskId: z.string().optional(), decisionId: z.string().optional() }),
   pinTask: z.object({ ...by, part: pinPart, text: fields.prompt, ready: z.boolean().optional() }),
   pinQuestion: z.object({ ...by, part: pinPart, text: fields.prompt }),
-  pinComment: z.object({ ...by, part: pinPart, body: fields.comment }),
+  // ask: a request for agents to act on the part, on parts that take one (a website's elements).
+  pinComment: z.object({ ...by, part: pinPart, body: fields.comment, ask: z.boolean().optional() }),
   resolvePin: z.object({ ...by, resolved: z.boolean() }),
   // rev is the version to bring back; blockRev, the rev being looked at, refuses it if the block has moved on.
   restore: z.object({ ...by, rev: z.number().int(), blockRev: z.number().int().optional() }),
@@ -219,6 +245,81 @@ export const agentStep = z.object({
   at: z.number().int().min(0).optional(),
 });
 export const agentStepName = z.object({ name: actorName });
+
+// An agent's permission prompt, from the hook in its harness
+// (hooks/tricot-approve.mjs, server/approvals.ts): the tool and its input,
+// as the agent sent them (the route's body limit holds their size), why in
+// the agent's words, which run of the agent asks, and what "Allow for this
+// session" would also allow, in words. The hook waits with the key it was
+// given; a person answers from the page by the request's id, and may say why
+// they deny it.
+export const approvals = {
+  request: z.object({
+    harness: z.enum(APPROVAL_HARNESSES as ['claude', 'codex'], { error: 'harness is "claude" or "codex".' }),
+    tool: z.string().trim().min(1).max(200),
+    input: z.unknown(),
+    description: z.string().max(2_000).optional(),
+    session: stepId.optional(),
+    worker: stepId.optional(),
+    role: z.string().trim().min(1).max(LIMITS.name).optional(),
+    cwd: z.string().max(2_000).optional(),
+    // Every item in full, as the card shows it: more than it shows is refused, never cut.
+    forSession: sized(z.string().min(1).max(APPROVAL_SESSION_ITEM, { error: `Each "for this session" item is at most ${APPROVAL_SESSION_ITEM} characters.` }), {
+      max: [APPROVAL_SESSION_ITEMS, `"For this session" lists at most ${APPROVAL_SESSION_ITEMS} items.`],
+    }).optional(),
+    at: z.number().int().min(0).optional(),
+  }),
+  id: z.object({ id: z.string().trim().min(1).max(64) }),
+  key: z.object({ key: z.string().min(20).max(128) }),
+  reply: z.object({
+    actor: actorName,
+    behavior: z.enum(['allow', 'deny'], { error: 'behavior is "allow" or "deny".' }),
+    session: z.boolean().optional(),
+    reason: text({ name: 'A reason', max: APPROVAL_REASON_LIMIT, trim: true }).optional(),
+  }),
+};
+
+// An agent's plan usage, from its harness (server/usage.ts): numbers only,
+// and a closed set of everything else. A window is the plan's 5-hour one
+// ("5h"), its weekly one ("7d"), or a model's own weekly one ("7d:opus"), with
+// how much of it is used, when it resets (ms) and how long it is (minutes);
+// tokens and cost are the session's so far; at is when the harness read them
+// (ms). Anything else in the body is refused, not dropped, so a harness can't
+// send more than this by mistake.
+const usageCount = z.number().int().min(0).max(1e15);
+const usagePercent = z.number().min(0).max(1000); // past 100 once over a limit, as a tool may say
+const usageWindow = z.strictObject({
+  id: z.string().regex(/^(5h|7d|7d:[A-Za-z0-9._-]{1,40})$/, { error: 'A window id is "5h", "7d" or "7d:<model>".' }),
+  usedPercent: usagePercent,
+  resetsAt: z.number().int().min(0).max(8_640_000_000_000),
+  minutes: z.number().int().min(1).max(366 * 24 * 60).optional(),
+});
+export const agentUsage = z.strictObject({
+  usage: z.strictObject({
+    source: z.enum(USAGE_SOURCES, { error: `source is one of ${USAGE_SOURCES.join(', ')}.` }),
+    plan: z.string().regex(/^[A-Za-z0-9 _.-]{1,32}$/, { error: 'plan is a short name, such as "plus".' }).optional(),
+    windows: z
+      .array(usageWindow)
+      .min(1)
+      .max(8)
+      .refine((windows) => new Set(windows.map((w) => w.id)).size === windows.length, { error: 'Each window is sent once.' })
+      .optional(),
+    tokens: z
+      .strictObject({ input: usageCount, output: usageCount, cacheRead: usageCount, cacheWrite: usageCount, reasoning: usageCount, total: usageCount })
+      .optional(),
+    costUsd: z.number().min(0).max(10_000_000).optional(),
+    context: z.strictObject({ usedPercent: usagePercent, window: usageCount }).optional(),
+  }),
+  at: z.number().int().min(0).max(8_640_000_000_000),
+});
+
+// An agent's usage and what it did on a board, for its panel: the board, and
+// where today and this week start in the person's own time (ms).
+export const agentUsageParams = z.object({
+  board: z.string().min(1).max(200).optional(),
+  day: z.coerce.number().int().min(0).optional(),
+  week: z.coerce.number().int().min(0).optional(),
+});
 
 // A person turning an agent's live steps on or off in Tricot
 // (server/liveStepsRoutes.ts): which agent (an installer's id), which way,

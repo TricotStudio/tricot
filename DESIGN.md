@@ -344,6 +344,10 @@ Plain, friendly, quiet controls: they look like the platform's own, and only the
 - **Style:** an 8px square marker in the status colour, followed by neutral text ("2 open", "1 to confirm"). Blocking counts and stale counts switch their text to the danger or amber ink.
 - **Status label:** the same marker with 13px/500 text in ink, used beside a decision number.
 
+### Meters
+- **Style:** a 6px bar with 2px corners: the sunk sheet as its track, filled in muted ink, with its words beside it in muted text and tabular figures ("26% used · resets in 1h 26m"). Used for an agent's plan usage in its panel.
+- **Near a limit:** from 80% the fill takes the amber marker and the words the amber ink, as anything that needs you; from 95% the danger red. Below that a meter stays neutral, whatever it measures.
+
 ### Tags
 - **Style:** 11px/500 sentence-case text on a status tint with its ink, 4px corners, 1px 6px padding (*blocking*, *recommended*, *chosen*, *agent's call*, *stale*). Icons inside tags use the same ink.
 

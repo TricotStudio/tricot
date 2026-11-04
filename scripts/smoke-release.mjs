@@ -94,7 +94,7 @@ function run(command, args, options = {}) {
 // What must ship, and what never may: anything of this repository's own
 // tooling, tests, sources, local state, secrets or source maps (which would
 // carry the paths of the machine that built it).
-const MUST = ['package.json', 'README.md', 'LICENSE', 'COMMERCIAL.md', 'THIRD_PARTY_NOTICES.md', 'dist/cli/tricot.js', 'dist/cli/command.js', 'dist/web/index.html', 'hooks/tricot-steps.mjs', 'hooks/tricot-describe.mjs'];
+const MUST = ['package.json', 'README.md', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'dist/cli/tricot.js', 'dist/cli/command.js', 'dist/web/index.html', 'hooks/tricot-steps.mjs', 'hooks/tricot-describe.mjs', 'hooks/tricot-approve.mjs'];
 const NEVER = [/^\.review\//, /^\.claude\//, /^\.impeccable\//, /^\.git\//, /^node_modules\//, /^test\//, /^src\//, /^scripts\//, /^packaging\//, /^dist\/\.notices\//, /(^|\/)\.env/, /\.map$/, /(^|\/)\.DS_Store$/, /\.tmp$/, /(^|\/)token$/, /server\.lock$/, /\.(db|sqlite)(-wal|-shm)?$/];
 
 let tarball = values.tarball && path.resolve(values.tarball);

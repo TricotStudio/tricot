@@ -4,16 +4,20 @@ import {
   CHART_KIND_LABEL,
   chartLayout,
   chartModel,
+  findPoint,
+  findSeries,
   formatValue,
   partShare,
   pointQuote,
+  seriesQuote,
   type ChartLayout,
   type ChartModel,
 } from '../../../../core/blocks/chart/chart';
 import type { Block } from '../../../../core/types';
 import type { BlockContent } from '../../../api';
 import { Icon } from '../../../components';
-import { EditableText, useCanvas } from '../../context';
+import { EditableText, useCanvas, type PinDraft } from '../../context';
+import { pointCovers } from '../../pairing/pointing';
 import type { PlacedPin } from '../../pins';
 import './chart.css';
 
@@ -154,8 +158,73 @@ function markSpot(layout: ChartLayout, category: number, series: number | null):
   return points.reduce((a, b) => (b.y < a.y ? b : a));
 }
 
+// What is marked on a chart: a pin's part, or the one being pinned (or asked
+// about). `category` null: a whole series (from the legend); `series` null:
+// a whole category.
+export interface ChartMark {
+  id: string;
+  category: number | null;
+  series: number | null;
+  draft: boolean;
+  open?: boolean;
+}
+
+// A part pinned or being pinned, by its category's and series' names, as a mark on the chart now.
+export function chartMarkOf(block: ChartBlock, part: { category?: string; series?: string }, id: string, draft: boolean): ChartMark | null {
+  if (part.category === undefined) {
+    const series = part.series === undefined ? null : findSeries(block, part.series);
+    return series === null ? null : { id, category: null, series, draft };
+  }
+  const at = findPoint(block, part.category, part.series);
+  return at && { id, category: at.row, series: at.series, draft };
+}
+
+// The part a click picks: a category (and one series of it, on a chart of
+// several), or a whole series (category null, from the legend).
+export function chartDraft(block: ChartBlock, category: number | null, series: number | null): PinDraft | null {
+  if (category === null) {
+    if (series === null || series + 1 >= block.columns.length) return null;
+    return { blockId: block.id, part: { kind: 'point', series: block.columns[series + 1] }, quote: seriesQuote(block, series) };
+  }
+  const s = block.columns.length > 2 ? series : null;
+  return {
+    blockId: block.id,
+    part: { kind: 'point', category: block.rows[category]?.[0] ?? '', ...(s !== null ? { series: block.columns[s + 1] } : {}) },
+    quote: pointQuote(block, category, s),
+  };
+}
+
+// On the canvas: the chart, its pins' heads on their marks, and a click on a mark pins it.
 function ChartFigure({ block, placed }: { block: ChartBlock; placed: PlacedPin[] }) {
   const canvas = useCanvas();
+  const draft = canvas.draft?.blockId === block.id && canvas.draft.part.kind === 'point' ? canvas.draft.part : null;
+  const drafted = draft && chartMarkOf(block, draft, 'draft', true);
+  const marks: ChartMark[] = [
+    ...placed.flatMap(({ pin, place }) => (place?.kind === 'point' ? [{ id: pin.id, category: place.row, series: place.series, draft: false }] : [])),
+    ...(drafted && drafted.category !== null ? [drafted] : []),
+  ];
+  const pick = (category: number | null, series: number | null) => {
+    const part = chartDraft(block, category, series);
+    if (part) canvas.startPin(part);
+  };
+  return <ChartPlot block={block} marks={marks} pinnable={!canvas.readOnly} onPick={pick} />;
+}
+
+// A chart drawn to fit its frame, with the heads of the marks on it. A click
+// on a bar, a point or a slice (or Enter, on the one the arrow keys are on)
+// picks it, while `pinnable`. In a chart's full view (chartView.tsx), `full`:
+// the parts marked are tinted, each marked element names its marks in
+// data-pair-anchor, the legend's series pick too, and, while not pinnable, a
+// click on a marked part opens it (`onOpen`).
+export function ChartPlot(props: {
+  block: ChartBlock;
+  marks: ChartMark[];
+  pinnable: boolean;
+  onPick(category: number | null, series: number | null): void;
+  full?: boolean;
+  onOpen?(id: string): void;
+}) {
+  const { block, marks, pinnable, onPick, full = false, onOpen } = props;
   const model = useMemo(() => chartModel(block), [block]);
   const frame = useRef<HTMLDivElement>(null);
   const size = useSize(frame);
@@ -164,33 +233,36 @@ function ChartFigure({ block, placed }: { block: ChartBlock; placed: PlacedPin[]
   const many = model.series.length > 1;
   const pie = model.kind === 'pie';
   const lines = model.kind === 'line' || model.kind === 'area';
-  const pinnable = !canvas.readOnly;
   const faded = (category: number) => model.highlight >= 0 && category !== model.highlight;
+  const heads = marks.filter((m): m is ChartMark & { category: number } => m.category !== null);
 
-  const draft = canvas.draft?.blockId === block.id && canvas.draft.part.kind === 'point' ? canvas.draft.part : null;
-  const heads = [
-    ...placed.flatMap(({ pin, place }) => (place?.kind === 'point' ? [{ id: pin.id, category: place.row, series: place.series, draft: false }] : [])),
-    ...(draft
-      ? (() => {
-          const row = model.categories.indexOf(draft.category);
-          const series = draft.series === undefined ? null : model.series.findIndex((s) => s.name === draft.series);
-          return row >= 0 ? [{ id: 'draft', category: row, series: series === -1 ? null : series, draft: true }] : [];
-        })()
-      : []),
-  ];
-
-  const pin = (category: number, series: number | null) => (event: MouseEvent) => {
-    if (!pinnable || event.shiftKey || event.metaKey || event.ctrlKey) return;
-    event.stopPropagation();
-    startPin(category, series);
+  // In the full view: the marks on a part, as its classes, and those it
+  // anchors (where a prompt or a thread opens by them) as its
+  // data-pair-anchor: a bar or a slice anchors the categories and points on
+  // it, a series' key in the legend the whole series, a line nothing (its
+  // points' heads do).
+  const marked = (category: number | null, series: number | null, anchors: 'points' | 'series' | 'none' = 'points') => {
+    if (!full) return { className: '' };
+    const on = marks.filter((m) => pointCovers(m, category, series));
+    if (on.length === 0) return { className: '' };
+    const state = on.some((m) => m.draft) ? ' is-asking' : ' is-pinned';
+    const anchored = on.filter((m) => (anchors === 'points' ? m.category !== null : anchors === 'series' && m.category === null));
+    return { className: `${state}${on.some((m) => m.open) ? ' is-open' : ''}`, ...(anchored.length > 0 && { 'data-pair-anchor': anchored.map((m) => m.id).join(' ') }) };
   };
-  const startPin = (category: number, series: number | null) => {
-    const s = many ? series : null;
-    canvas.startPin({
-      blockId: block.id,
-      part: { kind: 'point', category: model.categories[category], ...(s !== null ? { series: model.series[s].name } : {}) },
-      quote: pointQuote(block, category, s),
-    });
+
+  const pin = (category: number | null, series: number | null) => (event: MouseEvent) => {
+    if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+    if (pinnable) {
+      event.stopPropagation();
+      onPick(category, many || category === null ? series : null);
+      return;
+    }
+    // Reading the full view: a click on a pinned part opens what was said about it.
+    const on = onOpen && marks.find((m) => !m.draft && pointCovers(m, category, series));
+    if (on) {
+      event.stopPropagation();
+      onOpen(on.id);
+    }
   };
   const enter = (category: number, series: number | null) => () => setHover({ category, series });
   const leave = () => setHover(null);
@@ -206,16 +278,22 @@ function ChartFigure({ block, placed }: { block: ChartBlock; placed: PlacedPin[]
     } else if (event.key === 'Enter' && hover && pinnable) {
       event.preventDefault();
       event.stopPropagation();
-      startPin(hover.category, hover.series);
+      onPick(hover.category, many ? hover.series : null);
     } else if (event.key === 'Escape') setHover(null);
   };
 
   const { plot } = layout;
   const label = `${CHART_KIND_LABEL[model.kind]} chart of ${model.series.map((s) => s.name).join(', ')}${block.columns[0] ? ` by ${block.columns[0]}` : ''}`;
+  // A legend's item: a series, or a pie's part (a category).
+  const legendPart = (i: number): [number | null, number | null] => (pie ? [i, null] : [null, i]);
 
   return (
     <div className={`chart is-${model.kind}`}>
-      <Legend block={block} model={model} />
+      <Legend
+        block={block}
+        model={model}
+        {...(full && { marked: (i: number) => marked(...legendPart(i), pie ? 'none' : 'series'), pick: (i: number) => pin(...legendPart(i)), pinnable })}
+      />
       <div
         ref={frame}
         className="chart-frame nopan"
@@ -254,33 +332,44 @@ function ChartFigure({ block, placed }: { block: ChartBlock; placed: PlacedPin[]
               </g>
             )}
 
-            {layout.lines.map((line) => (
-              <g key={line.series}>
-                {line.area && <path className="chart-area" d={line.area} style={{ fill: color(line.series) }} />}
-                <path className="chart-line" d={line.path} style={{ stroke: color(line.series) }} />
-                {line.lone.map((p) => (
-                  <circle key={p.category} className="chart-dot" cx={p.x} cy={p.y} r={3} style={{ fill: color(line.series) }} />
-                ))}
-              </g>
-            ))}
+            {layout.lines.map((line) => {
+              const { className, ...anchor } = marked(null, line.series, 'none');
+              return (
+                <g key={line.series}>
+                  {line.area && <path className="chart-area" d={line.area} style={{ fill: color(line.series) }} />}
+                  <path className={`chart-line${className}`} d={line.path} style={{ stroke: color(line.series) }} {...anchor} />
+                  {line.lone.map((p) => (
+                    <circle key={p.category} className="chart-dot" cx={p.x} cy={p.y} r={3} style={{ fill: color(line.series) }} />
+                  ))}
+                </g>
+              );
+            })}
 
-            {layout.bars.map((bar) => (
-              <path
-                key={`${bar.category}-${bar.series}`}
-                className={`chart-bar${faded(bar.category) ? ' is-faded' : ''}${hover?.category === bar.category && (hover.series === null || hover.series === bar.series) ? ' is-hover' : ''}`}
-                d={bar.path}
-                style={{ fill: color(bar.series) }}
-              />
-            ))}
+            {layout.bars.map((bar) => {
+              const { className, ...anchor } = marked(bar.category, bar.series);
+              return (
+                <path
+                  key={`${bar.category}-${bar.series}`}
+                  className={`chart-bar${faded(bar.category) ? ' is-faded' : ''}${hover?.category === bar.category && (hover.series === null || hover.series === bar.series) ? ' is-hover' : ''}${className}`}
+                  d={bar.path}
+                  style={{ fill: color(bar.series) }}
+                  {...anchor}
+                />
+              );
+            })}
 
-            {layout.slices.map((slice) => (
-              <path
-                key={slice.category}
-                className={`chart-slice${faded(slice.category) ? ' is-faded' : ''}${hover?.category === slice.category ? ' is-hover' : ''}`}
-                d={slice.path}
-                style={{ fill: color(slice.category) }}
-              />
-            ))}
+            {layout.slices.map((slice) => {
+              const { className, ...anchor } = marked(slice.category, null);
+              return (
+                <path
+                  key={slice.category}
+                  className={`chart-slice${faded(slice.category) ? ' is-faded' : ''}${hover?.category === slice.category ? ' is-hover' : ''}${className}`}
+                  d={slice.path}
+                  style={{ fill: color(slice.category) }}
+                  {...anchor}
+                />
+              );
+            })}
             {layout.ring && (
               <g aria-hidden>
                 <text className="chart-total" x={layout.ring.cx} y={layout.ring.cy + 2} textAnchor="middle">
@@ -324,11 +413,12 @@ function ChartFigure({ block, placed }: { block: ChartBlock; placed: PlacedPin[]
               return at ? (
                 <circle
                   key={head.id}
-                  className={`chart-pin ${head.draft ? 'is-draft' : 'is-linked'}`}
+                  className={`chart-pin ${head.draft ? 'is-draft' : 'is-linked'}${head.open ? ' is-open' : ''}`}
                   cx={at.x}
                   cy={at.y}
-                  r={4.5}
+                  r={full ? 5.5 : 4.5}
                   data-pin-draft={head.draft ? '' : undefined}
+                  data-pair-anchor={full ? head.id : undefined}
                 />
               ) : null;
             })}
@@ -377,8 +467,17 @@ function ChartFigure({ block, placed }: { block: ChartBlock; placed: PlacedPin[]
 }
 
 // Two or more series get a legend (a pie's parts too); one series doesn't:
-// the title names it. The subtitle shares its row.
-function Legend({ block, model }: { block: ChartBlock; model: ChartModel }) {
+// the title names it. The subtitle shares its row. In a chart's full view,
+// an item is a part to point at (a series, or a pie's part): `pick` is what a
+// click on it does, `marked` its marks.
+function Legend(props: {
+  block: ChartBlock;
+  model: ChartModel;
+  marked?: (i: number) => { className: string; 'data-pair-anchor'?: string };
+  pick?: (i: number) => (event: MouseEvent) => void;
+  pinnable?: boolean;
+}) {
+  const { block, model, marked, pick, pinnable } = props;
   const pie = model.kind === 'pie';
   const key = model.kind === 'line' ? 'is-line' : '';
   const items = pie
@@ -390,14 +489,29 @@ function Legend({ block, model }: { block: ChartBlock; model: ChartModel }) {
   return (
     <div className={`chart-top${items.length ? '' : ' is-subtitle-only'}`}>
       {items.length > 0 && (
-        <ul className="chart-legend" aria-label="Legend">
-          {items.map((item) => (
-            <li key={item.i} className={model.highlight >= 0 && pie && item.i !== model.highlight ? 'is-faded' : undefined}>
-              <i className={`chart-key ${key}`} style={{ background: color(item.i) }} aria-hidden />
-              {item.name}
-              {item.note && <span className="chart-legend-note">{item.note}</span>}
-            </li>
-          ))}
+        <ul className={`chart-legend${pinnable ? ' is-pinnable' : ''}`} aria-label="Legend">
+          {items.map((item) => {
+            const faded = model.highlight >= 0 && pie && item.i !== model.highlight ? ' is-faded' : '';
+            const { className = '', ...anchor } = marked?.(item.i) ?? {};
+            const content = (
+              <>
+                <i className={`chart-key ${key}`} style={{ background: color(item.i) }} aria-hidden />
+                {item.name}
+                {item.note && <span className="chart-legend-note">{item.note}</span>}
+              </>
+            );
+            return (
+              <li key={item.i} className={`${faded}${className}`.trim() || undefined} {...anchor}>
+                {pick ? (
+                  <button type="button" className="chart-legend-pick" onClick={pick(item.i)} title={pinnable ? `Ask about ${pie ? 'this part' : 'this whole series'}` : undefined}>
+                    {content}
+                  </button>
+                ) : (
+                  content
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {block.subtitle && <p className="chart-subtitle">{block.subtitle}</p>}

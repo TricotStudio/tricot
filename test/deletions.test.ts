@@ -478,7 +478,7 @@ describe('Deletions over MCP and REST', () => {
     return result.content[0].text;
   }
   async function request(method: string, route: string, body?: Record<string, unknown>) {
-    const response = await fetch(`${base}/api${route}`, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+    const response = await fetch(`${base}/api${route}`, { method, headers: { 'Content-Type': 'application/json', Origin: base }, body: body && JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   }
   const idOf = (text: string) => text.match(/\[id: ([^\]]+)\]/)![1];

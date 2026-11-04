@@ -174,10 +174,11 @@ export type PinPlace =
   | BoxAnchor // where it was drawn
   | { kind: 'node'; nodeId: string }
   | { kind: 'arrow'; arrowId: string } // the id Mermaid gives its drawn path
-  | { kind: 'line'; file: string; line: number; side: DiffSide } // the file's path and the line's number now
+  | { kind: 'line'; file: string; line: number; side: DiffSide; last?: number } // the file's path and the line's number now (and the last line's, for a range)
   | { kind: 'doc'; paragraph: string } // a Google Doc's paragraph, by its id in the draft
-  | { kind: 'point'; row: number; series: number | null } // a chart's category (row) and series, if pinned; null: the whole category
+  | { kind: 'point'; row: number | null; series: number | null } // a chart's category (row) and series, if pinned; null: the whole category, or the whole series
   | SpotAnchor // where it was pinned on the scene
+  | { kind: 'site'; page: string; selector: string } // an element of a website's page, found again in a person's view of it
   | { kind: 'block' };
 
 // Where a pin's part is in its block now, or null once it has changed past
@@ -196,8 +197,12 @@ export function pinAsk(comments: Comment[]): Comment | undefined {
 
 // ---- describing pins ----------------------------------------------------------
 
-// A pin, or a part about to be pinned: its kind, a diff line's place, and its quote.
-type PartLike = { anchor: { kind: PinAnchor['kind']; file?: string; line?: number; side?: DiffSide }; quote: string };
+// A pin, or a part about to be pinned: its kind, a diff line's place, a
+// website element's page, and its quote.
+type PartLike = { anchor: { kind: PinAnchor['kind']; file?: string; line?: number; last?: number; side?: DiffSide; page?: string }; quote: string };
+
+// A line's number, or a range's: "12", "12–18".
+const linesAt = (anchor: { line?: number; last?: number }) => (anchor.last && anchor.last > anchor.line! ? `${anchor.line}–${anchor.last}` : `${anchor.line}`);
 
 // A card people pin whole, like a link, or a block.
 function wholeWord(block?: Block): string {
@@ -209,8 +214,10 @@ function wholeWord(block?: Block): string {
 // Takes a pin, or a part about to be pinned.
 export function pinPart(pin: PartLike, block?: Block): string {
   switch (pin.anchor.kind) {
-    case 'line':
-      return `${pin.anchor.side === 'old' ? 'old ' : ''}line ${pin.anchor.line}${pin.anchor.file ? ` of ${pin.anchor.file}` : ''}`;
+    case 'line': {
+      const lines = pin.anchor.last && pin.anchor.last > pin.anchor.line! ? 'lines' : 'line';
+      return `${pin.anchor.side === 'old' ? 'old ' : ''}${lines} ${linesAt(pin.anchor)}${pin.anchor.file ? ` of ${pin.anchor.file}` : ''}`;
+    }
     case 'text':
     case 'doc':
       return `"${clip(pin.quote, 80)}"`;
@@ -223,6 +230,8 @@ export function pinPart(pin: PartLike, block?: Block): string {
     case 'point':
     case 'spot':
       return pin.quote;
+    case 'site':
+      return `${pin.quote} on ${pin.anchor.page === '/' ? 'the home page' : `page ${pin.anchor.page}`}`;
     default:
       return `the whole ${wholeWord(block)}`;
   }
@@ -235,8 +244,9 @@ export function partQuote(pin: PartLike, block?: Block): string {
   const { kind } = pin.anchor;
   if (kind === 'text' || kind === 'doc') return `“${pin.quote}”`;
   if (kind === 'line') {
-    const { file, line, side } = pin.anchor;
-    const where = file ? `${file}:${line}` : `line ${line}`; // a code block with no path yet
+    const { file, side } = pin.anchor;
+    const lines = linesAt(pin.anchor);
+    const where = file ? `${file}:${lines}` : `${lines.includes('–') ? 'lines' : 'line'} ${lines}`; // a code block with no path yet
     return `${where}${side === 'old' ? ' (old)' : ''} · ${pin.quote ? `“${pin.quote}”` : 'a blank line'}`;
   }
   const name = block ? block.title || kindOf(block.type).label : '';
@@ -263,6 +273,8 @@ export function pinLost(pin: Pin): string {
       return 'no longer there';
     case 'doc':
       return 'paragraph removed';
+    case 'site':
+      return 'no longer on the page';
     default:
       return 'text changed';
   }

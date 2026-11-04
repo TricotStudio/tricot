@@ -10,8 +10,12 @@ import { searchStore } from '../core/search';
 import { agentsWithSkills, tasksOf } from '../core/skills';
 import { boardAgents } from '../core/mentions';
 import { agentStep, agentStepName, agentsParams, canvas as canvasBodies, describeIssues, dismissNeeds, eventsParams, needsParams, people as bodies, searchParams, seenCursors } from '../core/schemas';
-import { openStepsStream, openStream } from './live';
+import { asPerson, peopleChange, personOnly, readerOf, type PersonGate, type Tier } from './access';
+import type { Approvals } from './approvals';
+import { openStepsStream, openStream, type Reader } from './live';
+import type { PairingSessions } from './pairing';
 import type { Presence } from './presence';
+import type { Seats } from './seats';
 import type { Steps } from './steps';
 import { boardKey, type Actor, type Block } from '../core/types';
 
@@ -38,8 +42,56 @@ function param(req: Request, name: string): string {
   return String(req.params[name]);
 }
 
-export function createApiRouter(store: Store, info: { mcpUrl: string; version?: string; source?: string; folder?: StartFolder }, presence?: Presence, steps?: Steps): Router {
+export function createApiRouter(
+  store: Store,
+  info: { mcpUrl: string; version?: string; source?: string; folder?: StartFolder },
+  presence?: Presence,
+  steps?: Steps,
+  pairing?: PairingSessions,
+  approvals?: Approvals, // agents waiting for a person's OK, on the pages' streams (live.ts)
+  person: PersonGate = (req, tier) => asPerson(req, tier), // who is a person, and at which tier (access.ts); the app's, with its terminals and seats
+  seats?: Seats, // the person's seats (seats.ts): their streams' tickets, and the admissions they answer
+): Router {
   const api = Router();
+
+  // A step from an agent's harness while it works: one line of what it is
+  // doing, shown live on the card it is working on and kept in memory only
+  // (steps.ts). Its body is small (app.ts holds it to STEP_BODY_LIMIT). A
+  // step that is rate-limited, or has no board to go on, is answered all the
+  // same, as `shown: false`: the hook that sent it has nothing to do about it.
+  // The agent's own, from its hook: the one change here that isn't a person's.
+  api.post('/agents/:name/steps', (req, res) => {
+    const { name } = agentStepName.parse(req.params);
+    const step = agentStep.parse(req.body);
+    if (!steps) throw new BoardError('Steps are not kept on this server.');
+    const result = steps.record(name, step);
+    res.status(result.shown ? 201 : result.reason === 'limited' ? 429 : 202).json(result);
+  });
+
+  // Every other change below is a person's (access.ts asPerson): made in
+  // Tricot's page, or at a Tricot terminal (tier A). The name it is made in
+  // comes in the request (human() below), so a plain call from curl or a
+  // script is refused before any route reads it. Agents change boards
+  // through MCP, as themselves. What is consequential needs one of the
+  // person's seats too (tier B, `seated` on the route, T187): deciding,
+  // retiring, deferring, reopening, deleting, marking ready, approving a
+  // commit, and Tricot skills. Reads pass, as people's pages make them: none
+  // holds what an agent can't already read over MCP, but for the requests
+  // for permission waiting on the streams, which go to a person alone, in
+  // full to a seat (stream routes below, live.ts).
+  api.use(peopleChange(person));
+  const seated = personOnly(person, 'B');
+  const readerFor = (req: Request): Reader | undefined => {
+    const reader = readerOf(req, person, seats);
+    return reader && { ...reader, approvals, seats };
+  };
+  // A task's change is consequential when it moves the task (marking it
+  // ready, sending it back, closing it) or approves its commit; renaming it,
+  // its links, its place in its lane and who it's for are not.
+  const taskChange = (req: Request): Tier => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    return body.status !== undefined || body.approveCommit !== undefined || body.nothingToCommit !== undefined ? 'B' : 'A';
+  };
 
   // `app` and `pid` let the `tricot` command tell its own server from anything
   // else on a port. `version` and `source` (the repository's page) are for the
@@ -113,32 +165,19 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
     res.json(tasksOf(boards, param(req, 'name')));
   });
 
-  // A step from an agent's harness while it works: one line of what it is
-  // doing, shown live on the card it is working on and kept in memory only
-  // (steps.ts). Its body is small (app.ts holds it to STEP_BODY_LIMIT). A
-  // step that is rate-limited, or has no board to go on, is answered all the
-  // same, as `shown: false`: the hook that sent it has nothing to do about it.
-  api.post('/agents/:name/steps', (req, res) => {
-    const { name } = agentStepName.parse(req.params);
-    const step = agentStep.parse(req.body);
-    if (!steps) throw new BoardError('Steps are not kept on this server.');
-    const result = steps.record(name, step);
-    res.status(result.shown ? 201 : result.reason === 'limited' ? 429 : 202).json(result);
-  });
-
   // The skills people add in Tricot (core/skills.ts): for one agent or, with
   // none, every agent. Agents never write them; a request carries them.
-  api.post('/skills', (req, res) => {
+  api.post('/skills', seated, (req, res) => {
     const { actor, ...skill } = bodies.addSkill.parse(req.body);
     res.status(201).json(store.addTricotSkill(actor, skill));
   });
 
-  api.post('/skills/:skillId', (req, res) => {
+  api.post('/skills/:skillId', seated, (req, res) => {
     const { actor: _actor, ...patch } = bodies.editSkill.parse(req.body);
     res.json(store.editTricotSkill(param(req, 'skillId'), patch));
   });
 
-  api.post('/skills/:skillId/delete', (req, res) => {
+  api.post('/skills/:skillId/delete', seated, (req, res) => {
     bodies.actorOnly.parse(req.body);
     res.json(store.deleteTricotSkill(param(req, 'skillId')));
   });
@@ -188,12 +227,13 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
 
   // Deletes an archived board for good, for a person who typed its title.
   // There is no agent tool for it: agents never delete a board.
-  api.post('/boards/:boardId/delete', (req, res) => {
+  api.post('/boards/:boardId/delete', seated, (req, res) => {
     const body = bodies.deleteBoard.parse(req.body);
     const board = store.getBoard(param(req, 'boardId'));
     store.deleteBoard(board.id, human(body.actor), body.confirm);
     presence?.forget(boardKey(board));
     steps?.forget(boardKey(board));
+    pairing?.forget(boardKey(board));
     res.json({ ok: true });
   });
 
@@ -256,15 +296,41 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
     res.json(store.setThreadLens(param(req, 'threadId'), body.lens, human(body.actor)));
   });
 
-  // Server-sent events: each change to the board, and who is on it (see live.ts).
+  // Server-sent events: each change to the board, and who is on it (see live.ts),
+  // and to a person, the requests for permission waiting.
   api.get('/boards/:boardId/stream', (req, res) => {
-    openStream(store, presence, req, res, param(req, 'boardId'), steps);
+    openStream(store, presence, req, res, param(req, 'boardId'), steps, readerFor(req));
   });
 
-  // Every board's steps as they come, for the home page's project rows (live.ts).
+  // Pairing sessions (server/pairing.ts): a person starting one with an agent
+  // in a piece's full view, its page saying it is still there, and leaving it.
+  // An ended one answers 404 with ended: the page goes back to browsing.
+  const pairs = () => {
+    if (!pairing) throw new BoardError('Pairing is not offered on this server.');
+    return pairing;
+  };
+  api.post('/pairing', (req, res) => {
+    const { actor, blockId, part, agent } = bodies.pairingStart.parse(req.body);
+    res.status(201).json(pairs().start({ blockId, part, person: actor, agent }));
+  });
+  api.post('/pairing/:id/beat', (req, res) => {
+    const { actor, active } = bodies.pairingBeat.parse(req.body);
+    const session = pairs().beat(param(req, 'id'), actor, active);
+    if (session) res.json(session);
+    else res.status(404).json({ error: 'This pairing session has ended.', ended: true });
+  });
+  api.post('/pairing/:id/end', (req, res) => {
+    const { actor } = bodies.pairingEnd.parse(req.body);
+    const ended = pairs().end(param(req, 'id'), actor);
+    if (ended) res.json(ended);
+    else res.status(404).json({ error: 'This pairing session has ended.', ended: true });
+  });
+
+  // Every board's steps as they come, for the home page's project rows (live.ts),
+  // and to a person, the requests for permission waiting.
   api.get('/steps/stream', (req, res) => {
     if (!steps) throw new BoardError('Steps are not kept on this server.');
-    openStepsStream(store, steps, req, res);
+    openStepsStream(store, steps, req, res, readerFor(req));
   });
 
   // Where the board is, for a page to check itself against: its latest change
@@ -333,13 +399,20 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
     res.json(store.requestRefresh(param(req, 'decisionId'), body.note, human(body.actor)));
   });
 
+  // After deciding a card, asks agents to check the others it may change still
+  // hold: a refresh of each, asked together. Answers with the cards asked about.
+  api.post('/decisions/:decisionId/revisit', (req, res) => {
+    const { actor, decisionIds } = bodies.revisit.parse(req.body);
+    res.json(store.askToRevisit(param(req, 'decisionId'), decisionIds, human(actor)));
+  });
+
   api.post('/decisions/:decisionId/refresh/cancel', (req, res) => {
     const body = bodies.actorOnly.parse(req.body);
     res.json(store.cancelRefresh(param(req, 'decisionId'), human(body.actor)));
   });
 
   // Sets a card aside as no longer relevant; reopen brings it back.
-  api.post('/decisions/:decisionId/retire', (req, res) => {
+  api.post('/decisions/:decisionId/retire', seated, (req, res) => {
     const body = bodies.retire.parse(req.body);
     res.json(store.retire(param(req, 'decisionId'), body.note, human(body.actor)));
   });
@@ -356,13 +429,13 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
   // Deletes a card made by mistake, for good, once a person confirmed (a
   // second click; a board's name is typed out, a card's number isn't). There
   // is no agent tool for it: agents never delete a card.
-  api.post('/decisions/:decisionId/delete', (req, res) => {
+  api.post('/decisions/:decisionId/delete', seated, (req, res) => {
     const body = bodies.actorOnly.parse(req.body);
     store.deleteDecision(param(req, 'decisionId'), human(body.actor));
     res.json({ ok: true });
   });
 
-  api.post('/decisions/:decisionId/resolve', (req, res) => {
+  api.post('/decisions/:decisionId/resolve', seated, (req, res) => {
     const { actor, ...input } = bodies.resolve.parse(req.body);
     res.json(store.resolve(param(req, 'decisionId'), input, human(actor)));
   });
@@ -372,12 +445,12 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
     res.json(store.requestExploration(param(req, 'decisionId'), body.note, human(body.actor)));
   });
 
-  api.post('/decisions/:decisionId/defer', (req, res) => {
+  api.post('/decisions/:decisionId/defer', seated, (req, res) => {
     const body = bodies.defer.parse(req.body);
     res.json(store.defer(param(req, 'decisionId'), body.note, human(body.actor)));
   });
 
-  api.post('/decisions/:decisionId/reopen', (req, res) => {
+  api.post('/decisions/:decisionId/reopen', seated, (req, res) => {
     const body = bodies.actorOnly.parse(req.body);
     res.json(store.reopen(param(req, 'decisionId'), human(body.actor)));
   });
@@ -422,23 +495,23 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
     res.json(react({ pinId: param(req, 'pinId') }, req));
   });
 
-  api.post('/tasks/:taskId', (req, res) => {
+  api.post('/tasks/:taskId', personOnly(person, taskChange), (req, res) => {
     const { actor, ...patch } = bodies.taskPatch.parse(req.body);
     res.json(store.updateTask(param(req, 'taskId'), patch, human(actor)));
   });
 
   // Sets a task aside as work that won't be done; bring-back puts it in the backlog or to do.
-  api.post('/tasks/:taskId/drop', (req, res) => {
+  api.post('/tasks/:taskId/drop', seated, (req, res) => {
     const body = bodies.dropTask.parse(req.body);
     res.json(store.dropTask(param(req, 'taskId'), body.note, human(body.actor)));
   });
 
-  api.post('/tasks/:taskId/bring-back', (req, res) => {
+  api.post('/tasks/:taskId/bring-back', seated, (req, res) => {
     const body = bodies.bringBack.parse(req.body);
     res.json(store.bringBackTask(param(req, 'taskId'), body.to, human(body.actor)));
   });
 
-  api.post('/tasks/:taskId/delete', (req, res) => {
+  api.post('/tasks/:taskId/delete', seated, (req, res) => {
     const body = bodies.actorOnly.parse(req.body);
     store.deleteTask(param(req, 'taskId'), human(body.actor));
     res.json({ ok: true });
@@ -522,7 +595,7 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
 
   // Pins part of a block: to a new task, question or comment from a person's
   // prompt, or to work that already exists.
-  api.post('/canvas/blocks/:id/pins/task', (req, res) => {
+  api.post('/canvas/blocks/:id/pins/task', personOnly(person, (req) => (req.body?.ready ? 'B' : 'A')), (req, res) => {
     const { actor, part, text, ready } = canvasBodies.pinTask.parse(req.body);
     res.status(201).json(store.pinTask(param(req, 'id'), part, { text, ready }, human(actor)));
   });
@@ -533,8 +606,8 @@ export function createApiRouter(store: Store, info: { mcpUrl: string; version?: 
   });
 
   api.post('/canvas/blocks/:id/pins/comment', (req, res) => {
-    const { actor, part, body } = canvasBodies.pinComment.parse(req.body);
-    res.status(201).json(store.pinComment(param(req, 'id'), part, body, human(actor)));
+    const { actor, part, body, ask } = canvasBodies.pinComment.parse(req.body);
+    res.status(201).json(store.pinComment(param(req, 'id'), part, body, human(actor), { ask: Boolean(ask) }));
   });
 
   // Replies about a pinned part people commented on, and resolving its thread.

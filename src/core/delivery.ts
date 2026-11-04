@@ -44,8 +44,9 @@ export interface StepNow {
   narration?: boolean;
 }
 
-// Where a message is: a task's or a decision's discussion, or a thread.
-export type Where = { task: Task } | { decision: Decision } | { thread: Thread };
+// Where a message is: a task's or a decision's discussion, a thread, or a
+// pin's own thread on the board context, which is on no card.
+export type Where = { task: Task } | { decision: Decision } | { thread: Thread } | { boardContext: true };
 
 // The message: a comment or a thread message, or one being sent.
 export interface Said {
@@ -55,6 +56,7 @@ export interface Said {
   mentions?: string[];
   reactions?: Reaction[];
   held?: number; // an agent's message the loop guard holds (core/agentTalk.ts)
+  paired?: object; // the line a pairing session left on the card (core/pairing.ts): for nobody
 }
 
 export type Delivery =
@@ -73,7 +75,8 @@ export type Delivery =
 // the agent working on it; none: any agent. Nothing for a message only for
 // people. An agent's message is for the other agents it @-mentions, unless
 // the loop guard holds it; its plain ones are for nobody.
-export function meantFor(board: Pick<Board, 'activity'>, where: Where, said: Pick<Said, 'mentions' | 'held'> & { author?: Actor }): string[] | undefined {
+export function meantFor(board: Pick<Board, 'activity'>, where: Where, said: Pick<Said, 'mentions' | 'held' | 'paired'> & { author?: Actor }): string[] | undefined {
+  if (said.paired) return undefined;
   if (said.author?.kind === 'agent') {
     const to = toAgents({ author: said.author, mentions: said.mentions }, (names) => agentsIn(board, names));
     return to.length && !said.held ? to : undefined;
@@ -127,7 +130,8 @@ export function deliveryOf({ board, where, said, after, agents, steps }: Deliver
   const card = 'task' in where ? { kind: 'task' as const, id: where.task.id } : 'decision' in where ? { kind: 'decision' as const, id: where.decision.id } : undefined;
   const thread = 'thread' in where ? where.thread.id : undefined;
   const isHere = (focus: { kind: string; id: string } | undefined) => Boolean(card && focus && focus.kind === card.kind && focus.id === card.id);
-  const stepHere = (s: StepNow) => (thread ? s.thread === thread : isHere(s.card));
+  // On the board context, a step is here when it is on the board, on no card and no thread.
+  const stepHere = (s: StepNow) => (thread ? s.thread === thread : 'boardContext' in where ? !s.card && !s.thread : isHere(s.card));
   const sawIt = (said.reactions ?? []).filter((r) => r.by.kind === 'agent' && r.emoji === '👀');
   // Who may be on it: those it waits on; for any agent, every agent on the
   // board now, and any that saw it or is working on it.

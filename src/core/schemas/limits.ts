@@ -40,9 +40,11 @@ export const LIMITS = {
   taskLink: 500,
   noCommit: 300, // why a task's work has nothing to commit
   tasks: 50, // planned at once
+  backlogCards: 5, // one agent opens on a board in an hour (core/store/tasks.ts)
   revision: 200,
   affects: 12, // decisions one names as ones it could affect
   affectWhy: 200, // why it could affect one
+  revisit: 50, // decisions a person asks to be checked at once, after deciding one
   pinContext: 200, // the words around pinned text
   moves: 500,
   syncBlocks: 1_000,

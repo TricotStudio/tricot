@@ -3,7 +3,7 @@ import type { PinPart } from './inputs';
 import { label, taskLabel } from './labels';
 import { blockIs } from '../blocks/shared';
 import { kindOf } from '../blocks/registry';
-import { connectorPinning } from '../connectors';
+import { partOf, partWords } from '../parts';
 import { blockLabel } from '../canvas';
 import { pinPart, placePin } from '../pins';
 import type { Block, Board, Pin, PinAnchor } from '../types';
@@ -11,7 +11,7 @@ import type { Block, Board, Pin, PinAnchor } from '../types';
 // A pinned part and where it is: "the docs site" in note "Where we are";
 // words in a Google Doc by the doc's name.
 export function pinIn(pin: Pin, block: Block): string {
-  return `${pinPart(pin, block)} in ${connectorPinning(pin.anchor.kind)?.pins?.label?.(block, pin) ?? blockLabel(block)}`;
+  return `${pinPart(pin, block)} in ${partOf(block, pin.anchor.kind)?.label?.(block, pin) ?? blockLabel(block)}`;
 }
 
 // Pins that were there and aren't any more, said as a change is.
@@ -32,8 +32,10 @@ export function pinRef(board: Board, pin: Pin, full = false): string {
 }
 
 // Whether two anchors pin the same part. A box or a spot is the same whatever
-// number it would be given.
+// number it would be given; a website's element is its page's element,
+// whatever it reads or wherever its file has it now.
 export function samePart(a: PinAnchor, b: PinAnchor): boolean {
+  if (a.kind === 'site' && b.kind === 'site') return a.page === b.page && a.selector === b.selector;
   if (a.kind === 'box' && b.kind === 'box') return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
   if (a.kind === 'spot' && b.kind === 'spot') return a.x === b.x && a.y === b.y && a.z === b.z && a.name === b.name; // whatever it was seen from
   return JSON.stringify(a) === JSON.stringify(b);
@@ -52,6 +54,7 @@ const NOT_HERE: Partial<Record<PinPart['kind'], (block: Block) => string>> = {
   line: (block) => `Lines are pinned in diffs and code blocks; ${blockIs(block)}.`,
   point: (block) => `Points are pinned in charts; ${blockIs(block)}.`,
   spot: (block) => `Spots are pinned on 3D scenes; ${blockIs(block)}.`,
+  site: (block) => `Elements are pinned on websites; ${blockIs(block)}.`,
   block: () => '',
 };
 
@@ -63,6 +66,6 @@ export function pinAnchor(block: Block, part: PinPart, pins: Pin[]): { anchor: P
   if (part.kind === 'block') return { anchor: { kind: 'block' }, quote: block.title || kind.pins?.whole?.quote(block) || blockLabel(block) };
   const found = kind.pins?.anchor?.(block, part, pins);
   if (found) return found;
-  const say = NOT_HERE[part.kind] ?? connectorPinning(part.kind)?.pins?.missing;
+  const say = NOT_HERE[part.kind] ?? partWords(part.kind)?.missing;
   throw new BoardError(say ? say(block) : `Unknown kind of pin "${(part as { kind: string }).kind}".`);
 }

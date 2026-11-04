@@ -1,8 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BACKUP_NOTE, type Release, type UpdateFailure, type UpdateHow, type UpdateState } from '../core/update';
 import { api, type RequestError } from './api';
 import { Icon, Popover } from './components';
 import { Stitch } from './stitch';
+import { checkWords, lineOfAnswer, lineOfError, type CheckLine } from './updateCheck';
 import './update.css';
 
 // "Tricot 0.2.0 is out": a quiet notice on Home (UpdateNotice) and in a
@@ -12,7 +13,14 @@ import './update.css';
 // over to it and restarts, while the page says "Updating to 0.2.0…" and asks
 // every second until the new version answers, then reloads into it. Where the
 // server can't update itself, the button copies the command to run instead.
-// Skipping a version is this browser's, until a newer one is out.
+// Skipping a version is this browser's, until a newer one is out, or until
+// the person checks by hand and it's still the latest.
+//
+// "Check for updates" (CheckForUpdates), in the menu under your name, asks
+// the server to check now (POST /api/update/check) and says what it found in
+// its row. A newer release shows in the notice at once, and the row's "See
+// the update" brings the notice up: Home's, focused; a board's chip, opened;
+// on a page with neither, Home.
 
 const SKIPPED_KEY = 'tricot:update-skipped'; // localStorage: the version set aside
 const FAILURE_SEEN_KEY = 'tricot:update-failure-seen'; // localStorage: when the failure read was
@@ -38,6 +46,7 @@ interface Snapshot {
   skipped?: string;
   failureSeen?: string;
   justUpdated?: Release;
+  reveal?: number; // when the person asked to see the notice (See the update), until it shows
 }
 
 const stored = {
@@ -182,6 +191,49 @@ async function waitForNewVersion(): Promise<void> {
 export function skipVersion(version: string): void {
   stored.set(local(), SKIPPED_KEY, version);
   set({ skipped: version });
+}
+
+// ---- checking now -------------------------------------------------------------
+
+// Asks the server to check now and takes the state it answers with, so a
+// newer release shows in the notice at once: one skipped here too, since the
+// person asked. Says what the menu's row says.
+export async function checkNow(): Promise<CheckLine> {
+  try {
+    const { checked, ...state } = await api.checkForUpdates();
+    set({ state, loadedAs: snapshot.loadedAs ?? state.current });
+    if ('newer' in checked && snapshot.skipped === checked.newer.version) {
+      stored.set(local(), SKIPPED_KEY, undefined);
+      set({ skipped: undefined });
+    }
+    return lineOfAnswer({ checked });
+  } catch (e) {
+    return lineOfError(e as RequestError);
+  }
+}
+
+const REVEAL_MS = 3000; // a page opening Home to show it takes this long, at most
+let notices = 0; // the notices on this page: Home's, or a board's chip
+
+// Brings the notice up: Home's, or a board's chip, or Home, which has one.
+function revealUpdate(): void {
+  set({ reveal: Date.now() });
+  if (notices === 0) location.hash = '#/';
+}
+
+// For a notice: counts it on the page, and runs `bring` when the person asks
+// to see it (revealUpdate), then once only.
+function useReveal(reveal: number | undefined, bring: () => boolean): void {
+  useEffect(() => {
+    notices++;
+    return () => {
+      notices--;
+    };
+  }, []);
+  useEffect(() => {
+    if (reveal === undefined || Date.now() - reveal > REVEAL_MS) return;
+    if (bring()) set({ reveal: undefined });
+  });
 }
 
 function seenFailure(failure: UpdateFailure): void {
@@ -381,10 +433,18 @@ function CopyCommand({ text }: { text: string }) {
 
 // Home's: a quiet line above everything, while there is something to say.
 export function UpdateNotice() {
-  const shown = shownOf(useUpdate());
+  const s = useUpdate();
+  const shown = shownOf(s);
+  const notice = useRef<HTMLElement>(null);
+  useReveal(s.reveal, () => {
+    if (!notice.current) return false;
+    notice.current.scrollIntoView({ block: 'nearest' });
+    notice.current.focus();
+    return true;
+  });
   if (!shown) return null;
   return (
-    <section className={`update-notice is-${shown.kind}`} aria-label="Tricot update" aria-live="polite">
+    <section ref={notice} tabIndex={-1} className={`update-notice is-${shown.kind}`} aria-label="Tricot update" aria-live="polite">
       <Icon name={shown.kind === 'updated' ? 'check' : 'arrow-up'} className="update-icon" />
       <UpdateBody shown={shown} />
     </section>
@@ -408,7 +468,16 @@ function chipLabel(shown: Shown): string {
 
 // A board's: a small label in its top bar, which opens the same notice.
 export function UpdateChip() {
-  const shown = shownOf(useUpdate());
+  const s = useUpdate();
+  const shown = shownOf(s);
+  const body = useRef<HTMLDivElement>(null);
+  useReveal(s.reveal, () => {
+    const details = body.current?.closest('details');
+    if (!details) return false;
+    details.open = true;
+    body.current!.focus();
+    return true;
+  });
   if (!shown) return null;
   const label = chipLabel(shown);
   return (
@@ -417,9 +486,58 @@ export function UpdateChip() {
         {shown.kind === 'updating' ? <Stitch state="working" /> : <Icon name={shown.kind === 'updated' ? 'check' : 'arrow-up'} />}
         <span>{label}</span>
       </summary>
-      <div className={`popover-body update-popover is-${shown.kind}`} aria-live="polite">
+      <div ref={body} tabIndex={-1} className={`popover-body update-popover is-${shown.kind}`} aria-live="polite">
         <UpdateBody shown={shown} />
       </div>
     </Popover>
+  );
+}
+
+// ---- the menu's row -----------------------------------------------------------
+
+// Under the theme, in the menu under your name: the version running, and
+// Check for updates, which says in the row what it found. See the update
+// closes the menu (`onShow`) and brings the notice up.
+export function CheckForUpdates({ onShow }: { onShow: () => void }) {
+  const current = useUpdate().state?.current;
+  const [line, setLine] = useState<CheckLine | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const checking = line?.kind === 'checking';
+  // The button keeps the focus while it asks: it says it's busy rather than going disabled.
+  const check = () => {
+    if (checking) return;
+    setLine({ kind: 'checking' });
+    void checkNow().then((next) => mounted.current && setLine(next));
+  };
+  return (
+    <div className="user-version">
+      <div className="user-version-row">
+        <span>{current ? `Tricot ${current}` : 'Tricot'}</span>
+        <button type="button" className="btn btn-quiet btn-small" aria-disabled={checking || undefined} onClick={check}>
+          <Icon name="sync" /> Check for updates
+        </button>
+      </div>
+      <div className={`user-version-said${line ? ` is-${line.kind}` : ''}`}>
+        <p role="status">{line && checkWords(line)}</p>
+        {line?.kind === 'newer' && (
+          <button
+            type="button"
+            className="user-version-show"
+            onClick={() => {
+              onShow();
+              revealUpdate();
+            }}
+          >
+            See the update
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

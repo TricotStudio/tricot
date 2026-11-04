@@ -290,8 +290,10 @@ async function endToEnd(): Promise<void> {
     const result = (await client.callTool({ name, arguments: args as Record<string, unknown> })) as { content: { text: string }[]; isError?: boolean };
     return { text: result.content.map((c) => c.text).join('\n'), failed: Boolean(result.isError) };
   };
+  // As Tricot's page asks: what a person does is taken from it alone (access.ts asPerson).
   const rest = async (method: string, route: string, body?: object, headers: Record<string, string> = {}) => {
-    const res = await fetch(`${base}${route}`, { method, headers: { 'content-type': 'application/json', ...headers }, body: body && JSON.stringify(body) });
+    const page: Record<string, string> = method === 'GET' ? { 'Sec-Fetch-Site': 'same-origin' } : { Origin: base };
+    const res = await fetch(`${base}${route}`, { method, headers: { 'content-type': 'application/json', ...page, ...headers }, body: body && JSON.stringify(body) });
     const text = await res.text();
     let json: any = {};
     try {

@@ -465,7 +465,7 @@ describe('GET /api/needs', () => {
     store.addBlock({ taskId: task.id }, { title: 'Result', content: { type: 'note', text: 'Where it got to.' } }, claude);
     store.updateTask(task.id, { status: 'in_review', note: 'Done' }, claude);
     const post = async (body: unknown) => {
-      const response = await fetch(`${base}/api/needs/dismiss`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const response = await fetch(`${base}/api/needs/dismiss`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body) });
       return { status: response.status, json: await response.json() };
     };
     const mine = (json: unknown) => (json as NeedsReport).rows.filter((r) => r.boardId === board.id);

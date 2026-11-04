@@ -10,13 +10,13 @@ import { clip, describeChoice, listNames, optionPerson, peopleOn, pendingAsks, s
 import { driftAge, driftChanges, driftOf } from './freshness';
 import { canvasesOf, canvasName, pinAsk, pinComments, pinLost, pinPart, pinsTo, pinTarget, placePin } from './pins';
 import { kindOf } from './blocks/registry';
-import { askingWords, connectorAsks, connectorPinning } from './connectors';
+import { askingWords, partAsks, partOf, partWords } from './parts';
 import { cell } from './blocks/shared';
 import { requestHeading, requestsDigest } from './requests';
 import { fromThreadLine, isThreadEvent, threadEventLine, threadsDigest, threadsSection } from './threads';
 import { agentsIn, mentionEventLine, mentionTag, mentionsDigest, peopleIn, skillInstructionLines } from './mentions';
 import { assigneeDetail, assigneeNote, forAgent, readyLines } from './assignee';
-import { firstLookDetail, firstLookNote, firstLooksDigest } from './firstLook';
+import { firstLookDetail, firstLookNote, firstLooksDigest, openedBy } from './firstLook';
 import { laneTasks } from './taskOrder';
 import { reactionEventLine, reactionsLine } from './reactions';
 import type {
@@ -63,7 +63,7 @@ export function who(actor: Actor): string {
 // (mentionTag); `withId` gives its id, for get_task and get_decision, which
 // react takes.
 export function commentLine(comment: Comment, tag = '', withId = false): string {
-  const asking = comment.ask ? `, ${askingWords()?.asking}` : ''; // see connectorAsks
+  const asking = comment.ask ? `, ${askingWords(comment.askPart)?.asking}` : ''; // see partAsks
   const id = withId ? ` [comment id: ${comment.id}]` : '';
   const about = comment.pin ? ` on ${comment.pin.quote} [pin id: ${comment.pin.id}${asking}]` : '';
   const via = comment.via ? ` (via /${comment.via})` : '';
@@ -180,13 +180,13 @@ export function boardDigest(board: Board, viewer?: string, now = Date.now(), sho
       ? `Board context: ${shared} block${shared === 1 ? '' : 's'} on the board's global context and current state. Read it with get_canvas(board_id) before planning, and update it when a decision settles or a task finishes.`
       : "Board context: empty. Put the board's global context and current state there (goal, constraints, architecture, what's done), and keep it current.",
   );
-  // Requests to edit a doc are named on their own (connectorAsks), as work.
+  // Requests to edit a doc or change a website are named on their own (partAsks), as work.
   const threads = threadsAwaitingReply(board).filter((pin) => !pinAsk(pin.discussion!.thread!)).length;
   if (threads) {
     const many = threads === 1 ? 'thread on the board context waits' : 'threads on the board context wait';
     lines.push(`${threads} comment ${many} for a reply: read them in get_canvas(board_id) and answer with comment(pin_id).`);
   }
-  const asks = connectorAsks(board, viewer);
+  const asks = partAsks(board, viewer);
   if (asks) lines.push(asks);
   const mentioned = mentionsDigest(board, viewer, shown);
   if (mentioned) lines.push(mentioned);
@@ -411,7 +411,8 @@ export function commitsDigest(board: Board, viewer?: string): string | undefined
 export function taskDetail(board: Board, task: Task, viewer?: string, now = Date.now()): string {
   const lines = [`# T${task.number} [id: ${task.id}] ${task.title}`];
   const claimed = task.claimedBy && task.status !== 'todo' ? `, claimed by ${who(task.claimedBy)}` : '';
-  lines.push(`Status: ${TASK_STATUS_LABEL[task.status]}${claimed} · board ${board.id} · planned by ${who(task.createdBy)}`);
+  const made = openedBy(task) ? 'opened in the backlog' : 'planned';
+  lines.push(`Status: ${TASK_STATUS_LABEL[task.status]}${claimed} · board ${board.id} · ${made} by ${who(task.createdBy)}`);
   const from = fromThreadLine(board, task.fromThread);
   if (from) lines.push(from);
   const assigned = assigneeDetail(task, viewer);
@@ -474,7 +475,7 @@ function pinnedFrom(board: Board, target: { taskId?: string; decisionId?: string
 // Where a pinned box or diagram part is, for agents to find it: the box's
 // fractions of the image, a spot's point on a 3D scene, the ids the Mermaid
 // source gives a node or arrow.
-function pinWhere(pin: Pin): string {
+export function pinWhere(pin: Pin): string {
   const { anchor } = pin;
   const at = (v: number) => String(Math.round(v * 1000) / 1000);
   if (anchor.kind === 'box') return ` (x ${at(anchor.x)}, y ${at(anchor.y)}, w ${at(anchor.w)}, h ${at(anchor.h)})`;
@@ -489,7 +490,7 @@ function pinWhere(pin: Pin): string {
     return ` (${anchor.from} --> ${anchor.to}${anchor.label ? `, text "${anchor.label}"` : ''}${which})`;
   }
   if (anchor.kind === 'line') return pin.quote ? ` ("${clip(pin.quote, 80)}")` : ' (a blank line)';
-  return connectorPinning(anchor.kind)?.pins?.where?.(pin) ?? '';
+  return partWords(anchor.kind)?.where?.(pin) ?? '';
 }
 
 // The pins on a block, as get_canvas lists them under it. A board context
@@ -509,9 +510,9 @@ export function pinLines(board: Board, canvas: Canvas, block: Block): string[] {
           pin.anchor.kind === 'line'
             ? `; answer on the line with comment(pin_id)${comments.map((c) => `\n    - ${who(c.author)} at ${c.createdAt}: ${c.body.replace(/\n/g, '\n      ')}`).join('')}`
             : '';
-        // A person asking agents to edit a doc's paragraph: work, until an agent answers.
+        // A person asking agents to edit a doc's paragraph, change a website's element or a code block's lines…: work, until an agent answers.
         const ask = pinAsk(comments);
-        const words = ask ? connectorPinning(pin.anchor.kind)?.pins?.ask : undefined;
+        const words = ask ? partOf(block, pin.anchor.kind)?.ask : undefined;
         const request = words?.request ?? '';
         const act = words && waitsOnAgent(pin, comments) && !lost ? words.act : '';
         if (!pin.discussion.thread) return `${pinned} → ${request}${count} in the discussion, quoting it [pin id: ${pin.id}]${act && `; ${act}reply with comment(pin_id)`}${said}`;
@@ -556,14 +557,38 @@ export function syncDigest(board: Board): string | undefined {
 }
 
 // People's open requests to refresh a card's options. Named when an agent reads
-// the board, catches up or waits, until an agent finishes each one.
+// the board, catches up or waits, until an agent finishes each one. Those a
+// person asked together after deciding a card, to check its answer leaves
+// them standing, are named together, one line for each answer.
 export function refreshDigest(board: Board): string | undefined {
   const asked = board.decisions.filter((d) => d.refreshRequest);
   if (asked.length === 0) return undefined;
-  const list = asked
-    .map((d) => `${ref(d)} by ${d.refreshRequest!.by.name}${d.refreshRequest!.text ? ` ("${clip(d.refreshRequest!.text, 120)}")` : ''}`)
-    .join('; ');
-  return `Refresh requested on ${list}: re-check each against the app as it is now (get_decision says how), then update_decision with refreshed: true.`;
+  const together = new Map<string, { after: Decision; by: string; asked: Decision[] }>();
+  const alone: Decision[] = [];
+  for (const d of asked) {
+    const { after: afterId, by } = d.refreshRequest!;
+    const after = afterId ? board.decisions.find((other) => other.id === afterId) : undefined;
+    if (!after) {
+      alone.push(d);
+      continue;
+    }
+    const key = `${after.id}\0${by.name.toLowerCase()}`;
+    const group = together.get(key) ?? { after, by: by.name, asked: [] };
+    group.asked.push(d);
+    together.set(key, group);
+  }
+  const lines = [...together.values()].map(({ after, by, asked: them }) => {
+    const one = them.length === 1;
+    const answer = isSettled(after) ? ` (${describeChoice(after)})` : '';
+    return `${by} asked you to check ${listNames(them.map(ref))} still ${one ? 'holds' : 'hold'}, after deciding ${ref(after)}${answer}, which may change ${one ? 'it' : 'them'}: re-check ${one ? 'it' : 'each'} against the board and the app as they are now (get_decision says how), then update_decision on ${one ? 'it' : 'each'} with refreshed: true and a note saying whether it holds.`;
+  });
+  if (alone.length) {
+    const list = alone
+      .map((d) => `${ref(d)} by ${d.refreshRequest!.by.name}${d.refreshRequest!.text ? ` ("${clip(d.refreshRequest!.text, 120)}")` : ''}`)
+      .join('; ');
+    lines.push(`Refresh requested on ${list}: re-check each against the app as it is now (get_decision says how), then update_decision with refreshed: true.`);
+  }
+  return lines.join('\n');
 }
 
 // The chief of staff's cue, leading get_board when tasks are ready for the
@@ -728,6 +753,7 @@ function personLine(e: BoardEvent, board: Board, viewer: string | undefined, sho
   const found = discussionAt(e, board);
   if (!found) return undefined;
   const { discussion, said } = found;
+  if (said.paired) return undefined; // a pairing session's summary asks nothing
   if (discussion.items.slice(discussion.items.indexOf(said) + 1).some((m) => m.author.kind === 'agent')) return undefined;
   const task = e.taskId ? board.tasks.find((t) => t.id === e.taskId) : undefined;
   if (task && (!forAgent(task, viewer) || (task.claimedBy?.kind === 'agent' && task.status !== 'todo' && !samePerson(task.claimedBy.name, viewer)))) return undefined;

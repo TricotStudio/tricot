@@ -6,7 +6,7 @@ Thanks for helping. Two things first.
 
 ## The licence, and your contribution
 
-Tricot's core and command line are open source under the [GNU Affero General Public License, version 3](LICENSE), and Tricot Studio also offers them under a [commercial licence](COMMERCIAL.md) to anyone who can't meet the AGPL. So that the Licensor can offer both, every contribution needs the [Contributor Licence Agreement](CLA.md): You keep your copyright and give the Licensor the right to relicense Your contribution, commercially included. Read it, then comment "I have read the CLA and I agree to it" on Your first pull request. A pull request without that can't be merged.
+Tricot's core and command line are open source under the [Apache License, Version 2.0](LICENSE). Every contribution also needs the [Contributor Licence Agreement](CLA.md): You keep your copyright and give the Licensor the right to relicense Your contribution, commercially included. Read it, then comment "I have read the CLA and I agree to it" on Your first pull request. A pull request without that can't be merged.
 
 ## Working on the code
 
@@ -48,6 +48,7 @@ src/core/      domain model, store (all mutations + event log), agent-facing dig
 src/server/    Express app: REST + SSE for the UI, MCP endpoint (one session per agent); start.ts starts it, for the command, `npm start` and `npm run dev` alike
 src/web/       React UI; src/web/canvas/ is the whiteboard (React Flow)
 scripts/demo.ts  seeds an example board through MCP and REST
+brand/         the mark's files and icons, made from the app's own mark by `npm run brand` (brand/README.md says which is for what)
 ```
 
 Every kind of canvas block (note, table, chart…) is a folder on each side: `src/core/blocks/<type>/` says what it is (`index.ts`: its name, size, how it is placed and shown; `server.ts`: making and changing it, the text agents read, search, pins, what REST and MCP take, which the web build leaves out) and `src/web/canvas/blocks/<type>/` how it is drawn and added. A kind is registered with an import and an entry in `src/core/blocks/registry.ts` and `src/web/canvas/blocks/registry.ts`, and nothing else switches on a block's type; `npx tsx scripts/check-new-kind.ts` adds a throwaway kind that way and checks it end to end. The kinds are internal to the repository: there is no plugin API.

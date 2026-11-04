@@ -12,6 +12,7 @@ import { Deletions } from './store/deletions';
 import type { EventQuery } from './store/eventTables';
 import { FirstLooks } from './store/firstLooks';
 import type { BlockPatch, CanvasRef, DecisionPatch, LensInput, Located, Move, NewBlock, NewCriterion, NewDecision, NewFinding, NewGroup, NewTask, PinPart, PinTarget, ResolveInput, TaskPatch, WaitOptions } from './store/inputs';
+import { Pairings } from './store/pairing';
 import { People } from './store/people';
 import { Pins } from './store/pins';
 import { Reactions, type Reacted, type ReactionInput, type ReactionPlace } from './store/reactions';
@@ -25,6 +26,7 @@ import { Threads, type ThreadStart } from './store/threads';
 import { tallyOf, type BoardChange, type LiveState } from './changes';
 import { connectorKinds } from './connectors/registry';
 import type { Deletion } from './deletions';
+import type { PairingEnd, PairingSession } from './pairing';
 import type { Dismissed } from './needs';
 import type { SkillList, TricotSkill } from './skills';
 import type { PixelSize } from './blocks/image/image';
@@ -58,6 +60,7 @@ export class Store {
   private readonly firstLooks: FirstLooks;
   private readonly tasks: Tasks;
   private readonly pins: Pins;
+  private readonly pairings: Pairings;
   private readonly threads: Threads;
   private readonly reactions: Reactions;
   private readonly deletions: Deletions;
@@ -81,6 +84,7 @@ export class Store {
     this.firstLooks = new FirstLooks(this.repo);
     this.tasks = new Tasks(this.repo, this.people, this.firstLooks);
     this.pins = new Pins(this.repo, this.tasks, this.decisions, this.people);
+    this.pairings = new Pairings(this.repo, this.tasks, this.decisions);
     this.threads = new Threads(this.repo, this.people);
     this.reactions = new Reactions(this.repo);
     this.deletions = new Deletions(this.repo, this.assets);
@@ -105,7 +109,16 @@ export class Store {
     this.repo.presentAgents = present;
   }
 
-  // The clock first looks keep time by (core/firstLook.ts), so tests can move it.
+  // Whether blocks may name what is on this computer (a website's folder or
+  // dev server): the server says, by where it listens.
+  get localFiles(): boolean {
+    return this.repo.localFiles;
+  }
+  set localFiles(local: boolean) {
+    this.repo.localFiles = local;
+  }
+
+  // The clock first looks and new tasks keep time by (core/firstLook.ts), so tests can move it.
   get now(): () => number {
     return this.repo.now;
   }
@@ -160,6 +173,7 @@ export class Store {
   updateBoard(boardId: string, patch: { title?: string; goal?: string }, actor: Actor): Board { return this.boards.updateBoard(boardId, patch, actor); }
   setArchived(boardId: string, archived: boolean, actor: Actor): Board { return this.boards.setArchived(boardId, archived, actor); }
   deleteBoard(boardId: string, actor: Actor, confirm: string): void { return this.boards.deleteBoard(boardId, actor, confirm); }
+  announceSeats(summary: string, actor: Actor): void { return this.boards.announceSeats(summary, actor); }
   requestSync(boardId: string, blockIds: string[] | undefined, actor: Actor): Board { return this.sync.requestSync(boardId, blockIds, actor); }
   cancelSync(boardId: string, actor: Actor): Board { return this.sync.cancelSync(boardId, actor); }
   finishSync(boardId: string, note: string | undefined, actor: Actor): Board { return this.sync.finishSync(boardId, note, actor); }
@@ -178,15 +192,16 @@ export class Store {
   postDecision(boardId: string, input: NewDecision, actor: Actor): Decision { return this.decisions.postDecision(boardId, input, actor); }
   updateDecision(decisionId: string, patch: DecisionPatch, actor: Actor): Decision { return this.decisions.updateDecision(decisionId, patch, actor); }
   requestRefresh(decisionId: string, note: string | undefined, actor: Actor): Decision { return this.decisions.requestRefresh(decisionId, note, actor); }
+  askToRevisit(decisionId: string, decisionIds: string[], actor: Actor): Decision[] { return this.decisions.askToRevisit(decisionId, decisionIds, actor); }
   cancelRefresh(decisionId: string, actor: Actor): Decision { return this.decisions.cancelRefresh(decisionId, actor); }
   retire(decisionId: string, reason: string | undefined, actor: Actor): Decision { return this.lifecycle.retire(decisionId, reason, actor); }
   resolve(decisionId: string, input: ResolveInput, actor: Actor): Decision { return this.lifecycle.resolve(decisionId, input, actor); }
   requestExploration(decisionId: string, note: string | undefined, actor: Actor): Decision { return this.lifecycle.requestExploration(decisionId, note, actor); }
   defer(decisionId: string, note: string | undefined, actor: Actor): Decision { return this.lifecycle.defer(decisionId, note, actor); }
   reopen(decisionId: string, actor: Actor): Decision { return this.lifecycle.reopen(decisionId, actor); }
-  addComment(decisionId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string): Decision { return this.decisions.addComment(decisionId, body, actor, pin, ask); }
-  planTasks(boardId: string, inputs: NewTask[], actor: Actor, options: { ready?: boolean } = {}): Task[] { return this.tasks.planTasks(boardId, inputs, actor, options); }
-  addTaskComment(taskId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string): Task { return this.tasks.addTaskComment(taskId, body, actor, pin, ask); }
+  addComment(decisionId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string, askPart?: string): Decision { return this.decisions.addComment(decisionId, body, actor, pin, ask, askPart); }
+  planTasks(boardId: string, inputs: NewTask[], actor: Actor, options: { ready?: boolean; backlog?: boolean } = {}): Task[] { return this.tasks.planTasks(boardId, inputs, actor, options); }
+  addTaskComment(taskId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string, askPart?: string): Task { return this.tasks.addTaskComment(taskId, body, actor, pin, ask, askPart); }
   // A 👍, 👎 or 👀 on a comment or thread message, or taking one back (core/reactions.ts).
   react(place: ReactionPlace, input: ReactionInput, actor: Actor): Reacted { return this.reactions.react(place, input, actor); }
   // An agent's 👀 on what people wrote that its get_board or updates (`events`) put in front of it.
@@ -239,6 +254,11 @@ export class Store {
   commentOnPin(pinId: string, body: string, actor: Actor): { pin: Pin; comment: Comment } { return this.pins.commentOnPin(pinId, body, actor); }
   resolvePin(pinId: string, resolved: boolean, actor: Actor): Pin { return this.pins.resolvePin(pinId, resolved, actor); }
   pin(blockId: string, part: PinPart, target: PinTarget, actor: Actor): Pin { return this.pins.pin(blockId, part, target, actor); }
+  // Pairing sessions (core/pairing.ts): the piece one is on, its start and its end on the board, and what its agent is told.
+  pairingPiece(blockId: string, part: string): { board: Board; block: Block; piece: string; where: string } { const { located, block, piece, where } = this.pairings.piece(blockId, part); return { board: located.board, block, piece, where }; }
+  pairingStarted(session: PairingSession): void { return this.pairings.started(session); }
+  pairingEnded(session: PairingSession, endedAt: number, why: PairingEnd): { summary: string; comment?: Comment } { return this.pairings.ended(session, endedAt, why); }
+  pairingLine(session: PairingSession): string | undefined { return this.pairings.line(session); }
   pinAlongside(pinId: string, target: PinTarget, actor: Actor): Pin { return this.pins.pinAlongside(pinId, target, actor); }
   removeItem(itemId: string, actor: Actor): Deletion { return this.deletions.removeItem(itemId, actor); }
   restoreItem(itemId: string, actor: Actor): { deletion: Deletion; notes: string[] } { return this.deletions.restoreItem(itemId, actor); }

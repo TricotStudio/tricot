@@ -37,8 +37,12 @@ export class BoardRepository {
   // The agents on a board now, by its key, from presence: the server sets it,
   // so a mention or an assignee can name an agent that has only read the board.
   presentAgents: (boardKey: string) => string[] = () => [];
-  // The clock first looks keep time by (core/firstLook.ts), so tests can move it.
+  // The clock first looks and new tasks keep time by (core/firstLook.ts), so tests can move it.
   now: () => number = Date.now;
+  // Whether blocks may name what is on this computer (a website's folder or
+  // dev server): only while the server listens on this computer alone; the
+  // server sets it (server/app.ts).
+  localFiles = true;
 
   constructor(dataDir: string) {
     this.db = new BoardDb(dataDir, (key) => this.findBoard(key));

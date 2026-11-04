@@ -7,13 +7,14 @@ import type { BoardEvent } from '../core/types';
 import { api } from './api';
 import { ActorBadge, Icon, timeAgo } from './components';
 import { cardHash } from './hooks';
-import { AgentLiveSteps } from './liveSteps';
+import { AgentLiveSteps, useLiveSteps } from './liveSteps';
+import { AgentUsageSection } from './usage';
 import './agents.css';
 
 // The agents Tricot knows, in the user menu, and an agent's own panel: its
-// live steps switch (liveSteps.tsx), its skills (those it reported and the
-// Tricot skills that work with every agent, which people add and edit here),
-// what it is working on, and its activity.
+// live steps switch (liveSteps.tsx), its usage (usage.tsx), its skills (those
+// it reported and the Tricot skills that work with every agent, which people
+// add and edit here), what it is working on, and its activity.
 
 // The agents and what each can be asked to run, as the server has them.
 function useAgents(): { agents: AgentSkills[] | null; reload: () => void } {
@@ -81,6 +82,7 @@ export function AgentPanel({ name, person, onClose }: { name: string; person: st
   const agent = agents?.find((a) => samePerson(a.name, name));
   const [tab, setTab] = useState<Tab>('skills');
   const panel = useRef<HTMLElement>(null);
+  const liveSteps = useLiveSteps();
 
   useEffect(() => {
     panel.current?.focus();
@@ -107,7 +109,8 @@ export function AgentPanel({ name, person, onClose }: { name: string; person: st
             <Icon name="x" />
           </button>
         </header>
-        <AgentLiveSteps name={agent?.name ?? name} person={person} />
+        <AgentLiveSteps name={agent?.name ?? name} person={person} steps={liveSteps} />
+        {agents !== null && <AgentUsageSection name={agent?.name ?? name} board={agent?.board} liveSteps={liveSteps.report} />}
         <div className="agent-tabs" role="tablist" aria-label={`${name}`}>
           {(['skills', 'work', 'activity'] as const).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'is-active' : ''} onClick={() => setTab(t)}>

@@ -102,6 +102,13 @@ export class Boards {
     return board;
   }
 
+  // Who acts for the person changed (server/seats.ts): said in the activity of
+  // every board in use, where the person and their terminals see it.
+  announceSeats(summary: string, actor: Actor): void {
+    if (actor.kind !== 'human') throw new BoardError('Only people let browsers and terminals act for them.');
+    for (const board of this.repo.allBoards()) if (!board.archived) this.repo.record(board, actor, 'seats_changed', clip(summary, 300));
+  }
+
   // Deletes an archived board for good, once a person has typed its title: no
   // bin. Archiving is the way to keep a board. Everything of it goes, from the
   // database, from memory and from search, and so do its pictures that no other

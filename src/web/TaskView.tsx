@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { staleFromDeleted } from '../core/cardLinks';
 import { taskClosure } from '../core/closure';
+import { openedBy } from '../core/firstLook';
 import type { Board, Decision, Task } from '../core/types';
 import { api } from './api';
 import { TaskAssignee } from './assignee';
@@ -13,6 +14,7 @@ import { CommitLine } from './commit';
 import { ActorBadge, Md, timeAgo } from './components';
 import { Discussion } from './discussion';
 import { useReadOnly } from './hooks';
+import { CardApprovals } from './approvals';
 import { TakingALook } from './looking';
 import { CardViewBody } from './panelWidth';
 import { RefText } from './refs';
@@ -89,6 +91,7 @@ function TaskPanel(props: { board: Board; task: Task; name: string; unreadSince:
   return (
     <aside className={`decision-panel${closure ? ' is-closed' : ''}`} aria-label="Task">
       <TakingALook kind="task" id={task.id} task={task} band />
+      <CardApprovals kind="task" id={task.id} name={name} band />
       {closure && (
         <ClosedBand closure={closure}>
           {!readOnly && (closure.kind === 'dropped' ? <BringBackTask task={task} name={name} /> : <ReopenTask task={task} name={name} />)}
@@ -97,7 +100,7 @@ function TaskPanel(props: { board: Board; task: Task; name: string; unreadSince:
       <div className="drawer-scroll">
         {closure && <CommitLine task={task} />}
         <p className="drawer-byline">
-          {task.createdBy.kind === 'human' ? 'Added' : 'Planned'} by <ActorBadge actor={task.createdBy} /> {timeAgo(task.createdAt)}
+          {task.createdBy.kind === 'human' ? 'Added' : openedBy(task) ? 'Opened' : 'Planned'} by <ActorBadge actor={task.createdBy} /> {timeAgo(task.createdAt)}
           {task.claimedBy && task.status !== 'todo' && !(task.claimedBy.kind === 'agent' && task.claimedBy.name === task.assignee) && (
             <>
               {' '}

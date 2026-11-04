@@ -27,6 +27,7 @@ import { placePin } from '../src/core/pins';
 import { Store } from '../src/core/store';
 import type { Actor, Block, DocDraft, PinAnchor } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { DOCS_SCOPE, DRIVE_FILE, DRIVE_METADATA, FakeDoc, FakeGoogleServer } from './fakeDocs';
 import { eventsOf } from './tables';
@@ -127,6 +128,9 @@ const GOOGLE_DOC: GoogleDocument = {
     'kix.b': { listProperties: { nestingLevels: [{ glyphType: 'DECIMAL' }] } },
   },
 };
+
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
 
 describe('Reading a Google Doc as paragraphs', () => {
   it('keeps headings, lists and text, and makes tables, images, chips and suggestions read-only', () => {
@@ -459,7 +463,7 @@ describe('Google Docs in Tricot, end to end', () => {
     return { status: response.status, json: await response.json(), text: '' };
   };
   const post = async (route: string, body: unknown = {}) => {
-    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', route, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   };
   const signIn = async (permissions?: string[]) => {
@@ -491,6 +495,7 @@ describe('Google Docs in Tricot, end to end', () => {
     store.load();
     const connectors = new Connectors({ dataDir: dir, google: { endpoints: google.endpoints() } });
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -793,7 +798,7 @@ describe("Asking agents to edit a doc's paragraph", () => {
     return { status: response.status, json: await response.json() };
   };
   const post = async (route: string, body: unknown = {}) => {
-    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', route, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   };
   const route = (id = blockId) => `/api/connectors/google/docs/${id}`;
@@ -831,6 +836,7 @@ describe("Asking agents to edit a doc's paragraph", () => {
     store.load();
     const connectors = new Connectors({ dataDir: dir, google: { endpoints: google.endpoints() } });
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });
@@ -1054,7 +1060,7 @@ describe('A Google sign-in made before docs were chosen with the Picker', () => 
     return { status: response.status, json: await response.json() };
   };
   const post = async (route: string, body: unknown = {}) => {
-    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', route, JSON.stringify(body)) }, body: JSON.stringify(body) });
     return { status: response.status, json: await response.json() };
   };
   const call = async (name: string, args: Record<string, unknown>) =>
@@ -1094,6 +1100,7 @@ describe('A Google sign-in made before docs were chosen with the Picker', () => 
     store.load();
     const connectors = new Connectors({ dataDir: dir, google: { endpoints: google.endpoints(), builtIn: null } });
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

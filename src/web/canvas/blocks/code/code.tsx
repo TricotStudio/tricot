@@ -206,6 +206,12 @@ function CopyButton({ text }: { text: string }) {
 
 // ---- the body: numbered lines, folds, and what was said about a line ---------------
 
+// Where a line's thread says it is: "line 12", or for a range pinned there, "lines 12–18".
+function linesWhere(line: number, pins: Pin[], placed: PlacedPin[]): string {
+  const last = Math.max(line, ...placed.flatMap(({ pin, place }) => (place?.kind === 'line' && place.last && pins.includes(pin) ? [place.last] : [])));
+  return last > line ? `lines ${line}–${last}` : `line ${line}`;
+}
+
 export function CodeBody({ block, placed }: { block: CodeBlock; placed: PlacedPin[] }) {
   const canvas = useCanvas();
   const root = useRef<HTMLDivElement>(null);
@@ -222,12 +228,18 @@ export function CodeBody({ block, placed }: { block: CodeBlock; placed: PlacedPi
   }, [lines, colours, upTo, first]);
 
   // Pins by the line they're on, numbered in the order they read.
-  const { byLine, numbers } = useMemo(() => {
+  // A range of lines (pinned in its full view) is marked on each of them, its thread under the first.
+  const { byLine, numbers, spans } = useMemo(() => {
     const byLine = new Map<number, Pin[]>();
-    for (const { pin, place } of placed) if (place?.kind === 'line') byLine.set(place.line, [...(byLine.get(place.line) ?? []), pin]);
+    const spans: [number, number][] = [];
+    for (const { pin, place } of placed) {
+      if (place?.kind !== 'line') continue;
+      byLine.set(place.line, [...(byLine.get(place.line) ?? []), pin]);
+      if (place.last) spans.push([place.line, place.last]);
+    }
     const numbers = new Map<string, number>();
     for (const line of [...byLine.keys()].sort((a, b) => a - b)) for (const pin of byLine.get(line)!) numbers.set(pin.id, numbers.size + 1);
-    return { byLine, numbers };
+    return { byLine, numbers, spans };
   }, [placed]);
 
   // A pin shown from a comment about it: its line scrolls into view.
@@ -259,7 +271,7 @@ export function CodeBody({ block, placed }: { block: CodeBlock; placed: PlacedPi
         'diff-row',
         'is-code',
         highlighted(line) && 'is-hl',
-        pins.length > 0 && 'is-pinned',
+        (pins.length > 0 || spans.some(([from, to]) => line >= from && line <= to)) && 'is-pinned',
         draft === line && 'is-draft',
         pins.some((p) => p.id === canvas.focusPin) && 'is-focus',
       ];
@@ -275,7 +287,7 @@ export function CodeBody({ block, placed }: { block: CodeBlock; placed: PlacedPi
             <span className="diff-num">{line}</span>
             <Code tokens={tokens[line - first] ?? ([{ text: lines[line - first] }] as Token[])} />
           </div>
-          {pins.length > 0 && <LineThread pins={pins} numbers={numbers} where={`line ${line}`} />}
+          {pins.length > 0 && <LineThread pins={pins} numbers={numbers} where={linesWhere(line, pins, placed)} />}
         </Fragment>
       );
     });

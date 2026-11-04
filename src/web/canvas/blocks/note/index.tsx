@@ -1,5 +1,6 @@
 // Note blocks: Markdown, edited in place. Selecting words pins them. A task
 // list in a note ("- [ ] step") ticks in place: a tick rewrites that line.
+// Open shows it full screen, to pair with an agent on its words (noteView.tsx).
 
 import { useRef } from 'react';
 import { retick, setTask, taskLines, taskProgress } from '../../../../core/taskList';
@@ -8,7 +9,8 @@ import { Md } from '../../../components';
 import { useCanvas } from '../../context';
 import { DRAFT, PinStrip, rehypePins, type PlacedPin, type QuotedMark } from '../../pins';
 import { PIN_COMPONENTS, dragged, draftOf, selecting, useLongEdit } from '../interaction';
-import type { WebBlockKind } from '../kind';
+import type { ToolsProps, WebBlockKind } from '../kind';
+import { NoteView } from './noteView';
 
 type NoteBlock = Extract<Block, { type: 'note' }>;
 
@@ -99,11 +101,24 @@ function NoteHead({ block }: { block: NoteBlock }) {
   );
 }
 
+// Open: its full view, to read it at a reading size or pair with an agent on its words.
+function NoteTools({ block, viewing }: ToolsProps<NoteBlock>) {
+  const canvas = useCanvas();
+  return (
+    <button onClick={() => canvas.openOverlay(block.id, { version: viewing ?? undefined })} title="Open it full screen, to read it or pair with an agent on its words (Enter)">
+      Open
+    </button>
+  );
+}
+
 export const note: WebBlockKind<NoteBlock> = {
   type: 'note',
   Body: NoteBody,
   Head: NoteHead,
   ownPins: true, // its pins are the words themselves, and its body draws the strip
+  Tools: NoteTools,
+  overlay: { Component: NoteView, refocus: true }, // its full view, in the pairing shell
+  activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Note', add: () => ({ content: { type: 'note', text: '' } }) },
   added: (block, canvas) => canvas.edit(block.id),
 };

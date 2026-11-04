@@ -5,14 +5,57 @@ import { z } from 'zod';
 import type { TableTypes } from './index';
 import { cellsQuote } from './quote';
 import { cellShape, columnsOfText, rowsOfText, toCells } from '../cells';
-import type { AgentHalf, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import { blockNamed, partAsksDigest, type AskWords } from '../asks';
 import { blockIs, missing, MAX_ROWS, cell } from '../shared';
 import { blockLabel } from '../../canvas';
 import { ChartError, chartFromTable } from '../chart/chart';
 import { BoardError } from '../../store/errors';
 import { clip } from '../../format';
+import { placePin } from '../../pins';
 import { LIMITS, limited } from '../../store/validate';
-import type { PinAnchor } from '../../types';
+import type { Pin, PinAnchor } from '../../types';
+
+type TableBlock = BlockOf<TableTypes>;
+
+// Its cells, rows and columns take requests (core/parts.ts): people click a
+// cell, or drag over a range, a row or a column, in its full view, and ask an
+// agent to change them, which it does in the table's columns and rows. Pins
+// stay on their columns by their names, and on their rows while those read
+// the same (a row added above moves them down with it).
+const part: PartWords = {
+  kind: 'table',
+  anchors: ['cells'],
+  ask: {
+    verb: 'change',
+    asking: 'asking agents to change it in the table',
+    doing: "Change the table's columns and rows with update_block, then reply",
+    act: "change the table's columns and rows with update_block, then ",
+    request: 'request to change the table, ',
+    what: "a table's cells",
+  },
+};
+
+// Where pinned cells are, as an agent finds them: rows by their numbers
+// under the header (as they are now, if they moved), columns by their names.
+// "row 2 under the header, column "Attempts"", "every row, columns "p50" to "p95"".
+function cellsWhere(pin: Pin, block: TableBlock): string {
+  if (pin.anchor.kind !== 'cells') return '';
+  const place = placePin(block, pin);
+  const rows = place?.kind === 'cells' ? place.rows : (pin.anchor.rows ?? null);
+  const [first, last] = pin.anchor.headers.length ? [pin.anchor.headers[0], pin.anchor.headers.at(-1)!] : [];
+  const said = [
+    rows ? `${rows[0] === rows[1] ? `row ${rows[0] + 1}` : `rows ${rows[0] + 1}–${rows[1] + 1}`} under the header` : 'every row',
+    first === undefined ? 'every column' : pin.anchor.headers.length === 1 ? `column "${clip(first, 40)}"` : `columns "${clip(first, 40)}" to "${clip(last!, 40)}"`,
+  ];
+  return ` (${said.join(', ')})`;
+}
+
+const ask: AskWords = {
+  part: ({ pin, block }) => `${pin.quote}${block.type === 'table' ? cellsWhere(pin, block) : ''} of ${blockNamed(block, 'table')}`,
+  how: ({ block }) => `Change the table with update_block (block_id: ${block.id}, rows: every row, as the table is to be; and columns, if they change), keeping the names of the columns you keep`,
+  view: 'the table',
+};
 
 export function normalizeTable(columns: string[], rows: string[][]): { columns: string[]; rows: string[][] } {
   if (columns.length === 0) throw new BoardError('A table needs at least one column.');
@@ -40,6 +83,7 @@ export const agent: AgentHalf<TableTypes> = {
     return () => ({ type: 'table', columns, rows });
   },
   patch: (args) => ({ columns: args.columns as string[] | undefined, rows: args.rows ? toCells(args.rows as never) : undefined }),
+  asks: partAsksDigest(part, ask),
   pinShape: {
     row: z.number().int().min(1).optional().describe('Table row: 1 is the first row under the header'),
     to_row: z.number().int().min(1).optional().describe('Last row of a range'),
@@ -151,6 +195,7 @@ export const server: ServerHalf<TableTypes> = {
     };
     return { anchor, quote: cellsQuote(block, rows, columns) };
   },
+  part,
 
   // A person's "Make a chart": a bar chart of the table's first column and
   // its columns of numbers, beside it. Says which columns it left out.

@@ -5,6 +5,8 @@
 //   tricot status       is it running, and where
 //   tricot stop         stop the board running on this data
 //   tricot connect      print how to connect Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode or any MCP client
+//   tricot claude       start the board and Claude Code with it for one session (codex,
+//                       opencode too; agentCommand.ts)
 //   tricot hooks        show, or turn on or off, each agent's live steps (hooks.ts)
 //   tricot update       update to the latest Tricot, and restart the running board on it
 //
@@ -35,6 +37,7 @@ import {
   shellQuote,
   TOKEN_ENV,
 } from '../core/connect';
+import { SEAT_NEEDED } from '../core/seats';
 import { BACKUP_NOTE, type UpdateHow, type UpdateState } from '../core/update';
 import { isNewer } from '../core/version';
 import { authHeaders, isLoopbackHost, readToken } from '../server/access';
@@ -45,8 +48,14 @@ import { claude as claudeHooks } from '../server/hooks/claude';
 import { findRunning, LockHeldError, pidAlive, type ServerLock } from '../server/lock';
 import { PortInUseError, startServer, type RunningServer } from '../server/start';
 import { downloadReleaseFile, releaseFileName, removeDownload } from '../server/releaseFile';
-import { askedWhom, checkOff, fetchLatest, githubRepo, releaseFileFor, releasesFromEnv, releasesUrl, sourceLink, type Found, type UpdatesOptions, type Where } from '../server/updates';
+import { askedWhom, checkOff, fetchLatest, githubRepo, neverChecks, releaseFileFor, releasesFromEnv, releasesUrl, sourceLink, type Found, type UpdatesOptions, type Where } from '../server/updates';
+import { agentCommand, isAgentCommand, type AgentEnv, type RunningLock } from './agentCommand';
+import type { TerminalKeys } from './boardPicker';
 import { askOnFirstRun, hooksCommand, type HooksEnv } from './hooks';
+import type { AgentHost } from './switcher/run';
+import type { AgentLaunch } from './terminal';
+import { asThisTerminal } from './terminalKey';
+import { personHere, seatsCommand, serverTerminal } from './seatsDesk';
 
 export interface CliContext {
   env: NodeJS.ProcessEnv;
@@ -64,6 +73,20 @@ export interface CliContext {
   ask?(question: string, fallback?: boolean): Promise<boolean>;
   // npm, run without a shell; tests stand in for it (update).
   npm?: Command;
+  // The terminal's keys, for the board picker (tricot claude); none when
+  // there is no terminal to pick in.
+  keys?: TerminalKeys;
+  // Runs an agent in this terminal (tricot claude) and gives its exit code;
+  // terminal.ts runs it for real, and tests stand in for it.
+  launch?(agent: AgentLaunch): Promise<number>;
+  // Runs several agents in this terminal, one showing at a time (tricot claude
+  // codex, switcher/run.ts); none when there is no terminal to run them in.
+  host?: AgentHost;
+  // Ctrl+C, read as a key while the board's terminal asks something in raw
+  // mode: stops Tricot, as the signal does otherwise.
+  interrupt?(): void;
+  // The operating system, as process.platform names it; tests stand in for it.
+  platform?: NodeJS.Platform;
 }
 
 export interface CliResult {
@@ -81,17 +104,30 @@ Usage
   tricot stop             Stop the board running on this data
   tricot connect [agent]  Print how to connect an agent: claude, codex, pi, omp, gemini,
                           opencode, mcp-json, url
+  tricot claude           Start the board, then Claude Code in this terminal with the board
+                          for this session only (its settings stay as they are). Asks which
+                          board unless --board; anything after -- goes to Claude Code.
+                          Also: tricot codex, tricot opencode
+  tricot claude codex     Start several agents on one board, in this terminal: one shows at
+                          a time, a strip at the bottom lists them all, and Ctrl+\\ switches
+                          (then a number picks one, q quits). Any of claude, codex, opencode
   tricot hooks [status|on|off]
                           Show your agents' live steps, or turn them on or off for every
                           project (shows the files and lines, and asks first)
   tricot update           Update to the latest Tricot and restart the board on it, or say
                           the command to run when it can't do that itself
+  tricot seats            The browsers and terminals you let act for you, and letting in
+                          one that asks; tricot seats reset, with Tricot stopped, lets
+                          them all go
 
 Options
   --port <n>         Port (default $PORT or 4545)
   --data <dir>       Where boards are kept (default $TRICOT_DATA_DIR or ~/.tricot)
-  --board <id>       Open this board, or name it in the connect instructions
-  --name <name>      The agent's name on the board (connect; hooks with --agent)
+  --board <id>       Open this board, name it in the connect instructions, or give it to
+                     the agent tricot claude starts
+  --name <name>      The agent's name on the board (connect, claude; hooks with --agent)
+  --switch-key <key> With several agents: the key that switches (default ctrl-\\)
+  --switcher         tricot claude: run it with the strip at the bottom, as with several
   --hooks            connect claude: also show Claude's steps on its card, through a
                      hook in this project's .claude/settings.json (asks first)
   --narration        with --hooks: also show the first line of each message Claude
@@ -122,6 +158,8 @@ const OPTIONS = {
   'no-hooks': { type: 'boolean' },
   verbose: { type: 'boolean' },
   'no-open': { type: 'boolean' },
+  switcher: { type: 'boolean' },
+  'switch-key': { type: 'string' },
   'no-update-check': { type: 'boolean' },
   background: { type: 'boolean', short: 'd' },
   version: { type: 'boolean', short: 'v' },
@@ -133,9 +171,12 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult> {
   const pkg = JSON.parse(readFileSync(path.join(ctx.root, 'package.json'), 'utf8')) as { version: string; repository?: unknown };
   const version = pkg.version;
+  // What comes after `--` is the agent's, for tricot claude.
+  const split = argv.indexOf('--');
+  const passthrough = split < 0 ? [] : argv.slice(split + 1);
   let parsed;
   try {
-    parsed = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
+    parsed = parseArgs({ args: split < 0 ? argv : argv.slice(0, split), allowPositionals: true, options: OPTIONS });
   } catch (error) {
     ctx.err(`${error instanceof Error ? error.message : error}\n\n${HELP(version)}`);
     return { exitCode: 1 };
@@ -166,6 +207,16 @@ export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult
   const env = { values, ctx, version, source: sourceLink(pkg.repository), repo: githubRepo(pkg.repository), port, host, dataDir };
 
   const [command = 'start', arg] = positionals;
+  if (isAgentCommand(command)) {
+    // tricot claude codex: several agents, in this terminal together (severalAgents.ts).
+    if (arg !== undefined && positionals.every(isAgentCommand)) return agentCommand(agentEnv(env), positionals, passthrough);
+    if (arg !== undefined) {
+      ctx.err(`To give ${command} words of its own, put them after --: tricot ${command} -- ${positionals.slice(1).join(' ')}`);
+      return { exitCode: 1 };
+    }
+    return agentCommand(agentEnv(env), command, passthrough);
+  }
+  if (passthrough.length) positionals.push(...passthrough); // as before: words after -- are the command's
   switch (command) {
     case 'start':
       return start(env);
@@ -179,6 +230,8 @@ export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult
       return hooksCommand(hooksEnv(env, await findRunning(env.dataDir)), arg);
     case 'update':
       return update(env);
+    case 'seats':
+      return seatsCommand({ dataDir: env.dataDir, out: ctx.out, err: ctx.err, ...(ctx.keys && { keys: ctx.keys }), ...(ctx.ask && { ask: ctx.ask }) }, arg);
     default:
       ctx.err(`Unknown command "${command}".\n\n${HELP(version)}`);
       return { exitCode: 1 };
@@ -193,6 +246,8 @@ type Env = {
     narration?: boolean;
     'remove-hooks'?: boolean;
     'no-open'?: boolean;
+    switcher?: boolean;
+    'switch-key'?: string;
     background?: boolean;
     'no-update-check'?: boolean;
   };
@@ -298,6 +353,17 @@ async function start(env: Env): Promise<CliResult> {
   const authed = { ...env, token: server.token };
   printRunning(authed, server, 'Tricot is running:');
   ctx.out('Press Ctrl+C to stop.');
+  // In a terminal, this one asks when a browser wants to act for the person
+  // (seatsDesk.ts), and lets go of what it holds as the server stops.
+  if (ctx.keys) {
+    const url = server.url;
+    const desk = serverTerminal({ url, headers: authHeaders(dataDir), actor: () => personHere(url, dataDir), keys: ctx.keys, err: ctx.err, ...(ctx.interrupt && { interrupt: ctx.interrupt }) });
+    const close = server.close;
+    server.close = async () => {
+      await desk.stop().catch(() => undefined);
+      await close();
+    };
+  }
   openBoard(authed, server.url);
   return { exitCode: 0, server };
 }
@@ -317,9 +383,23 @@ function failedToStart(env: Env, error: unknown): CliResult {
   return { exitCode: 1 };
 }
 
-// Run this same command again, detached, with its output in <data>/server.log,
-// and wait for it to answer.
 async function startInBackground(env: Env): Promise<CliResult> {
+  const { ctx, host, dataDir } = env;
+  const lock = await startDetached(env);
+  if (!lock) {
+    ctx.err(`Tricot didn't start; see ${path.join(dataDir, 'server.log')}.`);
+    return { exitCode: 1 };
+  }
+  const authed = { ...env, token: tokenFor(env, lock.host ?? host) };
+  printRunning(authed, lock, 'Tricot is running in the background:');
+  ctx.out('Stop it with: tricot stop');
+  openBoard(authed, lock.url);
+  return { exitCode: 0 };
+}
+
+// Run this same command again, detached, with its output in <data>/server.log,
+// and wait for it to answer: its lock, or nothing when it didn't (the log says why).
+async function startDetached(env: Env): Promise<RunningLock | undefined> {
   const { ctx, port, host, dataDir } = env;
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const logFile = path.join(dataDir, 'server.log');
@@ -336,16 +416,37 @@ async function startInBackground(env: Env): Promise<CliResult> {
   for (let waited = 0; waited < 15000 && !exited; waited += 50) {
     await sleep(50);
     const lock = await findRunning(dataDir);
-    if (lock?.url && lock.mcpUrl) {
-      const authed = { ...env, token: tokenFor(env, lock.host ?? host) };
-      printRunning(authed, { url: lock.url, mcpUrl: lock.mcpUrl }, 'Tricot is running in the background:');
-      ctx.out('Stop it with: tricot stop');
-      openBoard(authed, lock.url);
-      return { exitCode: 0 };
-    }
+    if (lock?.url && lock.mcpUrl) return lock as RunningLock;
   }
-  ctx.err(`Tricot didn't start; see ${logFile}.`);
-  return { exitCode: 1 };
+  return undefined;
+}
+
+// What `tricot claude` shares with `tricot` (agentCommand.ts): the board
+// started or found the same way, opened the same way, the same first-run question.
+function agentEnv(env: Env): AgentEnv {
+  const { ctx, host, dataDir } = env;
+  return {
+    ctx,
+    values: env.values,
+    dataDir,
+    async ensureRunning() {
+      const running = await findRunning(dataDir);
+      if (running?.url && running.mcpUrl) return { lock: running as RunningLock, started: false };
+      const lock = await startDetached(env);
+      if (lock) return { lock, started: true };
+      ctx.err(`Tricot didn't start; see ${path.join(dataDir, 'server.log')}. Nothing else was started.`);
+      return undefined;
+    },
+    access(lock) {
+      const needed = !isLoopbackHost(lock.host ?? host);
+      return { needed, token: needed ? readToken(dataDir) : undefined };
+    },
+    openBoard(lock, board, options) {
+      openBoard({ ...env, values: { ...env.values, board, ...(options?.always && { 'no-open': false }) }, token: tokenFor(env, lock.host ?? host) }, lock.url);
+    },
+    firstRun: (lock) => askOnFirstRun(hooksEnv(env, lock)),
+    connect: (agent) => connect(env, agent),
+  };
 }
 
 async function status(env: Env): Promise<CliResult> {
@@ -405,17 +506,21 @@ export function whereToAsk(env: Pick<Env, 'ctx' | 'repo'>): Where {
   return { ...(releases && { releases }), ...(ctx.env.TRICOT_UPDATE_URL && { registry: ctx.env.TRICOT_UPDATE_URL }) };
 }
 
-// The daily check and updating in place, for the server this command starts.
-// This version starts again as this same script: `self`.
+// The daily check, checking now from the page (on even when the daily check
+// is off, but not in tests or from a checkout), and updating in place, for
+// the server this command starts. This version starts again as this same
+// script: `self`.
 export function updatesFor(env: Pick<Env, 'ctx' | 'values' | 'repo'>): UpdatesOptions {
   const { ctx, values } = env;
   const flags = values['no-update-check'] ? ['--no-update-check'] : [];
   const where = whereToAsk(env);
+  const kind = launchKind(ctx.root);
   return {
     root: ctx.root,
     self: { command: process.execPath, args: [...process.execArgv, ctx.entry] },
     flags,
-    check: checkOff(ctx.env, launchKind(ctx.root), values['no-update-check']) === undefined,
+    check: checkOff(ctx.env, kind, values['no-update-check']) === undefined,
+    manual: neverChecks(ctx.env, kind) === undefined,
     ...(where.releases && { releases: where.releases }),
     ...(where.registry && { url: where.registry }),
     ...(ctx.npm && { npm: ctx.npm }),
@@ -459,23 +564,42 @@ async function update(env: Env): Promise<CliResult> {
 }
 
 // The running board updates itself (POST /api/update), and this waits until
-// the new version answers, or says why it didn't.
+// the new version answers, or says why it didn't. Updating is a person's, and
+// consequential, so it asks as this terminal (terminalKey.ts), let in as one
+// of the person's seats for the call: they allow it in a browser they let in.
 async function updateRunning(env: Env, running: ServerLock, version: string): Promise<CliResult> {
   const { ctx, dataDir } = env;
   const url = running.url!;
-  let res: Response;
+  // A board that can't update itself says how to: nothing to let in for that.
+  const before = await updateState(running, dataDir);
+  if (before?.how && !before.how.self) {
+    printHow(env, before.how);
+    return { exitCode: 1 };
+  }
+  let res: { status: number; body: { error?: string; how?: UpdateHow; code?: string } };
   try {
-    res = await fetch(`${url}/api/update`, {
-      method: 'POST',
-      headers: { ...authHeaders(dataDir), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    res = await asThisTerminal(url, authHeaders(dataDir), async (headers, terminal) => {
+      const body = JSON.stringify({ version });
+      const send = async () => {
+        const answer = await fetch(`${url}/api/update`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json', ...terminal.sign('POST', '/api/update', body) },
+          body,
+          signal: AbortSignal.timeout(30_000),
+        });
+        return { status: answer.status, body: (await answer.json().catch(() => ({}))) as { error?: string; how?: UpdateHow; code?: string } };
+      };
+      const first = await send();
+      if (first.status !== 403 || first.body.code !== SEAT_NEEDED) return first;
+      const letIn = await terminal.letIn((line) => ctx.out(line));
+      if (!letIn.ok) return { status: 403, body: { error: `Tricot wasn't updated: ${letIn.error}` } };
+      return send();
+    }, fetch, 'tricot update');
   } catch (error) {
     ctx.err(`The board at ${url} didn't answer: ${error instanceof Error ? error.message : error}.`);
     return { exitCode: 1 };
   }
-  const body = (await res.json().catch(() => ({}))) as { error?: string; how?: UpdateHow };
+  const { body } = res;
   if (res.status !== 202) {
     if (body.how && !body.how.self) {
       printHow(env, body.how);

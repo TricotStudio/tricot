@@ -799,9 +799,21 @@ export function findPoint(chart: Pick<ChartContent, 'columns' | 'rows'>, categor
   if (row === -1) row = chart.rows.findIndex((r) => sameName(r[0] ?? '', category));
   if (row === -1) return null;
   if (series === undefined) return { row, series: null };
+  const column = findSeries(chart, series);
+  return column === null ? null : { row, series: column };
+}
+
+// A pinned series, picked in the legend: its column, by name as findPoint
+// finds it (counted from the first series); null once it is gone.
+export function findSeries(chart: Pick<ChartContent, 'columns'>, series: string): number | null {
   let column = chart.columns.findIndex((c, i) => i > 0 && c === series);
   if (column === -1) column = chart.columns.findIndex((c, i) => i > 0 && sameName(c, series));
-  return column === -1 ? null : { row, series: column - 1 };
+  return column === -1 ? null : column - 1;
+}
+
+// A whole series as a pin quotes it: "Done series".
+export function seriesQuote(chart: Pick<ChartContent, 'columns'>, series: number): string {
+  return `${clip(chart.columns[series + 1] || `series ${series + 1}`, 40)} series`;
 }
 
 // A point as a pin quotes it: "Thu: 16 tasks", "Thu · Done: 49 tasks", or a

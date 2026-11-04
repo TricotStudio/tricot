@@ -2,12 +2,20 @@
 // check. Statuses and lookups never carry a token or the client secret. The
 // sign-in steps are the same for every connector; what a connector adds (a
 // Google Doc's draft) is its own router, mounted under its id.
+//
+// Every change here is a person's, from one of their seats (access.ts
+// asPerson, tier B): signing in and out, a pasted token, the Picker's
+// short-lived access token, a doc's draft, a frame or a diff brought onto
+// the canvas, all with the person's own accounts. Agents use a connector through
+// their MCP tools. Reads (a link card's file, a pull request's card, the
+// statuses) and the service sending the person back to the callback pass.
 
 import { randomBytes } from 'node:crypto';
 import { Router, type ErrorRequestHandler, type Request, type Response } from 'express';
 import { z, ZodError } from 'zod';
 import type { ConnectorStatus } from '../../core/connectors';
 import { BoardError, type Store } from '../../core/store';
+import { asPerson, peopleChange, type PersonGate } from '../access';
 import { callbackPath } from './connector';
 import { ConnectorError, type Connectors } from './index';
 
@@ -38,8 +46,10 @@ export function callbackUri(host: string | undefined, id: string): string {
   return `http://${url.hostname}:${url.port || 80}${callbackPath(id)}`;
 }
 
-export function createConnectorsRouter(connectors: Connectors, store: Store): Router {
+// `person`: who is a person (access.ts); the app's, with its terminals, unless given.
+export function createConnectorsRouter(connectors: Connectors, store: Store, person: PersonGate = (req, tier) => asPerson(req, tier)): Router {
   const router = Router();
+  router.use(peopleChange(person, 'B'));
 
   router.get('/', (_req, res) => {
     res.json(connectors.list());

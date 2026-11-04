@@ -7,14 +7,18 @@ import { label } from './labels';
 import { type People, answerAsks, askMentioned } from './people';
 import type { BoardRepository } from './repository';
 import { LIMITS, commentText, guardArchived, limited, optional, randomId, required } from './validate';
+import { revisitNote } from '../affects';
 import { emptyCanvas } from '../canvas';
-import { clip, describeChoice, optionPerson, samePerson } from '../format';
+import { clip, describeChoice, listNames, optionPerson, samePerson } from '../format';
 import { peopleIn } from '../mentions';
 import type { Actor, Affect, Board, Comment, Decision, Finding, Option, Revision } from '../types';
 
 // What a person can ask agents to refresh: an unanswered card's options, or
 // whether a settled card's answer still holds.
 const REFRESHED: Decision['status'][] = ['open', 'exploring', 'decided', 'provisional'];
+
+// An answer standing, which a new answer elsewhere may change.
+const hasAnswer = (decision: Decision) => (decision.status === 'decided' || decision.status === 'provisional') && Boolean(decision.resolution);
 
 // Decisions: posting, rewording, commenting, findings and refreshes. Settling one (answer, defer, retire,
 // reopen) is DecisionLifecycle; criteria and marks are Criteria; asking people is People.
@@ -290,6 +294,49 @@ export class Decisions {
     return decision;
   }
 
+  // A person who has just answered a decision asks agents to check that the
+  // others it may change still hold (affects.tsx): a refresh of each, asked
+  // together, as one event on the decision answered. Each card shows its own
+  // request, and agents answer each as any other (refreshed: true); they are
+  // told of them as one (refreshDigest). Nothing changes if one is refused.
+  askToRevisit(decisionId: string, decisionIds: string[], actor: Actor): Decision[] {
+    if (actor.kind !== 'human') {
+      throw new BoardError('Only people ask for a refresh. To bring the options up to date yourself, use update_decision with refreshed: true.');
+    }
+    const { board, decision: answered } = this.repo.getDecision(decisionId);
+    guardArchived(board);
+    if (!hasAnswer(answered)) {
+      throw new BoardError(`${label(answered)} has no answer standing: decide it before asking agents to check what it may change.`);
+    }
+    const ids = [...new Set(decisionIds.map((id) => id.trim()))];
+    if (ids.length === 0) throw new BoardError('Pick at least one decision to check.');
+    const asked = ids.map((id) => {
+      const other = board.decisions.find((d) => d.id === id);
+      if (!other) throw new BoardError(`No decision "${id}" on this board.`);
+      if (other.id === answered.id) throw new BoardError(`${label(answered)} can't be asked to check itself.`);
+      if (!hasAnswer(other)) throw new BoardError(`${label(other)} is ${other.status}; only decided and provisional cards are checked against a new answer.`);
+      return other;
+    });
+    asked.sort((a, b) => a.number - b.number);
+
+    const now = new Date().toISOString();
+    const text = revisitNote(answered);
+    const askers = new Set<string>(); // who asked this person about them: asking answers that
+    for (const other of asked) {
+      for (const ask of other.asks) if (!ask.answeredAt && samePerson(ask.name, actor.name)) askers.add(ask.by.name);
+      answerAsks(other, actor, now);
+      other.refreshRequest = { text, by: actor, at: now, before: snapshot(other), after: answered.id };
+      other.updatedAt = now;
+    }
+    const refs = listNames(asked.map((d) => `#${d.number}`));
+    const forNow = answered.status === 'provisional' ? ' (for now)' : '';
+    const answering = askers.size ? ` (answering an ask from ${listNames([...askers])})` : '';
+    const summary = `asked agents to check ${refs} still ${asked.length === 1 ? 'holds' : 'hold'}, after deciding ${label(answered)}: ${describeChoice(answered)}${forNow}${answering}`;
+    this.repo.record(board, actor, 'refresh_requested', summary, answered.id);
+    this.repo.alsoSave(board, { decisionIds: asked.map((d) => d.id) });
+    return asked;
+  }
+
   // Cancelling a refresh that has just finished is not an error: it is over either way.
   cancelRefresh(decisionId: string, actor: Actor): Decision {
     if (actor.kind !== 'human') throw new BoardError('Only people cancel a refresh; finish it with update_decision refreshed: true.');
@@ -305,8 +352,11 @@ export class Decisions {
   }
 
   // `pin` is the part of the decision's canvas the comment is about, if any;
-  // `ask`, what a person asks agents to do to it ("edit … in Google Doc …").
-  addComment(decisionId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string): Decision {
+  // `ask`, what a person asks agents to do to it ("edit … in Google Doc …"),
+  // and `askPart`, the kind of part when it isn't a Google Doc's paragraph.
+  // `paired`: the line a pairing session leaves on the card (core/pairing.ts),
+  // for the agent paired with alone.
+  addComment(decisionId: string, body: string, actor: Actor, pin?: Comment['pin'], ask?: string, askPart?: string, paired?: Comment['paired']): Decision {
     const { board, decision } = this.repo.getDecision(decisionId);
     guardArchived(board);
     const now = new Date().toISOString();
@@ -321,10 +371,12 @@ export class Decisions {
       createdAt: now,
       ...(pin ? { pin } : {}),
       ...(ask ? { ask: true as const } : {}),
+      ...(askPart ? { askPart } : {}),
       ...(mentions.length ? { mentions } : {}),
       ...(skill ? { skill } : {}),
       ...(via ? { via } : {}),
       ...(held ? { held } : {}),
+      ...(paired ? { paired } : {}),
     };
     decision.comments.push(comment);
     decision.updatedAt = now;
@@ -332,7 +384,7 @@ export class Decisions {
     const asking = askMentioned(decision, peopleIn(board, mentions), actor, text, now);
     const about = pin ? ` about ${clip(pin.quote, 80)}` : '';
     const what = ask ? `asked agents, on ${label(decision)}, to ${ask}` : `commented on ${label(decision)}${about}`;
-    this.repo.record(board, actor, 'comment_added', `${what}: "${clip(text, 200)}"${answering}${asking}`, decision.id, undefined, undefined, now, mentions, comment.id, undefined, Boolean(held));
+    this.repo.record(board, actor, 'comment_added', `${what}: "${clip(text, 200)}"${answering}${asking}`, decision.id, undefined, undefined, now, mentions, comment.id, paired?.agent, Boolean(held));
     return decision;
   }
 

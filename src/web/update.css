@@ -163,3 +163,81 @@
   grid-template-columns: 1fr auto;
   align-items: center;
 }
+
+/* Brought up from the menu (See the update), the notice takes the focus so
+   a screen reader reads it; it isn't a control, so it draws no ring. */
+.update-notice:focus,
+.update-popover:focus {
+  outline: none;
+}
+
+/* ---- the menu under your name ---------------------------------------------- */
+
+/* Under the theme, as quiet as it: the version running and Check for
+   updates, then what the check found, on a line of its own. */
+.user-version {
+  padding: 0 10px 6px;
+  font-size: 13px;
+}
+.user-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.user-version-row > span {
+  color: var(--muted);
+}
+.user-version-row .btn .icon {
+  font-size: 13px;
+}
+.user-version-row .btn[aria-disabled='true'] {
+  cursor: progress;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .user-version-row .btn[aria-disabled='true'] .icon {
+    animation: user-version-turn 0.9s linear infinite;
+  }
+}
+@keyframes user-version-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.user-version-said {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.user-version-said > p {
+  margin: 0;
+  text-wrap: pretty;
+}
+.user-version-said > p:not(:empty),
+.user-version-show {
+  margin-top: 2px;
+}
+.user-version-said.is-newer > p {
+  color: var(--text);
+}
+/* A quiet text link, as the notice's What's new is. */
+.user-version-show {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: text-decoration-color 0.12s;
+}
+.user-version-show:hover {
+  text-decoration-color: currentColor;
+}

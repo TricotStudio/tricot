@@ -55,6 +55,28 @@ function store(on: boolean): void {
   }
 }
 
+// Whether this browser shows Tricot's notifications: the person turned them
+// on here, and the browser allows them. Read by what needs a person now, as
+// an agent waiting for their OK (approvals.tsx).
+export const notificationsOn = (): boolean => SUPPORTED && stored() && Notification.permission === 'granted';
+
+// Turns them on, asking the browser first: only ever from a person's click.
+// Whether they are on now.
+export async function turnOnNotifications(): Promise<boolean> {
+  if (!SUPPORTED) return false;
+  unlockAudio();
+  const result = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+  const on = result === 'granted';
+  store(on);
+  if (on) chime(); // so the viewer knows what it sounds like
+  return on;
+}
+
+// What a notification for an agent waiting on the person sounds like, when they turned the sound on.
+export const ring = (): void => chime();
+
+export const notificationsSupported = SUPPORTED;
+
 export interface Notifications {
   supported: boolean;
   blocked: boolean; // denied in the browser's site settings
@@ -107,14 +129,9 @@ export function useNotifications(board: Board | null, name: string): Notificatio
 
   const enable = useCallback(() => {
     if (!SUPPORTED) return;
-    unlockAudio();
-    const ask = Notification.permission === 'default' ? Notification.requestPermission() : Promise.resolve(Notification.permission);
-    void ask.then((result) => {
-      setPermission(result);
-      const on = result === 'granted';
+    void turnOnNotifications().then((on) => {
+      setPermission(Notification.permission);
       setWanted(on);
-      store(on);
-      if (on) chime(); // so the viewer knows what it sounds like
     });
   }, []);
 

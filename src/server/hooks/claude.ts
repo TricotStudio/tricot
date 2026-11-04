@@ -4,9 +4,14 @@
 // hooks/tricot-steps.mjs, copied into that .claude/hooks/, with "async": true,
 // so Claude never waits for it. CLAUDE_CONFIG_DIR, when set, is where Claude
 // Code keeps its user settings instead of ~/.claude.
+//
+// In ~/.claude, its permission prompts come to the board too: a
+// PermissionRequest hook runs hooks/tricot-approve.mjs, copied beside it,
+// which Claude Code waits for while the person answers on the board
+// (core/approvals.ts). A project's own hook from earlier has steps only.
 
 import path from 'node:path';
-import { commandHookInstaller, isStepsHook, scriptCommand, STEPS_SCRIPT } from './commandHooks';
+import { approveCommand, commandHookInstaller, isStepsHook, scriptCommand, STEPS_SCRIPT } from './commandHooks';
 import { eventsWithOurs, projectFolder, shellPath, withHooks, withoutHooks, type HookEvents, type HookSettings, type HookTarget } from './installer';
 
 export const STEPS_SCRIPT_PATH = `.claude/hooks/${STEPS_SCRIPT}`;
@@ -64,5 +69,8 @@ export const claude = commandHookInstaller({
   settings: 'settings.json',
   run: (script, setup, scope) => scriptCommand(scope === 'project' ? PROJECT_SCRIPT : shellPath(script), setup.url, setup.name, setup.narration),
   hooks: (command, setup) => stepsHooks(command, setup.narration).hooks,
+  approvals: (script, setup) => approveCommand(shellPath(script), setup.url, setup.name),
+  // Its plan usage, said only to its status line: Tricot's, around the person's own (usageLine.ts).
+  usage: 'statusLine',
   pickedUp: 'Claude Code picks it up in its next session (or now, if it watches its settings).',
 });

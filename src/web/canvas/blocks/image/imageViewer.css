@@ -1,116 +1,17 @@
-/* ---- an image block's picture at full size, over the canvas ---------------
-   A sheet over a dimmed canvas: the picture's name, its size and version, the
-   zoom (Fit, Actual size, 200%), and a stage the picture is drawn on at its
-   real size, so it stays sharp at any zoom. */
+/* ---- an image block's picture at full size, in the pairing shell -------------
+   The shell draws the bar (canvas/pairing/pairing.css); here, the zoom it
+   shows, and a stage the picture is drawn on at its real size, so it stays
+   sharp at any zoom. */
 
-.image-viewer-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  padding: 24px 32px;
-  background: var(--scrim-strong);
-  animation: image-viewer-fade 0.14s ease-out;
-}
-@keyframes image-viewer-fade {
-  from {
-    opacity: 0;
-  }
-}
-
-.image-viewer {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  cursor: default;
-  animation: image-viewer-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes image-viewer-in {
-  from {
-    opacity: 0;
-    scale: 0.99;
-  }
-}
-
-.image-viewer-bar {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  padding: 10px 12px 10px 18px;
-  border-bottom: 1px solid var(--border);
-}
-.image-viewer-name {
-  flex: 1 1 240px;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.image-viewer-name h2 {
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.image-viewer-meta,
 .image-viewer-zoom {
   flex: none;
+  min-width: 4ch;
   font-size: 12px;
   font-weight: 500;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.image-viewer-zoom {
-  min-width: 4ch;
   text-align: right;
-}
-
-/* Fit, Actual size, 200%: the tabs' sunk track with a white thumb. */
-.image-viewer-presets {
-  flex: none;
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 8px;
-  background: var(--surface-2);
-}
-.image-viewer-presets button {
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
-  padding: 2px 12px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 0.12s;
-}
-.image-viewer-presets button:hover {
-  color: var(--text);
-}
-.image-viewer-presets button.is-on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
-}
-.image-viewer-bar .btn {
-  flex: none;
-  text-decoration: none;
+  white-space: nowrap;
 }
 
 /* The stage: the picture is placed in it by its top left and drawn at its
@@ -174,22 +75,59 @@
   opacity: 0;
 }
 
-@media (max-width: 900px) {
-  .image-viewer-backdrop {
-    padding: 12px 16px;
-  }
-  .image-viewer-bar {
-    padding: 10px 12px;
-  }
-  /* The name on a line of its own, the controls under it. */
-  .image-viewer-name {
-    flex-basis: 100%;
-  }
-}
-
 /* Image blocks' own menu: Natural size, when it already is, can't be pressed. */
 .node-toolbar button:disabled {
   color: var(--faint);
   background: none;
   cursor: default;
+}
+
+/* ---- in the pairing shell (imageViewer.tsx) -----------------------------------------
+   The stage fills the piece; while pairing, the pointer draws boxes. A box's
+   number opens what was said about it; the markers of its boxes sit in a row
+   under the picture. */
+
+.image-full {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.image-full .image-viewer-stage {
+  flex: 1;
+}
+.image-viewer-stage.is-pointing {
+  cursor: crosshair;
+}
+.image-full-box .pin-box-n {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+}
+.image-full-box button.pin-box-n {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.image-full-box button.pin-box-n:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.image-full-box.is-open {
+  border-style: solid;
+  border-width: 2px;
+  background: color-mix(in srgb, var(--pin) 14%, transparent);
+}
+.image-full-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.image-full-chips .pin-chip {
+  margin-left: 0;
 }

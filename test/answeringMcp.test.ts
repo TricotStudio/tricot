@@ -9,11 +9,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { letIn, type TestSeat } from './seatHelper';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
 // An agent answering people over MCP: in one call with then_wait, and from
 // updates that carry what it needs, told once per session.
+// The person's browser, let in as one of their seats (seatHelper.ts): it signs what needs one.
+let seat: TestSeat;
+
 describe('Answering people in one call, over MCP and REST', () => {
   let dir: string;
   let server: Server;
@@ -41,7 +45,7 @@ describe('Answering people in one call, over MCP and REST', () => {
   async function post(route: string, body: Record<string, unknown>) {
     const response = await fetch(`${base}/api${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Origin: base, ...seat.sign('POST', `/api${route}`, JSON.stringify({ actor: 'Wassim', ...body })) },
       body: JSON.stringify({ actor: 'Wassim', ...body }),
     });
     assert.ok(response.ok, `${route}: ${response.status}`);
@@ -70,6 +74,7 @@ describe('Answering people in one call, over MCP and REST', () => {
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+    seat = letIn(app);
     server = await new Promise((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
     });

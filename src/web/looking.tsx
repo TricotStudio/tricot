@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import { showsLooking } from '../core/assignee';
-import { firstLookCue } from '../core/firstLook';
+import { firstLookCue, openedCue } from '../core/firstLook';
 import { listNames, samePerson } from '../core/format';
 import type { Board, Task } from '../core/types';
 import type { AgentPresence } from './api';
@@ -91,10 +91,19 @@ export function TakingALook({ kind, id, task, band = false }: { kind: 'task' | '
 // A backlog card's first look while it's to come, in a quiet line: "Waiting
 // for an agent's first look", or "Claude is taking the first look". While the
 // taker's calls are about the card, its "taking a look" pill says so already.
+// A card an agent opened needs none, and says who opened it: "Opened by Claude".
 export function FirstLookCue({ board, task }: { board: Board; task: Task }) {
   const agents = useContext(AgentsContext);
   const cue = firstLookCue(board, task);
-  if (!cue) return null;
+  if (!cue) {
+    const opened = openedCue(task);
+    if (!opened) return null;
+    return (
+      <p className="first-look is-opened" title={`${opened.by} opened this card with what it found, so it needs no first look. Mark it ready when it's worth doing.`}>
+        {opened.text}
+      </p>
+    );
+  }
   const looking = cue.by && agents.some((a) => a.focus?.kind === 'task' && a.focus.id === task.id && samePerson(a.name, cue.by!));
   if (looking) return null;
   return (

@@ -51,8 +51,11 @@ export const FRAMED_SITES = ['https://www.youtube-nocookie.com', 'https://www.lo
 //   the local network.
 // - Fonts and connections: Tricot's own (the API and live updates, and in
 //   development Vite's reload socket).
-// - Frames: FRAMED_SITES. No plugins, no <base>, and forms go only to Tricot.
-export function pagePolicy(scripts: string[]): string {
+// - Frames: FRAMED_SITES, and `frames`: the site server's websites on this
+//   computer, each at its own origin under localhost at its one port
+//   (server/sites/), once it has a port. No plugins, no <base>, and forms
+//   go only to Tricot.
+export function pagePolicy(scripts: string[], frames: readonly string[] = []): string {
   return [
     "default-src 'self'",
     ['script-src', "'self'", ...scripts, GOOGLE_SCRIPTS].join(' '),
@@ -60,7 +63,7 @@ export function pagePolicy(scripts: string[]): string {
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
-    ['frame-src', ...FRAMED_SITES].join(' '),
+    ['frame-src', ...FRAMED_SITES, ...frames].join(' '),
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -82,17 +85,18 @@ export function inlineScriptHashes(html: string): string[] {
 
 // The policy of the built UI's page (dist/web/index.html), from that page as
 // it is: read again whenever the file changes, so a rebuild with the theme
-// script edited never meets a policy that refuses it.
-export function builtPagePolicy(file: string): () => string {
+// script edited never meets a policy that refuses it. `frames`: the site
+// server's address, as it is now.
+export function builtPagePolicy(file: string, frames: () => readonly string[] = () => []): () => string {
   let known: { stamp: string; policy: string } | undefined;
   return () => {
     try {
       const { mtimeMs, size } = statSync(file);
-      const stamp = `${mtimeMs}:${size}`;
-      if (known?.stamp !== stamp) known = { stamp, policy: pagePolicy(inlineScriptHashes(readFileSync(file, 'utf8'))) };
+      const stamp = `${mtimeMs}:${size}:${frames().join(' ')}`;
+      if (known?.stamp !== stamp) known = { stamp, policy: pagePolicy(inlineScriptHashes(readFileSync(file, 'utf8')), frames()) };
       return known.policy;
     } catch {
-      return pagePolicy([]); // not built: there is no page to allow scripts in
+      return pagePolicy([], frames()); // not built: there is no page to allow scripts in
     }
   };
 }
@@ -101,7 +105,7 @@ export function builtPagePolicy(file: string): () => string {
 // (its client, React's refresh), so the scripts written into a page are
 // allowed whatever they are. The rest of the policy holds, so a feature that
 // needs more is refused there first.
-export const devPagePolicy = (): string => pagePolicy(["'unsafe-inline'"]);
+export const devPagePolicy = (frames: readonly string[] = []): string => pagePolicy(["'unsafe-inline'"], frames);
 
 // `page`: the policy for the UI's pages, given to every GET outside the API
 // and MCP (on the files a page loads, a policy does nothing). Without it, the

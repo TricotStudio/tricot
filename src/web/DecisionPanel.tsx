@@ -10,6 +10,7 @@ import { Comparison, comparisonData } from './canvas/blocks/comparison/compariso
 import { ActorBadge, Icon, Md, timeAgo } from './components';
 import { go, ReadOnlyContext, useReadOnly } from './hooks';
 import { History } from './history';
+import { CardApprovals } from './approvals';
 import { TakingALook } from './looking';
 import { RefText } from './refs';
 import { FromThreadLink } from './threadWork';
@@ -204,6 +205,7 @@ export function DecisionPanel({ board, decision, name, onHoverOption, unreadSinc
   return (
     <aside className={`decision-panel${closure ? ' is-closed' : ''}`} aria-label="Decision">
       <TakingALook kind="decision" id={decision.id} band />
+      <CardApprovals kind="decision" id={decision.id} name={name} band />
       {closure && (
         <ClosedBand closure={closure}>
           {!readOnly &&

@@ -44,6 +44,7 @@ export const image: BlockKind<ImageTypes> = {
   }),
   pins: {
     anchor: server.anchor,
+    part: server.part,
     place: (_block, pin): BoxAnchor | undefined => (pin.anchor.kind === 'box' ? { ...pin.anchor } : undefined),
   },
 

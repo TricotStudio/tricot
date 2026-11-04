@@ -103,7 +103,9 @@ describe('live steps from the terminal', () => {
       await startAndStop('enter');
       assert.deepEqual(questions, ["Show your agents' steps live on your boards? [Y/n] "], 'one question; Enter is yes');
       assert.match(said(), /It found Claude Code and Codex on this machine/);
-      assert.match(said(), /~\/\.claude\/hooks\/\{tricot-steps\.mjs, tricot-describe\.mjs\}, ~\/\.claude\/settings\.json/);
+      assert.match(said(), /~\/\.claude\/hooks\/\{tricot-steps\.mjs, tricot-describe\.mjs, tricot-approve\.mjs, tricot-usage\.mjs, tricot-usage\.json\}, ~\/\.claude\/settings\.json/);
+      assert.match(said(), /Claude Code and Codex also bring each permission prompt to the board, with the command or change it asks about/);
+      assert.match(said(), /also pass on plan usage, numbers only/);
       assert.match(said(), /Every file and line: tricot --verbose/);
       assert.match(said(), /never file contents, command output or your prompts/);
       assert.equal(claude.status(target()).state, 'on');

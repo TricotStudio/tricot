@@ -11,12 +11,13 @@ import { image } from './image';
 import type { WebBlockKind } from './kind';
 import { link } from './link';
 import { scene } from './scene';
+import { site } from './site';
 import { note } from './note';
 import { table } from './table';
 import { ordered } from '../../../core/blocks/order';
 
 // A function so the kinds are read once they have all loaded.
-const registered = () => [note, table, image, diagram, comparison, link, diff, code, chart, scene];
+const registered = () => [note, table, image, diagram, comparison, link, diff, code, chart, scene, site];
 
 let all: readonly WebBlockKind[] | undefined;
 

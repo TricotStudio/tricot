@@ -1,9 +1,28 @@
 import type { Request, Response } from 'express';
 import type { BoardChange } from '../core/changes';
+import { sealedApproval, type Approval } from '../core/approvals';
 import type { Store } from '../core/store';
 import { boardKey, type Board } from '../core/types';
+import type { Approvals } from './approvals';
+import { forPages } from './approvalsRoutes';
 import type { Presence } from './presence';
+import type { Seats } from './seats';
 import type { AgentStep, Steps } from './steps';
+
+// Who listens, for what a person alone reads (access.ts readerOf): one of
+// their seats reads what agents wait for in full (`full`), and the
+// admissions waiting; a page or terminal that isn't one reads that agents
+// wait, and where, sealed, and a terminal, while no seat exists at all, the
+// first browser's admission. A stream opened with a ticket that no longer
+// holds is told so (`stale`), to ask for another.
+export interface Reader {
+  approvals?: Approvals;
+  full: boolean;
+  seats?: Seats;
+  seat?: string; // the seat it listens as: the stream ends if it is removed
+  terminal?: boolean;
+  stale?: boolean;
+}
 
 // A page showing a board listens to its stream (server-sent events) and is
 // sent, as each happens:
@@ -14,6 +33,12 @@ import type { AgentStep, Steps } from './steps';
 //   presence  which agents are on the board, now; nothing else changes with it
 //   steps     what agents on the board are doing, now: each one's latest step
 //             from its harness (steps.ts); sent on connecting only when there are some
+//   approvals the agents waiting for a person's OK, on any board (approvals.ts):
+//             all of them, on connecting and each time they change; to a
+//             person only (sendPersonal below), in full to one of their seats
+//   seat      on connecting, to a person: whether it reads as a seat, and
+//             whether the ticket it came with no longer holds
+//   admissions what waits to be let in to act for the person, to a seat
 //   hello     on connecting: where the board is
 //   ping      every so often, so a page can tell a dead connection from a quiet
 //             board, and compare itself with the server (the same as GET .../live)
@@ -34,7 +59,43 @@ function changeFrame(change: BoardChange): string {
   return text;
 }
 
-export function openStream(store: Store, presence: Presence | undefined, req: Request, res: Response, boardId: string, steps?: Steps): void {
+// What a person reads on a stream, now and as it changes: whether it reads
+// as a seat (`seat`), the requests waiting (in full to a seat, else sealed),
+// and the admissions waiting for it to answer. None for a reader that isn't a
+// person. Ends the stream if its seat is removed.
+export function sendPersonal(store: Store, reader: Reader | undefined, write: (text: string) => void, end: () => void): () => void {
+  if (!reader) return () => {};
+  const stops: (() => void)[] = [];
+  write(frame('seat', { seated: reader.full, ...(reader.stale && { stale: true }) }));
+  const { approvals, seats } = reader;
+  if (approvals) {
+    const send = (list: Approval[]) => write(frame('approvals', reader.full ? forPages(store, list) : forPages(store, list).map(sealedApproval)));
+    send(approvals.list());
+    stops.push(approvals.subscribe(send));
+  }
+  if (seats && (reader.seat || reader.terminal)) {
+    const shown = () => (reader.seat ? seats.waiting() : seats.waiting({ firstOnly: true }));
+    let last = JSON.stringify(shown());
+    write(`event: admissions\ndata: ${last}\n\n`);
+    stops.push(
+      seats.subscribe(() => {
+        const now = JSON.stringify(shown());
+        if (now === last) return;
+        last = now;
+        write(`event: admissions\ndata: ${now}\n\n`);
+      }),
+    );
+  }
+  if (seats && reader.seat) {
+    const seat = reader.seat;
+    stops.push(seats.onRemoved((id) => id === seat && end()));
+  }
+  return () => {
+    for (const stop of stops) stop();
+  };
+}
+
+export function openStream(store: Store, presence: Presence | undefined, req: Request, res: Response, boardId: string, steps?: Steps, reader?: Reader): void {
   const board = store.getBoard(boardId);
   const key = boardKey(board);
   res.writeHead(200, {
@@ -60,6 +121,7 @@ export function openStream(store: Store, presence: Presence | undefined, req: Re
     if (now.length > 0) write(frame('steps', now));
     unsubscribe.push(steps.subscribe(key, (latest) => write(frame('steps', latest))));
   }
+  unsubscribe.push(sendPersonal(store, reader, write, () => res.end()));
 
   unsubscribe.push(
     store.subscribeDeleted(boardId, () => {
@@ -80,7 +142,9 @@ export function openStream(store: Store, presence: Presence | undefined, req: Re
 // steps change, a `steps` frame: the board's id, and its steps, each with
 // the card it is on as people name it ("T114"); those showing now on
 // connecting; and a `ping` every so often. Archived boards are left out.
-export function openStepsStream(store: Store, steps: Steps, req: Request, res: Response): void {
+// The agents waiting for a person's OK come on it too, to a person
+// (`approvals`, as on a board's stream).
+export function openStepsStream(store: Store, steps: Steps, req: Request, res: Response, reader?: Reader): void {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -104,9 +168,11 @@ export function openStepsStream(store: Store, steps: Steps, req: Request, res: R
   write('retry: 1000\n\n');
   for (const key of steps.boardsShowing()) send(key, steps.list(key));
   const stop = steps.subscribeAll(send);
+  const stopPersonal = sendPersonal(store, reader, write, () => res.end());
   const heartbeat = setInterval(() => write(frame('ping', {})), PING_MS);
   req.on('close', () => {
     stop();
+    stopPersonal();
     clearInterval(heartbeat);
   });
 }

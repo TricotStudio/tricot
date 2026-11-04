@@ -27,7 +27,8 @@ export function settleAfter(event: BoardEvent, reader?: Actor): number {
 // (core/agentTalk.ts), which it reads when something else wakes it.
 export function wakes(event: BoardEvent, reader: Actor): boolean {
   if (sameActor(event.actor, reader) || !forReader(event, reader)) return false;
-  return !(reader.kind === 'agent' && event.held);
+  // Who acts for the person (seats_changed) is theirs to see: an agent reads it, but isn't woken for it.
+  return !(reader.kind === 'agent' && (event.held || event.type === 'seats_changed'));
 }
 
 // Whether an event is for whoever reads it: one for a single agent

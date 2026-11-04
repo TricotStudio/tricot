@@ -17,13 +17,15 @@
 // few seconds and tried again in an hour; it never holds up the start.
 //
 // The check is off with TRICOT_NO_UPDATE_CHECK=1 or --no-update-check, from a
-// source checkout or `npm run dev`, and in tests (checkOff). Updating itself
+// source checkout or `npm run dev`, and in tests (checkOff). A person can
+// still ask now, from the menu under their name (checkNow, POST
+// /api/update/check), when only the first two turned it off. Updating itself
 // is handoff.ts: from GitHub's answer, an npm install takes the release's own
 // file, checked against the checksum GitHub gives for it (releaseFile.ts);
 // from npm's, it installs from npm.
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { BACKUP_NOTE, type Release, type UpdateFailure, type UpdateHow, type UpdateState } from '../core/update';
+import { BACKUP_NOTE, type Checked, type CheckedState, type Release, type UpdateFailure, type UpdateHow, type UpdateState } from '../core/update';
 import { isNewer, isVersion } from '../core/version';
 import { isLoopbackHost } from './access';
 import {
@@ -65,6 +67,14 @@ export const releasesUrl = (repo: string) => `${GITHUB_API}/repos/${repo}/releas
 export function checkOff(env: NodeJS.ProcessEnv, kind: LaunchKind, flag?: boolean): string | undefined {
   if (flag) return '--no-update-check';
   if (env.TRICOT_NO_UPDATE_CHECK && !/^(0|false|no|off)$/i.test(env.TRICOT_NO_UPDATE_CHECK)) return 'TRICOT_NO_UPDATE_CHECK';
+  return neverChecks(env, kind);
+}
+
+// Why this Tricot doesn't ask even when a person asks it to (checkNow): in
+// tests, and from a source checkout, where updating makes no sense, unless
+// one of the two variables points it at a stand-in. Nothing when it may: the
+// flag and TRICOT_NO_UPDATE_CHECK turn off the daily check only.
+export function neverChecks(env: NodeJS.ProcessEnv, kind: LaunchKind): 'tests' | 'a source checkout' | undefined {
   if (env.TRICOT_UPDATE_URL || releasesFromEnv(env).url) return undefined;
   if (env.NODE_TEST_CONTEXT) return 'tests';
   if (kind === 'source') return 'a source checkout';
@@ -132,8 +142,8 @@ export function githubRepo(repository: unknown): string | undefined {
 
 // The repository's page, from package.json's repository, for the Source link
 // at the foot of Home: anyone using a running Tricot, over a network too, can
-// find the code it runs (the AGPL's section 13). GitHub's page for a GitHub
-// repository, else its address when that is https; none otherwise.
+// find the code it runs. GitHub's page for a GitHub repository, else its
+// address when that is https; none otherwise.
 export function sourceLink(repository: unknown): string | undefined {
   const repo = githubRepo(repository);
   if (repo) return `https://github.com/${repo}`;
@@ -263,27 +273,61 @@ export interface Where {
   registry?: string;
 }
 
+// Neither GitHub nor npm answered: why, for each it asked (GitHub's is
+// missing when it wasn't asked), and both in one message.
+export class NoAnswer extends Error {
+  constructor(
+    readonly npm: unknown,
+    readonly github?: unknown,
+  ) {
+    super(github === undefined ? said(npm) : `${said(github)}; and from npm: ${said(npm)}`);
+  }
+}
+
+const said = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
 // The latest release: GitHub's, else npm's when GitHub can't say. Throws
-// when neither can, saying why for each.
+// NoAnswer when neither can, saying why for each.
 export async function fetchLatest(where: Where, fetchFn: typeof fetch = fetch, timeoutMs = TIMEOUT_MS): Promise<Found> {
-  let github: string | undefined;
+  let github: unknown;
   if (where.releases) {
     try {
       return await fetchGitHubRelease(where.releases, fetchFn, timeoutMs);
     } catch (error) {
-      github = error instanceof Error ? error.message : String(error);
+      github = error ?? 'no answer';
     }
   }
   try {
     return { release: await fetchRelease(where.registry ?? REGISTRY_URL, fetchFn, timeoutMs), source: 'npm' };
   } catch (error) {
-    const npm = error instanceof Error ? error.message : String(error);
-    throw new Error(github === undefined ? npm : `${github}; and from npm: ${npm}`);
+    throw new NoAnswer(error, github);
   }
 }
 
 // Who a check asks, in words, for what the person is told when it fails.
 export const askedWhom = (where: Where) => (where.releases ? 'GitHub or the npm registry' : 'the npm registry');
+
+// Why a check found nothing, in plain words for the person who asked it, to
+// follow "Couldn't check: ": that each can't be reached (no network, a
+// refused connection) or didn't answer in time, or else what it said
+// ("GitHub answered 403").
+export function whyNoAnswer(error: unknown): string {
+  if (!(error instanceof NoAnswer)) return said(error);
+  const npm = unreachable(error.npm);
+  if (error.github === undefined) return npm ? `the npm registry ${npm}` : said(error.npm);
+  const github = unreachable(error.github);
+  if (github && github === npm) return `GitHub and the npm registry ${github}`;
+  return `${github ? `GitHub ${github}` : said(error.github)}, and ${npm ? `the npm registry ${npm}` : said(error.npm)}`;
+}
+
+// A request that got no answer at all, in words: fetch's own failure (no
+// network, a name that doesn't resolve, a refused connection), or the timeout.
+function unreachable(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return "didn't answer in time";
+  if (error instanceof TypeError) return "can't be reached";
+  return undefined;
+}
 
 // npm's checksum for one version of tricot (dist.integrity, sha512).
 export async function npmIntegrity(version: string, fetchFn: typeof fetch = fetch, timeoutMs = TIMEOUT_MS): Promise<string | undefined> {
@@ -348,11 +392,16 @@ export interface CheckerOptions {
   timeoutMs?: number;
 }
 
+// Presses of "Check for updates" this close to the last answer share it.
+export const SHARE_ANSWER_MS = 5000;
+
 export class UpdateChecker {
   private found: Found | undefined;
   private checkedAt: number | undefined;
   private cancel: (() => void) | undefined;
   private asking: Promise<Found> | undefined;
+  private answered: { at: number; found: Found } | { at: number; error: unknown } | undefined; // the last request's end
+  private daily = false;
   private stopped = false;
   private readonly now: () => number;
   private readonly timer: Timer;
@@ -364,6 +413,7 @@ export class UpdateChecker {
 
   // The folder's last answer if it is less than a day old, else ask now; then once a day.
   start(): void {
+    this.daily = true;
     const cached = readCache(this.options.dataDir, this.options.releases);
     const now = this.now();
     if (cached && cached.checkedAt <= now && now - cached.checkedAt < CHECK_EVERY_MS) {
@@ -387,13 +437,34 @@ export class UpdateChecker {
         const found = await fetchLatest({ releases: this.options.releases, registry: this.options.url }, this.options.fetch ?? fetch, this.options.timeoutMs ?? TIMEOUT_MS);
         this.found = found;
         this.checkedAt = this.now();
+        this.answered = { at: this.checkedAt, found };
         writeCache(this.options.dataDir, this.checkedAt, found);
         return found;
+      } catch (error) {
+        this.answered = { at: this.now(), error };
+        throw error;
       } finally {
         this.asking = undefined;
       }
     })();
     return this.asking;
+  }
+
+  // Asked by a person: the same check, now. Presses close together share one
+  // request: one under way, or one that ended in the last few seconds,
+  // answers for them, whoever asked it. A new answer counts as the day's:
+  // the daily check, when it's on, asks next a day later.
+  async checkNow(): Promise<Found> {
+    if (this.asking) return this.asking;
+    const last = this.answered;
+    const age = last ? this.now() - last.at : Infinity;
+    if (last && age >= 0 && age < SHARE_ANSWER_MS) {
+      if ('error' in last) throw last.error;
+      return last.found;
+    }
+    const found = await this.check();
+    if (this.daily) this.schedule(CHECK_EVERY_MS);
+    return found;
   }
 
   // The latest release, when it is newer than the one running, and where it was found.
@@ -467,6 +538,7 @@ export interface UpdatesOptions {
   updater?: Command;
   flags?: string[]; // start's options the next version keeps
   check: boolean; // the automatic check
+  manual?: boolean; // a person may check now (checkNow): not in tests or from a source checkout (neverChecks); none: they may not
   releases?: string; // GitHub's releases/latest for this Tricot (releasesUrl, or TRICOT_RELEASES_URL); none: npm only
   url?: string; // npm's latest (TRICOT_UPDATE_URL)
   fetch?: typeof fetch;
@@ -478,7 +550,10 @@ export interface UpdatesOptions {
 
 export type HandOffResult = { ok: true } | { ok: false; status: number; error: string; how?: UpdateHow };
 
+export type CheckNowResult = { ok: true; state: CheckedState } | { ok: false; status: number; error: string; how?: UpdateHow };
+
 const UPDATER_GONE = 'The updater stopped before it finished.';
+const NO_CHECK_IN_TESTS = "This Tricot runs for tests, so it doesn't check for updates.";
 
 // The check, the state a page is shown, and the handover, for one server.
 export class Updates {
@@ -540,6 +615,27 @@ export class Updates {
       ...(this.updating && { updating: this.updating.version }),
       ...(this.failed && { failed: this.failed }),
     };
+  }
+
+  // A check the person asked for, now, even with the daily check off
+  // (UpdateChecker.checkNow), and what it found, beside the state a page is
+  // shown. Not in tests, nor from a source checkout, where it says how that
+  // Tricot is updated instead.
+  async checkNow(): Promise<CheckNowResult> {
+    const launch = await this.detect();
+    if (!this.options.manual) {
+      const how = this.howFor(launch);
+      const error = launch.kind === 'source' && !how.self ? `${how.why.replace(/\.$/, '')}, so it doesn't check for updates: update it with ${how.command}.` : NO_CHECK_IN_TESTS;
+      return { ok: false, status: 409, error, how };
+    }
+    let checked: Checked;
+    try {
+      const found = await this.checker.checkNow();
+      checked = isNewer(found.release.version, this.options.current) ? { newer: found.release } : { latest: true };
+    } catch (error) {
+      checked = { error: whyNoAnswer(error) };
+    }
+    return { ok: true, state: { ...this.state(), checked } };
   }
 
   // An update that stopped short leaves this server running: the updater
