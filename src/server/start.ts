@@ -121,7 +121,9 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
       app.use(express.static(webDir));
       app.use((req, res, next) => {
         if (req.method !== 'GET') return next();
-        res.sendFile(path.join(webDir, 'index.html'));
+        // With `root`, only the part of the path inside the build is checked
+        // for dot folders. Whole, a path under ~/.nvm or ~/.volta is refused.
+        res.sendFile('index.html', { root: path.resolve(webDir) });
       });
     }
 

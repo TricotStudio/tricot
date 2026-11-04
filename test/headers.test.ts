@@ -170,6 +170,36 @@ describe('Headers on every response', () => {
   });
 });
 
+// npm puts Tricot under ~/.nvm, ~/.volta, ~/.asdf or ~/.local when node comes
+// from a version manager: the build is then in a folder whose path has a dot
+// folder in it. Express refuses to send a file through one unless told to.
+describe('The UI installed under a dot folder', () => {
+  let scratch: string;
+  let server: RunningServer;
+
+  before(async () => {
+    scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-dot-'));
+    const webDir = path.join(scratch, '.nvm', 'lib', 'node_modules', 'tricot', 'dist', 'web');
+    mkdirSync(path.join(webDir, 'assets'), { recursive: true });
+    writeFileSync(path.join(webDir, 'index.html'), page(THEME_SCRIPT));
+    writeFileSync(path.join(webDir, 'assets', 'main.js'), 'console.log(1)');
+    server = await startServer({ port: await freePort(), dataDir: path.join(scratch, 'data'), webDir });
+  });
+  after(async () => {
+    await server.close();
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  it('serves the page for any address, not only the ones that are a file', async () => {
+    for (const address of ['/', '/assets/main.js', '/b/roadmap', '/b/roadmap/t/T12']) {
+      const res = await send(`${server.url}${address}`);
+      assert.equal(res.status, 200, address);
+    }
+    const deep = await send(`${server.url}/b/roadmap`);
+    assert.ok(deep.body.includes('<div id="root">'), 'a board address gets the page');
+  });
+});
+
 describe('Requests from another site', () => {
   let scratch: string;
   let server: RunningServer;
