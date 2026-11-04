@@ -40,7 +40,7 @@ tricot claude      # or: tricot codex, tricot opencode
 
 It asks which board to work on (`--board <id>` skips the question), opens it, and starts the agent in this terminal with the board for this session only, so the agent's own settings stay as they are. Anything after `--` goes to the agent, and the board keeps running when the agent quits.
 
-Name several (`tricot claude codex`) and they share this terminal: Tricot's own tab shows first, with your agents, the requests for permission to answer with a key, and the board's latest activity; one tab shows at a time, a strip at the bottom says what each agent is doing, and Ctrl+\ switches ([more](docs/cli.md#several-agents-in-one-terminal)).
+Even one agent runs beside Tricot's own tab, with a strip at the bottom that says what it is doing: the tab shows first, with your agents, the requests for permission to answer with a key, and the board's latest activity. Name several (`tricot claude codex`) and they share this terminal, one tab showing at a time, and Ctrl+\ switches ([more](docs/cli.md#several-agents-in-one-terminal)). `--no-switcher` runs one agent on its own, with neither the tab nor the strip, as it does without a terminal and on Windows.
 
 ## Connect an agent
 

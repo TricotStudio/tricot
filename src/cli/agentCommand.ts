@@ -19,8 +19,12 @@
 // main.ts hands it what it shares with `tricot` (AgentEnv), so the board is
 // started, opened and asked about the same way.
 //
-// Two or more agents (`tricot claude codex`), or one with --switcher, run
-// together in this terminal, one showing at a time (severalAgents.ts).
+// One agent runs the way several do (`tricot claude codex`): in this
+// terminal with the strip at the bottom and the Tricot tab beside it, one
+// showing at a time (severalAgents.ts). Where that can't run (Windows, no
+// terminal, no way to give each agent a terminal of its own), or with
+// --no-switcher, one agent runs on its own, as below. --switcher asks for the
+// strip, and is refused where it can't run.
 import path from 'node:path';
 import { agentUrl } from '../core/connect';
 import { claudeSession, codexSession, firstMessage, opencodeSession, type SessionLaunch, type SessionSetup } from '../core/sessions';
@@ -37,7 +41,7 @@ export type RunningLock = ServerLock & { url: string; mcpUrl: string };
 
 export interface AgentEnv {
   ctx: CliContext;
-  values: { board?: string; name?: string; 'no-open'?: boolean; switcher?: boolean; 'switch-key'?: string };
+  values: { board?: string; name?: string; 'no-open'?: boolean; switcher?: boolean; 'no-switcher'?: boolean; 'switch-key'?: string };
   dataDir: string;
   // The board running on this data, or one started now in the background;
   // nothing, and said why, when neither.
@@ -97,8 +101,17 @@ export const isAgentCommand = (word: string): boolean => Object.hasOwn(AGENTS, w
 
 export async function agentCommand(a: AgentEnv, id: string | string[], passthrough: string[]): Promise<CliResult> {
   if (Array.isArray(id) && id.length === 1) id = id[0];
-  if (Array.isArray(id) || a.values.switcher) return severalAgents(a, Array.isArray(id) ? id : [id], passthrough);
   const { ctx, values } = a;
+  if (values.switcher && values['no-switcher']) {
+    ctx.err("--switcher and --no-switcher can't go together: pick one. Nothing was started.");
+    return { exitCode: 1 };
+  }
+  if (Array.isArray(id)) {
+    if (!values['no-switcher']) return severalAgents(a, id, passthrough);
+    ctx.err('--no-switcher runs one agent on its own: several run together in this terminal. Nothing was started.');
+    return { exitCode: 1 };
+  }
+  if (values.switcher || (!values['no-switcher'] && switcherByDefault(a, id))) return severalAgents(a, [id], passthrough);
   const agent = AGENTS[id];
   if (!agent.session || !agent.command) return cantStartYet(a, id, agent);
   const command = onPath(agent.command, ctx.env);
@@ -156,6 +169,20 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   }
   ctx.out(`Tricot keeps running at ${lock.url}; stop it with: tricot stop`);
   return { exitCode };
+}
+
+// One agent shows with the strip and the Tricot tab unless it can't here: it
+// can't take the board for one session (said below, as ever), this is
+// Windows, there is no terminal, or the computer has no way to give it a
+// terminal of its own. Then it runs on its own, and says why when the
+// terminal could have had the strip.
+function switcherByDefault(a: AgentEnv, id: string): boolean {
+  const { ctx } = a;
+  if (!AGENTS[id].session) return false;
+  if ((ctx.platform ?? process.platform) === 'win32' || !ctx.host) return false;
+  const problem = ctx.host.problem();
+  if (problem) ctx.out(`${AGENTS[id].name} runs on its own, without the strip: ${problem}`);
+  return !problem;
 }
 
 // Tricot's hooks for this session, and the line that says where approvals

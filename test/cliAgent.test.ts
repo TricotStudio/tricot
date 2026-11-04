@@ -141,10 +141,16 @@ describe('tricot <agent>', () => {
     env?: Record<string, string>;
     realLaunch?: boolean;
     noTerminal?: boolean;
+    // The terminal the strip runs in, as the stand-in host. Several agents and
+    // --switcher have it unless noTerminal; one agent runs on its own in most
+    // of these tests, as it does without a terminal, unless this says it has it.
+    terminal?: boolean;
     platform?: NodeJS.Platform;
   }
   let term: ReturnType<typeof terminal> | undefined;
-  const ctx = (options: Options = {}): CliContext => {
+  const ctx = (options: Options = {}, argv: string[] = []): CliContext => {
+    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp'].includes(word)).length > 1 || argv.includes('--switcher');
+    const withHost = !options.noTerminal && (options.terminal ?? several);
     term = options.keys ? terminal(options.keys) : undefined;
     return {
       env: { TRICOT_DATA_DIR: dataDir, PORT: String(port), HOME: home, PATH: bin, FAKE_AGENT_LOG: agentLog, ...options.env },
@@ -154,7 +160,7 @@ describe('tricot <agent>', () => {
       err: (line) => err.push(line),
       open: (url) => opened.push(url),
       cwd: project,
-      ...(!options.noTerminal && { host }),
+      ...(withHost && { host }),
       ...(options.platform && { platform: options.platform }),
       ...(!options.realLaunch && { launch }),
       ...(term && { keys: term }),
@@ -167,7 +173,7 @@ describe('tricot <agent>', () => {
     };
   };
   const run = async (argv: string[], options?: Options): Promise<CliResult> => {
-    const result = await runCli(argv, ctx(options));
+    const result = await runCli(argv, ctx(options, argv));
     if (result.server) servers.push(result.server);
     return result;
   };
@@ -525,6 +531,8 @@ describe('tricot <agent>', () => {
     assert.match(said(), /Also: tricot codex, tricot opencode/);
     assert.match(said(), /tricot claude codex {5}Start several agents on one board, in this terminal/);
     assert.match(said(), /--switch-key <key> With several agents: the key that switches \(default ctrl-\\\)/);
+    assert.match(said(), /--switcher {9}tricot claude: with the strip and the Tricot tab, as it runs by\n {21}default where it can/);
+    assert.match(said(), /--no-switcher {6}tricot claude: run it on its own in this terminal, with no strip/);
   });
 
   // `tricot claude codex`: several agents, one terminal (severalAgents.ts).
@@ -687,19 +695,128 @@ describe('tricot <agent>', () => {
       assert.match(err.join('\n'), /put them after --: tricot claude -- codex fix/);
     });
 
-    it('leaves one agent as it was, in this terminal, unless --switcher asks for the strip', async () => {
-      const { ids } = await boardWith('Roadmap');
-      await run(['claude', '--board', ids[0], '--no-open']);
-      assert.equal(launches.length, 1);
-      assert.equal(hosted.length, 0, 'no host for one agent');
-      out.length = 0;
-      hostOutcome = { exits: [0], quit: false };
-      await run(['claude', '--switcher', '--board', ids[0], '--no-open', '--name', 'Reviewer', '--', '--model', 'opus']);
-      assert.equal(launches.length, 1, 'not run on its own');
-      assert.deepEqual(hosted[0].agents.map((a) => a.name), ['Reviewer']);
-      assert.deepEqual(hosted[0].agents[0].args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
-      assert.ok(out.includes('Claude Code gets the board for this session only; its settings stay as they are.'));
-      assert.ok(out.includes('Ctrl+\\ then q quits; the strip at the bottom says what Reviewer is doing.'));
+    // One agent: the strip and the Tricot tab by default, on its own where
+    // that can't run or with --no-switcher.
+    describe('one agent', () => {
+      const bare = (reason: string) => {
+        assert.equal(launches.length, 1, `${reason}: run on its own`);
+        assert.deepEqual(hosted, [], `${reason}: no strip`);
+      };
+
+      it('runs with the strip and the Tricot tab by default, in a terminal', async () => {
+        const { ids } = await boardWith('Roadmap');
+        hostOutcome = { exits: [0], quit: false };
+        const { exitCode } = await run(['claude', '--board', ids[0], '--no-open'], { terminal: true });
+        assert.equal(exitCode, 0, err.join('\n'));
+        assert.deepEqual(launches, [], 'not run on its own');
+        assert.equal(hosted.length, 1);
+        const [shown] = hosted;
+        assert.deepEqual(shown.agents.map((a) => a.name), ['Claude']);
+        assert.equal(shown.agents[0].command, path.join(bin, 'claude'));
+        assert.deepEqual(shown.agents[0].args.slice(0, 1), [message(ids[0])]);
+        assert.ok(shown.tricot, 'with the Tricot tab');
+        assert.equal(shown.tricot.title, 'Roadmap');
+        assert.ok(out.includes('Ctrl+\\ then q quits; the strip at the bottom says what Claude is doing.'));
+        assert.ok(!out.some((line) => line.includes('runs on its own')), 'nothing to say about a fallback');
+        for (const agent of ['codex', 'opencode']) {
+          hosted.length = 0;
+          assert.equal((await run([agent, '--board', ids[0], '--no-open'], { terminal: true })).exitCode, 0, err.join('\n'));
+          assert.equal(hosted.length, 1, agent);
+        }
+        assert.deepEqual(launches, []);
+      });
+
+      it('takes --name and words after -- by default', async () => {
+        const { ids } = await boardWith('Roadmap');
+        hostOutcome = { exits: [0], quit: false };
+        await run(['claude', '--board', ids[0], '--no-open', '--name', 'Reviewer', '--', '--model', 'opus'], { terminal: true });
+        assert.deepEqual(hosted[0].agents.map((a) => a.name), ['Reviewer']);
+        assert.deepEqual(hosted[0].agents[0].args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
+        assert.ok(hosted[0].agents[0].args.some((arg) => arg.includes('agent=Reviewer')));
+        assert.deepEqual(launches, []);
+      });
+
+      it('runs on its own, as it always did, where the strip can not run: no terminal, Windows, no way to give it a terminal', async () => {
+        const { ids } = await boardWith('Roadmap');
+        const argv = ['claude', '--board', ids[0], '--no-open'];
+        assert.equal((await run(argv, { noTerminal: true })).exitCode, 0, err.join('\n'));
+        bare('no terminal');
+        assert.ok(!out.some((line) => line.includes('runs on its own')), 'no terminal: nothing to say');
+        launches.length = 0;
+        assert.equal((await run(argv, { terminal: true, platform: 'win32' })).exitCode, 0, err.join('\n'));
+        bare('Windows');
+        launches.length = 0;
+        out.length = 0;
+        hostProblem = "Tricot runs each agent in a terminal of its own through Perl's IO::Pty, Python 3 or the script command, and found none of them here.";
+        assert.equal((await run(argv, { terminal: true })).exitCode, 0, err.join('\n'));
+        bare('no pty helper');
+        assert.ok(out.includes(`Claude Code runs on its own, without the strip: ${hostProblem}`), 'says why, as the terminal could have had it');
+        assert.deepEqual(recorded().args.slice(0, 1), [message(ids[0])]);
+        // --name and words after -- still reach it.
+        launches.length = 0;
+        await run([...argv, '--name', 'Reviewer', '--', '--model', 'opus'], { noTerminal: true });
+        assert.deepEqual(recorded().args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
+      });
+
+      it('runs on its own with --no-switcher, even in a terminal', async () => {
+        const { ids } = await boardWith('Roadmap');
+        assert.equal((await run(['claude', '--no-switcher', '--board', ids[0], '--no-open', '--name', 'Reviewer', '--', '--model', 'opus'], { terminal: true })).exitCode, 0, err.join('\n'));
+        bare('--no-switcher');
+        assert.deepEqual(recorded().args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
+      });
+
+      it('still refuses --switcher where the strip can not run, instead of running on its own', async () => {
+        const argv = ['claude', '--switcher', '--board', 'x'];
+        const refused: [Options, RegExp][] = [
+          [{ noTerminal: true }, /need a terminal/],
+          [{ terminal: true, platform: 'win32' }, /don't work on Windows yet/],
+        ];
+        for (const [options, problem] of refused) {
+          err.length = 0;
+          assert.equal((await run(argv, options)).exitCode, 1);
+          assert.match(err.join('\n'), problem);
+        }
+        hostProblem = 'found none of them here.';
+        err.length = 0;
+        assert.equal((await run(argv, { terminal: true })).exitCode, 1);
+        assert.match(err.join('\n'), /found none of them here\. Nothing was started\./);
+        assert.equal(existsSync(lockFile(dataDir)), false, 'no board started');
+        assert.deepEqual(launches, []);
+        assert.deepEqual(hosted, []);
+      });
+
+      it('refuses --switcher with --no-switcher in one line, and --no-switcher with several, starting nothing', async () => {
+        for (const argv of [['claude', '--switcher', '--no-switcher', '--board', 'x'], ['claude', 'codex', '--switcher', '--no-switcher', '--board', 'x']]) {
+          err.length = 0;
+          assert.equal((await run(argv, { terminal: true })).exitCode, 1);
+          assert.deepEqual(err, ["--switcher and --no-switcher can't go together: pick one. Nothing was started."]);
+        }
+        err.length = 0;
+        assert.equal((await run(['claude', 'codex', '--no-switcher', '--board', 'x'])).exitCode, 1);
+        assert.deepEqual(err, ['--no-switcher runs one agent on its own: several run together in this terminal. Nothing was started.']);
+        assert.equal(existsSync(lockFile(dataDir)), false, 'no board started');
+        assert.deepEqual(launches, []);
+        assert.deepEqual(hosted, []);
+      });
+
+      it('leaves what it can not start for one session as it was', async () => {
+        for (const agent of ['gemini', 'pi', 'omp']) {
+          out.length = 0;
+          assert.equal((await run([agent], { terminal: true })).exitCode, 1);
+          assert.match(said(), /Tricot can't start .* for you yet/);
+        }
+        assert.equal(existsSync(lockFile(dataDir)), false);
+        assert.deepEqual(hosted, []);
+        assert.deepEqual(launches, []);
+      });
+
+      it('still refuses several agents with --name or words after --, as without a terminal', async () => {
+        assert.equal((await run(['claude', 'codex', '--name', 'Reviewer', '--board', 'x'], { terminal: true })).exitCode, 1);
+        assert.match(err.join('\n'), /--name names one agent/);
+        assert.equal((await run(['claude', 'codex', '--board', 'x'], { noTerminal: true })).exitCode, 1);
+        assert.match(err.join('\n'), /Several agents at once need a terminal/);
+        assert.deepEqual(hosted, []);
+      });
     });
   });
 });

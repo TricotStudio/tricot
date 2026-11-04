@@ -105,7 +105,8 @@ Usage
   tricot connect [agent]  Print how to connect an agent: claude, codex, pi, omp, gemini,
                           opencode, mcp-json, url
   tricot claude           Start the board, then Claude Code in this terminal with the board
-                          for this session only (its settings stay as they are). Asks which
+                          for this session only (its settings stay as they are), with the
+                          Tricot tab and a strip at the bottom, as with several. Asks which
                           board unless --board; anything after -- goes to Claude Code.
                           Also: tricot codex, tricot opencode
   tricot claude codex     Start several agents on one board, in this terminal: one shows at
@@ -127,7 +128,10 @@ Options
                      the agent tricot claude starts
   --name <name>      The agent's name on the board (connect, claude; hooks with --agent)
   --switch-key <key> With several agents: the key that switches (default ctrl-\\)
-  --switcher         tricot claude: run it with the strip at the bottom, as with several
+  --switcher         tricot claude: with the strip and the Tricot tab, as it runs by
+                     default where it can; with this, refused where it can't
+  --no-switcher      tricot claude: run it on its own in this terminal, with no strip
+                     or Tricot tab (also what it does without a terminal, and on Windows)
   --hooks            connect claude: also show Claude's steps on its card, through a
                      hook in this project's .claude/settings.json (asks first)
   --narration        with --hooks: also show the first line of each message Claude
@@ -159,6 +163,7 @@ const OPTIONS = {
   verbose: { type: 'boolean' },
   'no-open': { type: 'boolean' },
   switcher: { type: 'boolean' },
+  'no-switcher': { type: 'boolean' },
   'switch-key': { type: 'string' },
   'no-update-check': { type: 'boolean' },
   background: { type: 'boolean', short: 'd' },
@@ -247,6 +252,7 @@ type Env = {
     'remove-hooks'?: boolean;
     'no-open'?: boolean;
     switcher?: boolean;
+    'no-switcher'?: boolean;
     'switch-key'?: string;
     background?: boolean;
     'no-update-check'?: boolean;

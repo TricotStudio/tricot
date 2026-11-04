@@ -149,5 +149,34 @@ describe('tricot claude codex, in a terminal', { timeout: 60_000 }, () => {
       t.pty.kill('SIGKILL');
     }
   });
+
+  it('shows one agent with the Tricot tab and the strip too, and runs it on its own with --no-switcher', async () => {
+    const t = tricot('claude', '--board', board, '--no-open');
+    try {
+      assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes(' Tricot · Roadmap')), 15_000), t.observer.text());
+      assert.ok(await waitFor(async () => / ● Tricot {3}○ 1 Claude · /.test((await t.observer.settled(), t.observer.strip()))), t.observer.strip());
+      await sleep(400);
+      t.send('\x1c');
+      assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes('Claude (stand-in)'))), t.observer.text());
+      assert.match(t.observer.strip(), / ○ Tricot {3}● 1 Claude · /);
+      await sleep(1_100);
+      t.send('\x1c');
+      await sleep(50);
+      t.send('q');
+      assert.equal((await t.exited).exitCode, 0);
+    } finally {
+      t.pty.kill('SIGKILL');
+    }
+    const bare = tricot('claude', '--no-switcher', '--board', board, '--no-open');
+    try {
+      assert.ok(await waitFor(async () => (await bare.observer.settled(), bare.observer.text().includes('Claude (stand-in)')), 15_000), bare.observer.text());
+      assert.doesNotMatch(bare.observer.text(), / Tricot · Roadmap/);
+      assert.equal(bare.observer.strip().includes('1 Claude'), false, 'no strip');
+      bare.send('X');
+      await bare.exited;
+    } finally {
+      bare.pty.kill('SIGKILL');
+    }
+  });
 });
 

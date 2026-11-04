@@ -13,7 +13,9 @@
 // can't take the board for one session (gemini, pi, omp), --name (whose?)
 // and words after -- (whose?) with several agents, no terminal, Windows,
 // and a computer with no way to give each agent a terminal of its own.
-// `tricot claude --switcher` runs one agent this way too, for trying it.
+// One agent runs this way too (`tricot claude`, agentCommand.ts), unless
+// --no-switcher; where this can't run, one agent falls back to running on its
+// own, and only `tricot claude --switcher` is refused as above.
 //
 // The first tab is Tricot's own (T192, switcher/tricotTab.ts): the board,
 // the agents, the requests for permission to answer with a key, the board's
