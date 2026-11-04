@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A shared planning board where humans and agents make decisions together, over MCP",
-  "releaseNotes": "Pair with an agent on anything in a card's full view. Run your agents side by side in one terminal with tricot claude codex. Agent approvals now come to the board, and only browsers you let in can act as you. Tricot is now under the Apache 2.0 licence.",
+  "releaseNotes": "Follow-up fixes to 0.1.2. Tricot now opens board and card addresses when installed through nvm, volta or asdf. With one agent, tricot claude now shows the Tricot tab and a strip at the bottom, so questions for you stay in view. --no-switcher turns that off.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
