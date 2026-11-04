@@ -51,7 +51,8 @@ for (const name of PTY_HELPERS) {
       assert.deepEqual(await run(it_, '/bin/sh', ['-c', 'exit 3']).exited, { exitCode: 3 });
       const missing = run(it_, '/no/such/agent', []);
       assert.equal((await missing.exited).exitCode, 127);
-      assert.match(missing.output(), /No such file or directory/);
+      // macOS and bash say "No such file or directory"; Linux's sh (dash) says "not found".
+      assert.match(missing.output(), /No such file or directory|not found/);
       const sleeper = run(it_, '/bin/sleep', ['30']);
       await sleeper.pty.ready;
       await sleep(100);
