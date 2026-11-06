@@ -108,18 +108,9 @@ jobs:
           cp "${made[0]}" "tricot-$VERSION.all.bottle.tar.gz"
           ls -l
 
-      # Pour it, as someone installing it would, without the build toolchain
-      # checks: it must say "Pouring", and the formula's own test must pass.
-      - name: Pour the bottle, and test it
-        run: |
-          cd "$RUNNER_TEMP/bottle"
-          brew uninstall tricot
-          brew install "./tricot-$VERSION.all.bottle.tar.gz" 2>&1 | tee pour.log
-          grep -q "Pouring tricot-$VERSION.all.bottle.tar.gz" pour.log
-          brew test local/bottle/tricot
-
       # Is it the release's file? Every file the same, but for the node line Homebrew
       # puts at the top of the scripts (the script says what it finds otherwise).
+      # This also writes the formula with its bottle block, as the tap will have it.
       - name: Check that it holds the release's package
         env:
           GH_TOKEN: ${{ github.token }}
@@ -128,6 +119,22 @@ jobs:
           gh release download "$TAG" -p "tricot-$VERSION.tgz"
           node "$GITHUB_WORKSPACE/scripts/homebrew-formula.mjs" --tarball "tricot-$VERSION.tgz" --bottle "tricot-$VERSION.all.bottle.tar.gz" --out "$RUNNER_TEMP/formula-check.rb"
           cat "$RUNNER_TEMP/formula-check.rb"
+
+      # Pour it, as someone installing it would: from the formula's bottle block,
+      # with its root_url pointing at this folder until the bottle is on the
+      # release. (Homebrew no longer installs a bottle file named by its path,
+      # unless HOMEBREW_DEVELOPER is set.) It must say "Pouring", and the
+      # formula's own test must pass.
+      - name: Pour the bottle, and test it
+        run: |
+          cd "$RUNNER_TEMP/bottle"
+          formula="$(brew --repository local/bottle)/Formula/tricot.rb"
+          sed "s|^\( *root_url \)\".*\"|\1\"file://$RUNNER_TEMP/bottle\"|" "$RUNNER_TEMP/formula-check.rb" > "$formula"
+          grep -q "root_url \"file://$RUNNER_TEMP/bottle\"" "$formula"
+          brew uninstall tricot
+          brew install local/bottle/tricot 2>&1 | tee pour.log
+          grep -Eq "Pouring tricot-{1,2}$VERSION\.all\.bottle\.tar\.gz" pour.log
+          brew test local/bottle/tricot
 
       - name: Attach it to the release
         env:
