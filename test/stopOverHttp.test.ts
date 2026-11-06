@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +15,7 @@ import { Seats } from '../src/server/seats';
 import { startServer, type RunningServer } from '../src/server/start';
 import { letIn, type TestSeat } from './seatHelper';
 import { freePort } from './updateFixtures';
+import { removeScratch, WINDOWS } from './platform';
 
 // Asking the board to stop over HTTP (POST /api/stop): what `tricot stop`
 // does first, so that on Windows, where a signal is a hard kill, the board
@@ -64,7 +65,7 @@ describe('POST /api/stop', () => {
   });
   afterEach(async () => {
     await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   const post = (headers: Record<string, string> = {}) => fetch(`${server.url}/api/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: '{}' });
@@ -137,7 +138,7 @@ describe('askToStop, as `tricot stop` asks', () => {
   });
   afterEach(async () => {
     await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   const ask = (platform: NodeJS.Platform | undefined, interactive: boolean, allowedMs?: number) =>
@@ -195,7 +196,8 @@ describe('askToStop, as `tricot stop` asks', () => {
   });
 
   it('on macOS and Linux asks once, says nothing, and leaves the signal, which stops it gently there', async () => {
-    for (const platform of ['darwin', 'linux', undefined] as const) {
+    // Not given, the platform is this one's: on Windows, Windows'.
+    for (const platform of WINDOWS ? (['darwin', 'linux'] as const) : (['darwin', 'linux', undefined] as const)) {
       assert.equal(await ask(platform, true), false);
     }
     assert.deepEqual([out, err], [[], []], 'the same output as before: nothing');

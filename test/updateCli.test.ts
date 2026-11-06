@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -26,7 +26,7 @@ import {
   type FakeReleases,
   type Installed,
 } from './updateFixtures';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // `tricot --version` and `tricot update`, with stand-ins for npm, Homebrew
 // and the registry (a data: URL): never the real ones.
@@ -66,7 +66,7 @@ describe('tricot --version and tricot update', () => {
     for (const server of servers.splice(0)) await server.close();
     await stopAll(dataDir, pids.splice(0));
     for (const dir of [path.join(scratch, 'npm prefix', 'lib', 'node_modules'), path.join(scratch, 'homebrew', 'Cellar')]) if (existsSync(dir)) chmodSync(dir, 0o755);
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   it('prints the version', async () => {

@@ -49,7 +49,7 @@ describe('OMP, for one session', () => {
     }
   });
 
-  it("says in a few plain words, no path and no raw error, when the folder can't be made", () => {
+  it("says in a few plain words, no path and no raw error, when the folder can't be made", { skip: WINDOWS && 'Windows takes its temporary folder from TEMP, not TMPDIR' }, () => {
     const saved = process.env.TMPDIR;
     process.env.TMPDIR = path.join(os.tmpdir(), 'tricot-no-such-folder-for-omp');
     try {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { Presence } from '../src/server/presence';
 import { DUPLICATE_MS, LATE_MS, RUNNING_KEEP_MS, STEP_KEEP_MS, Steps, type StepResult } from '../src/server/steps';
+import { removeScratch } from './platform';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOOK = path.join(repo, 'hooks/tricot-steps.mjs');
@@ -62,7 +63,7 @@ describe('Steps (in memory)', () => {
       steps.close();
       presence.close();
       await store.flush();
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     };
     return { store, presence, steps, board, t1, t2, advance: (ms: number) => (now += ms), now: () => now, done };
   };
@@ -381,7 +382,7 @@ describe('Steps (in memory)', () => {
         );
       }
       assert.deepEqual(steps.list(board.id).map((s) => s.text), ['Finished its turn']);
-      rmSync(home, { recursive: true, force: true });
+      removeScratch(home);
       await done();
     });
   });
@@ -441,7 +442,7 @@ describe('POST /api/agents/:name/steps', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('attributes a step to the card the agent last touched over MCP, and streams it to the board', async () => {
@@ -603,7 +604,7 @@ describe("a comment's step ends as the comment lands (MCP and the steps route)",
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const writing = (steps: { text: string }[]) => steps.some((s) => s.text === 'Writing a comment');
@@ -655,7 +656,7 @@ describe('steps beyond this machine', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 });
 
@@ -737,7 +738,7 @@ describe('the Claude Code hook script', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('fails silently and fast when Tricot is not running, or hangs', async () => {
@@ -777,7 +778,7 @@ describe('tricot steps on --agent claude --project', () => {
   before(() => {
     scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-hooks-cli-'));
   });
-  after(() => rmSync(scratch, { recursive: true, force: true }));
+  after(() => removeScratch(scratch));
 
   const fresh = (settings?: unknown) => {
     project = path.join(scratch, `p${Math.random().toString(36).slice(2)}`);

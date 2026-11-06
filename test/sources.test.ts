@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { linkSource, sourceKind } from '../src/core/sources';
 import { Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const DOC = '1hS7zXbq0aT3vYk2mWQeR9uLpN4cJ6dFgH8iK0lM2nOp';
 
@@ -150,7 +151,7 @@ describe('Links open in place', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('grows the block to the embedded view and folds it back, quietly and without a new rev', async () => {

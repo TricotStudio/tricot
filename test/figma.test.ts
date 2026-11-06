@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -18,7 +18,7 @@ import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { drawPng, FakeFigma, FILE_KEY, FRAME, NO_USER_SCOPE_TOKEN, OTHER_TOKEN, VALID_TOKEN } from './fakeFigma';
 import { versionsOf } from './tables';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const FRAME_URL = `https://www.figma.com/design/${FILE_KEY}/Onboarding?node-id=12-34&t=abc`;
@@ -109,7 +109,7 @@ describe('Figma connector', () => {
     server.close();
     figma.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   // Each test starts from a Figma that isn't connected, with a fresh fake.

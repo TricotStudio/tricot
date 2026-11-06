@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // scripts/homebrew-formula.mjs on made-up tarballs and bottles (its --tarball
 // and --bottle mode), so nothing here goes to GitHub or npm.
@@ -22,7 +22,7 @@ let scratch: string;
 before(() => {
   scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-homebrew-formula-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 // An npm tarball holding only package/package.json.
 function tarball(name: string, fields: Record<string, unknown>): string {

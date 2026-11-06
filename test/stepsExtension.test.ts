@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -12,6 +12,7 @@ import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { omp } from '../src/server/hooks/omp';
 import { pi } from '../src/server/hooks/pi';
+import { removeScratch } from './platform';
 
 // The extension Pi and OMP load, driven by simulated events: no Pi or OMP is
 // imported or run. A fake agent hands its handlers events, and a fake fetch
@@ -253,7 +254,7 @@ describe('the Pi and OMP extension: never in the way', () => {
       server.closeAllConnections();
       server.close();
       await store.flush();
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     }
   });
 });
@@ -263,7 +264,7 @@ describe('the extension as installed', () => {
   before(() => {
     home = mkdtempSync(path.join(os.tmpdir(), 'tricot-extension-home-'));
   });
-  after(() => rmSync(home, { recursive: true, force: true }));
+  after(() => removeScratch(home));
 
   for (const [installer, folder, name] of [
     [pi, '.pi/agent/extensions/tricot-steps', 'Pi'],

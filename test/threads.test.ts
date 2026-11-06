@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import { createApp } from '../src/server/app';
 import { EDGE, LENS_MENU_WIDTH, lensMenuPlace, type LensMenuPlace } from '../src/web/threads/lensPlace';
 import { lensTone } from '../src/web/threads/lensTone';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const codex: Actor = { kind: 'agent', name: 'Codex' };
@@ -65,7 +66,7 @@ describe('Threads on a board', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('starts a thread from its first message and logs each message', () => {
@@ -214,7 +215,7 @@ describe('Thread lenses', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('offers Architect and Marketing like the other presets, each with a brief agents are told', async () => {
@@ -452,7 +453,7 @@ describe('What a thread leads to', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('shows work made ahead of a reply under that reply, and work made after it under it too', () => {
@@ -537,7 +538,7 @@ describe('Deleting a thread, and the General thread', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('lets a person delete a thread, keeps what it led to, and brings it back as it was', async () => {
@@ -654,7 +655,7 @@ describe('Threads over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('lets a person start a thread over REST and an agent hear it, read it and reply', async () => {

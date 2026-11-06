@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,7 +10,7 @@ import { loadToken, NOT_A_PERSON, tokenFile } from '../src/server/access';
 import { securePrivateDir } from '../src/platform/dataDir';
 import { lockFile } from '../src/platform/lock';
 import { startServer, type RunningServer } from '../src/server/start';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -69,7 +69,7 @@ describe('Access', () => {
   });
   afterEach(async () => {
     for (const server of servers.splice(0)) await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   describe('on 127.0.0.1', () => {

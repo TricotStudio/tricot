@@ -4,7 +4,7 @@
 // to be let in, as a terminal does, and once allowed resolves and defers.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,6 +14,7 @@ import type { AdmissionView } from '../src/core/seats';
 import { Seats } from '../src/server/seats';
 import { startServer, type RunningServer } from '../src/server/start';
 import { letIn, type TestSeat } from './seatHelper';
+import { removeScratch } from './platform';
 
 const demo = fileURLToPath(new URL('../scripts/demo.ts', import.meta.url));
 
@@ -84,7 +85,7 @@ describe('npm run demo', () => {
   afterEach(async () => {
     await server?.close();
     server = undefined;
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   it('seeds the whole board without a seat, leaving resolving and deferring to the person', async () => {

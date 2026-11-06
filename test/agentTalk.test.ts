@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -10,6 +10,7 @@ import { Store } from '../src/core/store';
 import { BURST_SETTLE_MS, MESSAGE_SETTLE_MS, settleAfter, wakes } from '../src/core/store/eventLog';
 import type { Actor, Board, BoardEvent, Reaction, Task } from '../src/core/types';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 // Agents tagging each other (core/agentTalk.ts): an agent's message that
 // @-mentions another agent asks it, as a person's would, until the loop guard
@@ -83,7 +84,7 @@ describe('the loop guard in the store', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   function setUp() {

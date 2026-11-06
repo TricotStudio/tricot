@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type Agent = 'Claude' | 'Codex';
@@ -62,7 +63,7 @@ describe('First looks, over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('tells agents to take it, gives it to one of two racing agents, and the comment gives it', async () => {

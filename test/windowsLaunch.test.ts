@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -8,7 +8,7 @@ import { home, osHome } from '../src/platform/paths';
 import { batchArgument, batchCommandLine, execProgram, isBatchFile, launchOf, runProgram } from '../src/platform/run';
 import { interruptSelf, stopSignals } from '../src/platform/stop';
 import { which } from '../src/platform/which';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // Starting programs, opening the browser and finding the home folder on
 // Windows, through the platform layer's `os` parameter, so they run on every
@@ -169,7 +169,7 @@ describe('Starting a .cmd file on Windows', () => {
         chmodSync(path.join(bin, name), 0o755); // which looks for a file that runs
       }
     });
-    after(() => rmSync(scratch, { recursive: true, force: true }));
+    after(() => removeScratch(scratch));
 
     it('finds `npm` as npm.cmd on the PATH, and so starts it through cmd.exe', () => {
       const launch = launchOf('npm', ['--version'], { PATH: bin }, 'win32', 'cmd.exe');
@@ -274,7 +274,7 @@ describe('Starting real .cmd files', { skip: !WINDOWS && 'cmd.exe is Windows onl
     shim = path.join(scratch, 'show tool.cmd');
     writeFileSync(shim, `@ECHO off\r\n"${process.execPath}" "%~dp0show.js" %*\r\n`);
   });
-  after(() => rmSync(scratch, { recursive: true, force: true }));
+  after(() => removeScratch(scratch));
 
   const run = (command: string, args: string[]) =>
     new Promise<{ code: number | null; out: string }>((resolve, reject) => {

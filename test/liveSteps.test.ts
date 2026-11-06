@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import { applyLiveSteps, compactFiles, liveStepsAgents, planLiveSteps, type Live
 import { claude } from '../src/server/hooks/claude';
 import { NOT_A_PERSON } from '../src/server/access';
 import { NOT_FROM_HERE } from '../src/server/liveStepsRoutes';
+import { removeScratch } from './platform';
 
 // Every agent folder here is in a home made for the test, and PATH is empty:
 // nothing reads or writes a real agent's settings, and no agent is run.
@@ -27,7 +28,7 @@ let scratch: string;
 before(() => {
   scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-live-steps-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 // A home with these agents' folders, and a project in it.
 function homeWith(...folders: string[]): LiveStepsContext & { home: string; project: string } {

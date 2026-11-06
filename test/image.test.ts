@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { DEFAULT_IMAGE_SIZE, IMAGE_CHROME, imageBlockSize, imageDimensions, naturalImageSize } from '../src/core/blocks/image/image';
 import { Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
+import { removeScratch } from './platform';
 
 // Image headers, built byte by byte: only the header is read, so the rest of
 // each file is left out (or is a few bytes of padding).
@@ -160,7 +161,7 @@ describe('Image blocks keep their picture size', () => {
     store.load();
     boardId = store.createBoard({ title: 'Screens' }, agent).id;
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => removeScratch(dir));
 
   it('reads the size when the image is saved, and sizes a new block by it', () => {
     const assetId = store.saveAsset(png(2480, 1840));

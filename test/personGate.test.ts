@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
@@ -19,6 +19,7 @@ import { Connectors } from '../src/server/connectors';
 import { createConnectorsRouter } from '../src/server/connectors/routes';
 import { Seats } from '../src/server/seats';
 import { letIn, type TestSeat } from './seatHelper';
+import { removeScratch } from './platform';
 
 // One "is this you?" gate, in two tiers (access.ts asPerson, T194, T187).
 // Tier A, shaping the board, takes Tricot's page or a registered Tricot
@@ -34,7 +35,7 @@ before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
   scratch = mkdtempSync(path.join(repo, '.review', 'test-person-gate-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const sam = { kind: 'human' as const, name: 'Sam' };
 const claude = { kind: 'agent' as const, name: 'Claude' };

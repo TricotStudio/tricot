@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -22,6 +22,7 @@ import { peoplesCopy } from '../src/server/api';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -75,7 +76,7 @@ describe('Deleting a card made by mistake, for good', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const decided = (question = 'How often to retry?') => {
@@ -312,7 +313,7 @@ describe('Deleting a card over the API and MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const post = async (route: string, body: Record<string, unknown>) => {

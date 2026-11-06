@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -10,6 +10,7 @@ import { createApp } from '../src/server/app';
 import { Connectors } from '../src/server/connectors';
 import { Leases } from '../src/server/leases';
 import { tableRouteOf } from '../src/server/routing';
+import { removeScratch } from './platform';
 
 // One table of REST routes (src/core/routes.ts) is what the server serves and
 // what the page asks for: the server registers each route from its entry
@@ -72,7 +73,7 @@ describe('The server', () => {
     stack = (app as unknown as { router: { stack: Layer[] } }).router.stack;
   });
 
-  after(() => rmSync(dir, { recursive: true, force: true }));
+  after(() => removeScratch(dir));
 
   // Every route the app and its routers register, but the MCP endpoint.
   const served = (layers: Layer[]): Layer['route'][] =>
@@ -116,7 +117,8 @@ describe('The server', () => {
 
 describe('The page', () => {
   const web = path.resolve(import.meta.dirname, '../src/web');
-  const files = (readdirSync(web, { recursive: true, encoding: 'utf8' }) as string[]).filter((file) => /\.tsx?$/.test(file));
+  // With forward slashes, as Windows gives them too.
+  const files = (readdirSync(web, { recursive: true, encoding: 'utf8' }) as string[]).filter((file) => /\.tsx?$/.test(file)).map((file) => file.split(path.sep).join('/'));
 
   // Code only: what a comment says about a route is for the reader.
   const codeOf = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');

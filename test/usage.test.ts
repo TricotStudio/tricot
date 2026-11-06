@@ -32,6 +32,11 @@ import { claude } from '../src/server/hooks/claude';
 import { codex } from '../src/server/hooks/codex';
 import { opencode } from '../src/server/hooks/opencode';
 import { mergeUsage, Usage } from '../src/server/usage';
+import { removeScratch, WINDOWS } from './platform';
+
+// A path as a hook command writes it: with forward slashes on Windows, which
+// every shell there leaves alone (shellPath in src/server/hooks/installer.ts).
+const asWritten = (file: string) => (WINDOWS ? file.replaceAll('\\', '/') : file);
 
 // Plan usage, from each harness to an agent's panel. Every install runs in a
 // home made for the test under .review/, and every session file is one the
@@ -47,7 +52,7 @@ before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
   scratch = mkdtempSync(path.join(repo, '.review', 'test-usage-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const freshHome = () => ({ home: mkdtempSync(path.join(scratch, 'home-')), env: {} });
 const json = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
@@ -136,7 +141,7 @@ describe('the status line, set up for Claude Code (hooks/tricot-usage.mjs)', () 
     kept: path.join(home, '.claude/hooks/tricot-usage.json'),
   });
 
-  it("runs the person's own status line with the same input, prints its output as it is, with its exit code, and sends Tricot only numbers", async () => {
+  it("runs the person's own status line with the same input, prints its output as it is, with its exit code, and sends Tricot only numbers", { skip: WINDOWS && 'their status line here is a POSIX shell command (cat, printf)' }, async () => {
     const target = freshHome();
     const f = files(target.home);
     const theirs = { type: 'command', command: 'cat; printf "\\033[32mmine\\033[0m\\n"; exit 3', padding: 2 };
@@ -184,7 +189,7 @@ describe('the status line, set up for Claude Code (hooks/tricot-usage.mjs)', () 
     claude.install(target, setup);
     const on = json(f.settings);
     assert.deepEqual(Object.keys(on), ['permissions', 'statusLine', 'theme', 'hooks'], "Tricot's line in the place of theirs");
-    assert.deepEqual(on.statusLine, { type: 'command', command: `node "${f.wrapper}" --name Claude --url ${TRICOT_URL}`, padding: 2, refreshInterval: 5 });
+    assert.deepEqual(on.statusLine, { type: 'command', command: `node "${asWritten(f.wrapper)}" --name Claude --url ${TRICOT_URL}`, padding: 2, refreshInterval: 5 });
     assert.deepEqual(json(f.kept), { had: true, previous: original.statusLine });
     assert.equal(readFileSync(f.wrapper, 'utf8'), readFileSync(WRAPPER, 'utf8'), 'written whole, not linked');
     assert.equal(claude.status(target).usage, 'on');
@@ -209,7 +214,7 @@ describe('the status line, set up for Claude Code (hooks/tricot-usage.mjs)', () 
     assert.ok(claude.preview(bare, setup).notes.some((n) => /footer's hints/.test(n)));
     claude.install(bare, setup);
     assert.deepEqual(json(b.kept), { had: false });
-    assert.deepEqual(json(b.settings).statusLine, { type: 'command', command: `node "${b.wrapper}" --name Claude --url ${TRICOT_URL}` });
+    assert.deepEqual(json(b.settings).statusLine, { type: 'command', command: `node "${asWritten(b.wrapper)}" --name Claude --url ${TRICOT_URL}` });
     assert.ok(claude.previewUninstall(bare).notes.includes('Claude Code goes back to having no status line.'));
     claude.uninstall(bare);
     assert.equal(readFileSync(b.settings, 'utf8'), bareBefore);

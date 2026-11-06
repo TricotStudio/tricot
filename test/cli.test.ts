@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +10,7 @@ import { runCli, type CliContext, type CliResult } from '../src/cli/main';
 import { lockFile, readLock } from '../src/platform/lock';
 import { startServer, type RunningServer } from '../src/server/start';
 import { startFolder } from '../src/server/startFolder';
+import { removeScratch } from './platform';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -41,6 +42,7 @@ describe('tricot command', () => {
     out: (line) => out.push(line),
     err: (line) => err.push(line),
     open: (url) => opened.push(url),
+    platform: 'linux', // the commands it prints as zsh and bash take them; windowsShell.test.ts has PowerShell's
   });
 
   const run = async (...argv: string[]): Promise<CliResult> => {
@@ -64,7 +66,7 @@ describe('tricot command', () => {
   });
   afterEach(async () => {
     for (const server of servers.splice(0)) await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   describe('start', () => {

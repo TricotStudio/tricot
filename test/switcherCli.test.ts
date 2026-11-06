@@ -7,7 +7,7 @@ import { ANSWER_FILE } from '../src/cli/hooks';
 import { runCli, type CliContext } from '../src/cli/main';
 import type { RunningServer } from '../src/server/start';
 import { alive, claudeLike, codexLike, leftAfterReaping, node, play, repo, sleep, waitFor, type Played } from './switcher/harness';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // All of it, as a person runs it: `tricot claude codex` in a terminal (a
 // pseudo-terminal the test plays, the harness's observer), on a board
@@ -67,7 +67,7 @@ after(async () => {
 
 after(async () => {
   await server?.close();
-  rmSync(scratch, { recursive: true, force: true });
+  removeScratch(scratch);
 });
 
 const tricot = (...args: string[]): Played => play(node, ['--import', 'tsx', path.join(repo, 'src/cli/tricot.ts'), ...args], { env: { ...process.env, ...env }, cwd: project, cols: 110, rows: 32 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import type { Actor, Block, Pin, Task } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { PairingSessions } from '../src/server/pairing';
 import { boxBetween, isClick, lineSpan, placeBy, sentenceAt, spotBox, unionRect } from '../src/web/canvas/pairing/pointing';
+import { removeScratch } from './platform';
 
 // Pairing on a code block's lines, a note's words, a diagram's nodes and
 // arrows, and boxes on an image (T180), as on a website and a Google Doc
@@ -24,7 +25,7 @@ import { boxBetween, isClick, lineSpan, placeBy, sentenceAt, spotBox, unionRect 
 // and with which tool; the view's pointing rules; and pins after the change.
 
 const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tricot-pairing-pieces-')));
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };

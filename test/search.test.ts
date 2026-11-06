@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -11,6 +11,7 @@ import { searchBoards, snippetAround, type SearchOptions, type SearchResult } fr
 import { Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -32,7 +33,7 @@ describe('Search', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const search = (query: string, options: SearchOptions = {}) =>
@@ -312,7 +313,7 @@ describe('Search over REST and MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('searches a board, or every board, over REST', async () => {

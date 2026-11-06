@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { decisionDetail, refreshDigest } from '../src/core/digest';
 import { keyWords, similarDecisions } from '../src/core/search';
 import { Store } from '../src/core/store';
 import type { Actor, Board, Decision } from '../src/core/types';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const wassim: Actor = { kind: 'human', name: 'Wassim' };
@@ -40,7 +41,7 @@ describe('What a decision could affect', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('is empty for a decision that touches nothing', () => {

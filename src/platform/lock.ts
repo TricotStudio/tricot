@@ -142,3 +142,10 @@ export function releaseLock(dataDir: string): void {
   heldLocks.delete(heldKey(dataDir));
   if (readLock(dataDir)?.pid === process.pid) rmSync(lockFile(dataDir), { force: true });
 }
+
+// Takes away the lock a server that has ended left, as one ended at once
+// does (on Windows, where `tricot stop` may have to): only while it still
+// names that process, and only once the process is gone.
+export function clearLockOf(dataDir: string, pid: number): void {
+  if (readLock(dataDir)?.pid === pid && !pidAlive(pid)) rmSync(lockFile(dataDir), { force: true });
+}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -18,6 +18,7 @@ import { Connectors } from '../src/server/connectors';
 import { GITHUB_APP_SLUG, GITHUB_CLIENT_ID, installUrl } from '../src/server/connectors/github';
 import { summariseChecks } from '../src/server/connectors/github/reader';
 import { CLIENT_ID, DEVICE_TOKEN, FakeGithub, PAT, sha } from './fakeGithub';
+import { removeScratch, WINDOWS } from './platform';
 
 const HEAD = sha(7);
 const PATCH = (name: string) => `diff --git a/${name} b/${name}\nindex 111..222 100644\n--- a/${name}\n+++ b/${name}\n@@ -1,2 +1,3 @@\n keep\n-old line\n+new line\n+another line\n`;
@@ -93,7 +94,7 @@ describe('GitHub as a connector', () => {
     server.close();
     github.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   beforeEach(() => {
@@ -193,8 +194,8 @@ describe('GitHub as a connector', () => {
 
       const saved = JSON.parse(readFileSync(tokenFile(), 'utf8'));
       assert.equal(saved.token, DEVICE_TOKEN);
-      assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
-      assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
+      if (!WINDOWS) assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+      if (!WINDOWS) assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
       assert.ok(!JSON.stringify((await status()).account).includes(DEVICE_TOKEN));
       assert.equal((await get('/api/connectors/github/device')).json.device, null);
       // The token went to the API only, and only as a bearer header: never to github.com's sign-in pages.
@@ -296,7 +297,7 @@ describe('GitHub as a connector', () => {
       assert.ok(!used.text.includes(PAT));
       assert.deepEqual(github.api().slice(before).map((s) => s.path), ['/user']);
       assert.equal(JSON.parse(readFileSync(tokenFile(), 'utf8')).via, 'token');
-      assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+      if (!WINDOWS) assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
     });
 
     it("lists the repositories the token covers instead of the app's installations", async () => {

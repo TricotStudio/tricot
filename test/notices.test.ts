@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { collectNotices, FLAGGED, inlinedIn, licenceAllowed, licenceRefusal, licenceRefused, noticesMarkdown, packageDirOf, recordBundle } from '../scripts/notices.mjs';
+import { removeScratch } from './platform';
 
 // The third-party notices (scripts/notices.mjs) come from what the bundlers
 // say they bundled; these check how that becomes the notices, on made-up packages.
@@ -14,7 +15,7 @@ describe('Third-party notices', () => {
   beforeEach(() => {
     scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-notices-'));
   });
-  afterEach(() => rmSync(scratch, { recursive: true, force: true }));
+  afterEach(() => removeScratch(scratch));
 
   const pkg = (name: string, fields: Record<string, unknown>, files: Record<string, string> = {}) => {
     const dir = path.join(scratch, 'node_modules', name);
@@ -49,8 +50,9 @@ describe('Third-party notices', () => {
   });
 
   it('finds the package a bundled file comes from, scoped and nested ones too', () => {
-    assert.equal(packageDirOf('/x/node_modules/a/lib/b.js'), '/x/node_modules/a');
-    assert.equal(packageDirOf('/x/node_modules/a/node_modules/@s/b/lib/c.js'), '/x/node_modules/a/node_modules/@s/b');
+    const at = (file: string) => path.resolve(file); // on Windows, /x is D:\x
+    assert.equal(packageDirOf('/x/node_modules/a/lib/b.js'), at('/x/node_modules/a'));
+    assert.equal(packageDirOf('/x/node_modules/a/node_modules/@s/b/lib/c.js'), at('/x/node_modules/a/node_modules/@s/b'));
     assert.equal(packageDirOf('/x/src/web/main.tsx'), undefined);
   });
 

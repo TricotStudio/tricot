@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -42,7 +42,7 @@ import {
   type FakeReleases,
   type Installed,
 } from './updateFixtures';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 const HOME = os.homedir();
 const place = (dataDir: string, extra: Partial<ServerPlace> = {}): ServerPlace => ({ port: 4545, host: '127.0.0.1', dataDir, ...extra });
@@ -53,7 +53,7 @@ describe('How Tricot was installed', () => {
       throw new Error('no file');
     };
     const project = (file: string) => {
-      if (file === '/work/app/package.json') return JSON.stringify({ devDependencies: { tricot: '^0.1.0' } });
+      if (file.replaceAll('\\', '/') === '/work/app/package.json') return JSON.stringify({ devDependencies: { tricot: '^0.1.0' } }); // \\work\\app on Windows
       throw new Error('no file');
     };
     const node = '/opt/homebrew/Cellar/node/22.13.0/bin/node';
@@ -82,7 +82,7 @@ describe('How Tricot was installed', () => {
       for (const dir of [path.join(scratch, 'npm prefix', 'lib', 'node_modules'), path.join(scratch, 'npm prefix', 'bin'), path.join(scratch, 'homebrew', 'Cellar')]) {
         if (existsSync(dir)) chmodSync(dir, 0o755);
       }
-      rmSync(scratch, { recursive: true, force: true });
+      removeScratch(scratch);
     });
 
     it("is npm's global install when it sits where `npm prefix -g` says, and says whether this user can write there", { skip: WINDOWS && 'chmod cannot make a folder read-only' }, async () => {
@@ -179,8 +179,8 @@ describe('How Tricot updates', () => {
 
   it('restarts with the port, host and data folder it had, quoted for a shell, when they are not the defaults', () => {
     const odd = path.join(HOME, `boards "Q3" it's $HOME`);
-    assert.equal(restartCommand(place(odd, { port: 5010, host: '0.0.0.0', flags: ['--no-update-check'] })), `tricot stop --data '${odd.replaceAll("'", `'\\''`)}' && tricot --port 5010 --host 0.0.0.0 --data '${odd.replaceAll("'", `'\\''`)}' --no-update-check`);
-    assert.equal(restartCommand(place(data), { stop: false }), 'tricot');
+    assert.equal(restartCommand(place(odd, { port: 5010, host: '0.0.0.0', flags: ['--no-update-check'] }), { platform: 'linux' }), `tricot stop --data '${odd.replaceAll("'", `'\\''`)}' && tricot --port 5010 --host 0.0.0.0 --data '${odd.replaceAll("'", `'\\''`)}' --no-update-check`);
+    assert.equal(restartCommand(place(data), { stop: false, platform: 'linux' }), 'tricot');
   });
 });
 
@@ -232,7 +232,7 @@ describe("The updater's commands", () => {
       pid: 4242,
       cwd: '/Users/sam/work',
     });
-    const start = { command: '/usr/local/bin/tricot', args: startArgs(place(odd)) };
+    const start = { command: path.join('/usr/local', 'bin', 'tricot'), args: startArgs(place(odd)) };
     assert.deepEqual(plan, {
       waitPid: 4242,
       dataDir: odd,
@@ -240,7 +240,7 @@ describe("The updater's commands", () => {
       to: '0.2.0',
       cwd: '/Users/sam/work',
       install: { command: '/usr/local/bin/node', args: ['/usr/local/lib/node_modules/npm/bin/npm-cli.js', 'install', '-g', 'tricot@0.2.0'] },
-      verify: { command: '/usr/local/bin/tricot', args: ['--version'] },
+      verify: { command: path.join('/usr/local', 'bin', 'tricot'), args: ['--version'] },
       next: start,
       back: { install: { command: '/usr/local/bin/node', args: ['/usr/local/lib/node_modules/npm/bin/npm-cli.js', 'install', '-g', 'tricot@0.1.0'] }, start },
     });
@@ -252,7 +252,7 @@ describe("The updater's commands", () => {
     const backFile = { version: '0.1.0', url: 'https://github.com/TricotStudio/tricot/releases/download/v0.1.0/tricot-0.1.0.tgz', sha256: 'b'.repeat(64) };
     const launch = { kind: 'npm-global' as const, prefix: '/usr/local', writable: true };
     const plan = planHandoff({ via: 'npm', version: '0.2.0', current: '0.1.0', place: place(odd), launch, self, npm, file, backFile, pid: 4242, cwd: '/Users/sam/work' });
-    const start = { command: '/usr/local/bin/tricot', args: startArgs(place(odd)) };
+    const start = { command: path.join('/usr/local', 'bin', 'tricot'), args: startArgs(place(odd)) };
     assert.deepEqual(plan, {
       waitPid: 4242,
       dataDir: odd,
@@ -260,10 +260,10 @@ describe("The updater's commands", () => {
       to: '0.2.0',
       cwd: '/Users/sam/work',
       download: file,
-      install: { command: npm.command, args: [...npm.args, 'install', '-g', path.join(odd, 'update-download', 'tricot-0.2.0.tgz')] },
-      verify: { command: '/usr/local/bin/tricot', args: ['--version'] },
+      install: { command: npm.command, args: [...npm.args, 'install', '-g', path.resolve(odd, 'update-download', 'tricot-0.2.0.tgz')] },
+      verify: { command: path.join('/usr/local', 'bin', 'tricot'), args: ['--version'] },
       next: start,
-      back: { download: backFile, install: { command: npm.command, args: [...npm.args, 'install', '-g', path.join(odd, 'update-download', 'tricot-0.1.0.tgz')] }, start },
+      back: { download: backFile, install: { command: npm.command, args: [...npm.args, 'install', '-g', path.resolve(odd, 'update-download', 'tricot-0.1.0.tgz')] }, start },
     });
     assert.deepEqual(parsePlan(JSON.stringify(plan)), plan, 'the updater gets it whole, odd folder and all');
     // No file for the old version: npm puts it back, as before.
@@ -295,7 +295,7 @@ describe("The updater's commands", () => {
   it('upgrades with brew, as argv, and falls back to this version as it was started', () => {
     const plan = planHandoff({ via: 'brew', version: '0.2.0', current: '0.1.0', place: place(odd), launch: { kind: 'brew', prefix: '/opt/homebrew', writable: true, brew: '/opt/homebrew/bin/brew' }, self, pid: 1, cwd: '/' });
     assert.deepEqual(plan.install, { command: '/opt/homebrew/bin/brew', args: ['upgrade', 'tricotstudio/tap/tricot'] });
-    assert.deepEqual(plan.next, { command: '/opt/homebrew/bin/tricot', args: startArgs(place(odd)) });
+    assert.deepEqual(plan.next, { command: path.join('/opt/homebrew', 'bin', 'tricot'), args: startArgs(place(odd)) });
     assert.deepEqual(plan.back, { start: { command: self.command, args: [...self.args, ...startArgs(place(odd))] } });
   });
 
@@ -318,7 +318,7 @@ describe("The updater's commands", () => {
   describe('handed to the updater', () => {
     let scratch: string;
     beforeEach(() => (scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-updater-'))));
-    afterEach(() => rmSync(scratch, { recursive: true, force: true }));
+    afterEach(() => removeScratch(scratch));
 
     it('as one argument, which comes back whole, quotes and all', async () => {
       const plan = planHandoff({ via: 'npx', version: '0.2.0', current: '0.1.0', place: place(odd), launch: { kind: 'npx' }, self, pid: 1, cwd: scratch });
@@ -362,7 +362,7 @@ describe('Updating in place', { skip: WINDOWS && 'runs shell-script stand-ins fo
   });
   afterEach(async () => {
     await stopAll(dataDir, pids.splice(0));
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   const state = async (url: string) => (await (await fetch(`${url}/api/update`)).json()) as { current: string; available?: { version: string }; how?: unknown; updating?: string; failed?: { version: string; message: string; log: string } };

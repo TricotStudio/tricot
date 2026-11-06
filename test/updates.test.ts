@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import express from 'express';
+import { shellQuote } from '../src/core/connect';
 import { Store } from '../src/core/store';
 import type { CheckedState, UpdateState } from '../src/core/update';
 import { createApp } from '../src/server/app';
@@ -41,6 +42,7 @@ import {
   type Timer,
 } from '../src/install/updates';
 import { fakeReleases, freePort, githubRelease, integrity, registrySays, sha256, tricotTarball, type FakeReleases } from './updateFixtures';
+import { removeScratch } from './platform';
 
 const RELEASES = releasesUrl('TricotStudio/tricot');
 const fileUrl = (version: string) => `https://github.com/TricotStudio/tricot/releases/download/v${version}/tricot-${version}.tgz`;
@@ -359,7 +361,7 @@ describe('The daily check', () => {
     answers = [];
     asked = 0;
   });
-  afterEach(() => rmSync(dataDir, { recursive: true, force: true }));
+  afterEach(() => removeScratch(dataDir));
 
   it('asks once the server is up, then once a day, and keeps the answer in the data folder', async () => {
     const check = checker();
@@ -544,7 +546,8 @@ describe('GET and POST /api/update', () => {
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   };
   const updatesFor = (options: Partial<ConstructorParameters<typeof Updates>[0]> = {}) =>
-    new Updates({ check: false, current: '0.1.0', place: { port: 4545, host: '127.0.0.1', dataDir }, launch: { kind: 'npx' }, self: { command: 'node', args: ['tricot.js'] }, fetch: latest('0.2.0'), ...options });
+    // On macOS and Linux, which update by themselves (on Windows a person runs the update: handoff.test.ts).
+    new Updates({ check: false, current: '0.1.0', place: { port: 4545, host: '127.0.0.1', dataDir }, launch: { kind: 'npx' }, self: { command: 'node', args: ['tricot.js'] }, fetch: latest('0.2.0'), platform: 'linux', ...options });
   // As Tricot's page asks: with its own Origin, from a browser the person let in.
   const post = (version: unknown, headers?: Record<string, string>, extra: object = {}) => {
     const body = JSON.stringify({ ...extra, version });
@@ -563,7 +566,7 @@ describe('GET and POST /api/update', () => {
   beforeEach(() => (dataDir = mkdtempSync(path.join(os.tmpdir(), 'tricot-update-api-'))));
   afterEach(async () => {
     await new Promise((resolve) => server?.close(resolve));
-    rmSync(dataDir, { recursive: true, force: true });
+    removeScratch(dataDir);
   });
 
   it('says what runs, what is out, and how it updates', async () => {
@@ -589,7 +592,7 @@ describe('GET and POST /api/update', () => {
     assert.deepEqual(how, {
       self: false,
       command: 'npm install -g tricot@latest',
-      restart: `tricot stop --data ${dataDir} && tricot --data ${dataDir}`,
+      restart: `tricot stop --data ${shellQuote(dataDir)} && tricot --data ${shellQuote(dataDir)}`,
       admin: true,
       why: "npm's global folder (/usr/local) needs administrator rights here, so run the install yourself, with sudo if that's how you installed Tricot.",
     });
@@ -751,6 +754,7 @@ describe('POST /api/update/check', () => {
       self: { command: 'node', args: ['tricot.js'] },
       releases: github.latest,
       url: npmSays('0.2.0'),
+      platform: 'linux', // as on macOS and Linux, which update by themselves
       ...options,
     });
   // As Tricot's page asks: with its own Origin.
@@ -768,7 +772,7 @@ describe('POST /api/update/check', () => {
     await new Promise((resolve) => (server ? server.close(resolve) : resolve(undefined)));
     server = undefined;
     await github.close();
-    rmSync(dataDir, { recursive: true, force: true });
+    removeScratch(dataDir);
   });
 
   it('says so when the version running is the latest, asking GitHub with the same plain request', async () => {

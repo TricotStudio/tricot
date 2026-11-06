@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -18,6 +18,7 @@ import {
 import { Store } from '../src/core/store';
 import type { Actor, Board, ContextRequest } from '../src/core/types';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const codex: Actor = { kind: 'agent', name: 'Codex' };
@@ -116,7 +117,7 @@ describe('People asking agents on the board context', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('takes a request from a person, and shows it to agents until one takes it', () => {

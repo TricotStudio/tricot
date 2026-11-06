@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -12,7 +12,7 @@ import { dataDirIn, defaultDataPath, home, osHome, tmpDir } from '../src/platfor
 import { stopProcess } from '../src/platform/stop';
 import { which } from '../src/platform/which';
 import { lockFile } from '../src/platform/lock';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 const HOOK = path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), 'hooks/tricot-approve.mjs');
 
@@ -21,7 +21,7 @@ describe('The platform layer', () => {
   before(() => {
     scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-platform-'));
   });
-  after(() => rmSync(scratch, { recursive: true, force: true }));
+  after(() => removeScratch(scratch));
 
   it('gives the data folder under a home folder, and the home folder either way', () => {
     assert.equal(dataDirIn('/home/sam'), path.join('/home/sam', '.tricot'));

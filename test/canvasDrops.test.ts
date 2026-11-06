@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
@@ -7,6 +7,7 @@ import { Store } from '../src/core/store';
 import type { Actor, Board } from '../src/core/types';
 import { appStyles } from './appStyles';
 import { CHROME, runInChrome } from './mermaidPage';
+import { removeScratch } from './platform';
 
 // What people drop on the canvas and paste on the page (T224), in headless
 // Chrome: the board's own CanvasView, with the drag and paste events a
@@ -29,7 +30,7 @@ function boards(): { empty: Board; withNote: Board } {
     store.addBlock({ boardId: withNote.id }, { content: { type: 'note', text: 'The exports job' } } as never, sam);
     return { empty, withNote: store.getBoard(withNote.id) };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }
 

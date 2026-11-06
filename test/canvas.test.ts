@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { placePin } from '../src/core/pins';
 import { Store, sniffImage } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
 import { eventsOf, versionsOf } from './tables';
+import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'planner' };
 const human: Actor = { kind: 'human', name: 'Sam' };
@@ -40,7 +41,7 @@ describe('Canvas', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('auto-places blocks without overlaps, and grows groups to fit', () => {

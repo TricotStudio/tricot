@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { boardDigest, commitsDigest, decisionDetail, taskDetail } from '../src/c
 import { Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const other: Actor = { kind: 'agent', name: 'codex' };
@@ -30,7 +31,7 @@ describe('Tasks', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const plan = (titles: string[], decisionIds = [decided]) =>

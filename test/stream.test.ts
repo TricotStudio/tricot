@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -11,6 +11,7 @@ import type { BoardChange } from '../src/core/changes';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import type { Actor } from '../src/core/types';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 
@@ -116,7 +117,7 @@ describe('A board stream', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('says where the board is, who is on it, and then sends each change with the entity it touched', async () => {

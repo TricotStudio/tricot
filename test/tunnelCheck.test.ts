@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer, request, type IncomingHttpHeaders, type Server } from 'node:http';
 import { createServer as createNetServer, type AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { startServer, type RunningServer } from '../src/server/start';
 import { FORWARDING_HEADERS, THROUGH_A_TUNNEL } from '../src/server/tunnelCheck';
+import { removeScratch } from './platform';
 
 // T188's finding 6: a tunnel or reverse proxy on this computer (ngrok,
 // cloudflared, `tailscale serve`) passes requests from anywhere on from
@@ -87,7 +88,7 @@ describe('A tunnel in front of a board', () => {
   afterEach(async () => {
     for (const server of closers.splice(0)) await new Promise((resolve) => server.close(resolve));
     for (const server of servers.splice(0)) await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   describe('on 127.0.0.1', () => {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync, chmodSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, chmodSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { after, afterEach, before, describe, it } from 'node:test';
 import { acquireLock, findRunning, heldLock, heldSecret, LockHeldError, lockFile, publishLock, readLock, releaseLock } from '../src/platform/lock';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // The lock holds a secret the approval hook checks the board's proofs with
 // (src/server/proof.ts). It is for the server and the hook alone.
@@ -15,7 +15,7 @@ describe('the data folder lock, and the secret in it', () => {
   before(() => {
     scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-lock-'));
   });
-  after(() => rmSync(scratch, { recursive: true, force: true }));
+  after(() => removeScratch(scratch));
   afterEach(() => {
     for (const folder of folders.splice(0)) releaseLock(folder);
   });

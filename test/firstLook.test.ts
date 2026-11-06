@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -16,6 +16,7 @@ import {
 import { BoardError, Store } from '../src/core/store';
 import type { Actor, FirstLook } from '../src/core/types';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const codex: Actor = { kind: 'agent', name: 'Codex' };
@@ -40,7 +41,7 @@ describe('First looks', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const add = (title: string, detail?: string) => store.planTasks(boardId, [{ title, detail }], wassim)[0];

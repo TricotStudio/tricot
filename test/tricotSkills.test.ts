@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -14,6 +14,7 @@ import {
   type TricotSkill,
 } from '../src/core/skills';
 import type { Board } from '../src/core/types';
+import { removeScratch } from './platform';
 
 const own: SkillList[] = [
   { agent: 'Claude', reportedAt: '2026-11-01T10:00:00.000Z', skills: [{ name: 'review', description: 'Review a diff' }] },
@@ -128,7 +129,7 @@ describe('Keeping Tricot skills', () => {
   });
   after(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
   const refused = (work: () => unknown, message: string, code = 'invalid') =>
     assert.throws(work, (e: BoardError) => e instanceof BoardError && e.message === message && e.code === code);

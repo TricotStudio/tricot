@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -11,6 +11,7 @@ import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
@@ -65,7 +66,7 @@ describe('Addressing one agent, over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('assigns a task over REST, refuses another agent its claim, and says so in get_board', async () => {

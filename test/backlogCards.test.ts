@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -18,6 +18,7 @@ import { letIn, type TestSeat } from './seatHelper';
 import { INSTRUCTIONS, MAX_INSTRUCTIONS } from '../src/server/mcp';
 import { eventsOf } from './tables';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const codex: Actor = { kind: 'agent', name: 'Codex' };
@@ -47,7 +48,7 @@ describe("Agents' backlog cards", () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const board = () => store.getBoard(boardId);
@@ -193,7 +194,7 @@ describe("Agents' backlog cards, over MCP and REST", () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('describes backlog on plan_tasks, for notes people ask for and bugs agents notice', async () => {

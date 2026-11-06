@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -11,6 +11,7 @@ import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 type Agent = 'Claude' | 'Codex' | 'Gemini';
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
@@ -77,7 +78,7 @@ describe('Agents tagging each other, over MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('tells agents they can tag each other, on the board, and react rather than tag to thank', async () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { readBoards } from '../src/core/store/boardTables';
 import { MIGRATIONS, openDatabase, userVersion } from '../src/core/store/migrations';
 import { wholeBoardDefaults } from '../src/core/store/shapeDefaults';
 import type { Database } from '../src/core/store/sqlite';
+import { removeScratch } from './platform';
 
 // Data version 7: what the repository gave each board as it loaded (a canvas,
 // pins, comments, a rev, …) is now filled in once, by a migration, on a file at
@@ -29,7 +30,7 @@ describe('Data version 7: every board carries the fields it is read with', () =>
     file = path.join(dir, DATABASE_FILE);
     copyFileSync(FIXTURE, file);
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => removeScratch(dir));
 
   // Takes `edit` to every body of a table's rows that `where` picks, as JSON.
   const rewrite = (db: Database, table: 'boards' | 'items', where: string, edit: (body: Json, row: Json) => void) => {

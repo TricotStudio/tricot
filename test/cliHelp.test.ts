@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -9,6 +9,7 @@ import { closestCommand, distance } from '../src/cli/help';
 import { runCli, type CliResult } from '../src/cli/main';
 import { listNames } from '../src/core/format';
 import { lockFile } from '../src/platform/lock';
+import { removeScratch } from './platform';
 
 // `tricot --help` lists the commands and the options that go with starting or
 // reaching the board; `tricot <command> --help` says what that command does and
@@ -62,7 +63,7 @@ describe('the help', () => {
     opened = [];
   });
   afterEach(() => {
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   describe('tricot --help', () => {

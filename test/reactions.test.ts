@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -18,6 +18,7 @@ import { threadWaiting } from '../src/core/threads';
 import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const codex: Actor = { kind: 'agent', name: 'Codex' };
@@ -42,7 +43,7 @@ describe('Reactions on comments', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const board = () => store.getBoard(boardId);
@@ -302,7 +303,7 @@ describe('Reactions over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   async function boardWithTask(title: string) {

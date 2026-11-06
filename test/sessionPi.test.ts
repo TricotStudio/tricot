@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { piExtension, piSession } from '../src/cli/agentSessions/pi';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // Pi for one session (cli/agentSessions/pi.ts): `-e <file>`, and the file adds
 // the board as a server through Pi's extension API.
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-test-pi-'));
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const URL = 'http://127.0.0.1:4545/mcp?agent=Pi';
 const setup = { url: URL, message: 'Use the Tricot board b1 and start listening.', passthrough: [] as string[] };

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -17,6 +17,7 @@ import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -39,7 +40,7 @@ describe('Dropping a task as work that won\'t be done', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const decided = () => {
@@ -228,7 +229,7 @@ describe('Dropping a task over the API and MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const post = async (route: string, body: Record<string, unknown>) => {

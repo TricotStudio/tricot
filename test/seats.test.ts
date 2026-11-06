@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
@@ -16,7 +16,7 @@ import { AnswerHosts } from '../src/server/answerHosts';
 import { createApp } from '../src/server/app';
 import { Seats, seatsFile, type SignedRequest } from '../src/server/seats';
 import { letIn } from './seatHelper';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // Seats (T187): the browsers and Tricot terminals the person let in, each
 // holding a key that never leaves it, signing what is consequential. Here:
@@ -31,7 +31,7 @@ before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
   scratch = mkdtempSync(path.join(repo, '.review', 'test-seats-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const sam = { kind: 'human' as const, name: 'Sam' };
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';

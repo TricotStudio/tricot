@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -18,6 +18,7 @@ import { createApp } from '../src/server/app';
 import { jsonFolder } from './savedBoard';
 import { eventsOf, legacyBoard, versionsOf } from './tables';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'planner' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -89,7 +90,7 @@ describe('Task lists in notes', () => {
       assert.match(digest, /note "Steps" \[id: \w+\][^\n]*\n {2}3\/7 done\n {2}Where we are\.\n/);
       assert.match(digest, /note "Prose" \[id: \w+\][^\n]*\n {2}Nothing to tick\./);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     }
   });
 
@@ -138,7 +139,7 @@ describe('Checklists saved before they were notes', () => {
     return made;
   };
   afterEach(() => {
-    for (const dir of folders.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of folders.splice(0)) removeScratch(dir);
   });
 
   const items = [
@@ -399,7 +400,7 @@ describe('Agents asking for checklists, over MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('tells agents task lists live in notes, and still takes a checklist', async () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -9,6 +9,7 @@ import { driftAge, driftChanges, driftOf } from '../src/core/freshness';
 import { Store } from '../src/core/store';
 import type { Actor, Decision } from '../src/core/types';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const wassim: Actor = { kind: 'human', name: 'Wassim' };
@@ -42,7 +43,7 @@ describe('Morphable decisions', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('lets a person ask agents to refresh the options, and an agent finish it with what changed', () => {

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { decisionClosure, taskClosure } from '../src/core/closure';
 import { Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -24,7 +25,7 @@ describe('Closed cards', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const board = () => store.getBoard(boardId);

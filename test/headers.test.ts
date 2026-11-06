@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { createServer } from 'node:net';
 import os from 'node:os';
@@ -10,6 +10,7 @@ import { linkSource } from '../src/core/sources';
 import { linkSources } from '../src/core/sources/registry';
 import { FRAMED_SITES, inlineScriptHashes, pagePolicy, refusingFrames } from '../src/server/headers';
 import { startServer, type RunningServer } from '../src/server/start';
+import { removeScratch } from './platform';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -92,7 +93,7 @@ describe('Headers on every response', () => {
   });
   after(async () => {
     await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   it("on the UI: the page's own policy, with its theme script by hash, on the page, a built file and the page served for any address", async () => {
@@ -187,7 +188,7 @@ describe('The UI installed under a dot folder', () => {
   });
   after(async () => {
     await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   it('serves the page for any address, not only the ones that are a file', async () => {
@@ -214,7 +215,7 @@ describe('Requests from another site', () => {
   });
   after(async () => {
     await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   // What a browser says of a request: which site it comes from, and what for.
@@ -287,7 +288,7 @@ describe('The UI in development', () => {
   });
   after(async () => {
     await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   it('allows the scripts written into its page, and holds the rest of the policy', async () => {

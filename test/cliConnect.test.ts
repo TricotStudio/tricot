@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { CONNECT_TIMEOUT_MS, runCaptured, type CommandResult, type CommandToRun } from '../src/cli/connectAgent';
 import { runCli, type CliContext, type CliResult } from '../src/cli/main';
+import { removeScratch } from './platform';
 
 // `tricot connect <agent>`: shows the agent's own command, asks, and runs it.
 // Nothing here runs a real agent: PATH holds empty stand-ins (so the agents
@@ -29,7 +30,7 @@ describe('tricot connect <agent>', () => {
   let agentsHere: string[];
 
   const agentsOnPath = (names: string[]) => {
-    rmSync(bin, { recursive: true, force: true });
+    removeScratch(bin);
     mkdirSync(bin, { recursive: true });
     for (const name of names) {
       const file = path.join(bin, name);
@@ -46,6 +47,7 @@ describe('tricot connect <agent>', () => {
     err: (line) => err.push(line),
     open: () => {},
     cwd: scratch,
+    platform: 'linux', // the commands it prints as zsh and bash take them; windowsShell.test.ts has PowerShell's
     exec: async (command) => {
       ran.push(command);
       return result;
@@ -86,7 +88,7 @@ describe('tricot connect <agent>', () => {
     agentsHere = ['claude', 'codex', 'pi', 'gemini'];
     agentsOnPath(agentsHere);
   });
-  afterEach(() => rmSync(scratch, { recursive: true, force: true }));
+  afterEach(() => removeScratch(scratch));
 
   describe('with a terminal to ask in', () => {
     it("shows Claude Code's command, asks which settings it changes, and runs it after y", async () => {

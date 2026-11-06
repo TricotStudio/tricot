@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { boardDigest, LATEST_DONE } from '../src/core/digest';
 import { Store } from '../src/core/store';
 import type { Actor, Task } from '../src/core/types';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -34,7 +35,7 @@ describe('get_board lists closed work in brief', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const digest = () => boardDigest(store.getBoard(boardId), 'Claude');

@@ -13,7 +13,7 @@ import { redirectTo } from '../src/server/sites/proxy';
 import { SiteServer } from '../src/server/sites/siteServer';
 import { watchable } from '../src/server/sites/watch';
 import { startServer, type RunningServer } from '../src/server/start';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // A home folder of its own, holding a website's folder, and a secret beside it.
 const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tricot-site-server-')));
@@ -30,9 +30,10 @@ for (const [file, body] of Object.entries({ 'site.css': 'h1{}', 'app.js': '1', '
 writeFileSync(path.join(scratch, 'secret.txt'), 'outside the folder');
 symlinkSync(path.join(scratch, 'secret.txt'), path.join(folder, 'linked.txt'));
 process.env.HOME = home;
+process.env.USERPROFILE = home; // the home folder on Windows (os.homedir())
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 type Sent = { status: number; headers: Record<string, string | string[] | undefined>; body: string };
 

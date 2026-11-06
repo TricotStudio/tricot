@@ -31,7 +31,7 @@ import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { DOCS_SCOPE, DRIVE_FILE, DRIVE_METADATA, FakeDoc, FakeGoogleServer } from './fakeDocs';
 import { eventsOf } from './tables';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 const wassim: Actor = { kind: 'human', name: 'Wassim' };
 const planner: Actor = { kind: 'agent', name: 'Planner' };
@@ -514,7 +514,7 @@ describe('Google Docs in Tricot, end to end', () => {
     server.close();
     google.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('asks only for the docs a person chooses, and opens a doc once it has been chosen in the Picker', async () => {
@@ -858,7 +858,7 @@ describe("Asking agents to edit a doc's paragraph", () => {
     server.close();
     google.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('pins the words to their paragraph with the request, in a thread', async () => {
@@ -1118,7 +1118,7 @@ describe('A Google sign-in made before docs were chosen with the Picker', () => 
     server.close();
     google.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('keeps working: docs open without being chosen, and it says it can switch', async () => {

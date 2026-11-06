@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -13,6 +13,7 @@ import { Store } from '../src/core/store';
 import type { Actor, Canvas } from '../src/core/types';
 import { jsonFolder, savedBoard } from './savedBoard';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 const agent: Actor = { kind: 'agent', name: 'planner' };
@@ -41,7 +42,7 @@ describe('Pins', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const note = (text: string, title = 'Where we are') => store.addBlock({ boardId }, { title, content: { type: 'note', text } }, sam);
@@ -504,7 +505,7 @@ describe('Pins', () => {
     reloaded.load();
     assert.deepEqual(reloaded.getBoard(boardId).canvas.pins, []);
     await reloaded.flush();
-    rmSync(old, { recursive: true, force: true });
+    removeScratch(old);
   });
 
   it('reads a note the way it renders, near enough to find words in', () => {

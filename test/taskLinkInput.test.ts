@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import { Store } from '../src/core/store';
 import type { Actor, Board } from '../src/core/types';
 import { CHROME, runInChrome } from './mermaidPage';
+import { removeScratch } from './platform';
 
 // People don't link a task to a decision (T205): a task card, in the Tasks
 // tab and opened up, has no "Link to a decision…" picker, though a settled
@@ -28,7 +29,7 @@ function sampleBoard(): Board {
     store.planTasks(board.id, [{ title: 'Fix flaky test' }, { title: 'Add retry option', decisionIds: [decision.id] }], claude);
     return store.getBoard(board.id);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }
 

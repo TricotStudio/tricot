@@ -15,7 +15,13 @@ import { writeFileAtomic } from '../src/server/hooks/installer';
 import { omp } from '../src/server/hooks/omp';
 import { opencode } from '../src/server/hooks/opencode';
 import { pi } from '../src/server/hooks/pi';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
+
+// A path as a hook command writes it: with forward slashes on Windows, which
+// every shell there leaves alone (shellPath in src/server/hooks/installer.ts).
+const asWritten = (file: string) => (WINDOWS ? file.replaceAll('\\', '/') : file);
+// A file's path from the home folder, with forward slashes on every system.
+const fromHome = (home: string, file: string) => path.relative(home, file).split(path.sep).join('/');
 
 // Every installer runs against a home folder made for the test: nothing here
 // reads or writes a real agent's settings, and no agent is run.
@@ -28,7 +34,7 @@ let scratch: string;
 before(() => {
   scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-hook-installers-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const freshHome = (): HookTarget => {
   const home = mkdtempSync(path.join(scratch, 'home-'));
@@ -88,18 +94,19 @@ describe('the hook installer registry', () => {
     mkdirSync(path.join(target.home, '.omp'));
     mkdirSync(path.join(target.home, '.gemini'));
     const bin = path.join(target.home, 'bin');
-    write(path.join(bin, 'pi'), '#!/bin/sh\nexit 1\n');
-    chmodSync(path.join(bin, 'pi'), 0o755);
-    write(path.join(bin, 'opencode'), '#!/bin/sh\nexit 1\n');
-    chmodSync(path.join(bin, 'opencode'), 0o755);
-    write(path.join(bin, 'claude'), 'not runnable'); // not executable: not a command
+    const program = (name: string) => path.join(bin, name);
+    write(program('pi'), '#!/bin/sh\nexit 1\n');
+    chmodSync(program('pi'), 0o755);
+    write(program('opencode'), '#!/bin/sh\nexit 1\n');
+    chmodSync(program('opencode'), 0o755);
+    write(path.join(bin, 'claude'), 'not runnable'); // not executable: not a command (Windows has no such mode)
     const withPath = { ...target, env: { PATH: [path.join(target.home, 'nowhere'), bin].join(path.delimiter) } };
     assert.deepEqual(codex.detect(withPath), { found: true, folder: path.join(target.home, '.codex') });
     assert.deepEqual(omp.detect(withPath), { found: true, folder: path.join(target.home, '.omp') });
-    assert.deepEqual(pi.detect(withPath), { found: true, command: path.join(bin, 'pi') });
-    assert.deepEqual(claude.detect(withPath), { found: false });
+    assert.deepEqual(pi.detect(withPath), { found: true, command: program('pi') });
+    if (!WINDOWS) assert.deepEqual(claude.detect(withPath), { found: false });
     assert.deepEqual(gemini.detect(withPath), { found: true, folder: path.join(target.home, '.gemini') });
-    assert.deepEqual(opencode.detect(withPath), { found: true, command: path.join(bin, 'opencode') });
+    assert.deepEqual(opencode.detect(withPath), { found: true, command: program('opencode') });
     mkdirSync(path.join(target.home, '.config/opencode'), { recursive: true });
     assert.deepEqual(opencode.detect(target), { found: true, folder: path.join(target.home, '.config/opencode') });
   });
@@ -123,7 +130,7 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     const preview = claude.preview(target, setup);
     assert.equal(preview.unchanged, false);
     assert.deepEqual(
-      preview.changes.map((c) => [path.relative(target.home, c.path), c.does, c.same]),
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does, c.same]),
       [
         ['.claude/hooks/tricot-steps.mjs', 'write', false],
         ['.claude/hooks/tricot-describe.mjs', 'write', false],
@@ -133,7 +140,7 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
         ['.claude/settings.json', 'add', false],
       ],
     );
-    const command = `node "${script}" --name Claude --url ${TRICOT_URL}`;
+    const command = `node "${asWritten(script)}" --name Claude --url ${TRICOT_URL}`;
     assert.ok(preview.text.includes('add to ~/.claude/settings.json'), preview.text);
     assert.ok(preview.text.includes(JSON.stringify(command)), 'the command, as it goes in the JSON');
     assert.match(preview.text, /"async": true/);
@@ -141,12 +148,12 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     assert.deepEqual(Object.keys(lines.hooks), ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStop', 'PermissionRequest']);
     // The approval hook: one Claude Code waits for, as long as the person takes.
     assert.deepEqual(lines.hooks.PermissionRequest, [
-      { hooks: [{ type: 'command', command: `node "${files(target.home).approve}" --name Claude --url ${TRICOT_URL}`, timeout: APPROVAL_TIMEOUT_S, statusMessage: APPROVAL_STATUS }] },
+      { hooks: [{ type: 'command', command: `node "${asWritten(files(target.home).approve)}" --name Claude --url ${TRICOT_URL}`, timeout: APPROVAL_TIMEOUT_S, statusMessage: APPROVAL_STATUS }] },
     ]);
     assert.equal(APPROVAL_TIMEOUT_S, 604_800, 'a week, inside what a JavaScript timer holds');
     assert.ok(preview.notes.some((n) => APPROVALS_SAID.test(n)), 'said in words before anyone says yes');
     assert.match(preview.changes[2].what, /permission prompts to the board/);
-    assert.deepEqual(lines.statusLine, { type: 'command', command: `node "${files(target.home).usage}" --name Claude --url ${TRICOT_URL}` });
+    assert.deepEqual(lines.statusLine, { type: 'command', command: `node "${asWritten(files(target.home).usage)}" --name Claude --url ${TRICOT_URL}` });
     assert.equal(existsSync(path.join(target.home, '.claude')), false, 'a preview changes nothing');
     assert.equal(claude.status(target).state, 'off');
   });
@@ -161,13 +168,13 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     const added = json(f.settings);
     assert.deepEqual(added.permissions, theirs.permissions);
     assert.deepEqual(added.hooks.PreToolUse[0], theirs.hooks.PreToolUse[0]);
-    assert.equal(added.hooks.PreToolUse[1].hooks[0].command, `node "${f.script}" --name 'Claude Builder' --url ${TRICOT_URL}`);
+    assert.equal(added.hooks.PreToolUse[1].hooks[0].command, `node "${asWritten(f.script)}" --name 'Claude Builder' --url ${TRICOT_URL}`);
     assert.equal(added.hooks.PostToolUse[0].matcher, 'Bash|Agent|Task');
     assert.equal(added.hooks.Stop.length, 2);
     assert.equal(readFileSync(f.script, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-steps.mjs'), 'utf8'));
     assert.equal(readFileSync(f.describe, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-describe.mjs'), 'utf8'));
     assert.equal(readFileSync(f.approve, 'utf8'), readFileSync(path.join(SOURCE, 'tricot-approve.mjs'), 'utf8'));
-    assert.equal(added.hooks.PermissionRequest[0].hooks[0].command, `node "${f.approve}" --name 'Claude Builder' --url ${TRICOT_URL}`);
+    assert.equal(added.hooks.PermissionRequest[0].hooks[0].command, `node "${asWritten(f.approve)}" --name 'Claude Builder' --url ${TRICOT_URL}`);
     assert.equal(added.hooks.PermissionRequest[0].hooks[0].async, undefined, 'Claude Code waits for it');
     assert.deepEqual(claude.status(target), { state: 'on', where: [f.settings, f.script, f.describe, f.approve, f.usage, f.kept], sendsAs: 'Claude Builder', usage: 'on' });
 
@@ -320,7 +327,7 @@ describe('Codex steps (~/.codex/hooks.json)', () => {
     assert.ok(preview.text.includes('add to ~/.codex/hooks.json'));
     assert.ok(preview.text.includes('open /hooks in Codex'));
     assert.deepEqual(
-      preview.changes.map((c) => path.relative(target.home, c.path)),
+      preview.changes.map((c) => fromHome(target.home, c.path)),
       ['.codex/hooks/tricot-steps.mjs', '.codex/hooks/tricot-describe.mjs', '.codex/hooks/tricot-approve.mjs', '.codex/hooks/tricot-usage.mjs', '.codex/hooks.json'],
     );
     const hooks = JSON.parse(preview.changes[4].lines!).hooks;
@@ -330,12 +337,12 @@ describe('Codex steps (~/.codex/hooks.json)', () => {
     assert.equal(hooks.PermissionRequest[0].hooks[0].async, true);
     assert.deepEqual(hooks.PermissionRequest[1].hooks[0], {
       type: 'command',
-      command: `node "${files(path.join(target.home, '.codex')).approve}" --name Codex --url ${TRICOT_URL} --codex`,
+      command: `node "${asWritten(files(path.join(target.home, '.codex')).approve)}" --name Codex --url ${TRICOT_URL} --codex`,
       timeout: APPROVAL_TIMEOUT_S,
       statusMessage: APPROVAL_STATUS,
     });
     assert.equal(hooks.PostToolUse[0].matcher, '^(Bash|Agent)$');
-    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${files(path.join(target.home, '.codex')).script}" --name Codex --url ${TRICOT_URL} --usage`, async: true });
+    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${asWritten(files(path.join(target.home, '.codex')).script)}" --name Codex --url ${TRICOT_URL} --usage`, async: true });
     assert.equal(existsSync(path.join(target.home, '.codex')), false);
   });
 
@@ -415,7 +422,7 @@ for (const [installer, extensions, name] of [
       const target = freshHome();
       const preview = installer.preview(target, setup);
       assert.deepEqual(
-        preview.changes.map((c) => path.relative(target.home, c.path)),
+        preview.changes.map((c) => fromHome(target.home, c.path)),
         [`${extensions}/tricot-steps/index.ts`, `${extensions}/tricot-steps/tricot-describe.mjs`, `${extensions}/tricot-steps/tricot-steps.json`],
       );
       assert.deepEqual(JSON.parse(preview.changes[2].lines!), { name, url: TRICOT_URL });
@@ -494,7 +501,7 @@ describe('Gemini CLI steps (~/.gemini/settings.json)', () => {
     assert.deepEqual(preview.notes, [GEMINI_WAITS]);
     assert.ok(preview.text.includes('add to ~/.gemini/settings.json'), preview.text);
     assert.deepEqual(
-      preview.changes.map((c) => [path.relative(target.home, c.path), c.does]),
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does]),
       [
         ['.gemini/hooks/tricot-steps.mjs', 'write'],
         ['.gemini/hooks/tricot-describe.mjs', 'write'],
@@ -508,7 +515,7 @@ describe('Gemini CLI steps (~/.gemini/settings.json)', () => {
     assert.deepEqual(hooks.BeforeTool[0].hooks[0], {
       name: 'tricot-steps',
       type: 'command',
-      command: `node --no-warnings "${f.script}" --name Gemini --url ${TRICOT_URL}`,
+      command: `node --no-warnings "${asWritten(f.script)}" --name Gemini --url ${TRICOT_URL}`,
       timeout: 5000,
     });
     assert.equal(existsSync(path.join(target.home, '.gemini')), false);
@@ -527,7 +534,7 @@ describe('Gemini CLI steps (~/.gemini/settings.json)', () => {
     assert.deepEqual(added.security, theirsGemini.security);
     assert.deepEqual(added.mcpServers, theirsGemini.mcpServers);
     assert.deepEqual(added.hooks.BeforeTool[0], theirsGemini.hooks.BeforeTool[0], 'theirs first, as it was');
-    assert.equal(added.hooks.BeforeTool[1].hooks[0].command, `node --no-warnings "${f.script}" --name 'Gemini Builder' --url ${TRICOT_URL}`);
+    assert.equal(added.hooks.BeforeTool[1].hooks[0].command, `node --no-warnings "${asWritten(f.script)}" --name 'Gemini Builder' --url ${TRICOT_URL}`);
     assert.deepEqual(gemini.status(target), { state: 'on', where: [f.settings, f.script, f.describe], sendsAs: 'Gemini Builder' });
 
     // Gemini CLI's own events, through the copied script, as the steps Claude Code's would give.
@@ -612,7 +619,7 @@ describe('OpenCode steps (~/.config/opencode/plugins/tricot-steps.js)', () => {
     const target = freshHome();
     const preview = opencode.preview(target, setup);
     assert.deepEqual(
-      preview.changes.map((c) => [path.relative(target.home, c.path), c.what]),
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.what]),
       [
         ['.config/opencode/plugins/tricot-steps.js', 'the plugin: sends each step to Tricot'],
         ['.config/opencode/tricot-steps/tricot-describe.mjs', 'puts each step in words'],

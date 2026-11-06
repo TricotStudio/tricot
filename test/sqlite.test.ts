@@ -16,7 +16,7 @@ import { Store } from '../src/core/store';
 import { boardKey, type Actor, type Board } from '../src/core/types';
 import { jsonFolder, savedBoard } from './savedBoard';
 import { eventsOf, legacyBoard, versionsOf } from './tables';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'claude' };
 const human: Actor = { kind: 'human', name: 'Sam' };
@@ -60,7 +60,7 @@ describe('Boards in SQLite', () => {
 
   afterEach(() => {
     mock.restoreAll();
-    for (const made of folders.splice(0)) rmSync(made, { recursive: true, force: true });
+    for (const made of folders.splice(0)) removeScratch(made);
   });
 
   // Boards as an earlier version left them: what a store saved, written out as JSON files.

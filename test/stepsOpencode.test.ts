@@ -10,6 +10,7 @@ import { Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { opencode } from '../src/server/hooks/opencode';
+import { removeScratch } from './platform';
 
 // The plugin OpenCode loads, as Tricot installs it in a home made for the
 // test, driven as OpenCode 1 and 2 would: no OpenCode is imported or run. A
@@ -53,7 +54,7 @@ let scratch: string;
 before(() => {
   scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-steps-opencode-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 // Installed for a fresh home, and imported from where OpenCode finds it.
 async function installed(settings: { name?: string; url?: string } = {}) {

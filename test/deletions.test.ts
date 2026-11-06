@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -15,6 +15,7 @@ import { peoplesCopy } from '../src/server/api';
 import { savedBoard } from './savedBoard';
 import { createApp } from '../src/server/app';
 import { eventsOf, versionsOf } from './tables';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -167,7 +168,7 @@ describe('Deletions in the store', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const canvas = () => store.getBoard(boardId).canvas;
@@ -322,7 +323,7 @@ describe('Deleting earlier versions', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const lastEvent = () => eventsOf(store, boardId).at(-1)!;
@@ -501,7 +502,7 @@ describe('Deletions over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('lets agents see what was deleted lately and restore it, and tells them how', async () => {

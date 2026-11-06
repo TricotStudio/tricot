@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import type { Key, TerminalKeys } from '../src/cli/boardPicker';
@@ -9,6 +9,7 @@ import type { AdmissionState, AdmissionView, SeatView } from '../src/core/seats'
 import { seatsFile } from '../src/server/seats';
 import type { RunningServer } from '../src/server/start';
 import { freePort, repo } from './updateFixtures';
+import { removeScratch } from './platform';
 
 // Letting browsers in from a plain terminal (cli/seatsDesk.ts, T187): the
 // terminal where `tricot` runs the board in the foreground asks "A browser
@@ -27,7 +28,7 @@ before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
   scratch = mkdtempSync(path.join(repo, '.review', 'test-seats-cli-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 // A terminal's keys, as a stand-in: what was written, and a key pressed while it listens.
 interface StandInKeys extends TerminalKeys {

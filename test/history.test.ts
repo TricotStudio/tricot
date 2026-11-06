@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import { openDatabase } from '../src/core/store/migrations';
 import { createApp } from '../src/server/app';
 import type { Actor } from '../src/core/types';
 import { eventsOf, versionsOf } from './tables';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const alex: Actor = { kind: 'human', name: 'Alex' };
@@ -43,7 +44,7 @@ describe('The event log and block versions, in their own tables', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const comments = (n: number, by: Actor = sam) => {
@@ -252,7 +253,7 @@ describe('Events and versions over REST and MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('sends the board without its events, and with how many versions each block has', async () => {

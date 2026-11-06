@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -17,6 +17,7 @@ import { Hangups } from '../src/server/mcp/hangups';
 import { CLIENT_LIMIT_MARGIN_SECONDS, longestWait, MAX_WAIT_SECONDS, UNKNOWN_CLIENT_WAIT_SECONDS } from '../src/server/mcp/session';
 import { Presence } from '../src/server/presence';
 import { letIn, type TestSeat } from './seatHelper';
+import { removeScratch } from './platform';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
@@ -201,7 +202,7 @@ describe('long waits over MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('lets Claude Code wait 15 minutes, listening throughout, and ends the wait the moment a person writes', async () => {

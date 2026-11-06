@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import type { Actor, Board, Thread } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { INSTRUCTIONS } from '../src/server/mcp';
 import { BAR_PLACEHOLDERS, doorOfView, listeningLabel, replyPlaceholder, replyingTo, viewOfDoor } from '../src/web/threads/chatDoor';
+import { removeScratch } from './platform';
 
 // One chat bar on every tab: what's sent from it starts a thread through
 // that tab's door, which the thread keeps, and agents are told what the door
@@ -40,7 +41,7 @@ describe('Doors into a thread', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('keeps the door a thread was started from, across a restart', async () => {
@@ -196,7 +197,7 @@ describe('Doors over REST and MCP', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it("starts a thread from the Decisions bar, tells the agent its aim, and links the card it posts back to it", async () => {

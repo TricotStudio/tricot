@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
@@ -7,6 +7,7 @@ import { SCENE_EXAMPLE } from '../src/core/blocks/scene/scene';
 import { Store } from '../src/core/store';
 import type { Actor, Block, Board } from '../src/core/types';
 import { CHROME, runInChrome } from './mermaidPage';
+import { removeScratch } from './platform';
 
 // A block opened in its full view stays selected on the canvas underneath,
 // where Delete and Backspace remove what is selected (CanvasView.tsx). The
@@ -42,7 +43,7 @@ async function sampleBoard(): Promise<Board> {
     return store.getBoard(board.id);
   } finally {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }
 

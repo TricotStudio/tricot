@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { gzipSync } from 'node:zlib';
 import { downloadPath, downloadReleaseFile, packageOf } from '../src/install/releaseFile';
 import { integrity, sha256, tarball, tricotTarball } from './updateFixtures';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // A release's file, downloaded and checked before npm installs it, from a
 // stand-in for GitHub's download: never the network.
@@ -27,7 +27,7 @@ describe("A release's file", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), 'tricot-release-file-'));
     asked = [];
   });
-  afterEach(() => rmSync(dataDir, { recursive: true, force: true }));
+  afterEach(() => removeScratch(dataDir));
 
   it("is downloaded into the data folder, kept to this user, once its checksum is GitHub's and it is tricot at that version", async () => {
     const file = tricotTarball('0.2.0');

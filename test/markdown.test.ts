@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -13,6 +13,7 @@ import type { Actor, Board, Pin } from '../src/core/types';
 import { DRAFT, rehypePins, type QuotedMark } from '../src/web/canvas/marks';
 import { Md, type MdProps } from '../src/web/shared/markdown';
 import { RefsProvider } from '../src/web/shared/refs';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const agent: Actor = { kind: 'agent', name: 'planner' };
@@ -227,7 +228,7 @@ describe('Pinning words in formatted tasks, from selecting them to drawing them'
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   // A note with a task list, what a checklist is now.

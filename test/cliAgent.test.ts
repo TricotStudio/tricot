@@ -19,7 +19,7 @@ import { claude as claudeHooks } from '../src/server/hooks/claude';
 import { codex as codexHooks } from '../src/server/hooks/codex';
 import { lockFile, readLock } from '../src/platform/lock';
 import type { RunningServer } from '../src/server/start';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // `tricot claude`, `tricot codex` and `tricot opencode`: the board, then the
 // agent in this terminal with the board for one session. PATH holds only fake
@@ -129,7 +129,7 @@ before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
   scratch = mkdtempSync(path.join(repo, '.review', 'test-cli-agent-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for the agents, and uses TMPDIR' }, () => {
   let here: string;

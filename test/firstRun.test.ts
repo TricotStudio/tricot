@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -32,6 +32,7 @@ import type { Actor, Board, Reaction, Thread, ThreadDoor } from '../src/core/typ
 import { createApp } from '../src/server/app';
 import { Presence } from '../src/server/presence';
 import { shownFrom, startFolder } from '../src/server/startFolder';
+import { removeScratch } from './platform';
 
 describe("The first run's project title", () => {
   it('takes a few words from the first clause, without its article', () => {
@@ -73,23 +74,25 @@ describe("The first run's project title", () => {
 });
 
 describe('Where Tricot was started', () => {
-  const home = '/Users/sam';
-  const files = (...present: string[]) => (file: string) => present.includes(file);
+  // Paths as this system writes them: on Windows, /Users/sam is D:\Users\sam.
+  const at = (file: string) => path.resolve(file);
+  const home = at('/Users/sam');
+  const files = (...present: string[]) => (file: string) => present.map(at).includes(file);
 
   it('is shown from ~, the home folder as ~, and a folder outside it as it is', () => {
-    assert.equal(shownFrom('/Users/sam/work/app', home), '~/work/app');
-    assert.equal(shownFrom('/Users/sam/work/app/', `${home}/`), '~/work/app');
-    assert.equal(shownFrom('/Users/sam', home), '~');
-    assert.equal(shownFrom('/srv/app', home), '/srv/app');
-    assert.equal(shownFrom('/Users/samuel/app', home), '/Users/samuel/app', 'a neighbour of the home folder is not under it');
+    assert.equal(shownFrom(at('/Users/sam/work/app'), home), '~/work/app');
+    assert.equal(shownFrom(`${at('/Users/sam/work/app')}${path.sep}`, `${home}${path.sep}`), '~/work/app');
+    assert.equal(shownFrom(at('/Users/sam'), home), '~');
+    assert.equal(shownFrom(at('/srv/app'), home), at('/srv/app'));
+    assert.equal(shownFrom(at('/Users/samuel/app'), home), at('/Users/samuel/app'), 'a neighbour of the home folder is not under it');
   });
 
   it("tells a project's folder from the home folder and from a folder that is neither", () => {
-    assert.deepEqual(startFolder('/Users/sam/work/app', home, files('/Users/sam/work/app/package.json')), { shown: '~/work/app', kind: 'project' });
-    assert.deepEqual(startFolder('/Users/sam/work/app/src', home, files('/Users/sam/work/app/.git')), { shown: '~/work/app/src', kind: 'project' }, 'inside a git repository');
-    assert.deepEqual(startFolder('/Users/sam', home, files('/Users/sam/.git', '/Users/sam/package.json')), { shown: '~', kind: 'home' }, 'the home folder is never the project');
-    assert.deepEqual(startFolder('/Users/sam/Downloads', home, files('/Users/sam/.git')), { shown: '~/Downloads', kind: 'other' }, "the home folder's own repository makes no folder under it a project");
-    assert.deepEqual(startFolder('/srv/app', home, files('/srv/app/go.mod')), { shown: '/srv/app', kind: 'project' });
+    assert.deepEqual(startFolder(at('/Users/sam/work/app'), home, files('/Users/sam/work/app/package.json')), { shown: '~/work/app', kind: 'project' });
+    assert.deepEqual(startFolder(at('/Users/sam/work/app/src'), home, files('/Users/sam/work/app/.git')), { shown: '~/work/app/src', kind: 'project' }, 'inside a git repository');
+    assert.deepEqual(startFolder(at('/Users/sam'), home, files('/Users/sam/.git', '/Users/sam/package.json')), { shown: '~', kind: 'home' }, 'the home folder is never the project');
+    assert.deepEqual(startFolder(at('/Users/sam/Downloads'), home, files('/Users/sam/.git')), { shown: '~/Downloads', kind: 'other' }, "the home folder's own repository makes no folder under it a project");
+    assert.deepEqual(startFolder(at('/srv/app'), home, files('/srv/app/go.mod')), { shown: at('/srv/app'), kind: 'project' });
   });
 
   it('says so near the welcome, gently when it is no project folder, and in the line under the field', () => {
@@ -349,7 +352,7 @@ describe('An agent connecting before there is a project', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const connect = async (agent: string) => {

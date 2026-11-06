@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { COMMANDS, parseOptions, type CliCommand } from '../src/cli/commands';
 import { closestCommand, commandHelp, isKnownCommand, mainHelp, unknownCommand } from '../src/cli/help';
 import { runCli } from '../src/cli/main';
 import { NO_OPEN } from '../src/cli/options';
+import { removeScratch } from './platform';
 
 // The table of commands (cli/commands.ts) is the one place a command is told: running
 // it, `tricot --help`, its own help, the closest command to a typo and the options the
@@ -35,7 +36,7 @@ describe('the table of commands', () => {
     scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-commands-'));
     writeFileSync(path.join(scratch, 'package.json'), '{"name":"tricot","version":"9.9.9"}');
   });
-  afterEach(() => rmSync(scratch, { recursive: true, force: true }));
+  afterEach(() => removeScratch(scratch));
 
   it('has each command once, and an entry for every agent the registry has', () => {
     const names = COMMANDS.map((command) => command.name);

@@ -1,0 +1,6 @@
+# Text files are checked out with LF on every system: the tests read source
+# files and compare them with what the code writes, and the hooks and scripts
+# run as they are.
+* text=auto eol=lf
+# Licence texts are kept byte for byte, as their packages ship them.
+scripts/licences/** -text

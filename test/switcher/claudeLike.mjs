@@ -55,7 +55,9 @@ function ask(query, re, ms) {
     let buf = '';
     const on = (d) => {
       buf += d.toString('latin1');
-      if (/\x1b\[\?[\d;]*c/.test(buf) || re.test(buf)) {
+      // Up to the device attributes, which a terminal answers last: stopping at
+      // the answer asked for would leave them to come in as a key.
+      if (/\x1b\[\?[\d;]*c/.test(buf)) {
         inp.off('data', on);
         clearTimeout(t);
         resolve(re.exec(buf));

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -14,6 +14,7 @@ import type { Block } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { blockReader } from '../src/server/mcp/content';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type Diff = Extract<Block, { type: 'diff' }>;
@@ -27,9 +28,10 @@ const outside = path.join(scratch, 'elsewhere');
 mkdirSync(home, { recursive: true });
 mkdirSync(outside, { recursive: true });
 process.env.HOME = home;
+process.env.USERPROFILE = home; // the home folder on Windows (os.homedir())
 process.env.USERPROFILE = home;
 
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 // git with nothing of the person's settings: a test's own author, no signing.
 const gitEnv = {

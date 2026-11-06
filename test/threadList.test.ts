@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -7,6 +7,7 @@ import { dismissable, needsFrom } from '../src/core/needs';
 import { Store } from '../src/core/store';
 import { cardsFromYourThreads, madeInWords, QUIET_AFTER, QUIET_AFTER_MADE, threadGroups, threadMade, threadTag, threadsWaitingOn, waitsOnYou, type ThreadsSeen } from '../src/core/threadList';
 import type { Actor, Board, Thread } from '../src/core/types';
+import { removeScratch } from './platform';
 
 // The threads list (core/threadList.ts): every thread, waiting on you first,
 // then the latest, the finished and quiet ones under Earlier, each with where
@@ -34,7 +35,7 @@ describe('The threads list', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const board = () => store.getBoard(boardId);
@@ -163,7 +164,7 @@ describe('Threads waiting on you, in "need you"', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const board = (): Board => store.getBoard(boardId);
@@ -216,7 +217,7 @@ describe('What an agent made from your conversation', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('finds the cards an agent made from a thread you started or wrote in, and only those', () => {

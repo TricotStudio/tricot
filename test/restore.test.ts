@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { Store } from '../src/core/store';
 import { DATABASE_FILE } from '../src/core/store/boardDb';
 import { MIGRATIONS, openDatabase, userVersion, type Migration } from '../src/core/store/migrations';
 import { dataBeforeStart, restoreAfterFailedUpdate } from '../src/core/store/restore';
+import { removeScratch } from './platform';
 
 // Undoing an update that didn't come up (install/handoff.ts): the copy the new
 // version took when it started is put back, the file it left is kept, and
@@ -44,7 +45,7 @@ describe('Putting the data back after a failed update', () => {
     store.createBoard({ title: 'Before' }, { kind: 'human', name: 'Sam' });
     await store.flush();
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => removeScratch(dir));
 
   it('leaves a file the old version reads as it is', () => {
     const before = dataBeforeStart(dir);

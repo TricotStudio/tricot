@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build, type Plugin } from 'esbuild';
 import { elkjsImported, isElkjs, withoutElkLayouts } from '../scripts/elkLeftOut';
 import { isKindServerImport, KIND_SERVER_STUB } from '../scripts/kindServerHalf';
+import { removeScratch } from './platform';
 
 // Mermaid draws in a browser (it measures text as it lays a diagram out), so
 // the diagram tests ask headless Chrome, when there is one: CHROME_PATH, or
@@ -68,13 +69,13 @@ export async function runInChrome<T>(script: string): Promise<T> {
     writeFileSync(page, '<!doctype html><meta charset="utf-8"><body><script src="page.js"></script>');
     const dom = execFileSync(
       CHROME,
-      ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${path.join(dir, 'profile')}`, '--virtual-time-budget=30000', '--dump-dom', pathToFileURL(page).href],
+      ['--headless=new', '--disable-gpu', '--no-first-run', '--force-prefers-no-reduced-motion', `--user-data-dir=${path.join(dir, 'profile')}`, '--virtual-time-budget=30000', '--dump-dom', pathToFileURL(page).href],
       { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'ignore'] },
     );
     const found = /<pre id="results">([^<]*)<\/pre>/.exec(dom);
     if (!found) throw new Error('The page left no results.');
     return JSON.parse(found[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')) as T;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }

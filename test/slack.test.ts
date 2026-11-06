@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -21,7 +21,7 @@ import { createApp } from '../src/server/app';
 import { Connectors } from '../src/server/connectors';
 import { pkceChallenge } from '../src/server/connectors/oauth';
 import { BUILT_IN_SLACK, builtInSlackClient } from '../src/server/connectors/slack';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 import { CHANNEL, CLIENT_ID, FakeSlack, LONE_TS, PRIVATE_CHANNEL, REPLY_TS, THREAD_TS } from './fakeSlack';
 import { letIn, type TestSeat } from './seatHelper';
 
@@ -176,7 +176,7 @@ describe('Slack connector', () => {
     server.close();
     slack.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   // Each test starts from a Slack that isn't connected, with a fresh fake.
@@ -339,7 +339,7 @@ describe('Slack connector', () => {
         writeFileSync(path.join(other, 'slack-client.json'), '{"client_id": "oops"}');
         assert.match(connectors.list().find((c) => c.id === 'slack')!.message ?? '', /no valid client_id/);
       } finally {
-        rmSync(other, { recursive: true, force: true });
+        removeScratch(other);
       }
     });
   });

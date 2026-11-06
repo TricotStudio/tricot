@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
@@ -16,7 +16,7 @@ import { AnswerHosts } from '../src/server/answerHosts';
 import type { AdmissionView } from '../src/core/seats';
 import { letIn, type TestSeat } from './seatHelper';
 import { claudeLike, codexLike, fakeTerminal, leftAfterReaping, node, repo, sleep, tracked, waitFor, type FakeTerminal } from './switcher/harness';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // The Tricot tab in the real host (T192), with stand-in agents in
 // pseudo-terminals of their own and a board running here: it shows first;
@@ -36,7 +36,7 @@ before(() => {
   scratch = mkdtempSync(path.join(repo, '.review', 'test-tab-host-'));
 });
 after(async () => assert.deepEqual(await leftAfterReaping(), [], 'nothing left running'));
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
   let dir: string;

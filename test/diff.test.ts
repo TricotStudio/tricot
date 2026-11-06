@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -24,6 +24,7 @@ import { Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
 import { highlightLine, languageOf } from '../src/web/canvas/highlight';
 import { eventsOf, versionsOf } from './tables';
+import { removeScratch } from './platform';
 
 // Real git output (git diff -M), with: a binary file, an added file, a
 // deleted file, a file with three hunks, a renamed file with a change, and a
@@ -292,7 +293,7 @@ describe('Diff blocks', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const diffOf = (block: Block) => block as Extract<Block, { type: 'diff' }>;

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
@@ -16,6 +16,7 @@ import { asThisTerminal } from '../src/cli/terminalKey';
 import { NEEDS_SEAT, NOT_A_PERSON } from '../src/server/access';
 import { HOST_FROM_PAGE, HOST_KEY_HEADER, HOST_LET_GO, NOT_FROM_HERE } from '../src/server/approvalsRoutes';
 import { letIn, type TestSeat } from './seatHelper';
+import { removeScratch } from './platform';
 
 // Answering a request for permission from Tricot's terminal (T192, T187):
 // the host registers with the board and is given a key, which makes it a
@@ -32,7 +33,7 @@ before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
   scratch = mkdtempSync(path.join(repo, '.review', 'test-answers-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const request = (more: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
   harness: 'claude',

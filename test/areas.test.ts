@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -14,6 +14,7 @@ import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'Claude' };
 const human: Actor = { kind: 'human', name: 'Wassim' };
@@ -30,7 +31,7 @@ describe('Areas in the store', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('stores an area trimmed, on one line, in the spelling the board already uses', () => {
@@ -181,7 +182,7 @@ describe('Areas over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('tells agents to give decisions areas, and describes the field', async () => {

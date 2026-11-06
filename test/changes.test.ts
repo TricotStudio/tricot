@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -9,6 +9,7 @@ import { applyChange, eventMatches, patchBody, sameTally, tallyOf, type BoardCha
 import { Store } from '../src/core/store';
 import type { Actor, Board } from '../src/core/types';
 import { peoplesCopy } from '../src/server/api';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const alex: Actor = { kind: 'human', name: 'Alex' };
@@ -48,7 +49,7 @@ describe('Changes: what pages are sent instead of the board', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   // Applying every change leaves a page with the board as the server has it.
@@ -340,7 +341,7 @@ describe('Changes as the server sends them in real use', () => {
       assert.deepEqual(withoutVer(applyChange(before, changes[0])!), after);
       assert.ok(JSON.stringify(changes[0]).length < 2500, 'small');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     }
   });
 });

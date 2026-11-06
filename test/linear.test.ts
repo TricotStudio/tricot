@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,7 +16,7 @@ import { createApp } from '../src/server/app';
 import { Connectors } from '../src/server/connectors';
 import { BUILT_IN_LINEAR, builtInLinearClientId } from '../src/server/connectors/linear';
 import { API_KEY, CLIENT_ID, DELETED_KEY, FakeLinear } from './fakeLinear';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 import { letIn, type TestSeat } from './seatHelper';
 
 type ToolResult = { content: { type: string; text?: string }[]; isError?: boolean };
@@ -114,7 +114,7 @@ describe('Linear connector', () => {
     server.close();
     linear.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   // Each test starts from a Linear that isn't connected, with a fresh fake.
@@ -555,7 +555,7 @@ describe('Linear and secrets', () => {
       server.closeAllConnections();
       server.close();
       await store.flush();
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     }
   });
 });

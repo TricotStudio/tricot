@@ -295,12 +295,14 @@ export const shellWord = (word: string) => (/^[\w.:/@-]+$/.test(word) ? word : `
 // (Claude Code uses Git Bash, or PowerShell when it isn't installed).
 export const shellPath = (file: string, os?: NodeJS.Platform) => `"${(isWindows(os) ? file.replaceAll('\\', '/') : file).replace(/(["\\$`])/g, '\\$1')}"`;
 
-// A path as a person reads it: from the project, or from ~.
+// A path as a person reads it: from the project, or from ~, with forward
+// slashes on every system, as ~ itself is written.
 export function displayPath(file: string, target: HookTarget, scope: HookScope): string {
   const base = scope === 'project' && target.project ? target.project : target.home;
   const relative = path.relative(base, file);
   if (relative.startsWith('..') || path.isAbsolute(relative)) return file;
-  return scope === 'project' ? relative : `~/${relative}`;
+  const shown = relative.split(path.sep).join('/');
+  return scope === 'project' ? shown : `~/${shown}`;
 }
 
 const VERBS: Record<HookChange['does'], string> = { write: 'write', add: 'add to', replace: 'add to', remove: 'take out of', delete: 'delete' };

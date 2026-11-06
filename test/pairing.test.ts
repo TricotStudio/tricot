@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -15,6 +15,7 @@ import { BoardError, Store } from '../src/core/store';
 import type { Actor, Block, Board, Comment, Pin, Task } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { PairingSessions } from '../src/server/pairing';
+import { removeScratch } from './platform';
 
 // Pairing with an agent on a piece in its full view (core/pairing.ts): what
 // it is told, how what a person asks there reaches it, the agent's steps on
@@ -26,7 +27,8 @@ const siteFolder = path.join(home, 'projects', 'site');
 mkdirSync(siteFolder, { recursive: true });
 writeFileSync(path.join(siteFolder, 'index.html'), '<!doctype html><title>Home</title><h1 id="hero">Hello</h1>');
 process.env.HOME = home;
-after(() => rmSync(scratch, { recursive: true, force: true }));
+process.env.USERPROFILE = home; // the home folder on Windows (os.homedir())
+after(() => removeScratch(scratch));
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };

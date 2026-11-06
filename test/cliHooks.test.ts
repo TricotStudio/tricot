@@ -13,6 +13,7 @@ import { gemini } from '../src/server/hooks/gemini';
 import { opencode } from '../src/server/hooks/opencode';
 import { pi } from '../src/server/hooks/pi';
 import type { RunningServer } from '../src/server/start';
+import { removeScratch } from './platform';
 
 // The first `tricot` asks once whether to show the agents' steps, and
 // `tricot steps` turns them on or off. Every agent folder is in a home made
@@ -93,7 +94,7 @@ describe('live steps from the terminal', () => {
   });
   afterEach(async () => {
     for (const server of servers.splice(0)) await server.close();
-    rmSync(scratch, { recursive: true, force: true });
+    removeScratch(scratch);
   });
 
   describe('the first tricot', () => {

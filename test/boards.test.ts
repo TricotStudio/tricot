@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -7,6 +7,7 @@ import { Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
 import { jsonFolder, savedBoard } from './savedBoard';
 import { eventsOf, legacyBoard } from './tables';
+import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'claude' };
 const human: Actor = { kind: 'human', name: 'Wassim' };
@@ -23,7 +24,7 @@ describe('Renaming and archiving boards', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   function populated() {
@@ -131,7 +132,7 @@ describe('Renaming and archiving boards', () => {
     assert.deepEqual(readdirSync(old).filter((f) => f.endsWith('.json')), [], 'the files are moved out');
     const [backup] = readdirSync(old).filter((f) => f.startsWith('backup-json-'));
     assert.deepEqual(readdirSync(path.join(old, backup)).sort(), ['legacy-ab12.json', 'new-ef56.json', 'old-cd34.json'], 'the stale copy is kept there too');
-    rmSync(old, { recursive: true, force: true });
+    removeScratch(old);
   });
 
   it('archives a board read-only for everyone until a person unarchives it', () => {

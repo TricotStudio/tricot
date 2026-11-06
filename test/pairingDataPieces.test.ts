@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import type { Actor, Block, Pin, Task } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { PairingSessions } from '../src/server/pairing';
 import { cellCovered, cellSpan, pointCovers } from '../src/web/canvas/pairing/pointing';
+import { removeScratch } from './platform';
 
 // Pairing on a table's cells, rows and columns, a chart's bars, points and
 // series, and a 3D scene's named objects (T181), as on code, notes, diagrams
@@ -25,7 +26,7 @@ import { cellCovered, cellSpan, pointCovers } from '../src/web/canvas/pairing/po
 // after the change, or are lost; and the view's pointing rules.
 
 const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tricot-pairing-data-')));
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };

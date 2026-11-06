@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -19,6 +19,7 @@ import {
 } from '../src/core/decisionMap';
 import { Store } from '../src/core/store';
 import type { Actor, Board, Decision } from '../src/core/types';
+import { removeScratch } from './platform';
 
 // Day and time labels are local; pin the zone so they read the same anywhere.
 process.env.TZ = 'UTC';
@@ -151,7 +152,7 @@ describe('decision map: layout', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const layout = (options: Partial<Parameters<typeof layoutDecisionMap>[1]> = {}) =>

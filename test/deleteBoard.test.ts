@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -14,6 +14,7 @@ import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import type { Actor } from '../src/core/types';
 import { namesBoard } from '../src/core/format';
+import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'claude' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -59,7 +60,7 @@ describe('Deleting an archived board for good', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   function fill(title: string) {
@@ -257,7 +258,7 @@ describe('Deleting a board over the API', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const post = async (route: string, body: Record<string, unknown>) => {

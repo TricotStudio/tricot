@@ -4,7 +4,7 @@ import { mkdirSync, openSync } from 'node:fs';
 import path from 'node:path';
 import { authHeaders } from '../server/access';
 import { STOP_WITH_AGENTS } from '../install/handoff';
-import { findRunning, LockHeldError, pidAlive, type ServerLock } from '../platform/lock';
+import { clearLockOf, findRunning, LockHeldError, pidAlive, type ServerLock } from '../platform/lock';
 import { runProgram } from '../platform/run';
 import { stopProcess } from '../platform/stop';
 import { PortInUseError, startServer, type RunningServer } from '../server/start';
@@ -170,6 +170,7 @@ export async function stop(env: Env): Promise<CliResult> {
     ctx.err(`Asked Tricot (pid ${running.pid}) to stop, but it is still running.`);
     return { exitCode: 1 };
   }
+  clearLockOf(dataDir, running.pid); // ended at once, it couldn't take its lock away itself
   ctx.out('Tricot stopped.');
   return { exitCode: 0 };
 }

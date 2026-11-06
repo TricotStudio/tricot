@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -12,7 +12,7 @@ import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { INSTRUCTIONS, MAX_INSTRUCTIONS } from '../src/server/mcp';
 import { eventsOf, versionsOf } from './tables';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string; data?: string; mimeType?: string }[]; isError?: boolean };
@@ -68,7 +68,7 @@ describe('MCP + REST end to end', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('exposes the protocol instructions and tools', async () => {

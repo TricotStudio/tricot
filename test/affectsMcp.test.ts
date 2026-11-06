@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -12,6 +12,7 @@ import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type Schema = { properties?: Record<string, Schema>; description?: string; items?: Schema; required?: string[] };
@@ -71,7 +72,7 @@ describe('What a decision could affect, over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('shows agents the field in post_decision and update_decision, and says what it is for', async () => {

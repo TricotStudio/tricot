@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { readBoards } from '../src/core/store/boardTables';
 import { MIGRATIONS, openDatabase, userVersion } from '../src/core/store/migrations';
 import type { Actor } from '../src/core/types';
 import { eventsOf, versionsOf } from './tables';
+import { removeScratch } from './platform';
 
 // The database each release left (test/fixtures/tricot-<version>.db), made by
 // starting that release from its tag and posting a board through its MCP tools
@@ -54,7 +55,7 @@ describe('Boards saved by each release', () => {
   });
   afterEach(async () => {
     for (const store of stores.splice(0)) await store.flush();
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (dir) removeScratch(dir);
   });
 
   for (const version of RELEASES) {

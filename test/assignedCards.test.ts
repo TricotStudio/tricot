@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -12,6 +12,7 @@ import { Store } from '../src/core/store';
 import type { Actor, Comment, Task } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
+import { removeScratch } from './platform';
 
 // On a task assigned to one agent, that agent alone follows it (core/assignee.ts):
 // its comments and changes come to its updates and no other agent's, only it
@@ -63,7 +64,7 @@ describe('A task assigned to one agent, over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   // A board both agents have read, with a task Wassim made ready and, if
@@ -192,7 +193,7 @@ describe('A task assigned to one agent, in the store', () => {
       const eyes = store.getTask(task.id).task.comments.map((c) => c.reactions?.map((r) => r.by.name));
       assert.deepEqual(eyes, [['Claude'], ['Codex'], ['Claude']]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     }
   });
 

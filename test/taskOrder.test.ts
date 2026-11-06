@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -14,6 +14,7 @@ import type { Actor, Task, TaskStatus } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -153,7 +154,7 @@ describe('Ordering tasks in the store', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   const todo = () => laneTasks(store.getBoard(boardId).tasks, 'todo').map((t) => t.number);
@@ -290,7 +291,7 @@ describe('Dragging tasks over REST, as agents see it', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('reorders and moves cards for people, and agents take To do from the top', async () => {

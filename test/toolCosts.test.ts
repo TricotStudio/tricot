@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -11,6 +11,7 @@ import { routes } from '../src/core/routes';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { resultSize, ToolCosts, type CostLine, type ToolCostsReport } from '../src/server/toolCosts';
+import { removeScratch } from './platform';
 
 // What each board tool call costs an agent (server/toolCosts.ts): the tally
 // itself, then every call an agent makes over MCP counted as it was sent and
@@ -120,7 +121,7 @@ describe('Tool costs over MCP', () => {
     for (const client of clients) await client.close();
     server.closeAllConnections();
     server.close();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('measures every call each agent makes, as it was sent and answered, and keeps nothing of it', async () => {

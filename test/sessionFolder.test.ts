@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { removeFolder, sessionFolder, STALE_MS, sweepFolders, writeSessionFile } from '../src/cli/agentSessions/folder';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // The folder made for one agent session alone (cli/agentSessions/folder.ts):
 // private, under the system's temporary folder, taken away without following
@@ -21,9 +21,9 @@ after(() => {
     } catch {
       // not made, or gone
     }
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
-  rmSync(scratch, { recursive: true, force: true });
+  removeScratch(scratch);
 });
 
 // A folder that can't be removed: one inside it that can't be written to. (Not as root, who can.)
@@ -152,7 +152,7 @@ describe('the folders an earlier Tricot left', { skip: WINDOWS && 'uses chmod an
       assert.deepEqual(sweepFolders(tmp, Date.now(), uid + 1), [], "another account's");
       assert.equal(existsSync(theirs), true);
     }
-    rmSync(theirs, { recursive: true, force: true });
+    removeScratch(theirs);
     const saved = process.env.TMPDIR;
     process.env.TMPDIR = tmp; // made here, so that this is the folder swept
     const mine = sessionFolder('pi');
@@ -175,6 +175,6 @@ describe('the folders an earlier Tricot left', { skip: WINDOWS && 'uses chmod an
     assert.deepEqual(sweepFolders(tmp, Date.now()), [good]);
     assert.equal(existsSync(bad), true);
     unstick(bad);
-    rmSync(bad, { recursive: true, force: true });
+    removeScratch(bad);
   });
 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -14,6 +14,7 @@ import { Connectors } from '../src/server/connectors';
 import { INSTRUCTIONS } from '../src/server/mcp';
 import { GUIDE_TOPICS, MAX_DESCRIPTION } from '../src/server/mcp/guide';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 type Listed = Awaited<ReturnType<Client['listTools']>>['tools'];
 
@@ -56,7 +57,7 @@ describe('the MCP server and its tools', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('reports the version Tricot was started with', () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
@@ -7,6 +7,7 @@ import { Store } from '../src/core/store';
 import type { Actor, Board } from '../src/core/types';
 import { clamp, fitScale, minScale } from '../src/web/canvas/pairing/zooming';
 import { CHROME, runInChrome } from './mermaidPage';
+import { removeScratch } from './platform';
 
 // An image's and a diagram's full views zoom and pan (canvas/pairing/zoom.tsx,
 // T241): the wheel or a pinch round the pointer, Fit, the actual size and
@@ -54,7 +55,7 @@ async function sampleBoard(): Promise<Board> {
     return store.getBoard(board.id);
   } finally {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   }
 }
 

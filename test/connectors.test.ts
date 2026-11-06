@@ -18,7 +18,7 @@ import { Connectors } from '../src/server/connectors';
 import { builtInGoogleClient, findGoogleClient, GOOGLE_SCOPES } from '../src/server/connectors/google';
 import { PendingSignIns, pkceChallenge, pkcePair, SIGN_IN_TTL } from '../src/server/connectors/oauth';
 import { callbackUri } from '../src/server/connectors/routes';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';
 const SECRET = 'fake-secret-not-real';
@@ -160,7 +160,7 @@ describe('Google client file', () => {
   beforeEach(() => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-client-'));
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => removeScratch(dir));
 
   it('is missing until one is in the data folder', () => {
     const lookup = findGoogleClient(dir);
@@ -306,7 +306,7 @@ describe('Google connector end to end', () => {
     server.close();
     google.stop();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('shows the setup steps until a client file is there', async () => {
@@ -376,8 +376,8 @@ describe('Google connector end to end', () => {
     assert.ok(exchange.get('code_verifier'));
 
     if (!WINDOWS) {
-      assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
-      assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
+      if (!WINDOWS) assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+      if (!WINDOWS) assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
     }
     const saved = JSON.parse(readFileSync(tokenFile(), 'utf8'));
     assert.equal(saved.refreshToken, 'refresh-1');
@@ -505,7 +505,7 @@ describe('Connector folder', () => {
       assert.equal(connectors.list()[0].state, 'not_set_up');
       assert.equal(existsSync(path.join(dir, 'connectors')), false, 'nothing written until a sign-in');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeScratch(dir);
     }
   });
 });
@@ -558,7 +558,7 @@ describe("Tricot's own Google client", () => {
     google.stop();
     await store?.flush();
     store = undefined;
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('is no client at all until it is filled in: placeholders leave things as they were', async () => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
@@ -11,7 +11,7 @@ import { Leases } from '../src/server/leases';
 import { pidAlive, readLock } from '../src/platform/lock';
 import { startServer, type RunningServer } from '../src/server/start';
 import type { AgentLaunch } from '../src/cli/terminal';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // The board stops with the last agent command that needs it (#97, T212).
 // Boards started for agents run as real processes of their own, on a data
@@ -142,7 +142,7 @@ describe('a board and its leases', () => {
   afterEach(async () => {
     for (const server of servers.splice(0)) await server.close();
   });
-  after(() => rmSync(scratch, { recursive: true, force: true }));
+  after(() => removeScratch(scratch));
   const stops = (server: RunningServer, ms: number) => Promise.race([server.unused.then(() => true), sleep(ms).then(() => false)]);
 
   it('says in its lock that an agent command started it, and stops when the last lease is let go', async () => {
@@ -282,7 +282,7 @@ describe('tricot <agent> and the board it started', { timeout: 120_000, skip: WI
     }
     const lock = readLock(dataDir);
     if (lock && pidAlive(lock.pid)) await run(['stop']);
-    rmSync(here, { recursive: true, force: true });
+    removeScratch(here);
   });
 
   it('stops the board when the one agent quits', async () => {

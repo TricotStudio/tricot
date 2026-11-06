@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -16,6 +16,7 @@ import type { Actor, Block } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
 import { readGuide } from './guide';
+import { removeScratch } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -142,7 +143,7 @@ describe('3D scene blocks in the store', () => {
   });
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('is a kind of block agents can add', () => {
@@ -241,7 +242,7 @@ describe('3D scene blocks over MCP and REST', () => {
     server.closeAllConnections();
     server.close();
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('tells agents how to write one, with an example that loads', async () => {

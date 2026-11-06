@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -9,6 +9,7 @@ import { Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
 import { jsonFolder, savedBoard } from './savedBoard';
 import { eventsOf } from './tables';
+import { removeScratch } from './platform';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const wassim: Actor = { kind: 'human', name: 'Wassim' };
@@ -31,7 +32,7 @@ describe('Board context sync', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('records who asked, when, and which blocks they selected, if any', () => {
@@ -226,6 +227,6 @@ describe('Board context sync', () => {
     reloaded.finishSync(boardId, undefined, claude);
     assert.equal(eventsOf(reloaded, boardId).at(-1)!.summary, "synced the board context (answering Wassim's request)");
     await reloaded.flush();
-    rmSync(old, { recursive: true, force: true });
+    removeScratch(old);
   });
 });

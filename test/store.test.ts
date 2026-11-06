@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { BoardError, Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
 import { savedBoard } from './savedBoard';
+import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'claude' };
 const human: Actor = { kind: 'human', name: 'Wassim' };
@@ -22,7 +23,7 @@ describe('Store', () => {
 
   afterEach(async () => {
     await store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   function boardWithDecision() {

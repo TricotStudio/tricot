@@ -11,7 +11,7 @@ import { agentKinds, findAgent, installHints, panelTexts } from '../src/core/age
 import { howToUpdate, restartCommand } from '../src/install/handoff';
 import { shellPath } from '../src/server/hooks/installer';
 import { describe as describeStep } from '../hooks/tricot-describe.mjs';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // What the person is shown to type, on Windows (PowerShell, the default in
 // Windows Terminal), through the `platform` the commands take; and what is
@@ -82,7 +82,8 @@ describe('Commands shown for PowerShell', () => {
     assert.equal(restartCommand(place, { defaults, platform: 'win32', npx: true }), "npx tricot@latest stop --data 'C:\\Users\\sam\\boards of mine'\nnpx tricot@latest --port 4600 --data 'C:\\Users\\sam\\boards of mine'");
     const posix = { port: 4600, host: '127.0.0.1', dataDir: '/home/sam/boards of mine' };
     const posixDefaults = { port: 4545, host: '127.0.0.1', dataDir: '/home/sam/.tricot' };
-    for (const platform of [undefined, 'darwin', 'linux'] as const) {
+    // Not given, the platform is this one's: on Windows, Windows'.
+    for (const platform of WINDOWS ? (['darwin', 'linux'] as const) : ([undefined, 'darwin', 'linux'] as const)) {
       assert.equal(restartCommand(posix, { defaults: posixDefaults, ...(platform && { platform }) }), 'tricot stop --data "/home/sam/boards of mine" && tricot --port 4600 --data "/home/sam/boards of mine"');
     }
   });
@@ -190,7 +191,7 @@ describe('tricot connect, on Windows', () => {
     err = [];
     ran = [];
   });
-  afterEach(() => rmSync(scratch, { recursive: true, force: true }));
+  afterEach(() => removeScratch(scratch));
 
   it('prints the commands in PowerShell, and the token on a line of its own', async () => {
     withToken();

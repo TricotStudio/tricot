@@ -4,13 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { defaultDataDir } from '../src/platform/dataDir';
+import { removeScratch } from './platform';
 
 describe('Data folder', () => {
   let home: string;
   beforeEach(() => {
     home = mkdtempSync(path.join(os.tmpdir(), 'tricot-home-'));
   });
-  afterEach(() => rmSync(home, { recursive: true, force: true }));
+  afterEach(() => removeScratch(home));
 
   const seed = (folder: string, id: string) => {
     mkdirSync(path.join(home, folder));

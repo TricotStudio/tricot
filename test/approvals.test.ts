@@ -24,7 +24,7 @@ import { claude } from '../src/server/hooks/claude';
 import { codex } from '../src/server/hooks/codex';
 import { claudeSessionSettings, installedHooks } from '../src/server/hooks/session';
 import { acquireLock, lockFile, publishLock, readLock, releaseLock } from '../src/platform/lock';
-import { WINDOWS } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 
 // The approval hook runs here as Claude Code and Codex run it: a recorded
 // PermissionRequest on stdin, its decision on stdout. No agent is run.
@@ -37,7 +37,7 @@ let scratch: string;
 before(() => {
   scratch = mkdtempSync(path.join(os.tmpdir(), 'tricot-approvals-'));
 });
-after(() => rmSync(scratch, { recursive: true, force: true }));
+after(() => removeScratch(scratch));
 
 const request = (fields: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
   harness: 'claude',
@@ -350,7 +350,7 @@ describe('The approval routes, and the hook', () => {
   afterEach(async () => {
     for (const child of children.splice(0)) child.kill('SIGKILL');
     await stop();
-    rmSync(dir, { recursive: true, force: true });
+    removeScratch(dir);
   });
 
   it('brings a request to the card the agent works on, and gives the person\'s OK back as Claude Code\'s decision', async () => {
