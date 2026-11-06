@@ -4,6 +4,7 @@ import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import { findPtyHelper, PTY_HELPERS, spawnPty, type Pty, type PtyExit, type PtyHelper } from '../src/cli/switcher/pty';
 import { alive, fixtures, leftAfterReaping, node, sleep, trackPty, waitFor } from './switcher/harness';
+import { WINDOWS } from './platform';
 
 // Each agent's own pseudo-terminal, through each helper this machine has:
 // Perl's IO::Pty (macOS ships it), Python's pty module, and the `script`
@@ -90,7 +91,7 @@ for (const name of PTY_HELPERS) {
   });
 }
 
-describe('finding a helper', () => {
+describe('finding a helper', { skip: WINDOWS && 'needs a pseudo-terminal helper, which Windows has none of for Tricot' }, () => {
   it('takes TRICOT_PTY when it names one, and says what is wrong when it names none', () => {
     assert.match((findPtyHelper({ ...process.env, TRICOT_PTY: 'tmux' }) as { problem: string }).problem, /use perl, python or script/);
     const found = findPtyHelper(process.env);

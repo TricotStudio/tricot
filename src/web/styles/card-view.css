@@ -1,0 +1,111 @@
+/* ---- card view --------------------------------------------------------- */
+
+.card-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+/* The bar under the top bar on a card, in the tabs' place: back, number and
+   status, then the title on one line, which the full text answers on hover. */
+.card-bar {
+  flex-wrap: nowrap;
+}
+.card-bar .back {
+  flex: none;
+  /* As tall as the tabs, and its arrow in line with the wordmark above. */
+  padding: 5px 10px;
+  margin-left: -10px;
+}
+.card-bar-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-bar-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-view-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--panel-w, 440px);
+}
+/* The panel's left edge is a handle: drag it (or use the arrow keys) to
+   widen or narrow the panel; double-click puts it back. */
+.panel-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--panel-w, 440px);
+  z-index: 6;
+  width: 9px;
+  transform: translateX(50%);
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  transition: background 0.12s;
+}
+.panel-handle:hover::before,
+.panel-handle:focus-visible::before,
+.panel-handle.is-dragging::before {
+  background: var(--focus);
+}
+.panel-handle:focus-visible {
+  outline: none;
+}
+.panel-handle-size {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  transform: translateY(-50%);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* While dragging, the canvas doesn't catch the pointer or select text. */
+.card-view-body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.card-view-body.is-resizing > :not(.panel-handle) {
+  pointer-events: none;
+}
+.card-view-canvas,
+.board-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.decision-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+.tag-pinned {
+  background: var(--surface-2);
+  color: var(--muted);
+}

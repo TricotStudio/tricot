@@ -14,6 +14,7 @@ import { BoardError, Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { acceptsMessage, findElement, frameScript } from '../src/server/sites/frame';
+import { readGuide } from './guide';
 
 // A home folder of its own, so the folders a website comes from are inside it.
 const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tricot-site-')));
@@ -124,7 +125,8 @@ describe('Pins on a website’s elements', () => {
     const canvas = (await call('get_canvas', { board_id: boardId })).text;
     assert.match(canvas, new RegExp(`- site "Marketing site" \\[id: \\w+\\] · rev 1 · by Claude \\(agent\\)\\n {2}Website from the folder ${siteFolder} on this computer: its files are the site\\. Edit them, and people's view of it reloads\\.\\n {2}It shows the home page “Home”\\. Pages people have seen: /about\\.html “About us”\\.`));
     const tools = (await client.listTools()).tools;
-    assert.match(tools.find((t) => t.name === 'add_block')!.description!, /site → folder \(its files on this computer[^;]*\) or url \(a dev server on this computer, http:\/\/localhost:PORT\/\), plus optional page/);
+    assert.match(tools.find((t) => t.name === 'add_block')!.description!, /site → folder or url \(a local dev server\), \+ page/);
+    assert.match(await readGuide(client, 'blocks'), /site → folder \(its files on this computer[^;]*\) or url \(a dev server on this computer, http:\/\/localhost:PORT\/\), plus optional page/);
     assert.match(tools.find((t) => t.name === 'comment')!.description!, /a person's request to change an element of a website/);
     assert.equal((await call('add_block', { board_id: boardId, type: 'site', url: 'https://tricotstudio.com' })).failed, true, 'a public site is a link');
   });

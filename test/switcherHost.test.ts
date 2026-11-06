@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 import { startHost, TRICOT_TAB, type Host, type HostedAgent } from '../src/cli/switcher/host';
-import { parseSwitchKey, type SwitchKey } from '../src/cli/switcher/keys';
+import { SWITCH_KEY } from '../src/cli/switcher/keys';
 import type { LiveFeed } from '../src/cli/switcher/live';
 import type { BoardLive } from '../src/cli/switcher/strip';
 import { alive, claudeLike, codexLike, COLOURS, fakeTerminal, keyAs, leftAfterReaping, node, sameScreen, sleep, tracked, waitFor, type FakeTerminal } from './switcher/harness';
+import { WINDOWS } from './platform';
 
 // The host with real agents (the stand-ins for Claude Code's full-screen
 // renderer and for Codex, in pseudo-terminals of their own), drawing on a
@@ -16,7 +17,7 @@ import { alive, claudeLike, codexLike, COLOURS, fakeTerminal, keyAs, leftAfterRe
 
 after(async () => assert.deepEqual(await leftAfterReaping(), [], 'nothing left running'));
 
-const KEY = parseSwitchKey('ctrl-\\') as SwitchKey;
+const KEY = SWITCH_KEY;
 const env = { ...process.env, TERM: 'xterm-256color' };
 const agent = (name: string, script: string, ...args: string[]): HostedAgent => ({ name, command: node, args: [script, ...args], env, cwd: process.cwd() });
 const CLAUDE = agent('Claude', claudeLike);
@@ -63,7 +64,7 @@ async function hosted(agents: HostedAgent[], test: (run: Running) => Promise<voi
   }
 }
 
-describe('several agents in one terminal', { timeout: 60_000 }, () => {
+describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
   it('shows the first agent, answers what each asks at startup, and switches with every colour in place', async () => {
     await hosted([CLAUDE, CODEX], async ({ host, fake, shows, agentShows, strip, matches }) => {
       assert.ok(await shows('Claude (stand-in)'), fake.observer.text());
@@ -191,6 +192,47 @@ describe('several agents in one terminal', { timeout: 60_000 }, () => {
     }
   });
 
+  it('takes away what was made for an agent alone when it ends, and for the others when the host does, once each', async () => {
+    const cleaned: string[] = [];
+    const made = (name: string, script: string, ...args: string[]): HostedAgent => ({ ...agent(name, script, ...args), cleanup: () => void cleaned.push(name) });
+    const fake = fakeTerminal(100, 30);
+    const host = tracked(startHost({ agents: [made('Claude', claudeLike), made('Codex', codexLike, '--exit=3')], terminal: fake.terminal, key: KEY }));
+    try {
+      await host.started;
+      await waitFor(() => host.view().agents.every((a) => a.screen.lines().join('').includes('stand-in')));
+      await sleep(300);
+      assert.deepEqual(cleaned, [], 'nothing taken away while they run');
+      fake.type('\x1c');
+      await waitFor(() => host.view().visible === 1);
+      fake.type('X'); // Codex ends with 3
+      assert.ok(await waitFor(() => host.view().agents[1].state === 'ended'), 'Codex ended');
+      assert.deepEqual(cleaned, ['Codex'], "Codex's, as it ended; Claude is still running");
+      fake.type('\x1c');
+      await sleep(50);
+      fake.type('q');
+      await host.done;
+      assert.deepEqual(cleaned.sort(), ['Claude', 'Codex'], "Claude's when the host closed; Codex's not again, or it ran twice");
+    } finally {
+      host.quit();
+      await host.done;
+    }
+  });
+
+  it("takes away what was made for an agent that couldn't start", async () => {
+    const cleaned: string[] = [];
+    const fake = fakeTerminal(100, 30);
+    const broken: HostedAgent = { name: 'Gone', command: '/no/such/agent', args: [], env, cwd: process.cwd(), cleanup: () => void cleaned.push('Gone') };
+    const host = tracked(startHost({ agents: [CLAUDE, broken], terminal: fake.terminal, key: KEY }));
+    try {
+      await host.started;
+      await waitFor(() => host.view().agents[1]?.state === 'ended');
+      assert.deepEqual(cleaned, ['Gone']);
+    } finally {
+      host.quit();
+      await host.done;
+    }
+  });
+
   it('quits on the switch key then q: every agent is closed, and the terminal put back', async () => {
     const fake = fakeTerminal(100, 30);
     const host = tracked(startHost({ agents: [CLAUDE, CODEX], terminal: fake.terminal, key: KEY }));
@@ -273,7 +315,7 @@ describe('several agents in one terminal', { timeout: 60_000 }, () => {
 // terminal plays one that speaks the kitty keyboard protocol (Ghostty,
 // iTerm2, kitty, WezTerm), or one that doesn't (Apple's Terminal); Claude's
 // stand-in asks for it as Claude Code does, and shows what it gets.
-describe('the keyboard protocols, for the agent showing', { timeout: 60_000 }, () => {
+describe('the keyboard protocols, for the agent showing', { timeout: 60_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
   const CLAUDE_KITTY = agent('Claude', claudeLike, '--keys=kitty');
   const flags = async (fake: FakeTerminal) => {
     await fake.observer.settled();

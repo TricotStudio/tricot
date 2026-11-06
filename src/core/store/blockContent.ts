@@ -9,9 +9,22 @@ export function inBlock<T>(index: number, build: () => T): T {
   try {
     return build();
   } catch (error) {
-    if (!(error instanceof BoardError)) throw error;
-    throw new BoardError(`Block ${index + 1} in blocks: ${error.message} Nothing was posted.`);
+    throw inBlockError(index, error);
   }
+}
+
+// The same for reading what a block names on this computer, which takes a while.
+export async function inBlockAsync<T>(index: number, build: () => Promise<T>): Promise<T> {
+  try {
+    return await build();
+  } catch (error) {
+    throw inBlockError(index, error);
+  }
+}
+
+function inBlockError(index: number, error: unknown): unknown {
+  if (!(error instanceof BoardError)) return error;
+  return new BoardError(`Block ${index + 1} in blocks: ${error.message} Nothing was posted.`);
 }
 
 // A new block's own content, checked, as its kind makes it.

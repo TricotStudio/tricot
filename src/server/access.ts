@@ -178,7 +178,7 @@ export const NOT_A_PERSON =
   "Refused: people do this in Tricot's page or in its terminal, and agents act through their Tricot MCP tools. A script or a plain web call can't act as a person.";
 export const HOST_LET_GO = "This terminal's key lapsed (Tricot restarted, or it went quiet): it registers again.";
 export const NEEDS_SEAT =
-  "Only a browser or terminal you've let in can do this. Let this one in: it shows a code, and you press y in the terminal where Tricot runs (or run tricot seats), or allow it from a browser you've let in.";
+  "Only a browser or terminal you've let in can do this. Let this one in: it shows a code, and you press y in the terminal where Tricot runs (or run tricot access), or allow it from a browser you've let in.";
 export const SEAT_GONE_WORDS = 'This browser or terminal is no longer one you let in (it was removed): let it in again.';
 const SEAT_REFUSED: Record<'malformed' | 'clock' | 'signature' | 'replayed', string> = {
   malformed: "Refused: this request's signature can't be read.",

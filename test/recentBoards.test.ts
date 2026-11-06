@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { byRecent, KEPT, matching, withOpened, without } from '../src/web/recentBoards';
+import { byRecent, KEPT, matching, withOpened, without } from '../src/web/board/recentBoards';
 
 const board = (id: string, updatedAt: string, title = id, goal?: string) => ({ id, title, goal, updatedAt });
 const ids = (boards: { id: string }[]) => boards.map((b) => b.id);

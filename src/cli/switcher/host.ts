@@ -49,7 +49,10 @@ export interface HostedAgent {
   args: string[];
   env: NodeJS.ProcessEnv;
   cwd: string;
-  id?: string; // which of the agents Tricot starts (claude, codex, opencode)
+  id?: string; // which of the agents Tricot starts (claude, codex, opencode, gemini, pi, omp)
+  // Takes away what was made for this session alone (a folder, for some):
+  // called when the agent ends, or the host does. Safe to call twice.
+  cleanup?: () => void;
 }
 
 // The real terminal: process.stdin and stdout in raw mode (run.ts), or a
@@ -120,6 +123,7 @@ interface Agent extends AgentNow {
   id?: string;
   screen: AgentScreen;
   pty?: Pty;
+  cleanup?: () => void; // what was made for it alone, taken away when it ends
 }
 
 export const TRICOT_TAB = -1;
@@ -384,10 +388,22 @@ export function startHost(options: HostOptions): Host {
 
   // ---- the agents --------------------------------------------------------------------
 
+  // What was made for an agent alone is taken away once.
+  function takeAway(agent: Agent): void {
+    const cleanup = agent.cleanup;
+    agent.cleanup = undefined;
+    try {
+      cleanup?.();
+    } catch {
+      // not worth stopping the host for
+    }
+  }
+
   function ended(agent: Agent, exitCode: number): void {
     if (agent.state === 'ended') return;
     agent.state = 'ended';
     agent.exitCode = exitCode;
+    takeAway(agent);
     // With a Tricot tab, it stays, saying so, until the person quits or adds one.
     if (agents.every((a) => a.state === 'ended') && (quitting || !setup)) return finish();
     if (agent.index === visible && !quitting) switchTo(nextRunning(visible));
@@ -396,7 +412,7 @@ export function startHost(options: HostOptions): Host {
 
   function startAgent(spec: HostedAgent): Agent {
     const index = agents.length;
-    const agent: Agent = { index, name: spec.name, ...(spec.id && { id: spec.id }), state: 'starting', screen: undefined as unknown as AgentScreen };
+    const agent: Agent = { index, name: spec.name, ...(spec.id && { id: spec.id }), ...(spec.cleanup && { cleanup: spec.cleanup }), state: 'starting', screen: undefined as unknown as AgentScreen };
     const hidden = () => index !== visible;
     const wants = () => {
       if (!hidden()) return;
@@ -436,6 +452,7 @@ export function startHost(options: HostOptions): Host {
       void agent.screen.write(`Couldn't start ${spec.name}: ${error instanceof Error ? error.message : error}\r\n`);
       agent.state = 'ended';
       agent.exitCode = 127;
+      takeAway(agent);
       return agent;
     }
     agent.pty = pty;
@@ -551,6 +568,7 @@ export function startHost(options: HostOptions): Host {
     for (const agent of agents) {
       agent.pty?.dispose();
       agent.screen.dispose();
+      takeAway(agent); // those let go while still there, as well as those that ended
     }
     resolveDone({
       exits: agents.map((a) => (a.closing ? undefined : a.exitCode)),
@@ -632,7 +650,10 @@ export function startHost(options: HostOptions): Host {
     restoreNow() {
       if (finished) return;
       if (begun) t.write(restoreSequence());
-      for (const agent of agents) agent.pty?.dispose();
+      for (const agent of agents) {
+        agent.pty?.dispose();
+        takeAway(agent);
+      }
     },
     view: () => ({
       visible,

@@ -15,7 +15,7 @@ import { threadDetail, threadsDigest } from '../src/core/threads';
 import type { Actor, Board, Thread } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { INSTRUCTIONS } from '../src/server/mcp';
-import { BAR_PLACEHOLDERS, doorOfView, listeningLabel, replyPlaceholder, replyingTo, viewOfDoor } from '../src/web/chatDoor';
+import { BAR_PLACEHOLDERS, doorOfView, listeningLabel, replyPlaceholder, replyingTo, viewOfDoor } from '../src/web/threads/chatDoor';
 
 // One chat bar on every tab: what's sent from it starts a thread through
 // that tab's door, which the thread keeps, and agents are told what the door

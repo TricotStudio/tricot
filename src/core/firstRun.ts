@@ -7,7 +7,7 @@
 // browser imports this, and the tests read it.
 
 import { LIMITS } from './schemas/limits';
-import type { PanelTool } from './connect';
+import { findAgent } from './agents/registry';
 import type { ThreadDoor } from './types';
 
 // ---- when it shows ------------------------------------------------------------------
@@ -165,24 +165,24 @@ const messageOf = (error: unknown): string => {
 
 // ---- connecting an agent -----------------------------------------------------------
 
-// The agents the Connect panel has a command for, in the order the hook
-// installers list them (server/hooks/registry.ts).
-export type FirstTool = Exclude<PanelTool, 'other'>;
-const FIRST_TOOLS: Record<FirstTool, string> = { claude: 'Claude Code', codex: 'Codex', pi: 'Pi', omp: 'OMP', gemini: 'Gemini CLI', opencode: 'OpenCode' };
+// The agents the Connect panel has a command for: those in the registry
+// (agents/registry.ts), in the order the hook installers list them.
+export type FirstTool = string;
 
 // The agent to show the command for: the first found on this computer (as
 // live steps see them: its folder or its command), else Claude Code.
 export function agentToConnect(agents: { id: string; name: string; found: boolean }[] | undefined): { tool: FirstTool; name: string; found: boolean } {
-  const here = agents?.find((a) => a.found && a.id in FIRST_TOOLS);
-  if (here) return { tool: here.id as FirstTool, name: here.name, found: true };
-  return { tool: 'claude', name: FIRST_TOOLS.claude, found: false };
+  const here = agents?.find((a) => a.found && findAgent(a.id));
+  if (here) return { tool: here.id, name: here.name, found: true };
+  return { tool: 'claude', name: findAgent('claude')!.name, found: false };
 }
 
-// What to do with the command, in a sentence, before it.
+// What to do with the command, in a sentence, before it. An agent with no
+// command of its own has an entry for a file instead.
 export function connectWords({ tool, name, found }: { tool: FirstTool; name: string; found: boolean }): string {
   if (!found) return `Tricot didn't find an agent on this computer. For ${name}, run this once in a terminal, then start a new session.`;
-  if (tool === 'omp') return `${name} is on this computer: add this to its settings (~/.omp/agent/mcp.json), then start a new ${name} session.`;
-  if (tool === 'opencode') return `${name} is on this computer: add this to its settings (~/.config/opencode/opencode.json), then start a new ${name} session.`;
+  const connect = findAgent(tool)?.connect;
+  if (connect?.how === 'file') return `${name} is on this computer: add this to its settings (${connect.file}), then start a new ${name} session.`;
   return `${name} is on this computer: run this once in a terminal, then start a new ${name} session.`;
 }
 

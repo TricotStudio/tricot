@@ -196,7 +196,7 @@ describe('the status line, set up for Claude Code (hooks/tricot-usage.mjs)', () 
     const off = claude.previewUninstall(target);
     assert.ok(off.notes.includes('Your own status line goes back in its place: `~/.claude/statusline.sh`.'), off.notes.join('\n'));
     const switchedOff = planLiveSteps({ target, source: SOURCE, url: TRICOT_URL }, 'claude', 'off');
-    assert.match(switchedOff.text, /Your own status line goes back in its place/, 'the switch and `tricot hooks off` say it too');
+    assert.match(switchedOff.text, /Your own status line goes back in its place/, 'the switch and `tricot steps off` say it too');
     claude.uninstall(target);
     assert.equal(readFileSync(f.settings, 'utf8'), before, 'the settings as they were, to the byte');
     assert.equal(existsSync(f.wrapper) || existsSync(f.kept), false);

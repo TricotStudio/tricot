@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { checkWords, lineOfAnswer, lineOfError } from '../src/web/updateCheck';
+import { checkWords, lineOfAnswer, lineOfError } from '../src/web/update/updateCheck';
 
 // What the menu's "Check for updates" row says (src/web/updateCheck.ts),
 // from what POST /api/update/check answered (T171).

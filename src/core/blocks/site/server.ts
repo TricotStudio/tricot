@@ -4,12 +4,12 @@
 // The web build leaves this file out (see vite.config.ts).
 
 import { realpathSync, statSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import type { SiteTypes } from './index';
 import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
 import { clip } from '../../format';
+import { homePath, isHidden } from '../homeFolder';
 import { BoardError } from '../../store/errors';
 import { LIMITS, limited, required } from '../../store/validate';
 import { siteAsksDigest } from './agent';
@@ -22,42 +22,16 @@ type SiteBlock = BlockOf<SiteTypes>;
 const NOT_LOCAL = 'Websites are shown only when Tricot runs on this computer alone; it listens on the network now.';
 const MAX_TITLE = 80; // a page's title, as the block keeps it
 
-// The home folder, as the disk has it (a home reached through a link is followed).
-function home(): string {
-  const folder = os.homedir();
-  try {
-    return realpathSync(folder);
-  } catch {
-    return path.resolve(folder);
-  }
-}
-
 // A site's folder, checked: a full path (~/ for the home folder) to a folder
-// that is there, inside the home folder and not the home folder itself, and
-// not in a hidden folder (~/.ssh, ~/.config): those hold keys and settings,
-// not sites, and Tricot never serves them. Kept as given, resolved; the site
-// server checks it again, as the disk has it, each time it serves it.
+// that is there, inside the home folder and not the home folder itself
+// (homeFolder.ts), and not in a hidden folder (~/.ssh, ~/.config): those hold
+// keys and settings, not sites, and Tricot never serves them. Kept as given,
+// resolved; the site server checks it again, as the disk has it, each time it
+// serves it.
 export function siteFolder(value: string | undefined): string {
-  const typed = limited(required(value, "a website's folder").trim(), LIMITS.url, "A website's folder");
-  const mine = home();
-  const expanded = typed === '~' || typed.startsWith('~/') ? path.join(os.homedir(), typed.slice(1)) : typed;
-  if (!path.isAbsolute(expanded) || expanded.includes('\0')) {
-    throw new BoardError(`A website's folder is a full path on this computer, such as ${path.join(os.homedir(), 'my-site')} or ~/my-site.`);
-  }
-  if (expanded.split(/[\\/]/).includes('..')) throw new BoardError("A website's folder is a full path without .. in it.");
-  const folder = path.resolve(expanded);
-  let real: string;
-  try {
-    real = realpathSync(folder);
-    if (!statSync(real).isDirectory()) throw new Error('not a folder');
-  } catch {
-    throw new BoardError(`There's no folder at ${folder} on this computer.`);
-  }
-  const inside = path.relative(mine, real);
-  if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) {
-    throw new BoardError(`A website's folder must be inside your home folder (${mine}), and not the home folder itself.`);
-  }
-  if (inside.split(path.sep).some((part) => part.startsWith('.'))) {
+  const { path: folder, parts } = homePath(value, { what: "A website's folder", noun: 'folder', example: 'my-site' });
+  const inside = parts.join(path.sep);
+  if (parts.some(isHidden)) {
     throw new BoardError(`A website's folder can't be in a hidden folder (${clip(inside, 80)}): those hold keys and settings, not sites.`);
   }
   return folder;
@@ -146,6 +120,7 @@ export const agent: AgentHalf<SiteTypes> = {
     page: z.string().optional().describe('Site blocks: the page it shows, for everyone'),
   },
   docs: {
+    brief: 'site → folder or url (a local dev server), + page',
     add: 'site → folder (its files on this computer: a full path or ~/…, inside your home folder) or url (a dev server on this computer, http://localhost:PORT/), plus optional page (e.g. /pricing.html): a live website people browse and pin notes and requests on',
   },
   read(args) {

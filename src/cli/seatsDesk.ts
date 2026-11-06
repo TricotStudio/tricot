@@ -9,11 +9,11 @@
 //   and, having let that one in, is let in with it until it exits; later ones
 //   once it is a seat. It reads keys only while it asks, and Ctrl+C still
 //   stops Tricot.
-// - `tricot seats`, for a board running in the background or elsewhere:
+// - `tricot access`, for a board running in the background or elsewhere:
 //   the person's browsers and terminals, and those waiting, each asked y/N
-//   (seatsCommand). It answers the first browser as the terminal above does;
+//   (accessCommand). It answers the first browser as the terminal above does;
 //   later ones only once it is let in from a browser already in.
-// - `tricot seats reset`, while Tricot is stopped: every browser and
+// - `tricot access revoke`, while Tricot is stopped: every browser and
 //   terminal let go, and the next browser let in as the first was.
 //
 // What it holds (a host key, a seat's private key) lives in this process
@@ -21,7 +21,7 @@
 import { existsSync } from 'node:fs';
 import { admissionWords, type AdmissionView } from '../core/seats';
 import { authHeaders, HOST_KEY_HEADER } from '../server/access';
-import { pidAlive, readLock, findRunning } from '../server/lock';
+import { pidAlive, readLock, findRunning } from '../platform/lock';
 import { Seats, seatsFile } from '../server/seats';
 import type { Key, TerminalKeys } from './boardPicker';
 import { personOn } from './chooseBoard';
@@ -219,9 +219,9 @@ export function serverTerminal(options: ServerTerminalOptions): { stop(): Promis
   };
 }
 
-// ---- tricot seats ----------------------------------------------------------------------
+// ---- tricot access ---------------------------------------------------------------------
 
-export interface SeatsCommandEnv {
+export interface AccessCommandEnv {
   dataDir: string;
   out(line: string): void;
   err(line: string): void;
@@ -232,7 +232,7 @@ export interface SeatsCommandEnv {
 }
 
 // y or n, with one key where there is a terminal to read keys in, else a line.
-async function yesNo(env: SeatsCommandEnv, question: string): Promise<boolean | undefined> {
+async function yesNo(env: AccessCommandEnv, question: string): Promise<boolean | undefined> {
   if (env.keys) {
     const answer = await askKey(env.keys, question);
     return answer === 'yes' ? true : answer === 'interrupt' ? undefined : false;
@@ -241,10 +241,10 @@ async function yesNo(env: SeatsCommandEnv, question: string): Promise<boolean | 
   return undefined;
 }
 
-export async function seatsCommand(env: SeatsCommandEnv, arg?: string): Promise<{ exitCode: number }> {
-  if (arg === 'reset') return reset(env);
+export async function accessCommand(env: AccessCommandEnv, arg?: string): Promise<{ exitCode: number }> {
+  if (arg === 'revoke') return revoke(env);
   if (arg !== undefined) {
-    env.err(`Unknown: tricot seats ${arg}. Run tricot seats to see and let in your browsers and terminals, or tricot seats reset, with Tricot stopped, to start again.`);
+    env.err(`Unknown: tricot access ${arg}. Run tricot access to see and let in your browsers and terminals, or tricot access revoke, with Tricot stopped, to start again.`);
     return { exitCode: 1 };
   }
   const running = await findRunning(env.dataDir);
@@ -253,7 +253,7 @@ export async function seatsCommand(env: SeatsCommandEnv, arg?: string): Promise<
     return { exitCode: 1 };
   }
   const url = running.url;
-  const answers = holdAnswers({ url, headers: authHeaders(env.dataDir), actor: () => personHere(url, env.dataDir), label: 'tricot seats', ...(env.fetch && { fetch: env.fetch }) });
+  const answers = holdAnswers({ url, headers: authHeaders(env.dataDir), actor: () => personHere(url, env.dataDir), label: 'tricot access', ...(env.fetch && { fetch: env.fetch }) });
   try {
     let waiting = await answers.admissions();
     if (!waiting.ok && waiting.needsSeat) {
@@ -289,7 +289,7 @@ export async function seatsCommand(env: SeatsCommandEnv, arg?: string): Promise<
     for (const admission of waiting.list) {
       const allow = await yesNo(env, `${admissionWords(admission)}. Allow? [y/N] `);
       if (allow === undefined) {
-        env.err('tricot seats asks before letting anything in: run it in a terminal.');
+        env.err('tricot access asks before letting anything in: run it in a terminal.');
         return { exitCode: 1 };
       }
       const outcome = await answers.admit(admission.id, allow);
@@ -304,19 +304,19 @@ export async function seatsCommand(env: SeatsCommandEnv, arg?: string): Promise<
 
 // Every browser and terminal let go, the file alone, while Tricot is stopped:
 // a running Tricot holds them in memory and would write them back.
-async function reset(env: SeatsCommandEnv): Promise<{ exitCode: number }> {
+async function revoke(env: AccessCommandEnv): Promise<{ exitCode: number }> {
   const lock = readLock(env.dataDir);
   if (lock && pidAlive(lock.pid)) {
-    env.err(`Tricot is running on ${env.dataDir} (pid ${lock.pid}). Stop it first with tricot stop, then run tricot seats reset.`);
+    env.err(`Tricot is running on ${env.dataDir} (pid ${lock.pid}). Stop it first with tricot stop, then run tricot access revoke.`);
     return { exitCode: 1 };
   }
   if (!existsSync(seatsFile(env.dataDir))) {
-    env.out(`No browser or terminal is let in on ${env.dataDir}: there is nothing to reset.`);
+    env.out(`No browser or terminal is let in on ${env.dataDir}: there is nothing to revoke.`);
     return { exitCode: 0 };
   }
   const yes = await yesNo(env, "Remove every browser and terminal you've let in? [y/N] ");
   if (yes === undefined) {
-    env.err('tricot seats reset asks first: run it in a terminal.');
+    env.err('tricot access revoke asks first: run it in a terminal.');
     return { exitCode: 1 };
   }
   if (!yes) {
@@ -325,6 +325,6 @@ async function reset(env: SeatsCommandEnv): Promise<{ exitCode: number }> {
   }
   Seats.reset(env.dataDir);
   env.out('Done: no browser or terminal acts for you now. Until one is let in again, answering agents, approving commits, deciding and the like wait.');
-  env.out('The next browser that asks is let in as the first one was, by a keypress in the terminal where Tricot runs or with tricot seats. Start Tricot and let your own browser in first, before anything else asks.');
+  env.out('The next browser that asks is let in as the first one was, by a keypress in the terminal where Tricot runs or with tricot access. Start Tricot and let your own browser in first, before anything else asks.');
   return { exitCode: 0 };
 }

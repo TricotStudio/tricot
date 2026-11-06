@@ -95,6 +95,7 @@ export const agent: AgentHalf<SceneTypes> = {
   },
   updateShape: { scene: z.string().optional() },
   docs: {
+    brief: 'scene → scene (three.js JSON)',
     add: 'scene → scene: a three.js scene as JSON text, in the format Object3D.toJSON() writes (parametric geometries by type, e.g. BoxGeometry with width, height, depth; built-in materials; colours as "#rrggbb" or numbers; objects with name, position, rotation and scale; no shaders; pictures only as data: URLs)',
     guide: `Show people a 3D scene with a scene block: they turn it, zoom and pin comments to its named objects, so name the objects people will talk about. Without lights or a camera of its own it is lit evenly and framed whole. A small one: ${SCENE_EXAMPLE}. You read its make-up and source, not how it looks.`,
     updateSpecial: "scene replaces a 3D scene's JSON whole",

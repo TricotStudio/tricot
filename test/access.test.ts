@@ -7,9 +7,10 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { loadToken, NOT_A_PERSON, tokenFile } from '../src/server/access';
-import { securePrivateDir } from '../src/server/dataDir';
-import { lockFile } from '../src/server/lock';
+import { securePrivateDir } from '../src/platform/dataDir';
+import { lockFile } from '../src/platform/lock';
 import { startServer, type RunningServer } from '../src/server/start';
+import { WINDOWS } from './platform';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -133,7 +134,7 @@ describe('Access', () => {
     });
   });
 
-  describe('the data folder', () => {
+  describe('the data folder', { skip: WINDOWS && 'checks POSIX file modes' }, () => {
     const open = (dir: string) => {
       mkdirSync(dir, { recursive: true, mode: 0o755 });
       chmodSync(dir, 0o755);

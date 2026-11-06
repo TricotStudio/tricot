@@ -1,0 +1,91 @@
+/* ---- criteria ---------------------------------------------------------- */
+
+.criteria {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.criteria th,
+.criteria td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.criteria tr:last-child th,
+.criteria tr:last-child td {
+  border-bottom: none;
+}
+.criteria thead th {
+  text-align: center;
+}
+.criteria tbody th {
+  position: relative;
+  padding-right: 28px;
+  font-weight: 500;
+  text-align: left;
+}
+.criteria tbody th .cell-remove {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+.criteria tbody tr:hover .cell-remove,
+.criteria tbody th .cell-remove:focus-visible {
+  opacity: 1;
+}
+.criteria td {
+  width: 48px;
+  text-align: center;
+}
+.mark {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--faint);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.mark:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.mark:disabled {
+  cursor: default;
+}
+.mark-yes {
+  border-color: transparent;
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.mark-partly {
+  border-color: transparent;
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.mark-no {
+  border-color: transparent;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+/* An outdated option's marks stay as a record, faded. */
+.criteria .is-outdated .option-letter {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--faint);
+}
+.criteria td.is-outdated .mark {
+  opacity: 0.55;
+}
+.mark-empty {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}

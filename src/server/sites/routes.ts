@@ -8,17 +8,20 @@ import { z } from 'zod';
 import { BoardError, type Store } from '../../core/store';
 import type { Block } from '../../core/types';
 import type { SiteServer } from './siteServer';
+import { routes } from '../../core/routes';
+import { routesOn } from '../routing';
 
 // `sites`: none when Tricot listens beyond this machine, where no website is served.
 export function createSitesRouter(store: Store, sites: SiteServer | undefined): Router {
   const router = Router();
+  const on = routesOn(router, '/api/sites');
   const site = (id: string): Extract<Block, { type: 'site' }> => {
     const block = store.blockOf(id);
     if (block.type !== 'site') throw new BoardError(`"${id}" is not a website.`);
     return block;
   };
 
-  router.get('/:blockId', async (req, res) => {
+  on(routes.siteAddress, async (req, res) => {
     const block = site(req.params.blockId);
     if (!sites) {
       res.status(409).json({ error: 'Websites are shown live only when Tricot runs on this computer alone; it listens on the network now.' });

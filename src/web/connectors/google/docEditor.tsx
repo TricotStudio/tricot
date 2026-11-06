@@ -3,19 +3,20 @@ import { draftAuthors, draftRows, listNumbers, STYLE_LABEL, type DocChange, type
 import { findQuote, quoteAt } from '../../../core/pins';
 import { linkSource } from '../../../core/sources';
 import type { Actor, Block, DocConflict, DocDraft, Pin, PinAnchor } from '../../../core/types';
-import { api, type RequestError } from '../../api';
+import { api, type RequestError } from '../../shared/api';
 import { SourceIcon } from '../../canvas/sources/icon';
 import { useCanvas } from '../../canvas/context';
 import { PinLine } from '../../canvas/pairing/pinLine';
 import { usePairing } from '../../canvas/pairing/session';
 import { PairingShell, panelOpen, reachWords } from '../../canvas/pairing/shell';
 import { DRAFT, MarkedText, PinThread, type TextMark } from '../../canvas/pins';
-import { ActorBadge, Icon, timeAgo } from '../../components';
+import { ActorBadge, Icon, timeAgo } from '../../shared/components';
 import { onConnectorMessage, useLinkFile } from '../live';
 import { googleApi, type DocView, type DocWords } from './api';
 import { chooseGoogleDocs } from './choose';
 import { DocAskPrompt, DocPinChip } from './docPins';
 import './docEditor.css';
+import { linkTo } from '../../shared/pages';
 
 // A Google Doc's draft, edited over the canvas (#34: save only what changed).
 // The doc comes through the server, which holds the Google sign-in; the draft
@@ -1012,7 +1013,7 @@ function AccessPanel(props: {
             </button>
           )}
           {problem.code === 'not_set_up' && (
-            <a className="btn btn-primary" href="#/connectors">
+            <a className="btn btn-primary" href={linkTo.connectors()}>
               Go to Connectors
             </a>
           )}

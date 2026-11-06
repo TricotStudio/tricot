@@ -1,20 +1,26 @@
-// `tricot claude`, `tricot codex` and `tricot opencode`: the board and the
-// agent together, in one command. It finds the agent's command on PATH
+// `tricot claude`, `tricot codex`, `tricot opencode`, `tricot pi` and `tricot omp`: the
+// board and the agent together, in one command. It finds the agent's command on PATH
 // (without running it), starts the board in the background or finds the one
 // already running, has the person pick a board (chooseBoard.ts) unless
 // --board names one, opens it, asks the first-run live-steps question as
 // `tricot` does, then runs the agent in this terminal, connected for this
 // session only (core/sessions.ts), with a first message naming the board.
-// Its exit code is this command's; the board keeps running after it.
+// Its exit code is this command's. A board this command started, or that an
+// agent command started before it, stops when the last of those commands
+// has quit (#97, server/leases.ts); one that was running already from
+// `tricot` or `tricot start` keeps running, until `tricot stop`.
 //
 // Claude Code also gets Tricot's hooks for the session (sessionHooks below):
 // its permission prompts come to the board, and its steps too when the
 // person said yes to live steps, leaving out what its own settings run
 // already. Codex's come only from its one-time setup, which it says.
 //
-// Gemini CLI, Pi and OMP have no way to take the board for one session that
-// leaves their settings alone, so `tricot gemini` says how to connect it, as
-// `tricot connect gemini` does, and starts nothing.
+// Pi gets an extension for the session (agentSessions/pi.ts), which adds the
+// board as it loads, and OMP an extension folder that holds the board's entry
+// (agentSessions/omp.ts); each in a folder made for the session and removed
+// when it ends. Gemini CLI has no way to take the board for one session that
+// Tricot has built yet, so `tricot gemini` says how to connect it, as `tricot
+// connect gemini` does, and starts nothing.
 //
 // main.ts hands it what it shares with `tricot` (AgentEnv), so the board is
 // started, opened and asked about the same way.
@@ -22,15 +28,17 @@
 // One agent runs the way several do (`tricot claude codex`): in this
 // terminal with the strip at the bottom and the Tricot tab beside it, one
 // showing at a time (severalAgents.ts). Where that can't run (Windows, no
-// terminal, no way to give each agent a terminal of its own), or with
-// --no-switcher, one agent runs on its own, as below. --switcher asks for the
-// strip, and is refused where it can't run.
+// terminal, no way to give each agent a terminal of its own), one agent runs
+// on its own, as below; several are refused there.
 import path from 'node:path';
+import type { AgentKind } from '../core/agents/agent';
+import { agentsInCliOrder, installHints } from '../core/agents/registry';
 import { agentUrl } from '../core/connect';
-import { claudeSession, codexSession, firstMessage, opencodeSession, type SessionLaunch, type SessionSetup } from '../core/sessions';
-import { claudeSessionSettings, installedHooks } from '../server/hooks';
-import { onPath } from '../server/hooks/installer';
-import type { ServerLock } from '../server/lock';
+import { firstMessage, type SessionLaunch } from '../core/sessions';
+import type { ServerLock } from '../platform/lock';
+import { isWindows } from '../platform/os';
+import { which } from '../platform/which';
+import { sweepFolders } from './agentSessions/folder';
 import { chooseBoard } from './chooseBoard';
 import { liveStepsContext, rememberedAnswer } from './hooks';
 import type { CliContext, CliResult } from './main';
@@ -41,11 +49,17 @@ export type RunningLock = ServerLock & { url: string; mcpUrl: string };
 
 export interface AgentEnv {
   ctx: CliContext;
-  values: { board?: string; name?: string; 'no-open'?: boolean; switcher?: boolean; 'no-switcher'?: boolean; 'switch-key'?: string };
+  values: { board?: string; name?: string; 'no-open'?: boolean };
   dataDir: string;
   // The board running on this data, or one started now in the background;
   // nothing, and said why, when neither.
+  // A board an agent command started is held with a lease, so it stops with
+  // the last command that needs it (T212, server/leases.ts); one that was
+  // running already, from `tricot` or `tricot start`, is left as it is.
   ensureRunning(): Promise<{ lock: RunningLock; started: boolean } | undefined>;
+  // This command is done with the board: lets go of its lease (once, however
+  // often it is asked) and says what becomes of the board.
+  parting(): Promise<string>;
   // Its token when it listens beyond this machine, and whether it needs one.
   access(lock: RunningLock): { needed: boolean; token?: string };
   // Opens the board in the browser, unless --no-open; `always`: whatever it
@@ -57,64 +71,23 @@ export interface AgentEnv {
   connect(agent: string): Promise<CliResult>;
 }
 
-export interface StartableAgent {
-  name: string; // Claude Code
-  boardName: string; // its name on the board unless --name: Claude
-  command?: string; // what is looked for on PATH
-  install?: string[]; // how to get it, from its own docs
-  more?: string; // where those docs are
-  session?: (setup: SessionSetup) => SessionLaunch; // none: it can't take the board for one session
-  why?: string; // and why not
-}
-
-export const AGENTS: Record<string, StartableAgent> = {
-  claude: {
-    name: 'Claude Code',
-    boardName: 'Claude',
-    command: 'claude',
-    install: ['curl -fsSL https://claude.ai/install.sh | bash', 'npm install -g @anthropic-ai/claude-code'],
-    more: 'https://code.claude.com/docs/en/setup',
-    session: claudeSession,
-  },
-  codex: {
-    name: 'Codex',
-    boardName: 'Codex',
-    command: 'codex',
-    install: ['npm install -g @openai/codex', 'curl -fsSL https://chatgpt.com/codex/install.sh | sh'],
-    more: 'https://github.com/openai/codex',
-    session: codexSession,
-  },
-  opencode: {
-    name: 'OpenCode',
-    boardName: 'OpenCode',
-    command: 'opencode',
-    install: ['curl -fsSL https://opencode.ai/install | bash', 'npm install -g opencode-ai'],
-    more: 'https://opencode.ai/docs/',
-    session: opencodeSession,
-  },
-  gemini: { name: 'Gemini CLI', boardName: 'Gemini', why: 'it adds a server only from a settings file' },
-  pi: { name: 'Pi', boardName: 'Pi', why: 'it adds a server for one session only through an extension, which Tricot has none of yet' },
-  omp: { name: 'OMP', boardName: 'OMP', why: 'it has no way to add a server for one session' },
-};
+// The agents Tricot knows, by id, in the order `tricot --help` and the Tricot
+// tab list them. Those with a `session` it starts; the others (`cantStart` says
+// why) it only shows how to connect. This is the registry's view
+// (core/agents/registry.ts), not a table of its own.
+export const AGENTS: Record<string, AgentKind> = Object.fromEntries(agentsInCliOrder().map((kind) => [kind.id, kind]));
 
 export const isAgentCommand = (word: string): boolean => Object.hasOwn(AGENTS, word);
 
 export async function agentCommand(a: AgentEnv, id: string | string[], passthrough: string[]): Promise<CliResult> {
   if (Array.isArray(id) && id.length === 1) id = id[0];
   const { ctx, values } = a;
-  if (values.switcher && values['no-switcher']) {
-    ctx.err("--switcher and --no-switcher can't go together: pick one. Nothing was started.");
-    return { exitCode: 1 };
-  }
-  if (Array.isArray(id)) {
-    if (!values['no-switcher']) return severalAgents(a, id, passthrough);
-    ctx.err('--no-switcher runs one agent on its own: several run together in this terminal. Nothing was started.');
-    return { exitCode: 1 };
-  }
-  if (values.switcher || (!values['no-switcher'] && switcherByDefault(a, id))) return severalAgents(a, [id], passthrough);
+  sweepFolders(); // those an earlier Tricot left behind when it was killed before it could remove them
+  if (Array.isArray(id)) return severalAgents(a, id, passthrough);
+  if (stripRuns(a, id)) return severalAgents(a, [id], passthrough);
   const agent = AGENTS[id];
-  if (!agent.session || !agent.command) return cantStartYet(a, id, agent);
-  const command = onPath(agent.command, ctx.env);
+  if (!agent.session) return cantStartYet(a, id, agent);
+  const command = which(agent.command, ctx.env);
   if (!command) {
     notInstalled(ctx, id, agent);
     return { exitCode: 1 };
@@ -139,7 +112,7 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   if (!values.board) ctx.out(''); // the picker, below
   const choice = await chooseBoard({ url: lock.url, dataDir: a.dataDir, folder, board: values.board, keys: ctx.keys, question: `Which board should ${who} work on?` });
   if ('cancelled' in choice) {
-    ctx.out(`${agent.name} wasn't started. Tricot keeps running at ${lock.url}; stop it with: tricot stop`);
+    ctx.out(`${agent.name} wasn't started. ${await a.parting()}`);
     return { exitCode: 130 };
   }
   if ('problem' in choice) {
@@ -157,7 +130,13 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   if (hooks.said) ctx.out(hooks.said);
 
   const message = firstMessage(board.id);
-  const launch = agent.session({ url: agentUrl(lock.mcpUrl, who), token: access.token, message, passthrough, env: ctx.env, ...(hooks.settings && { settings: hooks.settings }) });
+  let launch: SessionLaunch;
+  try {
+    launch = agent.session({ url: agentUrl(lock.mcpUrl, who), token: access.token, message, passthrough, env: ctx.env, ...(hooks.settings && { settings: hooks.settings }) });
+  } catch (error) {
+    ctx.err(`${agent.name} didn't start: ${error instanceof Error ? error.message : error}`);
+    return { exitCode: 1 };
+  }
   ctx.out(`Starting ${agent.name} on "${board.title}"…`);
   ctx.out(`> ${message}`);
   let exitCode: number;
@@ -166,8 +145,10 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   } catch (error) {
     ctx.err(`${agent.name} didn't start: ${error instanceof Error ? error.message : error}`);
     return { exitCode: 1 };
+  } finally {
+    launch.cleanup?.(); // the folder made for this session, if it needed one
   }
-  ctx.out(`Tricot keeps running at ${lock.url}; stop it with: tricot stop`);
+  ctx.out(await a.parting());
   return { exitCode };
 }
 
@@ -176,58 +157,45 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
 // Windows, there is no terminal, or the computer has no way to give it a
 // terminal of its own. Then it runs on its own, and says why when the
 // terminal could have had the strip.
-function switcherByDefault(a: AgentEnv, id: string): boolean {
+function stripRuns(a: AgentEnv, id: string): boolean {
   const { ctx } = a;
   if (!AGENTS[id].session) return false;
-  if ((ctx.platform ?? process.platform) === 'win32' || !ctx.host) return false;
+  if (isWindows(ctx.platform) || !ctx.host) return false;
   const problem = ctx.host.problem();
   if (problem) ctx.out(`${AGENTS[id].name} runs on its own, without the strip: ${problem}`);
   return !problem;
 }
 
 // Tricot's hooks for this session, and the line that says where approvals
-// go. Claude Code: its permission prompts on the board, and its steps when
-// the person said yes to live steps, as settings for the session; whatever
-// its own settings run already is left out, so nothing runs twice. Codex
-// takes hooks from its settings alone, so its come from live steps, once.
+// go, as each agent has them (its sessionHooks): none for one that has none.
 export function sessionHooks(a: AgentEnv, id: string, lock: RunningLock, who: string): { settings?: Record<string, unknown>; said?: string } {
-  if (id !== 'claude' && id !== 'codex') return {};
+  const agent = AGENTS[id];
+  if (!agent.sessionHooks) return {};
   const { target, source } = liveStepsContext({ ctx: a.ctx, dataDir: a.dataDir, url: lock.url, values: {} });
-  const installed = installedHooks(id, target);
-  if (id === 'codex') {
-    return {
-      said: installed.approvals
-        ? 'Approvals come to the board, through the hook in your Codex settings.'
-        : "Codex asks for approvals in the terminal: they come to the board once its live steps are on (tricot hooks on --agent codex), as Codex can't take hooks for one session.",
-    };
-  }
-  const steps = !installed.steps && rememberedAnswer(a.dataDir)?.answer === 'yes';
-  const approvals = !installed.approvals;
-  const settings = claudeSessionSettings({ url: lock.url, source, name: who, steps, approvals });
-  const said = approvals
-    ? steps
-      ? 'Approvals and live steps come to the board for this session.'
-      : 'Approvals come to the board for this session.'
-    : steps
-      ? 'Live steps come to the board for this session, and approvals through the hook in your Claude Code settings.'
-      : 'Approvals come to the board, through the hook in your Claude Code settings.';
-  return { ...(settings && { settings }), said };
+  return agent.sessionHooks({ target, source, url: lock.url, name: who, stepsAsked: rememberedAnswer(a.dataDir)?.answer === 'yes' });
 }
 
 // Not found on PATH: how to get it, from its own docs. Nothing is started.
-export function notInstalled(ctx: CliContext, id: string, agent: StartableAgent, then = `Then run tricot ${id} again.`): void {
-  const [first, ...others] = agent.install ?? [];
+export function notInstalled(ctx: CliContext, id: string, agent: AgentKind, then = `Then run tricot ${id} again.`): void {
+  const { commands: [first, ...others], more } = installHints(agent, isWindows(ctx.platform));
   ctx.err(`${agent.name} isn't installed here, or isn't on your PATH: Tricot looked for \`${agent.command}\`.`);
   if (first) ctx.err(`Install it with:\n  ${first}`);
   for (const other of others) ctx.err(`or:\n  ${other}`);
-  if (agent.more) ctx.err(`More ways: ${agent.more}`);
+  if (more) ctx.err(`More ways: ${more}`);
   ctx.err(`${then} Nothing was started.`);
 }
 
+// What the Tricot tab says when one that can't be started is picked: how to
+// connect it, so the person can start it themselves, and why. The tab shows a
+// note in a few rows and cuts what doesn't fit, so what to do comes first.
+export function connectFirst(id: string, agent: AgentKind): string {
+  return `Connect ${agent.name} first, with: tricot connect ${id}. Tricot can't start it for you yet: ${agent.cantStart}.`;
+}
+
 // Today's connect instructions, and why it can't start this one.
-async function cantStartYet(a: AgentEnv, id: string, agent: StartableAgent): Promise<CliResult> {
+async function cantStartYet(a: AgentEnv, id: string, agent: AgentKind): Promise<CliResult> {
   await a.connect(id);
   a.ctx.out('');
-  a.ctx.out(`Tricot can't start ${agent.name} for you yet: ${agent.why}, and this command leaves its settings alone. Connect it once as above, then start it yourself.`);
+  a.ctx.out(`Tricot can't start ${agent.name} for you yet: ${agent.cantStart}, and this command leaves its settings alone. Connect it once as above, then start it yourself.`);
   return { exitCode: 1 };
 }

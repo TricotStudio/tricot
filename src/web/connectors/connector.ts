@@ -7,7 +7,7 @@
 import type { ComponentType } from 'react';
 import type { ConnectorStatus } from '../../core/connectors';
 import type { LinkSource } from '../../core/sources';
-import type { Block, BlockVersion, Pin } from '../../core/types';
+import type { Block, BlockVersion, Board, Decision, Pin } from '../../core/types';
 import type { Mark } from '../canvas/sources/mark';
 
 type LinkBlock = Extract<Block, { type: 'link' }>;
@@ -46,6 +46,15 @@ export interface ConnectorEditor {
   opensPin(pin: Pin): boolean; // whether showing this pin's comment opens the editor there
 }
 
+// What a person can do with a decision once signed in: send it to the service
+// (Slack's Share to Slack). It is a choice in the decision's ⋯ menu, which
+// opens `Dialog`; what goes out is the person's own action, from their page.
+export interface ConnectorShare {
+  label: string; // "Share to Slack…"
+  note: string; // under it in the menu
+  Dialog: ComponentType<{ board: Board; decision: Decision; onClose(): void }>;
+}
+
 export interface WebConnector {
   readonly id: string;
   Mark: ComponentType; // its mark on its card
@@ -66,6 +75,8 @@ export interface WebConnector {
   readonly editor?: ConnectorEditor;
   // More on the card of a link it recognises, under its title (a frame's thumbnail and what to do with it).
   LinkCard?: ComponentType<{ block: LinkBlock; source: LinkSource }>;
+  // A decision can be shared to it, once it is connected.
+  readonly share?: ConnectorShare;
   // In the toolbar of an image block that came from it (see ImageOrigin in core/blocks/image).
   ImageTools?: ComponentType<{ block: ImageBlock; viewing: BlockVersion | null }>;
 }

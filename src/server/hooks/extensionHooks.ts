@@ -14,13 +14,13 @@
 import { existsSync, mkdirSync, readFileSync, rmdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { listNames } from '../../core/format';
+import { which } from '../../platform/which';
 import { DESCRIBE_MODULE } from './commandHooks';
 import {
   checkScope,
   displayPath,
   isFolder,
   jsonText,
-  onPath,
   previewText,
   readText,
   refuseLinks,
@@ -112,7 +112,7 @@ export function extensionHookInstaller(spec: ExtensionHookSpec): HookInstaller {
 
     detect(target) {
       const folder = spec.folder(target);
-      const command = onPath(spec.command, target.env);
+      const command = which(spec.command, target.env);
       const there = isFolder(folder);
       return { found: there || Boolean(command), ...(there && { folder }), ...(command && { command }) };
     },

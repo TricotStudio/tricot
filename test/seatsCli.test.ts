@@ -13,9 +13,10 @@ import { freePort, repo } from './updateFixtures';
 // Letting browsers in from a plain terminal (cli/seatsDesk.ts, T187): the
 // terminal where `tricot` runs the board in the foreground asks "A browser
 // wants to act for you (…, code 4271). Allow? [y/N]" and reads one key;
-// `tricot seats` lists and asks for a board running elsewhere, and once the
-// first browser is in, answers only when let in itself; `tricot seats reset`
-// lets every seat go, only while Tricot is stopped. The terminal's keys are
+// `tricot access` lists and asks for a board running elsewhere, and once the
+// first browser is in, answers only when let in itself; `tricot access revoke`
+// lets every browser and terminal go, only while Tricot is stopped; the names
+// it had before (`seats`, `seats reset`) are refused. The terminal's keys are
 // a stand-in here.
 
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -87,7 +88,7 @@ describe('Letting browsers in from a plain terminal', () => {
     ...more,
   });
   const start = async (keys?: TerminalKeys) => {
-    const { server } = await runCli(['--no-open', '--no-hooks'], ctx(keys ? { keys } : {}));
+    const { server } = await runCli(['--no-open', '--no-ask'], ctx(keys ? { keys } : {}));
     assert.ok(server);
     servers.push(server);
     base = server.url;
@@ -203,12 +204,12 @@ describe('Letting browsers in from a plain terminal', () => {
     assert.ok(keys.written.endsWith('Allow? [y/N] (answered elsewhere)\n'));
   });
 
-  it('`tricot seats` lets the first browser in, then, unseated, answers only once a browser lets it in', async () => {
+  it('`tricot access` lets the first browser in, then, unseated, answers only once a browser lets it in', async () => {
     await start();
     const chrome = browser();
     const asked = await chrome.ask();
     const keys = standInKeys();
-    const run = runCli(['seats'], ctx({ keys }));
+    const run = runCli(['access'], ctx({ keys }));
     await prompt(keys, asked.code);
     assert.ok(out.includes('No browser or terminal acts for you yet: the first browser that asks is let in from here, or from the terminal where Tricot runs.'), out.join('\n'));
     keys.press({ name: 'y', sequence: 'y' });
@@ -221,11 +222,11 @@ describe('Letting browsers in from a plain terminal', () => {
     const safari = browser(SAFARI);
     const second = await safari.ask();
     out = [];
-    const refused = runCli(['seats'], ctx({ keys: standInKeys() }));
+    const refused = runCli(['access'], ctx({ keys: standInKeys() }));
     const terminal = await until('the terminal asking', async () => (await chrome.call<AdmissionView[]>('GET', '/api/seats/admissions')).find((a) => a.kind === 'terminal'));
     assert.ok(out.includes("Only a browser or terminal you've let in can let others in, and this terminal isn't one yet."), out.join('\n'));
     assert.ok(out.includes(`Let it in from a browser you've already let in: it shows code ${terminal.code}. Waiting for you there…`));
-    assert.equal(terminal.label, "Tricot's terminal (tricot seats)");
+    assert.equal(terminal.label, "Tricot's terminal (tricot access)");
     await chrome.call('POST', `/api/seats/admissions/${terminal.id}/answer`, { actor: 'Sam', allow: false });
     assert.equal((await refused).exitCode, 1);
     assert.ok(err.includes('It was denied in the browser, so this terminal lets nothing in.'), err.join('\n'));
@@ -234,29 +235,29 @@ describe('Letting browsers in from a plain terminal', () => {
     // And once the browser lets it in: it lists, and answers.
     out = [];
     const keys2 = standInKeys();
-    const allowed = runCli(['seats'], ctx({ keys: keys2 }));
+    const allowed = runCli(['access'], ctx({ keys: keys2 }));
     const next = await until('the terminal asking again', async () => (await chrome.call<AdmissionView[]>('GET', '/api/seats/admissions')).find((a) => a.kind === 'terminal'));
     await chrome.call('POST', `/api/seats/admissions/${next.id}/answer`, { actor: 'Sam', allow: true });
     await prompt(keys2, second.code);
     assert.ok(out.includes('Your browsers and terminals:'), out.join('\n'));
     assert.ok(out.some((line) => /^ {2}Chrome on macOS: let in just now by a keypress in Tricot's terminal \(the first\), last used just now$/.test(line)), out.join('\n'));
-    assert.ok(out.some((line) => /^ {2}Tricot's terminal \(tricot seats\) \(this terminal\): let in just now from Chrome on macOS/.test(line)), out.join('\n'));
+    assert.ok(out.some((line) => /^ {2}Tricot's terminal \(tricot access\) \(this terminal\): let in just now from Chrome on macOS/.test(line)), out.join('\n'));
     keys2.press({ name: 'y', sequence: 'y' });
     assert.equal((await allowed).exitCode, 0, err.join('\n'));
     assert.equal((await safari.state(second.id)).state, 'admitted');
-    assert.deepEqual((await chrome.call<SeatView[]>('GET', '/api/seats')).map((s) => s.label), ['Chrome on macOS', 'Safari on macOS'], 'it let go of its own seat as it ended');
+    assert.deepEqual((await chrome.call<SeatView[]>('GET', '/api/seats')).map((s) => s.label), ['Chrome on macOS', 'Safari on macOS'], 'it let go of its own place as it ended');
   });
 
-  it('`tricot seats` says so when Tricot isn’t running, or nothing waits', async () => {
-    assert.equal((await runCli(['seats'], ctx())).exitCode, 1);
+  it('`tricot access` says so when Tricot isn’t running, or nothing waits', async () => {
+    assert.equal((await runCli(['access'], ctx())).exitCode, 1);
     assert.match(err.join('\n'), /^Tricot isn't running on .*\. Start it with tricot: the terminal where it runs asks when a browser wants to act for you\.$/);
     await start();
     out = [];
-    assert.equal((await runCli(['seats'], ctx({ keys: standInKeys() }))).exitCode, 0);
+    assert.equal((await runCli(['access'], ctx({ keys: standInKeys() }))).exitCode, 0);
     assert.match(out.at(-1)!, /^Nothing is waiting to be let in\. Open http:\/\/127\.0\.0\.1:\d+ in your browser/);
   });
 
-  it('`tricot seats reset` refuses while Tricot runs, asks first, then lets every seat go', async () => {
+  it('`tricot access revoke` refuses while Tricot runs, asks first, then lets every browser and terminal go', async () => {
     const server = await start(standInKeys());
     const chrome = browser();
     const asked = await chrome.ask();
@@ -265,17 +266,17 @@ describe('Letting browsers in from a plain terminal', () => {
     assert.ok(existsSync(seatsFile(dataDir)));
 
     const keys = standInKeys();
-    assert.equal((await runCli(['seats', 'reset'], ctx({ keys }))).exitCode, 1);
-    assert.match(err.at(-1)!, /^Tricot is running on .* \(pid \d+\)\. Stop it first with tricot stop, then run tricot seats reset\.$/);
+    assert.equal((await runCli(['access', 'revoke'], ctx({ keys }))).exitCode, 1);
+    assert.match(err.at(-1)!, /^Tricot is running on .* \(pid \d+\)\. Stop it first with tricot stop, then run tricot access revoke\.$/);
     assert.equal(keys.written, '', 'it asked nothing');
 
     await server.close();
     servers.splice(servers.indexOf(server), 1);
     // With no terminal to ask in, it removes nothing.
-    assert.equal((await runCli(['seats', 'reset'], ctx())).exitCode, 1);
-    assert.equal(err.at(-1), 'tricot seats reset asks first: run it in a terminal.');
+    assert.equal((await runCli(['access', 'revoke'], ctx())).exitCode, 1);
+    assert.equal(err.at(-1), 'tricot access revoke asks first: run it in a terminal.');
     const no = standInKeys();
-    const kept = runCli(['seats', 'reset'], ctx({ keys: no }));
+    const kept = runCli(['access', 'revoke'], ctx({ keys: no }));
     await until('the question', () => no.listening);
     assert.equal(no.written, "Remove every browser and terminal you've let in? [y/N] ");
     no.press({ name: 'return', sequence: '\r' });
@@ -285,7 +286,7 @@ describe('Letting browsers in from a plain terminal', () => {
 
     out = [];
     const yes = standInKeys();
-    const cleared = runCli(['seats', 'reset'], ctx({ keys: yes }));
+    const cleared = runCli(['access', 'revoke'], ctx({ keys: yes }));
     await until('the question', () => yes.listening);
     yes.press({ name: 'y', sequence: 'y' });
     assert.equal((await cleared).exitCode, 0);
@@ -298,5 +299,20 @@ describe('Letting browsers in from a plain terminal', () => {
     const again = browser();
     const first = await again.ask();
     assert.equal(first.first, true);
+  });
+
+  it('has no `tricot seats`, nor `tricot access reset`: the names it had before are refused', async () => {
+    const keys = standInKeys();
+    const result = await runCli(['seats'], ctx({ keys }));
+    assert.equal(result.exitCode, 1);
+    assert.deepEqual(err, ['Unknown command "seats". Did you mean "access"? (seats was renamed)']);
+    assert.equal(keys.written, '', 'it asked nothing');
+    err = [];
+    assert.equal((await runCli(['seats', 'reset'], ctx({ keys }))).exitCode, 1);
+    assert.deepEqual(err, ['Unknown command "seats". Did you mean "access"? (seats was renamed)']);
+    err = [];
+    assert.equal((await runCli(['access', 'reset'], ctx({ keys }))).exitCode, 1);
+    assert.match(err.join('\n'), /^Unknown: tricot access reset\. Run tricot access to see and let in your browsers and terminals, or tricot access revoke, with Tricot stopped, to start again\.$/);
+    assert.equal(keys.written, '', 'and nothing was removed or asked');
   });
 });

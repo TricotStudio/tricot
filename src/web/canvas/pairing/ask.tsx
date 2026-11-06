@@ -8,8 +8,8 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { pinComments } from '../../../core/pins';
 import type { Pin } from '../../../core/types';
-import { Icon } from '../../components';
-import { MentionTextarea } from '../../mentions';
+import { Icon } from '../../shared/components';
+import { MentionTextarea } from '../../shared/mentions';
 import { useCanvas } from '../context';
 
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘' : 'Ctrl';

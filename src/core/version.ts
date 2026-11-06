@@ -1,5 +1,5 @@
 // Tricot's version numbers, as npm writes them (semver: 0.2.0, 1.0.0-beta.2),
-// and which of two is newer. The update check (server/updates.ts), the
+// and which of two is newer. The update check (install/updates.ts), the
 // `tricot update` command and the page's notice all compare them here.
 
 // major.minor.patch, an optional pre-release after "-", and optional build

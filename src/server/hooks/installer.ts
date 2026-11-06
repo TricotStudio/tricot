@@ -16,12 +16,13 @@
 // (Pi, OMP, OpenCode: extensionHooks.ts, with hooks/tricot-steps-extension.ts
 // or hooks/tricot-steps-opencode.js). Server-only: it reads and writes files.
 
-import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { isWindows } from '../../platform/os';
 
 // user: the agent's own folder in the home folder, so it works in every
 // project. project: one project's folder (Claude Code only, for
-// `tricot connect claude --hooks`).
+// `tricot steps on --agent claude --project`).
 export type HookScope = 'user' | 'project';
 
 // on: everything is there. off: none of it is. partly: some is (a hook whose
@@ -274,25 +275,6 @@ export const isFolder = (folder: string) => {
   }
 };
 
-// The agent's command on PATH, found without running it.
-export function onPath(command: string, env: HookTarget['env']): string | undefined {
-  const dirs = (env?.PATH ?? '').split(path.delimiter).filter(Boolean);
-  const names = process.platform === 'win32' ? [`${command}.exe`, `${command}.cmd`, command] : [command];
-  for (const dir of dirs) {
-    for (const name of names) {
-      const file = path.join(dir, name);
-      try {
-        if (!statSync(file).isFile()) continue;
-        accessSync(file, constants.X_OK);
-        return file;
-      } catch {
-        // not here
-      }
-    }
-  }
-  return undefined;
-}
-
 // ---- words -----------------------------------------------------------------------
 
 // The name a hook's command sends steps as: its --name word, unquoted.
@@ -306,8 +288,12 @@ export function nameInCommand(command: string): string | undefined {
 // A word for the shell: as it is when it is safe, else single-quoted.
 export const shellWord = (word: string) => (/^[\w.:/@-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`);
 
-// A path for the shell, in double quotes.
-export const shellPath = (file: string) => `"${file.replace(/(["\\$`])/g, '\\$1')}"`;
+// A path for the shell, in double quotes. On Windows the path is written
+// with forward slashes, which node takes as it does backslashes and which
+// Git Bash, PowerShell and cmd.exe all leave alone: a backslash is an escape
+// to bash inside double quotes, and a hook command may run in any of them
+// (Claude Code uses Git Bash, or PowerShell when it isn't installed).
+export const shellPath = (file: string, os?: NodeJS.Platform) => `"${(isWindows(os) ? file.replaceAll('\\', '/') : file).replace(/(["\\$`])/g, '\\$1')}"`;
 
 // A path as a person reads it: from the project, or from ~.
 export function displayPath(file: string, target: HookTarget, scope: HookScope): string {

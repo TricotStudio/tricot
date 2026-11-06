@@ -6,15 +6,17 @@ import { useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObje
 import { linkAddress, linkHost, webUrl } from '../../../../core/blocks/link/link';
 import { linkSource, sourceKind } from '../../../../core/sources';
 import type { Block } from '../../../../core/types';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 import { ConnectorChoosers } from '../../../connectors/chooser';
 import { editedAgo, useLinkFile } from '../../../connectors/live';
 import { connectorOfLink } from '../../../connectors/registry';
-import { useDismiss } from '../../../hooks';
+import { useDismiss } from '../../../shared/hooks';
+import { dragsLinks } from '../../clip';
 import { useCanvas } from '../../context';
+import { useTypedDrop } from '../../dropOverlay';
 import { MarkIcon, SourceIcon } from '../../sources/icon';
 import { siteMark } from '../../sources/sites';
-import type { CardProps, FormProps, OverlayProps, ToolsProps, WebBlockKind } from '../kind';
+import type { AddContext, CardProps, Clip, FormProps, OverlayProps, Point, ToolsProps, WebBlockKind } from '../kind';
 import { LinkFrame } from './embed';
 
 type LinkBlock = Extract<Block, { type: 'link' }>;
@@ -303,6 +305,17 @@ function AddLinkForm({ initial, toggle, context, close }: FormProps) {
 }
 
 
+// The web addresses in a dragged link list, each once. Others (mailto:, a
+// file: path) are not links a card can open.
+export const webAddressesIn = (clip: Clip): string[] => [...new Set(clip.links.flatMap((address) => webUrl(address) ?? []))];
+
+// Links dropped on the canvas: a card each, the way dropped files are laid out.
+async function addLinks(clip: Clip, context: AddContext, at?: Point) {
+  for (const [i, url] of webAddressesIn(clip).entries()) {
+    await context.add({ type: 'link', url }, { at: at && { x: at.x + i * 40, y: at.y + i * 40 } });
+  }
+}
+
 // A link's overlay is its connector's editor, for a document it can edit.
 function LinkOverlay({ block, name, pinId, onClose }: OverlayProps<LinkBlock>) {
   const editor = connectorOfLink(linkSource(block.url))?.editor;
@@ -324,5 +337,11 @@ export const link: WebBlockKind<LinkBlock> = {
     Form: AddLinkForm,
     // A pasted web address opens the form with it filled in.
     paste: (text) => (/^https?:\/\/\S+$/i.test(text) ? webUrl(text) : null),
+  },
+  // A link dragged from the address bar or a page is a card where it is dropped.
+  clips: {
+    accepts: (clip) => webAddressesIn(clip).length > 0,
+    add: addLinks,
+    useDrop: (enabled) => useTypedDrop(enabled, { matches: dragsLinks, what: 'the link', as: 'a Link card' }),
   },
 };

@@ -12,11 +12,11 @@ import {
   opencode2Lines,
   opencodeConfig,
   opencodeEntry,
-  panelTexts,
   piLines,
   shellCommand,
   shellQuote,
 } from '../src/core/connect';
+import { panelTexts } from '../src/core/agents/registry';
 
 const url = 'http://127.0.0.1:4545/mcp?agent=Pi';
 
@@ -198,8 +198,8 @@ describe('the commands, pasted into zsh and bash', () => {
     describe(`the Connect panel, ${where}`, () => {
       const texts = panelTexts(address);
 
-      it('gives Claude Code its address, named Claude', () => {
-        assertLines(texts.claude, [['claude', 'mcp', 'add', '--transport', 'http', 'tricot', named(address, 'Claude')]]);
+      it('gives Claude Code its address, named Claude, for every session (--scope user: its own default is the one folder)', () => {
+        assertLines(texts.claude, [['claude', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', named(address, 'Claude')]]);
       });
 
       it('gives Codex its address, named Codex', () => {
@@ -231,7 +231,7 @@ describe('the commands, pasted into zsh and bash', () => {
 
       it('sends it from Claude Code as a header, for every session or one project', () => {
         const header = ['--header', `Authorization: Bearer ${token}`];
-        assertLines(claudeCommand(address, { token }), [['claude', 'mcp', 'add', '--transport', 'http', 'tricot', address, ...header]]);
+        assertLines(claudeCommand(address, { token }), [['claude', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', address, ...header]]);
         assertLines(claudeCommand(address, { token, scope: 'project' }), [
           ['claude', 'mcp', 'add', '--scope', 'project', '--transport', 'http', 'tricot', address, ...header],
         ]);
@@ -269,7 +269,7 @@ describe('the commands, pasted into zsh and bash', () => {
 
   it('quotes any word so that it comes back as it was', () => {
     for (const word of ['', 'Dev one', '$HOME', 'it\'s', 'a!b', 'back\\slash', '"q"', '*', '=x', '~x', '#x', 'a&b', 'x;y', '`id`', '(x)', '{a,b}']) {
-      assertPastes(shellCommand(['tricot', 'connect', 'claude', '--hooks', '--name', word]), ['tricot', 'connect', 'claude', '--hooks', '--name', word]);
+      assertPastes(shellCommand(['tricot', 'steps', 'on', '--agent', 'claude', '--project', '--name', word]), ['tricot', 'steps', 'on', '--agent', 'claude', '--project', '--name', word]);
     }
     assert.equal(shellQuote('Dev one'), '"Dev one"');
     assert.equal(shellQuote('a!b'), "'a!b'");

@@ -94,7 +94,7 @@ export const server: ServerHalf<QuoteTypes> = {
       speaker: z.string().optional().describe('Quote blocks: who said them'),
     },
     updateShape: { quote: z.string().optional(), speaker: z.string().optional() },
-    docs: { add: 'quote → quote (the words), plus optional speaker (who said them)', update: 'quote, speaker' },
+    docs: { brief: 'quote → quote, + speaker', add: 'quote → quote (the words), plus optional speaker (who said them)', update: 'quote, speaker' },
     read(args) {
       if (args.quote === undefined) throw missing('quote', 'quote');
       const { quote, speaker } = args as { quote: string; speaker?: string };
@@ -178,10 +178,13 @@ async function endToEnd(): Promise<void> {
   const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
   const { Store } = await import('../src/core/store');
   const { createApp } = await import('../src/server/app');
+  const { letIn } = await import('../test/seatHelper');
 
   const store = new Store(mkdtempSync(path.join(os.tmpdir(), 'check-kind-')));
   store.load();
-  const server = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' }).listen(0, '127.0.0.1');
+  const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
+  const seat = letIn(app); // the person's browser, let in: what a person does is signed with its key
+  const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const client = new Client({ name: 'check', version: '1' });
@@ -191,7 +194,8 @@ async function endToEnd(): Promise<void> {
     return { text: result.content.map((c) => c.text).join('\n'), failed: Boolean(result.isError) };
   };
   const rest = async (method: string, route: string, body?: object) => {
-    const res = await fetch(`${base}/api${route}`, { method, headers: { 'content-type': 'application/json' }, body: body && JSON.stringify(body) });
+    const text = body && JSON.stringify(body);
+    const res = await fetch(`${base}/api${route}`, { method, headers: { 'content-type': 'application/json', Origin: base, ...seat.sign(method, `/api${route}`, text) }, body: text });
     return { status: res.status, json: (await res.json()) as Record<string, any> };
   };
   const done: string[] = [];
@@ -203,8 +207,10 @@ async function endToEnd(): Promise<void> {
   const props = (add.inputSchema as { properties: Record<string, { enum?: string[]; description?: string }> }).properties;
   assert.ok(props.type.enum!.includes('quote'), 'add_block lists the type');
   assert.equal(props.quote.description, 'Quote blocks: the words');
-  assert.match(add.description!, /chart → [^]*; quote → quote \(the words\), plus optional speaker \(who said them\)\. Show numbers/);
-  assert.match(tools.find((t) => t.name === 'update_block')!.description!, /content fields for its type \(.*, patch, focus, quote, speaker, and for code /);
+  assert.match(add.description!, /chart → [^]*; quote → quote, \+ speaker\./);
+  const guide = ((await client.callTool({ name: 'read_guide', arguments: { topic: 'blocks' } })) as { content: { text: string }[] }).content[0].text;
+  assert.match(guide, /chart → [^]*; quote → quote \(the words\), plus optional speaker \(who said them\)\./);
+  assert.match(guide, /Content fields by type: .*, focus, quote, speaker, and for code /);
   ok('tools/list names the type, its fields and what it is for');
 
   // an agent adds one; the canvas, get_block and search read it

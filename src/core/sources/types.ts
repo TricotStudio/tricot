@@ -32,7 +32,7 @@ export interface LinkSource {
 // registry; a connector brings its own (core/connectors/<id>/sources.ts).
 export interface LinkSourceKind {
   readonly id: string;
-  readonly hosts: readonly string[]; // without www.
+  readonly hosts: readonly string[]; // without www.; "*.example.com" for any subdomain of it
   read(url: URL, parts: string[]): LinkSource | null;
   // How it is named among the links that open in place: "Figma", "Google Docs, Sheets and Slides".
   readonly embeds?: string;

@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
@@ -86,11 +87,12 @@ describe('Diff blocks over MCP and REST', () => {
   it('tells agents about diff blocks', async () => {
     const { tools } = await client.listTools();
     const add = tools.find((t) => t.name === 'add_block')!;
-    assert.match(add.description ?? '', /When you send code work for review, add a diff block too \(type diff, with the git diff of the work as patch\), next to the screenshots, with the files that matter as focus\./);
-    assert.match(add.description ?? '', /diff → patch \(a unified diff, as git diff or git show prints it\), plus optional focus/);
+    assert.match(add.description ?? '', /diff → repo \(Tricot runs git diff\) or patch/);
+    const blocks = await readGuide(client, 'blocks');
+    assert.match(blocks, /When you send code work for review, add a diff block too \(type diff, with your repository as repo rather than the patch as text\), next to the screenshots, with the files that matter as focus\./);
+    assert.match(blocks, /diff → repo \([^)]*\) or patch \(a unified diff, as git diff or git show prints it\), plus optional focus/);
     assert.ok((add.inputSchema.properties as Record<string, unknown>).patch);
-    const pin = tools.find((t) => t.name === 'pin')!;
-    assert.match(pin.description ?? '', /a line of a diff \(file and line, with side "old" for a removed line\)/);
+    assert.match(await readGuide(client, 'canvas'), /a line of a diff \(file and line, with side "old" for a removed line\)/);
   });
 
   it('adds and updates a diff, shows it compactly to agents and in full on get_block, and keeps each version', async () => {

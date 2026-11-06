@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useTheme, type ThemeBase } from '../../../theme';
+import { useTheme, type ThemeBase } from '../../../themes';
 import { mermaidConfig } from './mermaidConfig';
 
 type MermaidApi = typeof import('mermaid').default;

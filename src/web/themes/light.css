@@ -35,6 +35,11 @@
   --deferred: #9a9a93;
   --deferred-bg: #efefec;
   --deferred-ink: #62625c;
+  /* Rose: a tint no status takes, between the danger red and the provisional
+     purple, for the Marketing lens's chip (threads/threads.css). */
+  --rose: #d4458b;
+  --rose-bg: #fce6ee;
+  --rose-ink: #a52d6a;
 
   --shadow-sm: 0 1px 2px rgb(20 20 18 / 0.05);
   --shadow: 0 1px 2px rgb(20 20 18 / 0.05), 0 4px 12px rgb(20 20 18 / 0.06);

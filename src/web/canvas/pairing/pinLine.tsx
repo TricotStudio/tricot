@@ -11,9 +11,8 @@ import { deliveryBusy, deliveryOf, deliveryTitle, inWindow, type BusyState, type
 import { pinLineWords } from '../../../core/pairing';
 import { pinComments } from '../../../core/pins';
 import type { Comment, Pin } from '../../../core/types';
-import { useAgents } from '../../looking';
-import { phaseOf, StepText, useSteps } from '../../steps';
-import { Stitch } from '../../stitch';
+import { phaseOf, StepText, useAgents, useSteps } from '../../agents';
+import { Stitch } from '../../shared/stitch';
 import { useCanvas } from '../context';
 
 const TICK_MS = 5_000; // a step going quiet, redrawn now and then

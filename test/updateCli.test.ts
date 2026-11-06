@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { runCli, updatesFor, type CliContext } from '../src/cli/main';
-import { readLock } from '../src/server/lock';
+import { readLock } from '../src/platform/lock';
 import { Seats } from '../src/server/seats';
 import type { AdmissionView } from '../src/core/seats';
 import { letIn } from './seatHelper';
@@ -26,6 +26,7 @@ import {
   type FakeReleases,
   type Installed,
 } from './updateFixtures';
+import { WINDOWS } from './platform';
 
 // `tricot --version` and `tricot update`, with stand-ins for npm, Homebrew
 // and the registry (a data: URL): never the real ones.
@@ -103,7 +104,7 @@ describe('tricot --version and tricot update', () => {
     assert.match(err.join('\n'), /couldn't ask the npm registry what's out: fetch failed/);
   });
 
-  describe('with nothing running', () => {
+  describe('with nothing running', { skip: WINDOWS && 'runs shell-script stand-ins for npm and brew; Tricot never updates itself on Windows' }, () => {
     it('installs it with npm when npm -g installed Tricot and its folder is yours', async () => {
       const npm = installedWithNpm(scratch);
       assert.equal((await run(npm, ['update'])).exitCode, 0);
@@ -144,7 +145,7 @@ describe('tricot --version and tricot update', () => {
     });
   });
 
-  describe("from the release's file on GitHub", () => {
+  describe("from the release's file on GitHub", { skip: WINDOWS && 'runs shell-script stand-ins for npm and brew; Tricot never updates itself on Windows' }, () => {
     let github: FakeReleases;
     let closed: string;
     const file = tricotTarball('0.2.0');
@@ -213,7 +214,7 @@ describe('tricot --version and tricot update', () => {
     });
   });
 
-  describe('with a board running', () => {
+  describe('with a board running', { skip: WINDOWS && 'runs shell-script stand-ins for npm and brew; Tricot never updates itself on Windows' }, () => {
     it('hands the running board over to the new version, once the person lets this terminal in from their browser, and waits for it', async () => {
       const npx = installedWithNpx(scratch);
       // The person's browser, let in before: its seat is in the data folder the board reads.
@@ -257,7 +258,7 @@ describe('tricot --version and tricot update', () => {
       const source = path.join(scratch, 'checkout');
       mkdirSync(source);
       writeFileSync(path.join(source, 'package.json'), '{"name":"tricot","version":"0.1.0"}');
-      await run({ root: source }, ['--no-open', '--no-hooks']);
+      await run({ root: source }, ['--no-open', '--no-ask']);
       out.length = 0;
       assert.equal((await run({ root: source }, ['update'])).exitCode, 1);
       assert.match(said(), /This Tricot runs from a copy of its source code\.\nUpdate it with:\n {2}git pull && npm install && npm run build/);

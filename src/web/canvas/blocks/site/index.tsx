@@ -6,8 +6,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { pageTitle, siteName } from '../../../../core/blocks/site/site';
 import type { Block } from '../../../../core/types';
-import { Icon } from '../../../components';
-import { useDismiss } from '../../../hooks';
+import { Icon } from '../../../shared/components';
+import { useDismiss } from '../../../shared/hooks';
 import { EditableText, useCanvas } from '../../context';
 import type { CardProps, FormProps, ToolsProps, WebBlockKind } from '../kind';
 import { SANDBOX, SITE_CHANGED, pageAddress, siteChanged, useFrameMessages, useSiteAddress } from './frame';

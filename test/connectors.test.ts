@@ -18,6 +18,7 @@ import { Connectors } from '../src/server/connectors';
 import { builtInGoogleClient, findGoogleClient, GOOGLE_SCOPES } from '../src/server/connectors/google';
 import { PendingSignIns, pkceChallenge, pkcePair, SIGN_IN_TTL } from '../src/server/connectors/oauth';
 import { callbackUri } from '../src/server/connectors/routes';
+import { WINDOWS } from './platform';
 
 const CLIENT_ID = 'test-client.apps.googleusercontent.com';
 const SECRET = 'fake-secret-not-real';
@@ -374,8 +375,10 @@ describe('Google connector end to end', () => {
     assert.equal(exchange.get('redirect_uri'), `${base}/api/connectors/google/callback`);
     assert.ok(exchange.get('code_verifier'));
 
-    assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
-    assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
+    if (!WINDOWS) {
+      assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+      assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
+    }
     const saved = JSON.parse(readFileSync(tokenFile(), 'utf8'));
     assert.equal(saved.refreshToken, 'refresh-1');
     assert.equal(saved.email, 'wassim@example.com');
@@ -419,7 +422,7 @@ describe('Google connector end to end', () => {
     const after = JSON.parse(readFileSync(tokenFile(), 'utf8'));
     assert.notEqual(after.accessToken, before.accessToken);
     assert.equal(after.refreshToken, 'refresh-1', 'kept when Google sends none');
-    assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+    if (!WINDOWS) assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
   });
 
   it('marks the connector as needing a new sign-in when Google refuses the refresh', async () => {
@@ -609,7 +612,7 @@ describe("Tricot's own Google client", () => {
     const saved = JSON.parse(readFileSync(path.join(dir, 'connectors', 'google.json'), 'utf8'));
     assert.equal(saved.clientId, BUILT_IN.clientId);
     assert.ok(!JSON.stringify(saved).includes(BUILT_IN.clientSecret), 'the secret is not saved with the sign-in');
-    assert.equal(statSync(path.join(dir, 'connectors', 'google.json')).mode & 0o777, 0o600);
+    if (!WINDOWS) assert.equal(statSync(path.join(dir, 'connectors', 'google.json')).mode & 0o777, 0o600);
   });
 
   it("gives the Picker a short-lived token, the project number and the key; never the secret or the refresh token", async () => {

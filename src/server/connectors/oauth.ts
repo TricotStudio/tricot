@@ -2,8 +2,9 @@
 // callback, the token endpoint's form posts, and the file a sign-in is kept in.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { keepPrivate } from '../../platform/private';
 
 // RFC 7636 with S256: the verifier stays here, its hash goes to the service.
 export function pkcePair(): { verifier: string; challenge: string } {
@@ -129,7 +130,7 @@ export function writeSecretFile(file: string, data: unknown): void {
   const temp = path.join(dir, `.${path.basename(file)}.${randomBytes(6).toString('hex')}.tmp`);
   try {
     writeFileSync(temp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
-    chmodSync(temp, 0o600);
+    keepPrivate(temp);
     renameSync(temp, file);
   } catch (error) {
     rmSync(temp, { force: true });

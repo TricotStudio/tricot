@@ -1,6 +1,6 @@
 import { createContext, useContext, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Block, BlockVersion, Board, Decision, Pin, Task } from '../../core/types';
-import type { BlockPatch, PinPart } from '../api';
+import type { BlockPatch, PinPart } from '../shared/api';
 
 // A part of a block being pinned, while its prompt is open. `quote` is what
 // the prompt shows; `cells` are the cells first picked, which the prompt can

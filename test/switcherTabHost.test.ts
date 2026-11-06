@@ -9,13 +9,14 @@ import type { ApprovalRequest } from '../src/core/approvals';
 import { Store } from '../src/core/store';
 import { holdAnswers } from '../src/cli/switcher/answers';
 import { startHost, TRICOT_TAB, type Host, type HostedAgent, type HostOutcome, type TricotSetup } from '../src/cli/switcher/host';
-import { parseSwitchKey, type SwitchKey } from '../src/cli/switcher/keys';
+import { SWITCH_KEY } from '../src/cli/switcher/keys';
 import { watchBoard, type LiveFeed } from '../src/cli/switcher/live';
 import { createApp } from '../src/server/app';
 import { AnswerHosts } from '../src/server/answerHosts';
 import type { AdmissionView } from '../src/core/seats';
 import { letIn, type TestSeat } from './seatHelper';
 import { claudeLike, codexLike, fakeTerminal, leftAfterReaping, node, repo, sleep, tracked, waitFor, type FakeTerminal } from './switcher/harness';
+import { WINDOWS } from './platform';
 
 // The Tricot tab in the real host (T192), with stand-in agents in
 // pseudo-terminals of their own and a board running here: it shows first;
@@ -28,7 +29,7 @@ import { claudeLike, codexLike, fakeTerminal, leftAfterReaping, node, repo, slee
 // Each test closes its host however it ends, and nothing is left running
 // after them all: no agent, no pty helper.
 
-const KEY = parseSwitchKey('ctrl-\\') as SwitchKey;
+const KEY = SWITCH_KEY;
 let scratch: string;
 before(() => {
   mkdirSync(path.join(repo, '.review'), { recursive: true });
@@ -37,7 +38,7 @@ before(() => {
 after(async () => assert.deepEqual(await leftAfterReaping(), [], 'nothing left running'));
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
-describe('the Tricot tab, in the host', { timeout: 90_000 }, () => {
+describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
   let dir: string;
   let store: Store;
   let server: Server;
@@ -215,7 +216,8 @@ describe('the Tricot tab, in the host', { timeout: 90_000 }, () => {
       fake.type('o');
       assert.ok(await shows(' Opened the board in your browser.'));
       fake.type('a');
-      assert.ok(await shows(' Add which agent?  1 OpenCode   Esc cancel'), await screen());
+      assert.ok(await shows(' Add which agent?   Esc cancel'), await screen());
+      assert.ok(await shows('   1  OpenCode'), await screen());
       fake.type('1');
       assert.ok(await waitFor(() => host.view().visible === 2 && host.view().agents.length === 3));
       assert.ok(await shows('>_ OpenCode (stand-in)'), await screen());

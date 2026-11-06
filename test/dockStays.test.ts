@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
-import { CLICK_SLOP, CLOSED, dismissClick, dockOnArrival, type DockState, type Press } from '../src/web/dockStays';
+import { CLICK_SLOP, CLOSED, dismissClick, dockOnArrival, type DockState, type Press } from '../src/web/threads/dockStays';
 import { CHROME, runInChrome } from './mermaidPage';
 
 // The threads panel stays open while the person uses the board (T163), and
@@ -117,7 +117,7 @@ const PRESSES: Record<string, { html: string; at: string; interactive: boolean }
 };
 
 const PAGE_SCRIPT = `
-import { interactiveAt } from './src/web/dockStays';
+import { interactiveAt } from './src/web/threads/dockStays';
 const presses = ${JSON.stringify(PRESSES)};
 const results = {};
 for (const [name, { html, at }] of Object.entries(presses)) {

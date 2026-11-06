@@ -1,18 +1,21 @@
 // Live steps from the terminal: the question the first `tricot` asks, and
-// `tricot hooks [status|on|off]`. Both go through the same plans as each
+// `tricot steps [status|on|off]`. Both go through the same plans as each
 // agent's "Live steps" switch in Tricot (server/hooks/liveSteps.ts): what
 // would be written is shown, and nothing is written without a yes (or --yes).
+// `--project` is the other scope: Claude Code's hook in this project's own
+// .claude/settings.json, instead of every project's (user scope).
 //
 // The first question is asked once per data folder, in a terminal only,
-// never in CI or with --no-hooks, and only when an agent Tricot shows steps
+// never in CI or with --no-ask, and only when an agent Tricot shows steps
 // for is on this machine without them. Its answer, yes or no, is kept in the
 // data folder (live-steps.json) so it isn't asked again.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { exportToken } from '../core/connect';
 import { listNames } from '../core/format';
 import { liveStepsLabel, type LiveStepsAction, type LiveStepsAgent } from '../core/liveSteps';
+import { home } from '../platform/paths';
 import {
   applyLiveSteps,
   compactFiles,
@@ -21,16 +24,21 @@ import {
   liveStepsInstaller,
   planLiveSteps,
   UnreadableSettings,
+  type HookSetup,
+  type HookTarget,
   type LiveStepsContext,
   type LiveStepsPlan,
 } from '../server/hooks';
 import type { CliContext, CliResult } from './main';
+import { shellOf } from './shell';
 
 export interface HooksEnv {
   ctx: CliContext;
   dataDir: string;
   url: string; // Tricot's address, which the steps go to
-  values: { agent?: string; name?: string; yes?: boolean; verbose?: boolean; 'no-hooks'?: boolean };
+  values: { agent?: string; name?: string; yes?: boolean; verbose?: boolean; 'no-ask'?: boolean; project?: boolean; narration?: boolean };
+  // Set when the board listens beyond this machine: what a project's hook needs to reach it.
+  token?: string;
 }
 
 export const ANSWER_FILE = 'live-steps.json';
@@ -38,7 +46,7 @@ export const ANSWER_FILE = 'live-steps.json';
 interface Answer {
   answer: 'yes' | 'no';
   at: string;
-  how: 'asked' | 'hooks on' | 'hooks off';
+  how: 'asked' | 'steps on' | 'steps off';
 }
 
 export function rememberedAnswer(dataDir: string): Answer | undefined {
@@ -65,7 +73,7 @@ const inCi = (env: NodeJS.ProcessEnv) => Boolean(env.CI) && !/^(0|false)$/i.test
 export function liveStepsContext(h: HooksEnv): LiveStepsContext {
   const { ctx } = h;
   return {
-    target: { home: ctx.env.HOME ?? os.homedir(), project: path.resolve(ctx.cwd ?? process.cwd()), env: ctx.env },
+    target: { home: home(ctx.env, ctx.platform), project: path.resolve(ctx.cwd ?? process.cwd()), env: ctx.env },
     source: path.join(ctx.root, 'hooks'),
     url: h.url,
   };
@@ -84,7 +92,7 @@ const approvalsSaid = (names: string[]) =>
 export async function askOnFirstRun(h: HooksEnv): Promise<void> {
   const { ctx, values } = h;
   // Nothing is looked at, not even which agents are here, unless the question can be asked.
-  if (!ctx.ask || values['no-hooks'] || inCi(ctx.env) || rememberedAnswer(h.dataDir)) return;
+  if (!ctx.ask || values['no-ask'] || inCi(ctx.env) || rememberedAnswer(h.dataDir)) return;
   const context = liveStepsContext(h);
   const plans: LiveStepsPlan[] = [];
   for (const agent of liveStepsAgents(context)) {
@@ -118,11 +126,11 @@ export async function askOnFirstRun(h: HooksEnv): Promise<void> {
   out(WHAT_IT_SENDS);
   const asking = plans.filter((plan) => liveStepsInstaller(plan.agent).approvals).map((plan) => plan.name);
   if (asking.length) out(approvalsSaid(asking));
-  out("Turn them off any time with `tricot hooks off`, or with the Live steps switch in an agent's panel.");
+  out("Turn them off any time with `tricot steps off`, or with the Live steps switch in an agent's panel.");
   const yes = await ctx.ask("Show your agents' steps live on your boards? [Y/n] ", true);
   remember(h.dataDir, yes ? 'yes' : 'no', 'asked');
   if (!yes) {
-    out('Nothing was changed. Turn them on later with: tricot hooks on');
+    out('Nothing was changed. Turn them on later with: tricot steps on');
     out('');
     return;
   }
@@ -148,9 +156,9 @@ function applyAll(h: HooksEnv, context: LiveStepsContext, plans: LiveStepsPlan[]
   return ok;
 }
 
-// ---- tricot hooks ------------------------------------------------------------------
+// ---- tricot steps ------------------------------------------------------------------
 
-export async function hooksCommand(h: HooksEnv, sub = 'status'): Promise<CliResult> {
+export async function stepsCommand(h: HooksEnv, sub = 'status'): Promise<CliResult> {
   const { ctx, values } = h;
   if (values.agent) {
     try {
@@ -163,16 +171,25 @@ export async function hooksCommand(h: HooksEnv, sub = 'status'): Promise<CliResu
   }
   switch (sub) {
     case 'status':
+      if (values.project || values.narration) {
+        ctx.err('--project and --narration go with on or off: tricot steps on --agent claude --project');
+        return { exitCode: 1 };
+      }
       return status(h);
     case 'on':
     case 'off':
+      if (values.project) return changeProject(h, sub);
+      if (values.narration) {
+        ctx.err('--narration goes with --project: tricot steps on --agent claude --project --narration');
+        return { exitCode: 1 };
+      }
       if (values.name && !values.agent) {
-        ctx.err('--name is for one agent: tricot hooks on --agent claude --name "Claude (reviewer)"');
+        ctx.err('--name is for one agent: tricot steps on --agent claude --name "Claude (reviewer)"');
         return { exitCode: 1 };
       }
       return change(h, sub);
     default:
-      ctx.err(`Unknown "tricot hooks ${sub}". Try: tricot hooks status, tricot hooks on, tricot hooks off (with --agent <id> for one agent).`);
+      ctx.err(`Unknown "tricot steps ${sub}". Try: tricot steps status, tricot steps on, tricot steps off (with --agent <id> for one agent).`);
       return { exitCode: 1 };
   }
 }
@@ -184,7 +201,7 @@ function statusLine(agent: LiveStepsAgent, width: number): string[] {
   if (agent.problem) return [`${head}can't tell: ${agent.problem}`];
   if (!agent.found && agent.state === 'off') return [`${head}not on this machine`];
   const lines = [`${head}${agent.state.padEnd(6)}  ${agent.where}${agent.sendsAs && agent.state !== 'off' ? `, sends as ${agent.sendsAs}` : ''}`];
-  if (agent.state === 'partly' && agent.missing) lines.push(`${indent}missing ${listNames(agent.missing)}; \`tricot hooks on --agent ${agent.id}\` mends it`);
+  if (agent.state === 'partly' && agent.missing) lines.push(`${indent}missing ${listNames(agent.missing)}; \`tricot steps on --agent ${agent.id}\` mends it`);
   if (agent.trust) lines.push(`${indent}${agent.trust} (Tricot can't see whether you've given it)`);
   if (agent.alsoInProject) {
     lines.push(
@@ -192,7 +209,7 @@ function statusLine(agent: LiveStepsAgent, width: number): string[] {
         ? `${indent}${agent.alsoInProject} has its own hook from earlier, so steps show from that project`
         : `${indent}Also set up in ${agent.alsoInProject} from earlier; steps still show once`,
     );
-    if (agent.state !== 'off') lines.push(`${indent}To tidy up: tricot connect claude --remove-hooks, run in ${agent.alsoInProject}`);
+    if (agent.state !== 'off') lines.push(`${indent}To tidy up: tricot steps off --agent claude --project, run in ${agent.alsoInProject}`);
   }
   return lines;
 }
@@ -205,7 +222,7 @@ function status(h: HooksEnv): CliResult {
   out('Live steps, for every project on this machine:');
   for (const agent of agents) for (const line of statusLine(agent, width)) out(line);
   const off = agents.filter((a) => a.found && a.state !== 'on' && !a.problem);
-  if (off.length) out(`\nTurn them on with: tricot hooks on${off.length === 1 && agents.length > 1 ? ` --agent ${off[0].id}` : ''}`);
+  if (off.length) out(`\nTurn them on with: tricot steps on${off.length === 1 && agents.length > 1 ? ` --agent ${off[0].id}` : ''}`);
   return { exitCode: 0 };
 }
 
@@ -263,6 +280,87 @@ async function change(h: HooksEnv, action: LiveStepsAction): Promise<CliResult> 
     }
   }
   if (!applyAll(h, context, plans)) failed = true;
-  remember(h.dataDir, action === 'on' ? 'yes' : 'no', action === 'on' ? 'hooks on' : 'hooks off');
+  remember(h.dataDir, action === 'on' ? 'yes' : 'no', action === 'on' ? 'steps on' : 'steps off');
   return { exitCode: failed ? 1 : 0 };
+}
+
+// ---- tricot steps on|off --project ---------------------------------------------------
+
+// This project's .claude, through the same installer that sets up every
+// agent's steps for the person (server/hooks); nothing in the home folder.
+function projectTarget(h: HooksEnv): HookTarget {
+  return { home: home(h.ctx.env, h.ctx.platform), project: path.resolve(h.ctx.cwd ?? process.cwd()) };
+}
+
+// Settings it can't read are left as they are, and it says so.
+function refused(h: HooksEnv, error: unknown): CliResult {
+  if (!(error instanceof UnreadableSettings)) throw error;
+  h.ctx.err(error.message);
+  return { exitCode: 1 };
+}
+
+// Claude Code's steps hook in this project's own .claude/settings.json (the
+// scope 'project'), for those who want it in one project only: what `tricot
+// steps on` does for every project, in one. Only Claude Code has one.
+async function changeProject(h: HooksEnv, action: LiveStepsAction): Promise<CliResult> {
+  const { ctx, values } = h;
+  const installer = values.agent ? liveStepsInstaller(values.agent) : undefined;
+  if (!installer?.scopes.includes('project')) {
+    ctx.err('--project is for Claude Code: tricot steps on --agent claude --project');
+    return { exitCode: 1 };
+  }
+  if (action === 'off' && values.narration) {
+    ctx.err('--narration goes with steps on: tricot steps on --agent claude --project --narration');
+    return { exitCode: 1 };
+  }
+  const target = projectTarget(h);
+  if (action === 'off') {
+    try {
+      ctx.out(installer.uninstall(target, 'project').message);
+      return { exitCode: 0 };
+    } catch (error) {
+      return refused(h, error);
+    }
+  }
+  const { out } = ctx;
+  const name = values.name ?? installer.agentName;
+  const narration = Boolean(values.narration);
+  const setup: HookSetup = { url: h.url, name, narration, source: path.join(ctx.root, 'hooks') };
+  let preview;
+  try {
+    preview = installer.preview(target, setup, 'project');
+  } catch (error) {
+    return refused(h, error);
+  }
+  if (preview.unchanged) {
+    out(`Claude's steps are already set up like this in ${target.project}; nothing to change.`);
+    out(`Take them out with: tricot steps off --agent ${installer.id} --project`);
+    return { exitCode: 0 };
+  }
+  out(`This shows what Claude is doing ("Reading src/web/Home.tsx", "Running npm test") on the Tricot card it works on, as ${name}.`);
+  out('A small script sends Tricot one line per step: never file contents, command output or your prompts.');
+  if (narration) {
+    out("With --narration it also sends the first line of each message Claude writes in the terminal, which everyone on the board sees. Never Claude's thinking.");
+  }
+  out('It runs in the background, so Claude never waits for it, and does nothing when Tricot is not running.\n');
+  out(`In ${target.project} it would:`);
+  out(preview.text);
+  if (h.token) out(`\nThis board needs its token: ${exportToken(h.token, shellOf(ctx.platform))}`);
+  if (!values.yes) {
+    if (!ctx.ask) {
+      ctx.err('\nRun this in a terminal to answer yes or no, or add --yes; nothing was changed.');
+      return { exitCode: 1 };
+    }
+    if (!(await ctx.ask('Add it? [y/N] '))) {
+      out('Nothing was changed.');
+      return { exitCode: 0 };
+    }
+  }
+  try {
+    out(installer.install(target, setup, 'project').message);
+  } catch (error) {
+    return refused(h, error);
+  }
+  out(`Take it out again with: tricot steps off --agent ${installer.id} --project`);
+  return { exitCode: 0 };
 }

@@ -11,8 +11,8 @@ import { setTask, taskLines } from '../src/core/taskList';
 import { Store } from '../src/core/store';
 import type { Actor, Board, Pin } from '../src/core/types';
 import { DRAFT, rehypePins, type QuotedMark } from '../src/web/canvas/marks';
-import { Md, type MdProps } from '../src/web/markdown';
-import { RefsProvider } from '../src/web/refs';
+import { Md, type MdProps } from '../src/web/shared/markdown';
+import { RefsProvider } from '../src/web/shared/refs';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const agent: Actor = { kind: 'agent', name: 'planner' };

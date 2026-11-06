@@ -79,6 +79,7 @@ export const agent: AgentHalf<ChartTypes> = {
   addShape: SHAPE,
   updateShape: SHAPE,
   docs: {
+    brief: 'chart → kind + columns + rows (first column the categories)',
     add: 'chart → kind (bar, line, area, stacked-bar or pie) + columns + rows: the first column holds the categories or x values (teams, days), each other column one series of numbers (up to 8; "1,234" and "12%" are fine, an empty cell is a gap), plus optional unit ("tasks", "ms", "%"), subtitle and highlight (a category to emphasise)',
     guide:
       'Show numbers to people with a chart block, picking the form by the job: comparing → bar; change over time → line (area for one series); parts of a whole → pie, only with a few parts, or stacked-bar across several wholes. Never mix units on one chart: make two. A single number is a note, not a chart. People see the chart, its table (Data), and comment on its bars, points and slices.',

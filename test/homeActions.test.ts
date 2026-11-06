@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { boardEdit, boardsSignal, goalItem, headerActions, stillHeld } from '../src/web/boardChanges';
-import { plainPress } from '../src/web/dockStays';
-import { afterPress, menuStep } from '../src/web/hooks';
+import { boardEdit, boardsSignal, goalItem, headerActions, stillHeld } from '../src/web/live/boardChanges';
+import { plainPress } from '../src/web/threads/dockStays';
+import { afterPress, menuStep } from '../src/web/shared/hooks';
 
 const board = { title: 'Checkout redesign', goal: 'Get more buyers to pay' };
 

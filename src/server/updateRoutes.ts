@@ -16,29 +16,32 @@ import { Router, type ErrorRequestHandler } from 'express';
 import { z, ZodError } from 'zod';
 import { describeIssues } from '../core/schemas';
 import { asPerson, personOnly, type PersonGate } from './access';
-import type { Updates } from './updates';
+import type { Updates } from '../install/updates';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
 
 const body = z.object({ version: z.string().max(64) });
 
 // `person`: who is a person (access.ts); the app's, with its terminals, unless given.
 export function createUpdateRouter(updates: Updates, options: { person?: PersonGate } = {}): Router {
   const router = Router();
+  const on = routesOn(router, '/api/update');
   const person: PersonGate = options.person ?? ((req, tier) => asPerson(req, tier));
   const mayUpdate = personOnly(person, 'B');
   const mayCheck = personOnly(person, 'A');
 
-  router.get('/', (_req, res) => {
+  on(routes.update, (_req, res) => {
     res.json(updates.state());
   });
 
-  router.post('/', mayUpdate, async (req, res) => {
+  on(routes.startUpdate, mayUpdate, async (req, res) => {
     const { version } = body.parse(req.body);
     const result = await updates.handOff(version);
     if (result.ok) res.status(202).json(updates.state());
     else res.status(result.status).json({ error: result.error, ...(result.how && { how: result.how }) });
   });
 
-  router.post('/check', mayCheck, async (_req, res) => {
+  on(routes.checkForUpdates, mayCheck, async (_req, res) => {
     const result = await updates.checkNow();
     if (result.ok) res.json(result.state);
     else res.status(result.status).json({ error: result.error, ...(result.how && { how: result.how }) });

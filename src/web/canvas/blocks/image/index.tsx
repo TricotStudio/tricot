@@ -6,14 +6,15 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 
 import { displayWidth, imageBlockSize, naturalImageSize, type PixelSize } from '../../../../core/blocks/image/image';
 import { nextBox } from '../../../../core/blocks/image/boxes';
 import type { Block } from '../../../../core/types';
-import { api } from '../../../api';
-import { InlineMd } from '../../../components';
+import { api } from '../../../shared/api';
+import { InlineMd } from '../../../shared/components';
 import { webConnector } from '../../../connectors/registry';
 import { EditableText, useCanvas } from '../../context';
 import { DRAFT, type PlacedPin } from '../../pins';
 import { dragged, draftOf, selecting } from '../interaction';
 import type { AddContext, Point, ToolsProps, WebBlockKind } from '../kind';
 import { ImageView } from './imageViewer';
+import { routes, routeUrl } from '../../../../core/routes';
 
 type ImageBlock = Extract<Block, { type: 'image' }>;
 
@@ -32,7 +33,7 @@ function usePictureSize(block: Extract<Block, { type: 'image' }>): PixelSize | n
     if (width && height) return;
     const image = new Image();
     image.onload = () => image.naturalWidth && setRead({ assetId, size: { width: image.naturalWidth, height: image.naturalHeight } });
-    image.src = `/api/assets/${encodeURIComponent(assetId)}`;
+    image.src = routeUrl(routes.asset, { id: assetId });
     return () => {
       image.onload = null;
     };
@@ -127,7 +128,7 @@ function ImageBody({ block, placed }: { block: Extract<Block, { type: 'image' }>
   return (
     <figure className="block-image">
       <div className="block-image-stage" onDoubleClick={() => canvas.openOverlay(block.id)}>
-        <img ref={image} src={`/api/assets/${encodeURIComponent(block.assetId)}`} alt={block.caption ?? block.title ?? ''} draggable={false} />
+        <img ref={image} src={routeUrl(routes.asset, { id: block.assetId })} alt={block.caption ?? block.title ?? ''} draggable={false} />
         {frame && (
           <div
             className={`image-pins nodrag nopan${canvas.readOnly ? '' : ' is-pinnable'}`}

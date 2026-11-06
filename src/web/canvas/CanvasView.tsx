@@ -1,5 +1,4 @@
 import {
-  Fragment,
   createRef,
   useCallback,
   useEffect,
@@ -7,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent,
   type KeyboardEvent,
   type RefObject,
 } from 'react';
@@ -33,16 +31,17 @@ import { kindOf } from '../../core/blocks/registry';
 import { GROUP_SIZE } from '../../core/canvas';
 import { canvasesOf } from '../../core/pins';
 import type { Block, Board, BlockVersion, Canvas, Decision, Pin, Task } from '../../core/types';
-import { api, type BlockContent, type BlockPatch, type CanvasRef, type Move, type RequestError } from '../api';
-import { PendingRequests } from '../askAgents';
-import { FOCUS_PIN, showComments } from '../discussion';
-import { useFocusBlock } from '../search';
-import { useReadOnly } from '../hooks';
-import { SyncSelection } from '../sync';
-import { useTheme } from '../theme';
+import { api, type BlockContent, type BlockPatch, type CanvasRef, type Move, type RequestError } from '../shared/api';
+import { PendingRequests } from './askAgents';
+import { FOCUS_PIN, showComments } from '../conversation';
+import { useFocusBlock } from './focus';
+import { useReadOnly } from '../shared/hooks';
+import { SyncSelection } from './sync';
+import { useTheme } from '../themes';
 import { CanvasContext, type CanvasContextValue, type PinDraft } from './context';
 import type { AddContext } from './blocks/kind';
-import { menuKinds, webKindOf, webKinds } from './blocks/registry';
+import { menuKinds, webKindOf } from './blocks/registry';
+import { useIntake } from './intake';
 import { BlockNode, FrameNode, LinkEdge, type CanvasNode, type LinkEdgeType } from './nodes';
 import { PinPrompt, PinThread, selectedWords } from './pins';
 import { useUndoDelete } from './undo';
@@ -445,9 +444,6 @@ function CanvasSurface(props: Props) {
     if (!toggle) toggles.current.set(type, (toggle = createRef<HTMLButtonElement>()));
     return toggle;
   };
-  // Files dragged over the canvas: what dropping them will make.
-  const drops = webKinds().flatMap((kind) => (kind.files?.useDrop ? [kind.files.useDrop(!readOnly)] : []));
-
   const addGroup = async () => {
     try {
       const { x, y } = placeAt(viewportCentre(), GROUP_SIZE);
@@ -457,31 +453,14 @@ function CanvasSurface(props: Props) {
     }
   };
 
-  // Paste a screenshot anywhere on the page (outside text fields), or a web
-  // address, which opens Add → Link with it filled in.
-  useEffect(() => {
-    const onPaste = (event: ClipboardEvent) => {
-      if (readOnly) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
-      const files = [...(event.clipboardData?.files ?? [])];
-      const pasted = webKinds().find((kind) => kind.files?.paste && files.some(kind.files.accepts));
-      if (pasted) {
-        event.preventDefault();
-        void pasted.files!.add(files.filter(pasted.files!.accepts), addContext);
-        return;
-      }
-      const text = event.clipboardData?.getData('text/plain').trim() ?? '';
-      for (const kind of menuKinds()) {
-        const initial = kind.menu && 'Form' in kind.menu ? kind.menu.paste?.(text) : null;
-        if (!initial) continue;
-        event.preventDefault();
-        setForm({ type: kind.type, initial });
-        return;
-      }
-    };
-    window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
+  // What is dropped on the canvas or pasted on the page (intake.tsx).
+  const { dropProps, overlays } = useIntake({
+    wrapper,
+    flow,
+    context: addContext,
+    readOnly,
+    clips: !overlay,
+    openForm: (type, initial) => setForm({ type, initial }),
   });
 
   // Selecting words in a note pins them. A double-click's
@@ -584,18 +563,6 @@ function CanvasSurface(props: Props) {
     return byBlock;
   }, [canvas]);
 
-  const onDrop = (event: DragEvent) => {
-    for (const drop of drops) drop.clear();
-    if (readOnly || !event.dataTransfer.files.length) return;
-    event.preventDefault();
-    const at = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    const files = [...event.dataTransfer.files];
-    for (const kind of webKinds()) {
-      const mine = kind.files ? files.filter(kind.files.accepts) : [];
-      if (kind.files && mine.length) void kind.files.add(mine, addContext, at);
-    }
-  };
-
   const context: CanvasContextValue = useMemo(
     () => ({
       board,
@@ -664,10 +631,7 @@ function CanvasSurface(props: Props) {
       <div
         ref={wrapper}
         className={readOnly ? 'canvas is-read-only' : 'canvas'}
-        onDragOver={(e) => !readOnly && e.dataTransfer.types.includes('Files') && e.preventDefault()}
-        onDragEnter={(e) => drops.forEach((drop) => drop.onDragEnter(e))}
-        onDragLeave={(e) => drops.forEach((drop) => drop.onDragLeave(e))}
-        onDrop={onDrop}
+        {...dropProps}
         onKeyDown={onCanvasKeyDown}
       >
         <ReactFlow<CanvasNode, LinkEdgeType>
@@ -805,9 +769,7 @@ function CanvasSurface(props: Props) {
         {overlay && overlaid && Overlay && !(readOnly && Overlay.changes) && (
           <Overlay.Component key={overlaid.id} block={overlaid} name={name} version={overlay.version} pinId={overlay.pinId} onClose={closeOverlay} />
         )}
-        {drops.map((drop, i) => (
-          <Fragment key={i}>{drop.overlay}</Fragment>
-        ))}
+        {overlays}
         {empty && (
           <div className="canvas-empty">
             <p>
@@ -819,8 +781,8 @@ function CanvasSurface(props: Props) {
             </p>
             {!readOnly && (
               <p className="muted small">
-                Add a block above, paste a screenshot or a web address, or drop an image or a code file. Drag from a block's right edge to link
-                it. Agents add blocks with <code>add_block</code>.
+                Add a block above, paste a screenshot, a web address or some text, or drop an image, a code file, a link or some text. Drag from
+                a block's right edge to link it. Agents add blocks with <code>add_block</code>.
               </p>
             )}
           </div>

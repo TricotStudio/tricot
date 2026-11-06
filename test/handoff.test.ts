@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -16,10 +16,13 @@ import {
   spawnUpdater,
   startArgs,
   takeFailure,
+  withoutLegacyStartFlag,
   type Command,
   type ServerPlace,
-} from '../src/server/handoff';
-import { pidAlive, readLock } from '../src/server/lock';
+} from '../src/install/handoff';
+import { Store } from '../src/core/store';
+import { MIGRATIONS, openDatabase, userVersion } from '../src/core/store/migrations';
+import { pidAlive, readLock } from '../src/platform/lock';
 import { Seats } from '../src/server/seats';
 import { letIn, type TestSeat } from './seatHelper';
 import {
@@ -39,6 +42,7 @@ import {
   type FakeReleases,
   type Installed,
 } from './updateFixtures';
+import { WINDOWS } from './platform';
 
 const HOME = os.homedir();
 const place = (dataDir: string, extra: Partial<ServerPlace> = {}): ServerPlace => ({ port: 4545, host: '127.0.0.1', dataDir, ...extra });
@@ -81,7 +85,7 @@ describe('How Tricot was installed', () => {
       rmSync(scratch, { recursive: true, force: true });
     });
 
-    it("is npm's global install when it sits where `npm prefix -g` says, and says whether this user can write there", async () => {
+    it("is npm's global install when it sits where `npm prefix -g` says, and says whether this user can write there", { skip: WINDOWS && 'chmod cannot make a folder read-only' }, async () => {
       const npm = installedWithNpm(scratch);
       assert.deepEqual(await detectLaunch(npm.root, { npm: npm.npm }), { kind: 'npm-global', prefix: npm.prefix, writable: true });
       chmodSync(path.join(npm.prefix!, 'lib', 'node_modules'), 0o555);
@@ -100,7 +104,7 @@ describe('How Tricot was installed', () => {
       assert.deepEqual(await detectLaunch(npm.root, { npm: { command: path.join(scratch, 'no-such-npm'), args: [] } }), { kind: 'global' });
     });
 
-    it("is Homebrew's, with its brew, when the Cellar is this user's", async () => {
+    it("is Homebrew's, with its brew, when the Cellar is this user's", { skip: WINDOWS && 'chmod cannot make a folder read-only' }, async () => {
       const brew = installedWithBrew(scratch);
       assert.deepEqual(await detectLaunch(brew.root), { kind: 'brew', prefix: brew.prefix, writable: true, brew: path.join(brew.prefix!, 'bin', 'brew') });
       chmodSync(path.join(brew.prefix!, 'Cellar'), 0o555);
@@ -194,9 +198,26 @@ describe("The updater's commands", () => {
       '--data',
       odd,
       '--no-open',
-      '--no-hooks',
+      '--no-ask',
       '--no-update-check',
     ]);
+  });
+
+  it("still starts from the line Tricot 0.1.3 and earlier put in an update's plan, with --no-hooks, and from no other line with it", () => {
+    // What every release before this one wrote: `--no-hooks` is what --no-ask was called.
+    const before = ['start', '--port', '5010', '--host', '0.0.0.0', '--data', odd, '--no-open', '--no-hooks', '--no-update-check'];
+    assert.deepEqual(withoutLegacyStartFlag(before), startArgs(place(odd, { port: 5010, host: '0.0.0.0', flags: ['--no-update-check'] })));
+    assert.deepEqual(withoutLegacyStartFlag(startArgs(place(odd))), startArgs(place(odd)), 'the line as it is now is left alone');
+    for (const typed of [
+      ['--no-hooks'],
+      ['start', '--no-hooks'],
+      ['--no-open', '--no-hooks'],
+      ['start', '--port', '5010', '--host', '0.0.0.0', '--no-hooks'],
+      ['status', '--port', '5010', '--host', '0.0.0.0', '--data', odd, '--no-open', '--no-hooks'],
+      ['start', '--no-open', '--no-hooks', '--port', '5010', '--host', '0.0.0.0', '--data', odd],
+    ]) {
+      assert.deepEqual(withoutLegacyStartFlag(typed), typed, typed.join(' '));
+    }
   });
 
   it('installs with npm, checks, starts the tricot npm installed, and puts the old version back if it must', () => {
@@ -325,7 +346,7 @@ describe("The updater's commands", () => {
 
 // The whole handover, in processes of their own, with stand-ins for npm,
 // Homebrew, npx and the tricot they install: never the real ones.
-describe('Updating in place', () => {
+describe('Updating in place', { skip: WINDOWS && 'runs shell-script stand-ins for npm and brew; Tricot never updates itself on Windows' }, () => {
   let scratch: string;
   let dataDir: string;
   let port: number;
@@ -426,6 +447,45 @@ describe('Updating in place', () => {
       ['install', '-g', 'tricot@0.2.0'],
       ['install', '-g', 'tricot@0.1.0'],
     ]);
+  });
+
+  it("puts the boards back from the new version's copy before the old one starts again, when the new one had migrated them", async () => {
+    const store = new Store(dataDir);
+    store.load();
+    const board = store.createBoard({ title: 'Kept through the update' }, { kind: 'human', name: 'Sam' });
+    await store.flush();
+    const npm = installedWithNpm(scratch);
+    const old = await start(npm, { HANDOFF_MIGRATES: '0.2.0' });
+    assert.equal((await update(old.url, '0.2.0')).status, 202);
+    await handedOver(old);
+    const lock = await runningAs('0.1.0');
+    pids.push(lock.pid);
+
+    // The old version reads them: they are as they were, at the data version it knows.
+    const boards = (await (await fetch(`${lock.url}/api/boards`)).json()) as { id: string }[] | { boards: { id: string }[] };
+    assert.deepEqual((Array.isArray(boards) ? boards : boards.boards).map((b) => b.id), [board.id]);
+    const live = openDatabase(path.join(dataDir, 'tricot.db'));
+    assert.equal(userVersion(live), MIGRATIONS.length);
+    assert.deepEqual(live.prepare("SELECT name FROM sqlite_master WHERE name = 'from_the_newer_one'").all(), [], 'what the new version made is not in them');
+    live.close();
+
+    // Nothing is deleted: the copy it took is there, and so are the boards as it left them.
+    const backups = readdirSync(path.join(dataDir, 'backups')).sort();
+    const copy = backups.find((name) => name.startsWith(`tricot-v${MIGRATIONS.length}-`))!;
+    const kept = backups.find((name) => name.startsWith(`tricot-failed-update-v${MIGRATIONS.length + 1}-`))!;
+    assert.ok(copy && kept, backups.join(', '));
+    assert.equal(backups.length, 2);
+    const left = openDatabase(path.join(dataDir, 'backups', kept), [...MIGRATIONS, { name: 'what only the newer one reads', up: () => {} }]);
+    assert.deepEqual(left.prepare('SELECT n FROM from_the_newer_one').all().map((r) => r.n), [1], 'the few seconds it ran, kept apart');
+    left.close();
+
+    // It says so in the log, before it says the old version is running, and in what the page tells.
+    const log = readUpdateLog();
+    const [now, newer] = [MIGRATIONS.length, MIGRATIONS.length + 1];
+    assert.match(log, new RegExp(`Tricot 0\\.2\\.0 had changed your boards to data version ${newer}, which Tricot 0\\.1\\.0 can't read, so they were put back as they were before the update, from .*tricot-v${now}-.*\\.db \\(data version ${now}\\)\\.`));
+    assert.match(log, new RegExp(`Anything changed in the seconds Tricot 0\\.2\\.0 ran is not in them.*kept in .*tricot-failed-update-v${newer}-.*\\.db\\. Nothing in .*backups was deleted\\.`));
+    assert.ok(log.indexOf('put back as they were') < log.indexOf('Tricot 0.1.0 is running again'), 'before the old version starts');
+    assert.match((await state(lock.url!)).failed!.message, /Tricot 0\.2\.0 didn't start.*put back as they were before the update.*Tricot 0\.1\.0 was started again/);
   });
 
   describe("from the release's file on GitHub, with the npm registry out of reach", () => {

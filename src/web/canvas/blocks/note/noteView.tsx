@@ -4,7 +4,8 @@
 // the agent to rewrite them, or to leave a note. The agent rewrites the
 // note's text; the view shows it where it was, and each pin stays on its
 // words while they read the same (words the agent rewrote are listed under
-// the note, with their thread).
+// the note, with their thread). Edit, or a double-click while reading,
+// edits its Markdown by hand, with the note as it reads beside it.
 
 import { useMemo, useRef, type ComponentProps, type MouseEvent } from 'react';
 import type { ExtraProps } from 'react-markdown';
@@ -12,7 +13,7 @@ import { clip } from '../../../../core/format';
 import { noteText, quoteAt } from '../../../../core/pins';
 import { taskProgress } from '../../../../core/taskList';
 import type { Block } from '../../../../core/types';
-import { Icon, Md, timeAgo } from '../../../components';
+import { Icon, Md, timeAgo } from '../../../shared/components';
 import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import { sentenceAt } from '../../pairing/pointing';
@@ -129,6 +130,14 @@ export function NoteView({ block, name, version, pinId, onClose }: OverlayProps<
       does="rewrites the note"
       example="say it plainly, say"
       body={(props) => <NoteWords {...props} />}
+      edit={{
+        hint: 'Edit its Markdown by hand (or double-click it while reading)',
+        label: 'Markdown',
+        placeholder: 'Write in Markdown',
+        of: (note) => note.text,
+        patch: (text) => ({ text }),
+        preview: (text) => (text.trim() ? <Md>{text}</Md> : <p className="placeholder">Nothing written yet.</p>),
+      }}
       onClose={onClose}
     />
   );

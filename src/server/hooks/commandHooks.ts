@@ -21,6 +21,7 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { listNames } from '../../core/format';
+import { which } from '../../platform/which';
 import {
   checkScope,
   displayPath,
@@ -29,7 +30,6 @@ import {
   jsonText,
   linkTarget,
   nameInCommand,
-  onPath,
   ourEntries,
   previewText,
   readHookSettings,
@@ -264,7 +264,7 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
 
     detect(target) {
       const folder = spec.folder(target, 'user');
-      const command = onPath(spec.command, target.env);
+      const command = which(spec.command, target.env);
       const there = isFolder(folder);
       return { found: there || Boolean(command), ...(there && { folder }), ...(command && { command }) };
     },

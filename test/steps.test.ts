@@ -757,7 +757,7 @@ describe('the Claude Code hook script', () => {
   });
 });
 
-describe('tricot connect claude --hooks', () => {
+describe('tricot steps on --agent claude --project', () => {
   let scratch: string;
   let project: string;
   let out: string[];
@@ -791,20 +791,20 @@ describe('tricot connect claude --hooks', () => {
 
   it('shows exactly what it would add, and changes nothing without a yes', async () => {
     fresh(theirs);
-    assert.equal((await runCli(['connect', 'claude', '--hooks'], ctx(false))).exitCode, 0);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project'], ctx(false))).exitCode, 0);
     const said = out.join('\n');
     assert.ok(said.includes(stepsCommand('http://127.0.0.1:4999', 'Claude').replace(/"/g, '\\"')), 'the JSON it adds, command and all');
     assert.match(said, /"async": true/);
     assert.match(said, /Nothing was changed/);
     assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs);
-    assert.equal((await runCli(['connect', 'claude', '--hooks'], ctx())).exitCode, 1, 'with no terminal to ask in, it refuses');
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project'], ctx())).exitCode, 1, 'with no terminal to ask in, it refuses');
     assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs);
   });
 
   it('adds the hook beside the project\'s own, once, and takes it out again', async () => {
     fresh(theirs);
-    assert.equal((await runCli(['connect', 'claude', '--hooks', '--name', 'Claude Builder'], ctx(true))).exitCode, 0);
-    assert.equal((await runCli(['connect', 'claude', '--hooks', '--name', 'Claude Builder'], ctx(true))).exitCode, 0);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project', '--name', 'Claude Builder'], ctx(true))).exitCode, 0);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project', '--name', 'Claude Builder'], ctx(true))).exitCode, 0);
     const added = JSON.parse(readFileSync(settingsFile(), 'utf8'));
     assert.deepEqual(added.permissions, theirs.permissions);
     assert.equal(added.hooks.PreToolUse.length, 2, 'theirs and ours, not ours twice');
@@ -816,33 +816,69 @@ describe('tricot connect claude --hooks', () => {
     assert.doesNotMatch(added.hooks.PreToolUse[1].hooks[0].command, /--narration/, 'no narration unless asked for');
     assert.equal(readFileSync(path.join(project, '.claude/hooks/tricot-steps.mjs'), 'utf8'), readFileSync(HOOK, 'utf8'));
 
-    assert.equal((await runCli(['connect', 'claude', '--remove-hooks'], ctx())).exitCode, 0);
+    assert.equal((await runCli(['steps', 'off', '--agent', 'claude', '--project'], ctx())).exitCode, 0);
     assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs);
     assert.throws(() => statSync(path.join(project, '.claude/hooks/tricot-steps.mjs')));
   });
 
   it('leaves settings it cannot read alone', async () => {
     fresh('{ not json');
-    assert.equal((await runCli(['connect', 'claude', '--hooks'], ctx(true))).exitCode, 1);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project'], ctx(true))).exitCode, 1);
     assert.match(err.join('\n'), /isn't valid JSON/);
     assert.equal(readFileSync(settingsFile(), 'utf8'), '{ not json');
   });
 
   it('adds narration only when asked for, and takes it out when added again without', async () => {
     fresh(theirs);
-    assert.equal((await runCli(['connect', 'claude', '--narration'], ctx(true))).exitCode, 1, 'narration goes with --hooks');
-    assert.match(err.join('\n'), /--narration goes with --hooks/);
-    assert.equal((await runCli(['connect', 'claude', '--hooks', '--narration'], ctx(true))).exitCode, 0);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--narration'], ctx(true))).exitCode, 1, 'narration goes with --project');
+    assert.match(err.join('\n'), /--narration goes with --project/);
+    assert.equal((await runCli(['steps', 'off', '--agent', 'claude', '--project', '--narration'], ctx(true))).exitCode, 1, 'and with on');
+    assert.match(err.join('\n'), /--narration goes with steps on/);
+    assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs, 'nothing was written');
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project', '--narration'], ctx(true))).exitCode, 0);
     assert.match(out.join('\n'), /first line of each message Claude writes/);
     const narrated = JSON.parse(readFileSync(settingsFile(), 'utf8'));
     assert.ok(narrated.hooks.MessageDisplay, 'MessageDisplay is set up');
     assert.match(narrated.hooks.MessageDisplay[0].hooks[0].command, /--narration$/);
     assert.match(narrated.hooks.PreToolUse[1].hooks[0].command, /--narration$/);
-    assert.equal((await runCli(['connect', 'claude', '--hooks'], ctx(true))).exitCode, 0);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project'], ctx(true))).exitCode, 0);
     const plain = JSON.parse(readFileSync(settingsFile(), 'utf8'));
     assert.equal(plain.hooks.MessageDisplay, undefined, 'set up again without it, narration goes');
-    assert.equal((await runCli(['connect', 'claude', '--remove-hooks'], ctx())).exitCode, 0);
+    assert.equal((await runCli(['steps', 'off', '--agent', 'claude', '--project'], ctx())).exitCode, 0);
     assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs);
+  });
+
+  it('takes --yes for the question, as steps on does for every project', async () => {
+    fresh(theirs);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project', '--yes'], ctx())).exitCode, 0, 'no terminal, but --yes');
+    assert.ok(JSON.parse(readFileSync(settingsFile(), 'utf8')).hooks.PreToolUse[1], 'added');
+    assert.match(out.join('\n'), /Take it out again with: tricot steps off --agent claude --project/);
+  });
+
+  it('is for Claude Code, and for on and off', async () => {
+    fresh(theirs);
+    for (const argv of [['steps', 'on', '--project'], ['steps', 'on', '--agent', 'codex', '--project'], ['steps', 'off', '--project']]) {
+      err.length = 0;
+      assert.equal((await runCli(argv, ctx(true))).exitCode, 1, argv.join(' '));
+      assert.match(err.join('\n'), /--project is for Claude Code: tricot steps on --agent claude --project/);
+    }
+    err.length = 0;
+    assert.equal((await runCli(['steps', 'status', '--project'], ctx(true))).exitCode, 1);
+    assert.match(err.join('\n'), /--project and --narration go with on or off/);
+    assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs, 'nothing was written');
+  });
+
+  it('refuses the names it had before: connect no longer takes --hooks or --remove-hooks', async () => {
+    fresh(theirs);
+    for (const flag of ['--hooks', '--remove-hooks']) {
+      out.length = 0;
+      err.length = 0;
+      const result = await runCli(['connect', 'claude', flag], ctx(true));
+      assert.equal(result.exitCode, 1, flag);
+      assert.match(err.join('\n'), new RegExp(`Unknown option '${flag}'`), flag);
+      assert.deepEqual(out, [], `${flag} prints nothing`);
+    }
+    assert.deepEqual(JSON.parse(readFileSync(settingsFile(), 'utf8')), theirs, 'nothing was written');
   });
 
   it('merges and unmerges without touching anything else', () => {

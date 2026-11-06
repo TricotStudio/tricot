@@ -46,7 +46,8 @@ function commandWords(command, cwd) {
     if (words.length === 0 && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token) || PREFIXES.has(token))) continue;
     if (words.length >= 3 || token.startsWith('-') || /["'`$<>(){}=*\\]/.test(token) || token.length > 40) break;
     if (/^[A-Za-z0-9_+/-]{24,}$/.test(token) && !token.includes('/')) break; // looks like a key
-    words.push(token.startsWith('/') ? shown(token, cwd) : token);
+    // An absolute path: from `/` here, and on Windows also `C:/` (a backslash ends the words above).
+    words.push(path.isAbsolute(token) ? shown(token, cwd) : token);
   }
   return words.length ? words.join(' ') : undefined;
 }
@@ -87,6 +88,32 @@ const TRICOT = {
   get_thread: 'Reading the thread',
   reply_in_thread: 'Replying in the thread',
   start_thread: 'Starting a thread',
+  list_boards: 'Listing the boards',
+  create_board: 'Creating a board',
+  search: 'Searching the board',
+  log_decision: 'Logging a decision',
+  propose_criteria: 'Proposing criteria',
+  react: 'Reacting to a comment',
+  report_skills: 'Telling Tricot its skills',
+  finish_sync: 'Finishing a sync',
+  take_request: 'Taking a request',
+  finish_request: 'Finishing a request',
+  get_canvas: 'Reading the canvas',
+  get_block: 'Reading a block',
+  add_group: 'Adding a group to the canvas',
+  link: 'Linking blocks',
+  pin: 'Pinning work to a block',
+  remove_item: 'Removing from the canvas',
+  restore_item: 'Restoring to the canvas',
+  read_guide: 'Reading the guide',
+  // What the connected services add: reading what people link.
+  read_google_doc: 'Reading a Google Doc',
+  edit_google_doc: 'Editing a Google Doc draft',
+  read_figma_frame: 'Reading a Figma frame',
+  read_github: 'Reading a GitHub link',
+  read_slack: 'Reading a Slack thread',
+  read_linear_issue: 'Reading a Linear issue',
+  search_linear_issues: 'Searching Linear issues',
 };
 const QUIET_TRICOT = new Set(['wait_for_updates', 'get_updates']); // presence already says it is listening
 

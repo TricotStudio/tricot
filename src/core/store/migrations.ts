@@ -1,6 +1,8 @@
-import { chmodSync, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { keepPrivate } from '../../platform/private';
 import { moveChecklistRows } from './checklistNotes';
+import { addMissingFields } from './shapeDefaults';
 import { inTransaction, openPrivate, type Database } from './sqlite';
 
 // The database's shape is versioned with SQLite's own `user_version`. A
@@ -151,6 +153,23 @@ export const MIGRATIONS: Migration[] = [
       moveChecklistRows(db);
     },
   },
+  {
+    // Every board carries the fields it is read with. Boards from before
+    // canvases, pins, tasks, comments or revs existed were given them each
+    // time they loaded; now they are given them once, here (shapeDefaults.ts),
+    // and a board read from the database is whole as it is. This is also the
+    // first data version to say that a file may hold what the earlier ones,
+    // 1 to 6, could not read: Tricot 0.1.2 added website blocks, pins on
+    // elements, and more kinds of event without a new version, and so a
+    // Tricot before it that opened such a file met "Unknown block type"
+    // rather than being told the data was from a newer one. A release that
+    // adds a block kind, or a value of any enum a board holds, adds a
+    // migration (test/dataShape.test.ts makes sure it does).
+    name: 'every board carries the fields it is read with',
+    up(db) {
+      addMissingFields(db);
+    },
+  },
 ];
 
 type Row = { board: string; owner: string; kind: string; id: string; body: string };
@@ -201,15 +220,20 @@ export class MigrationError extends Error {}
 
 export const userVersion = (db: Database): number => Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
 
-// A copy of the file as it is, in <data>/backups, for before an upgrade.
+// Where the copies are kept, in the data folder.
+export const BACKUP_DIR = 'backups';
+
+// A copy of the file as it is, in <data>/backups, for before an upgrade. Its
+// name says the data version it holds: tricot-v<version>-<time>.db (restore.ts
+// finds it again by that).
 function backUp(db: Database, file: string, version: number): string {
-  const dir = path.join(path.dirname(file), 'backups');
+  const dir = path.join(path.dirname(file), BACKUP_DIR);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const copy = path.join(dir, `${path.basename(file, '.db')}-v${version}-${stamp}.db`);
   if (existsSync(copy)) throw new MigrationError(`A backup named ${copy} already exists.`);
   db.prepare('VACUUM INTO ?').run(copy);
-  if (process.platform !== 'win32') chmodSync(copy, 0o600);
+  keepPrivate(copy);
   return copy;
 }
 

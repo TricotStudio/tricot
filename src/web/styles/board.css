@@ -1,0 +1,505 @@
+/* ---- board ------------------------------------------------------------- */
+
+.board-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.attention {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.attention-end {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+.activity-toggle .new-dot {
+  margin-left: 2px;
+}
+
+/* "Needs you", beside Activity: one amber pill for everything on this board
+   that waits on the viewer, what holds agents up called out as urgent. It
+   opens those cards grouped by what they need, from its right edge. */
+.needs-none {
+  color: var(--faint);
+  white-space: nowrap;
+}
+.needs-summary {
+  position: relative;
+}
+.needs-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--open-ink);
+  background: var(--open-bg);
+  border: 1px solid color-mix(in srgb, var(--open) 45%, transparent);
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.needs-pill:hover,
+.needs-pill[aria-expanded='true'] {
+  border-color: var(--open);
+}
+.needs-pill-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--open-ink);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.needs-pill .tag {
+  font-weight: 600;
+}
+.needs-pill .icon {
+  margin-left: -2px;
+  opacity: 0.75;
+}
+.needs-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: 4px 6px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.needs-group + .needs-group {
+  margin-top: 4px;
+}
+.needs-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.needs-group-head.is-urgent {
+  color: var(--danger);
+}
+.needs-group-count {
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.needs-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.needs-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 6px 6px 6px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+.needs-item:hover {
+  background: var(--surface-2);
+}
+.needs-item:focus-visible {
+  outline-offset: -2px;
+}
+.needs-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.needs-item .need-ref {
+  margin-right: 2px;
+  font-weight: 500;
+}
+.needs-item-act {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+.needs-item:hover .needs-item-act {
+  background: var(--surface);
+}
+
+/* The tab, the conversation the chat bar opened docked beside it, and the
+   activity. The conversation's column is always there, empty while it's
+   closed. It takes its width at once as the panel opens or closes, and the
+   panel slides over it (chatBar.css), so the board is laid out once rather
+   than on every frame of the motion. Its width is the layout's own (not
+   inherited), so changing it restyles the layout alone, not everything on
+   the board (T177). */
+@property --dock-track {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.board-layout {
+  position: relative; /* the chat bar floats at the foot of its first column (chatBar.css) */
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--dock-track) 300px;
+  overflow-x: clip;
+  --dock-width: min(440px, 40vw);
+  --dock-track: 0px;
+}
+.board-layout-full {
+  grid-template-columns: minmax(0, 1fr) var(--dock-track);
+}
+.board-layout:has(> .thread-dock) {
+  --dock-track: var(--dock-width);
+}
+/* Room under the chat bar floating at the foot of the tab (chatBar.css), so
+   the end of every list and the map can be scrolled clear of it. Docked in
+   the conversation's panel, it takes none. It isn't inherited: it is set on
+   the layout and on each box that keeps room with it (padding with
+   var(--bar-room)), listed here, so the bar docking or floating again
+   restyles those few boxes rather than everything on the board (T177). */
+@property --bar-room {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.board-layout:has(> .chat-float > .chat-bar),
+.board-layout:has(> .chat-float > .chat-bar) :is(.lane-cards, .dt-scroll, .dmap-scroll, .dmap-panel) {
+  --bar-room: 88px;
+}
+.board-layout:has(> .chat-float > .chat-threads-only),
+.board-layout:has(> .chat-float > .chat-threads-only) :is(.lane-cards, .dt-scroll, .dmap-scroll, .dmap-panel) {
+  --bar-room: 64px;
+}
+.board-layout > .thread-dock {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  width: var(--dock-width);
+}
+/* The activity stays over the panel as it comes in from under it. */
+.board-layout > .activity {
+  grid-column: -2;
+  grid-row: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.lanes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(250px, 1fr);
+  gap: 14px;
+  padding: 16px 24px 24px;
+  overflow-x: auto;
+  min-height: 0;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  --lane: var(--faint);
+}
+.lane-open { --lane: var(--open); }
+.lane-exploring { --lane: var(--exploring); }
+.lane-provisional { --lane: var(--provisional); }
+.lane-decided { --lane: var(--decided); }
+.lane-deferred { --lane: var(--deferred); }
+.lane-task-backlog { --lane: var(--deferred); }
+.lane-task-todo { --lane: var(--deferred); }
+.lane-task-in_progress { --lane: var(--exploring); }
+.lane-task-in_review { --lane: var(--provisional); }
+.lane-task-blocked { --lane: var(--danger); }
+.lane-task-done { --lane: var(--decided); }
+
+.lane-head {
+  display: grid;
+  gap: 1px;
+  padding: 0 4px 10px;
+}
+.lane-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.lane-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--lane);
+}
+/* Hollow: the backlog isn't work yet, only what To do will fill from. */
+.lane-task-backlog .lane-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--lane);
+}
+/* Dropped tasks stay out of sight: Dropped (n) at the end of the bar, as
+   Home's Archived is, folds them in at the foot of Done, under a hairline. */
+.dropped-toggle[aria-expanded='true'] {
+  color: var(--text);
+}
+.lane-dropped {
+  --lane: var(--deferred);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 8px;
+}
+.lane-dropped-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.lane-dropped-head .lane-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--lane);
+}
+.lane-dropped-head .lane-hint {
+  flex-basis: 100%;
+  padding-left: 15px;
+  font-weight: 400;
+}
+.lane-count {
+  color: var(--faint);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.lane-hint {
+  font-size: 12px;
+  color: var(--faint);
+  padding-left: 15px;
+}
+.lane-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 2px 2px calc(8px + var(--bar-room, 0px));
+  min-height: 0;
+}
+
+.card {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px 10px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.card:hover {
+  box-shadow: var(--shadow);
+  border-color: var(--border-strong);
+}
+/* An agent's change washes the card in its lane colour, then settles. */
+.card-flash {
+  animation: flash 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes flash {
+  0% {
+    border-color: var(--lane);
+    background: color-mix(in srgb, var(--lane) var(--flash-strength, 10%), var(--surface));
+  }
+}
+.card-meta,
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.card-spacer {
+  flex: 1;
+}
+.card-number {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.card-question {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.card-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.card-options li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.card-options .is-recommended {
+  color: var(--text);
+}
+.star {
+  display: inline-flex;
+  color: var(--open);
+  font-size: 12px;
+}
+.card-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.card-arrow {
+  color: var(--lane);
+  align-self: center;
+}
+.card-note {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+.card-options .is-outdated .card-option-label {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.card-options .is-outdated .option-letter {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--faint);
+}
+.card-drift {
+  color: var(--open-ink);
+  font-weight: 500;
+}
+.card-refreshing {
+  color: var(--exploring-ink);
+  font-weight: 500;
+}
+/* Closed cards (done, dropped, decided, retired) recede in their lanes: a sheet sunk
+   halfway to the paper, without lift. The needs-you wash and the new outline
+   come later in this file, so they still show over it. */
+.card-closed {
+  background: color-mix(in srgb, var(--surface) 45%, var(--bg));
+  box-shadow: none;
+}
+.card-closed:not(.card-needs-you) .card-question {
+  color: var(--muted);
+}
+.tag-closed { background: var(--decided-bg); color: var(--decided-ink); }
+.tag-retired,
+.tag-dropped { background: var(--deferred-bg); color: var(--deferred-ink); }
+
+/* Retired cards fold away at the foot of Deferred. */
+.lane-retired {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.lane-retired summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding: 2px 4px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.lane-retired summary:hover {
+  color: var(--text);
+}
+.lane-retired summary .lane-hint {
+  padding-left: 0;
+}
+.lane-retired .status {
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+}
+.lane-retired-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.card-foot {
+  font-size: 12px;
+  color: var(--faint);
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.card-form {
+  cursor: default;
+}
+.card-form > * {
+  min-width: 0;
+}
+
+.add-question {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.add-question:hover {
+  color: var(--text);
+  background: var(--surface);
+}

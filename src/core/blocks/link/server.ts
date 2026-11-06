@@ -48,6 +48,7 @@ export const agent: AgentHalf<LinkTypes> = {
   addShape: { url: z.string().optional().describe('Link address, http or https only, e.g. a doc, pull request or design file') },
   updateShape: { url: z.string().optional() },
   docs: {
+    brief: 'link → url, with title as its name',
     add: 'link → url (http or https), with title as its name, e.g. "Design file" (shown as a card people click to open)',
     update: 'url',
   },

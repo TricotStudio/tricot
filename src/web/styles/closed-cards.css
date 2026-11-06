@@ -1,0 +1,512 @@
+/* ---- closed cards ------------------------------------------------------
+   A done task, or a decided or retired decision. Its panel leads with a band
+   saying who closed it, with the way back, in place of the status controls;
+   the body below recedes but stays readable, and the discussion stays open.
+   The canvas keeps its colour: it's the evidence people come back to. */
+
+.closed-band {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 24px;
+  background: var(--band-tint);
+  color: var(--band-ink);
+  border-bottom: 1px solid var(--band-edge);
+  font-size: 13px;
+}
+.closed-band-done,
+.closed-band-decided {
+  --band-tint: var(--decided-bg);
+  --band-ink: var(--decided-ink);
+  --band-edge: color-mix(in srgb, var(--decided) 30%, var(--decided-bg));
+}
+.closed-band-retired,
+.closed-band-dropped {
+  --band-tint: var(--deferred-bg);
+  --band-ink: var(--deferred-ink);
+  --band-edge: var(--border);
+}
+.closed-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: var(--decided);
+  color: var(--surface);
+  font-size: 12px;
+}
+.closed-mark .icon {
+  stroke-width: 2;
+}
+/* Hollow, as retired is drawn in the lanes: set aside, not finished. */
+.closed-mark.is-retired {
+  background: none;
+}
+.closed-mark.is-retired::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1.5px var(--deferred);
+}
+.closed-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+.closed-text strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.closed-sep {
+  margin: 0 6px;
+}
+.closed-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.closed-by .actor {
+  min-width: 0;
+}
+.closed-text .actor-name {
+  color: inherit;
+  font-size: inherit;
+}
+.closed-action {
+  flex: none;
+  margin-left: auto;
+}
+/* A second step, or an error, runs the band's full width under its line. */
+.closed-confirm {
+  flex-basis: 100%;
+}
+
+/* The body recedes: ink softens to muted, white sheets sink to the paper
+   with their hairlines kept, and grey fills sink halfway, so even faint text
+   keeps 4.5:1 in both themes. What carries meaning keeps its colour: the
+   chosen option, tags, stale and unread marks. The composer stays a white
+   sheet in full ink: the discussion is still open. */
+.decision-panel.is-closed {
+  --full-text: var(--text);
+  --full-surface: var(--surface);
+  --sunk: color-mix(in srgb, var(--surface-2) 55%, var(--bg));
+}
+.decision-panel.is-closed .drawer-scroll {
+  --text: var(--muted);
+  --surface: var(--bg);
+  --surface-2: var(--sunk);
+  color: var(--text);
+}
+.decision-panel.is-closed .composer {
+  --text: var(--full-text);
+  --surface: var(--full-surface);
+  color: var(--text);
+}
+.decision-panel.is-closed .option {
+  cursor: default;
+}
+.decision-panel.is-closed .option:not(.is-chosen):hover {
+  border-color: var(--border);
+}
+.decision-panel.is-closed .option:not(.is-chosen) .option-label {
+  font-weight: 500;
+}
+/* The chosen option keeps its green, its words in the green's ink. */
+.decision-panel.is-closed .option.is-chosen {
+  --text: var(--decided-ink);
+  --muted: var(--decided-ink);
+  --faint: var(--decided-ink);
+  --surface-2: color-mix(in srgb, var(--decided) 10%, var(--decided-bg));
+  background: var(--decided-bg);
+  border-color: color-mix(in srgb, var(--decided) 55%, var(--decided-bg));
+  color: var(--text);
+}
+.decision-panel.is-closed .option.is-chosen .option-letter {
+  background: var(--decided);
+  color: var(--full-surface);
+}
+.decision-panel.is-closed .option.is-chosen .tag-chosen {
+  background: var(--surface-2); /* a step deeper, or it melts into the option */
+}
+.closed-quote {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.section {
+  display: grid;
+  gap: 10px;
+}
+.section h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.options {
+  display: grid;
+  gap: 8px;
+}
+.option {
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.option:hover {
+  border-color: var(--border-strong);
+}
+/* On an archived board options are read, not picked. */
+.option:not([role]) {
+  cursor: default;
+}
+.option.is-selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+.option.is-chosen:not(.is-selected) {
+  border-color: var(--decided);
+}
+.option-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.option.is-selected .option-letter {
+  background: var(--text);
+  color: var(--bg);
+}
+/* The label keeps room of its own: crowded by tags on a narrow panel, the
+   tags wrap under it rather than the label running into them. */
+.option-label {
+  font-weight: 600;
+  flex: 1 1 8rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.option-desc {
+  color: var(--muted);
+  font-size: 13px;
+}
+.option-reason {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.option-other {
+  border-style: dashed;
+}
+/* No longer applies: kept on the card, read but not picked. */
+.option.is-outdated {
+  cursor: default;
+  border-style: dashed;
+}
+.option.is-outdated:hover {
+  border-color: var(--border);
+}
+.option.is-outdated .option-label {
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.option.is-outdated .option-letter {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--faint);
+}
+.option.is-outdated .option-desc,
+.option.is-outdated .tradeoffs,
+.option.is-outdated .finding {
+  opacity: 0.75;
+}
+.option-outdated {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.option-outdated .link-button {
+  font-size: 12px;
+  padding: 0;
+}
+.option-tools {
+  display: inline-flex;
+  gap: 2px;
+  margin: -3px -6px -3px 0;
+}
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.icon-button:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+/* Editing an option in place: the card it replaces, held in ink. */
+.option-editor {
+  cursor: default;
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+.option-editor:hover {
+  border-color: var(--text);
+}
+.option-editor .option-head input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  padding: 5px 8px;
+}
+.option-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 18px;
+}
+.option-actions > .refresh-form {
+  flex-basis: 100%;
+}
+.option-other .option-label {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.tradeoffs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+}
+.tradeoffs li {
+  padding-left: 18px;
+  position: relative;
+}
+.tradeoffs li::before {
+  position: absolute;
+  left: 2px;
+  font-weight: 600;
+}
+.tradeoffs .pro::before {
+  content: '+';
+  color: var(--decided-ink);
+}
+.tradeoffs .con::before {
+  content: '−';
+  color: var(--danger);
+}
+
+.finding {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  cursor: default;
+}
+.section > .finding {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.finding-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.metrics {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.metrics div {
+  display: flex;
+  gap: 6px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.metrics dt {
+  color: var(--muted);
+}
+.metrics dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  display: grid;
+  gap: 2px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.compare th,
+.compare td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.compare tr:last-child th,
+.compare tr:last-child td {
+  border-bottom: none;
+}
+.compare thead th {
+  font-weight: 600;
+}
+.compare tbody th {
+  font-weight: 500;
+  color: var(--muted);
+}
+.compare td {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.compare .is-chosen {
+  background: var(--decided-bg);
+}
+.compare .is-outdated {
+  color: var(--muted);
+}
+.compare thead .tag-outdated {
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.inline-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.comment {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.comment-agent {
+  background: var(--surface-2);
+}
+.comment-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A comment's field, with its button inside at the foot, the way a chat
+   composer has it. The field grows with what's written, up to a point. */
+.composer {
+  position: relative;
+}
+.composer textarea {
+  min-height: 92px;
+  max-height: 40vh;
+  padding-bottom: 46px;
+  resize: none;
+  field-sizing: content;
+}
+.composer-send {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+.composer-send kbd {
+  font: inherit;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.history summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.history summary:hover {
+  color: var(--text);
+}
+.history ol {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.history li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.history li > span {
+  min-width: 0;
+}
+.history strong {
+  color: var(--text);
+}
+
+.drawer-actions {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 20px 16px;
+  display: grid;
+  gap: 10px;
+}

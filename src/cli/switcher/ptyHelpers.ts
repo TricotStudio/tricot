@@ -67,7 +67,8 @@ if ($pid == 0) {
     no warnings 'exec';
     exec { $cmd[0] } @cmd or do { print STDERR "Couldn't start $cmd[0]: $!\n"; POSIX::_exit(127) };
 }
-$pty->close_slave();
+# The slave stays open here: macOS drops what the agent wrote that was not yet
+# read once the last slave closes, so a fast agent's last words would be lost.
 print $ctl "P $pid $tty\n";
 for my $fh ($pty, \*STDIN, \*STDOUT, $ctl) { my $f = fcntl($fh, F_GETFL, 0); fcntl($fh, F_SETFL, $f | O_NONBLOCK); }
 binmode $_ for ($pty, \*STDIN, \*STDOUT);
@@ -165,7 +166,8 @@ if pid == 0:
     except OSError as e:
         os.write(2, ("Couldn't start %s: %s\n" % (cmd[0], e.strerror)).encode())
         os._exit(127)
-os.close(slave)
+# The slave stays open here: macOS drops what the agent wrote that was not yet
+# read once the last slave closes, so a fast agent's last words would be lost.
 os.write(ctl, ('P %d %s\n' % (pid, tty)).encode())
 for fd in (master, 0, 1, ctl):
     fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK)

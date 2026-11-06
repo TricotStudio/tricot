@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Embed } from '../../../../core/sources';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 
 // Embeds that refuse to show (Google signed out, third-party cookies blocked)
 // can't be read from outside the frame, so the view says how to get there

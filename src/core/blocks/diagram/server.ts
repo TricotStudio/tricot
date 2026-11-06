@@ -74,7 +74,7 @@ const ask: AskWords = {
 export const agent: AgentHalf<DiagramTypes> = {
   addShape: { source: z.string().optional().describe('Mermaid diagram source, e.g. "flowchart LR\\n  A --> B"') },
   updateShape: { source: z.string().optional() },
-  docs: { add: 'diagram → source (Mermaid)', update: 'source' },
+  docs: { brief: 'diagram → source (Mermaid)', add: 'diagram → source (Mermaid)', update: 'source' },
   read(args) {
     if (!args.source) throw missing('diagram', 'source');
     const source = args.source as string;

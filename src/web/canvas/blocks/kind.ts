@@ -6,7 +6,7 @@
 
 import type { ComponentType, DragEvent, ReactNode, RefObject } from 'react';
 import type { Block, BlockVersion, Decision, Pin } from '../../../core/types';
-import type { BlockContent } from '../../api';
+import type { BlockContent } from '../../shared/api';
 import type { CanvasContextValue, PinDraft } from '../context';
 import type { PlacedPin } from '../pins';
 
@@ -65,14 +65,40 @@ export type AddEntry = { label: string; only?: 'decision' } & (
   | { pick: { accept: string } } // a click picks files, with this for the file picker
 );
 
+// What a kind shows while something is dragged over the canvas: what dropping
+// it will make. A browser hides what is dragged until it is dropped, so a kind
+// goes by the types it says (dataTransfer.types), and by the file types.
+export interface DropHooks {
+  onDragEnter(event: DragEvent): void;
+  onDragLeave(event: DragEvent): void;
+  clear(): void;
+  overlay: ReactNode;
+}
+
 // Files the canvas hands a kind to make blocks of: those it picked, dropped
 // on the canvas, or pasted on the page.
 export interface FileHandling {
   accepts(file: File): boolean;
   paste?: true; // files pasted on the page are added too
   add(files: File[], context: AddContext, at?: Point): Promise<void>;
-  // While files are dragged over the canvas: what dropping them will make.
-  useDrop?(enabled: boolean): { onDragEnter(event: DragEvent): void; onDragLeave(event: DragEvent): void; clear(): void; overlay: ReactNode };
+  useDrop?(enabled: boolean): DropHooks;
+}
+
+// What was dragged onto the canvas or pasted on it when it isn't a file: the
+// addresses in a drag's link list (text/uri-list), and its plain text.
+export interface Clip {
+  links: string[];
+  text: string;
+}
+
+// A clip the canvas hands a kind to make blocks of, dropped on the canvas or
+// pasted on the page. Of the kinds that accept a clip, the first that isn't a
+// fallback makes it; a fallback (a note takes any text) only when none else does.
+export interface ClipHandling {
+  accepts(clip: Clip): boolean;
+  fallback?: true;
+  add(clip: Clip, context: AddContext, at?: Point): Promise<void>;
+  useDrop?(enabled: boolean): DropHooks;
 }
 
 // A window a block opens over the canvas: an image at full size, a Google
@@ -103,6 +129,7 @@ export interface WebBlockKind<B extends Block = any> {
   readonly still?: true; // its body doesn't scroll, so the wheel and a pinch pan and zoom the canvas
   readonly menu?: AddEntry;
   readonly files?: FileHandling;
+  readonly clips?: ClipHandling;
   readonly overlay?: Overlay<B>;
   // In the prompt for pinning a part of it: how much of it the pin takes (a table's cells, rows or columns).
   readonly PinScope?: ComponentType<{ draft: PinDraft; block: B; onChange(draft: PinDraft): void }>;

@@ -18,16 +18,23 @@ import type { SiteServer } from './sites/siteServer';
 import { createLiveStepsRouter, type LiveStepsRoutesOptions } from './liveStepsRoutes';
 import { instanceRoute } from './instanceRoute';
 import { createMcpServer, type McpOptions } from './mcp';
+import { Hangups } from './mcp/hangups';
 import { PairingSessions } from './pairing';
 import { Presence } from './presence';
 import { Seats, type SeatNews } from './seats';
+import { createLeasesRouter } from './leasesRoutes';
+import type { Leases } from './leases';
 import { createSeatsRouter } from './seatsRoutes';
+import { createStopRouter } from './stopRoutes';
 import { STEP_BODY_LIMIT, Steps } from './steps';
 import { tunnelCheck } from './tunnelCheck';
+import { ToolCosts } from './toolCosts';
 import { createUpdateRouter } from './updateRoutes';
-import type { Updates } from './updates';
+import type { Updates } from '../install/updates';
 import { Usage, USAGE_BODY_LIMIT } from './usage';
 import { createUsageRouter } from './usageRoutes';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
 
 export function createApp(
   store: Store,
@@ -57,6 +64,8 @@ export function createApp(
     // The person's seats (seats.ts, T187), kept in the data folder:
     // startServer gives them. None: kept in memory (tests).
     seats?: Seats;
+    // The agent commands that need this board (leases.ts, T212). None: no lease is served.
+    leases?: Leases;
   },
 ): Express {
   const app = express();
@@ -79,9 +88,11 @@ export function createApp(
   if (!loopback && options.token) app.use(requireToken(options.token));
   // A step from an agent's harness is one short line: its body is read with a
   // small limit before the large one below can take it.
-  app.use('/api/agents/:name/steps', express.json({ limit: STEP_BODY_LIMIT }));
-  app.use('/api/agents/:name/usage', express.json({ limit: USAGE_BODY_LIMIT })); // a harness's plan usage, numbers only
-  app.use('/api/agents/:name/approvals', express.json({ limit: APPROVAL_BODY_LIMIT })); // a request for permission: the tool's input, as sent
+  app.use(routes.recordStep.path, express.json({ limit: STEP_BODY_LIMIT }));
+  app.use(routes.recordUsage.path, express.json({ limit: USAGE_BODY_LIMIT })); // a harness's plan usage, numbers only
+  // A request for permission: the tool's input, as sent. Its body as it came
+  // is kept: the proof says Tricot read exactly what the hook sent (proof.ts).
+  app.use(routes.requestApproval.path, express.json({ limit: APPROVAL_BODY_LIMIT, verify: keepRawBody }));
   // Large enough for MCP calls that carry base64 images. The body as it
   // came is kept too: a seat signs it (access.ts asPerson).
   app.use(express.json({ limit: '15mb', verify: keepRawBody }));
@@ -114,6 +125,10 @@ export function createApp(
   seats.onNews((news) => announceSeats(store, news));
   // Asking to be let in, answering, the person's list, a stream's ticket (seatsRoutes.ts).
   app.use('/api/seats', createSeatsRouter(seats, person));
+  // The agent commands that need the board, which stops with the last one when they started it (leasesRoutes.ts).
+  if (options.leases) app.use('/api/leases', createLeasesRouter(options.leases));
+  // Asking the board to stop, as a person from one of their seats; `tricot stop` asks here first (stopRoutes.ts).
+  if (options.leases) app.use('/api/stop', createStopRouter(options.leases, person));
   // Connectors are app-wide, set once for every board; their sign-in callback
   // stays behind the Host check above. What they add (a Google Doc's draft
   // lives on a link block) needs the store as well.
@@ -129,13 +144,21 @@ export function createApp(
   const pairing = new PairingSessions(store);
   // Each agent's plan usage, from its harness, for its panel (usageRoutes.ts).
   app.use('/api/agents', createUsageRouter(store, new Usage()));
+  // What each MCP tool call costs agents, in tokens, since this server started
+  // (toolCosts.ts). Sizes and names only, and it changes nothing, so it is a
+  // read like GET /api/agents: no person's gate (access.ts asPerson), behind
+  // the Origin check, and the token on the network.
+  const costs = new ToolCosts();
+  routesOn(app, '')(routes.toolCosts, (_req, res) => {
+    res.json(costs.report());
+  });
   // An agent's request for permission, waiting on the board for a person to
   // answer (approvals.ts): on the card the agent's steps are on.
   const approvals = new Approvals((agent, session, worker) => steps.placeOfSession(agent, session, worker));
-  app.get('/api/instance', instanceRoute); // which run of Tricot this is, for the approval hook (instanceRoute.ts)
+  routesOn(app, '')(routes.instance, instanceRoute); // which run of Tricot this is, for the approval hook (instanceRoute.ts)
   app.use('/api', createApprovalsRouter(store, approvals, { ...options.approvals, hosts, seats, person }));
   app.use('/api', createApiRouter(store, { mcpUrl: options.mcpUrl, version: options.version, ...(options.source && { source: options.source }), ...(options.folder && { folder: options.folder }) }, presence, steps, pairing, approvals, person, seats));
-  mountMcp(app, store, { allowFilePaths: loopback, presence, steps, pairing, connectors: options.connectors });
+  mountMcp(app, store, { allowFilePaths: loopback, presence, steps, pairing, connectors: options.connectors, version: options.version, costs });
   return app;
 }
 
@@ -160,13 +183,17 @@ function rpcError(message: string) {
 }
 
 // One MCP session per connected agent. The agent's display name comes from
-// `?agent=` on its MCP URL, falling back to the client's own name.
+// `?agent=` on its MCP URL, falling back to the client's own name. Each
+// session watches its calls' connections, so a wait ends when its agent hangs
+// up (mcp/hangups.ts).
 function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
-  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; hangups: Hangups }>();
 
   app.all('/mcp', async (req, res) => {
     const sessionId = req.header('mcp-session-id');
-    let transport = sessionId ? sessions.get(sessionId) : undefined;
+    const known = sessionId ? sessions.get(sessionId) : undefined;
+    let transport = known?.transport;
+    let hangups = known?.hangups;
 
     if (!transport) {
       if (sessionId) {
@@ -178,10 +205,11 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
         return;
       }
       const requested = typeof req.query.agent === 'string' ? req.query.agent.trim().slice(0, 60) : '';
+      const watching = new Hangups();
       const created = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          sessions.set(id, created);
+          sessions.set(id, { transport: created, hangups: watching });
         },
       });
       created.onclose = () => {
@@ -191,11 +219,14 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
         store,
         () => ({ kind: 'agent', name: requested || server.server.getClientVersion()?.name || 'agent' }),
         mcpOptions,
+        watching,
       );
       await server.connect(created);
       transport = created;
+      hangups = watching;
     }
 
+    if (req.method === 'POST') hangups?.watch(req.body, res);
     await transport.handleRequest(req, res, req.body);
   });
 }

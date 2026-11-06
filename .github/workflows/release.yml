@@ -6,7 +6,10 @@
 # downloads that file from the release and stages it on npm, with no token or
 # secret (npm trusts this workflow, RELEASING.md): it goes live on npm only
 # when a person approves it there. Only that job, which runs none of the
-# package's code, can get the identity token npm trusts.
+# package's code, can get the identity token npm trusts. Job "bottle" (bottle.yml)
+# makes the Homebrew bottle of the same file and attaches it to the release, so
+# that brew installs Tricot without building it, and without asking for a
+# recent Xcode; it too has no token but the one that writes releases.
 name: Release
 
 on:
@@ -123,6 +126,17 @@ jobs:
             case "$VERSION" in *-*) prerelease=(--prerelease) ;; esac
             gh release create "$tag" "$tarball" --verify-tag --title "Tricot $VERSION" --notes-file "$NOTES" "${prerelease[@]}"
           fi
+
+  # The Homebrew bottle of the release's file, on a Mac (bottle.yml). Apart from
+  # the npm job: if it fails, npm still gets the version, and the bottle can be
+  # made again on its own (RELEASING.md).
+  bottle:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/bottle.yml
+    with:
+      tag: ${{ github.ref_name }}
 
   # The release's own file, staged on npm. No checkout, no npm ci, no scripts,
   # no tests: nothing of the package runs beside the identity token.

@@ -6,18 +6,20 @@
 // the agent to change them, or to leave a note. The agent changes the table's
 // columns and rows; the view shows the new table where it was, and each pin
 // stays on its columns by their names and on its rows while they read the
-// same (one whose cells the agent rewrote is listed under the table).
+// same (one whose cells the agent rewrote is listed under the table). Edit,
+// or a double-click while reading, edits it by hand as the canvas does.
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { cellsQuote } from '../../../../core/blocks/table/quote';
 import { pinPart } from '../../../../core/pins';
 import type { Block } from '../../../../core/types';
-import { Icon, InlineMd } from '../../../components';
+import { Icon, InlineMd } from '../../../shared/components';
 import type { PinDraft } from '../../context';
 import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import { cellCovered, cellSpan, type TableCell } from '../../pairing/pointing';
 import type { OverlayProps } from '../kind';
+import { TableBody } from './cells';
 import './tableView.css';
 
 type TableBlock = Extract<Block, { type: 'table' }>;
@@ -158,6 +160,16 @@ export function TableView({ block, name, version, pinId, onClose }: OverlayProps
       does="changes the table"
       example="make it 3, say"
       body={(props) => <TableCells {...props} />}
+      edit={{
+        hint: 'Edit its cells, and add or remove rows and columns, by hand (or double-click it while reading)',
+        live: ({ block: table }) => (
+          <div className="piece-scroll">
+            <div className="piece-sheet piece-edit-sheet table-edit-sheet">
+              <TableBody block={table} selected placed={[]} pinnable={false} />
+            </div>
+          </div>
+        ),
+      }}
       onClose={onClose}
     />
   );

@@ -1,0 +1,619 @@
+/* ---- pins ----------------------------------------------------------------
+   A part of a block linked to the work it's about. Amber marks the part being
+   pinned, blue the parts already linked; a chip after each says what it's
+   linked to and where that stands, and opens it. */
+
+.block-note {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.canvas:not(.is-read-only) .block-note[data-pin-text] {
+  cursor: text;
+}
+.block-note ::selection {
+  background: color-mix(in srgb, var(--pin-draft) 30%, transparent);
+}
+
+.pin-mark {
+  color: inherit;
+  background: var(--pin-bg);
+  box-shadow: inset 0 -1.5px 0 var(--pin);
+  border-radius: 2px;
+  padding: 0 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.pin-mark.is-draft {
+  background: var(--pin-draft-bg);
+  box-shadow: inset 0 -1.5px 0 var(--pin-draft);
+}
+
+.pin-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 20px;
+  margin-left: 5px;
+  vertical-align: 1px;
+  border-radius: 999px;
+  background: var(--pin-bg);
+  color: var(--pin-ink);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.12s;
+}
+.pin-chip:hover {
+  background: color-mix(in srgb, var(--pin) 20%, var(--surface));
+}
+.pin-chip-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 0 7px;
+  border: none;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+/* Unpinning: an ✕ that slides out of the chip's end on hover or focus. */
+.pin-chip-unpin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 0;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  opacity: 0;
+  overflow: hidden;
+  cursor: pointer;
+  transition: width 0.14s cubic-bezier(0.16, 1, 0.3, 1), margin 0.14s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.14s, background 0.12s;
+}
+.pin-chip:hover .pin-chip-unpin,
+.pin-chip:focus-within .pin-chip-unpin {
+  width: 16px;
+  margin: 0 3px 0 -5px;
+  opacity: 0.75;
+}
+.pin-chip .pin-chip-unpin:hover,
+.pin-chip .pin-chip-unpin:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.pin-chip-unpin .icon {
+  width: 10px;
+  height: 10px;
+}
+.pin-chip-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pin);
+}
+.pin-chip-part {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pin-chip-arrow {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+.pin-chip-ref {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pin-chip-status {
+  font-weight: 400;
+}
+/* Finished work, and parts edited away since, step back. */
+.pin-chip.is-done,
+.pin-chip.is-lost {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.pin-chip.is-done:hover,
+.pin-chip.is-lost:hover {
+  background: var(--border);
+}
+.pin-chip.is-done .pin-chip-dot {
+  background: var(--faint);
+}
+.pin-chip.is-lost .pin-chip-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--faint);
+}
+.pin-chip-lost::before {
+  content: '· ';
+}
+
+/* A part people commented on: a speech bubble and how many comments. */
+.pin-chip-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+.pin-chip.is-comment .pin-chip-open {
+  gap: 4px;
+}
+.pin-chip.is-open {
+  background: color-mix(in srgb, var(--pin) 24%, var(--surface));
+}
+.pin-chip.is-done.is-open {
+  background: var(--border);
+}
+/* Replies the viewer hasn't seen. */
+.pin-chip-new {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 1px;
+  border-radius: 50%;
+  background: var(--focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 25%, transparent);
+}
+.pin-chip.is-new {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pin) 55%, transparent);
+}
+
+/* A pin shown from a comment about it stands out, pulsing, for a moment. */
+@property --ring {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+.pin-mark.is-focus,
+.pin-chip.is-focus,
+.pin-box.is-focus {
+  --ring: color-mix(in srgb, var(--pin) 30%, transparent);
+  box-shadow: 0 0 0 3px var(--ring);
+  animation: pin-focus 0.8s ease-in-out 3;
+}
+.pin-mark.is-focus {
+  background: color-mix(in srgb, var(--pin) 32%, var(--surface));
+  box-shadow: inset 0 -2px 0 var(--pin), 0 0 0 3px var(--ring);
+}
+.pin-chip.is-focus {
+  background: var(--pin);
+  color: var(--primary-text);
+}
+@keyframes pin-focus {
+  50% {
+    --ring: color-mix(in srgb, var(--pin) 12%, transparent);
+  }
+}
+
+.pin-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pin-strip .pin-chip {
+  margin-left: 0;
+}
+
+.block-table .pin-cell.is-draft {
+  background: var(--pin-draft-bg);
+  box-shadow: inset 0 0 0 1.5px var(--pin-draft);
+}
+.block-table .pin-cell.is-linked {
+  background: var(--pin-bg);
+  box-shadow: inset 0 0 0 1.5px var(--pin);
+}
+
+.block.is-pin-linked {
+  border-color: color-mix(in srgb, var(--pin) 55%, var(--border));
+}
+.block.is-pin-draft {
+  border-color: var(--pin-draft);
+  box-shadow: 0 0 0 1px var(--pin-draft), var(--shadow);
+}
+.block-type-link.is-pin-draft {
+  background: var(--pin-draft-bg);
+}
+
+/* Boxes drawn on an image, numbered at their corner: dashed amber while
+   being drawn and pinned, dashed blue once linked. */
+.image-pins {
+  position: absolute;
+}
+.image-pins.is-pinnable {
+  cursor: crosshair;
+  touch-action: none;
+}
+.pin-box {
+  position: absolute;
+  border: 1.5px dashed var(--pin);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--pin) 10%, transparent);
+  pointer-events: none;
+}
+.pin-box.is-draft {
+  border-color: var(--pin-draft);
+  background: color-mix(in srgb, var(--pin-draft) 16%, transparent);
+}
+.pin-box-n {
+  position: absolute;
+  top: 0;
+  right: 0;
+  translate: 50% -50%;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--pin);
+  color: var(--primary-text);
+  box-shadow: 0 0 0 2px var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.pin-box.is-draft .pin-box-n {
+  background: var(--pin-draft);
+  color: #1a1a18; /* dark on amber reads in both themes */
+}
+
+/* A flowchart's nodes and arrows. Mermaid styles its parts by the diagram's
+   id, so pins mark them with !important. */
+.block-diagram.is-pinnable g.node,
+.block-diagram.is-pinnable g.edgeLabel {
+  cursor: pointer;
+}
+.block-diagram .pin-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14px;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.block-diagram.is-pinnable g.node:not(.pin-part):hover :is(rect, polygon, circle, ellipse, path),
+.block-diagram.is-pinnable path[data-edge]:not(.pin-part):has(+ .pin-hit:hover) {
+  stroke: color-mix(in srgb, var(--pin-draft) 75%, var(--border-strong)) !important;
+}
+.block-diagram g.node.pin-part :is(rect, polygon, circle, ellipse, path) {
+  fill: var(--pin-bg) !important;
+  stroke: var(--pin) !important;
+  stroke-width: 2px !important;
+}
+.block-diagram g.node.pin-part.is-draft :is(rect, polygon, circle, ellipse, path) {
+  fill: var(--pin-draft-bg) !important;
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram path.pin-part {
+  stroke: var(--pin) !important;
+  stroke-width: 2.5px !important;
+}
+.block-diagram path.pin-part.is-draft {
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram g.label.pin-part :is(.labelBkg, .edgeLabel, p) {
+  background: var(--pin-bg) !important;
+  color: var(--pin-ink) !important;
+}
+.block-diagram g.label.pin-part.is-draft :is(.labelBkg, .edgeLabel, p) {
+  background: var(--pin-draft-bg) !important;
+  color: var(--open-ink) !important;
+}
+
+/* The prompt under a part being pinned. */
+.pin-prompt {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  transform-origin: top left;
+  animation: pin-prompt-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pin-prompt.is-above {
+  transform: translateY(-100%);
+  transform-origin: bottom left;
+}
+@keyframes pin-prompt-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+.pin-prompt-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+/* The words quoted take a quote's own mark, neutral (as .md blockquote): the
+   part's highlight on the canvas, and its chip, say it's pinned. */
+.pin-prompt-quote {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 0 1px 11px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pin-prompt-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  margin: -3px -3px 0 0;
+  padding: 4px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.pin-prompt-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.pin-prompt textarea {
+  min-height: 64px;
+  max-height: 180px;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.pin-prompt-error {
+  color: var(--danger);
+  font-size: 12.5px;
+}
+.pin-prompt-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pin-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* On the board context: Ask a question, Create task and Comment in a row,
+   with Ready now under Create task. */
+.pin-prompt-actions.is-three {
+  display: grid;
+  grid-template-columns: repeat(3, auto) minmax(0, 1fr);
+  row-gap: 6px;
+  container-type: inline-size;
+}
+.pin-prompt-actions.is-three .pin-ready {
+  grid-area: 2 / 2;
+}
+.pin-prompt-actions.is-three .pin-prompt-keys {
+  grid-area: 1 / 4;
+  justify-self: end;
+}
+/* A phone's narrow prompt keeps the buttons, which matter more than the keys. */
+@container (max-width: 340px) {
+  .pin-prompt-actions.is-three .pin-prompt-keys {
+    display: none;
+  }
+}
+.pin-ready input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--text);
+}
+.pin-prompt-keys {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.pin-prompt-hint {
+  margin: -2px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* A board context pin's comment thread, under its chip. */
+.pin-thread-comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.pin-thread-comment {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: 13px;
+}
+.pin-thread-comment.comment-agent {
+  background: var(--surface-2);
+}
+.pin-thread-comment p {
+  margin: 0;
+}
+.pin-thread-note,
+.pin-thread-resolved {
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
+}
+.pin-thread-resolved {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--decided-ink);
+}
+.pin-thread-resolved .icon {
+  width: 12px;
+  height: 12px;
+}
+.pin-thread-also {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 12px;
+}
+.pin-thread-also .pin-chip {
+  margin-left: 0;
+}
+.pin-thread textarea {
+  min-height: 52px;
+}
+.pin-scope {
+  display: inline-flex;
+  justify-self: start;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.pin-scope button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pin-scope button.is-on {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+/* In a task's or decision's panel: where it was pinned from. */
+.pinned-from {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.pinned-from blockquote {
+  margin: 0;
+  padding: 1px 0 1px 11px;
+  border-left: 2px solid var(--border-strong); /* the quote's own mark, neutral */
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.pinned-from blockquote.is-lost {
+  color: var(--muted);
+}
+.pinned-from-where {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  padding-left: 13px;
+  font-size: 12.5px;
+}
+.pinned-from-where a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.pinned-from-where a:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tag-lost {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+/* The board's menu after its name; your menu on the chip. */
+.board-title-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.board-title-row .menu-button {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-xs);
+  font-size: 15px;
+}
+.board-title-row .menu-button:hover,
+.board-title-row .menu-button[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+/* Dropped under the top bar, from where the ⋯ sits, like the switcher. */
+.board-title-row .board-menu {
+  position: static;
+}
+.board-title-row .menu-panel {
+  top: calc(100% + 8px);
+  left: auto;
+  right: auto;
+  margin-left: -6px;
+}
+.user-menu {
+  position: relative;
+}
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.user-chev {
+  color: var(--muted);
+  font-size: 13px;
+}
+.user-panel {
+  width: 260px;
+}
+.user-theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  font-size: 13px;
+}
+.user-theme .connect-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}

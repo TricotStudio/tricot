@@ -5,8 +5,10 @@
 import { useRef } from 'react';
 import { retick, setTask, taskLines, taskProgress } from '../../../../core/taskList';
 import type { Block } from '../../../../core/types';
-import { Md } from '../../../components';
+import { Md } from '../../../shared/components';
+import { dragsText } from '../../clip';
 import { useCanvas } from '../../context';
+import { useTypedDrop } from '../../dropOverlay';
 import { DRAFT, PinStrip, rehypePins, type PlacedPin, type QuotedMark } from '../../pins';
 import { PIN_COMPONENTS, dragged, draftOf, selecting, useLongEdit } from '../interaction';
 import type { ToolsProps, WebBlockKind } from '../kind';
@@ -120,5 +122,14 @@ export const note: WebBlockKind<NoteBlock> = {
   overlay: { Component: NoteView, refocus: true }, // its full view, in the pairing shell
   activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Note', add: () => ({ content: { type: 'note', text: '' } }) },
-  added: (block, canvas) => canvas.edit(block.id),
+  // Text dropped or pasted is a note of its own words. Any text is: a link is
+  // the link kind's first.
+  clips: {
+    accepts: (clip) => clip.text !== '',
+    fallback: true,
+    add: (clip, context, at) => context.add({ type: 'note', text: clip.text }, { at }),
+    useDrop: (enabled) => useTypedDrop(enabled, { matches: dragsText, what: 'the text', as: 'a Note' }),
+  },
+  // An empty note opens for typing; one made of text already has its words.
+  added: (block, canvas) => !block.text && canvas.edit(block.id),
 };

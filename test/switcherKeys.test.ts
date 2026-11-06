@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { InputRouter, parseSwitchKey, type HostAction } from '../src/cli/switcher/keys';
+import { InputRouter, SWITCH_KEY, type HostAction } from '../src/cli/switcher/keys';
 import { sleep } from './switcher/harness';
 
 // What the person types, sorted between Tricot and the agent showing: the
@@ -72,13 +72,9 @@ describe('the switch key', () => {
     assert.deepEqual(t.said, ['send "ab"', 'next', 'send "xyz"']);
   });
 
-  it('can be another control key, but not one the agents need', () => {
-    assert.deepEqual(parseSwitchKey('ctrl-\\'), { byte: 0x1c, label: 'Ctrl+\\' });
-    assert.deepEqual(parseSwitchKey('ctrl+]'), { byte: 0x1d, label: 'Ctrl+]' });
-    assert.deepEqual(parseSwitchKey('C-g'), { byte: 0x07, label: 'Ctrl+G' });
-    assert.deepEqual(parseSwitchKey('^_'), { byte: 0x1f, label: 'Ctrl+_' });
-    for (const taken of ['ctrl-c', 'ctrl-m', 'ctrl-[', 'ctrl-z']) assert.match((parseSwitchKey(taken) as { problem: string }).problem, /can't be/);
-    assert.match((parseSwitchKey('F12') as { problem: string }).problem, /takes a control key/);
+  it('is Ctrl+\\ alone, the byte the router is given', () => {
+    assert.deepEqual(SWITCH_KEY, { byte: 0x1c, label: 'Ctrl+\\' });
+    assert.equal(SWITCH_KEY.byte, KEY);
   });
 });
 

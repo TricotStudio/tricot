@@ -17,8 +17,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { shellQuote } from '../src/core/connect';
-import type { Command } from '../src/server/handoff';
-import { findRunning, pidAlive, readLock, type ServerLock } from '../src/server/lock';
+import type { Command } from '../src/install/handoff';
+import { findRunning, pidAlive, readLock, type ServerLock } from '../src/platform/lock';
 
 export const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const child = path.join(repo, 'test/handoffChild.ts');
@@ -169,7 +169,7 @@ function script(file: string, lines: string[]): void {
 // The stand-in `tricot` in <prefix>/bin.
 function tricotBin(prefix: string, pkg: string): void {
   mkdirSync(path.join(prefix, 'bin'), { recursive: true });
-  script(path.join(prefix, 'bin', 'tricot'), [`exec ${[process.execPath, '--import', 'tsx', child, '--pkg', pkg].map(shellQuote).join(' ')} "$@"`]);
+  script(path.join(prefix, 'bin', 'tricot'), [`exec ${[process.execPath, '--import', 'tsx', child, '--pkg', pkg].map((word) => shellQuote(word)).join(' ')} "$@"`]);
 }
 
 const calls = (log: string) => () => {
@@ -252,7 +252,7 @@ export async function startInstalled(
   const which = installed.kind === 'npx' ? ['--as', JSON.parse(readFileSync(path.join(installed.root, 'package.json'), 'utf8')).version] : ['--pkg', installed.root];
   const proc = spawn(
     process.execPath,
-    ['--import', 'tsx', child, ...which, 'start', '--port', String(options.port), '--host', '127.0.0.1', '--data', options.dataDir, '--no-open', '--no-hooks'],
+    ['--import', 'tsx', child, ...which, 'start', '--port', String(options.port), '--host', '127.0.0.1', '--data', options.dataDir, '--no-open', '--no-ask'],
     { cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe'] },
   );
   let output = '';

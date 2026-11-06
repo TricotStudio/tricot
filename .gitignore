@@ -12,6 +12,8 @@ dist/
 *.db
 *.db-*
 *.sqlite
+# but for the databases the tests read, one a release, each of a made-up board (scripts/db-fixture.mjs)
+!/test/fixtures/*.db
 
 # Local tool state and installed tooling (reinstallable, 19 MB): all of
 # .claude/ (settings, agents, worktrees, installed skills) but the project's

@@ -102,3 +102,25 @@
 .chart-full-chips .pin-chip {
   margin-left: 0;
 }
+
+/* Editing it by hand: the numbers on the left, the chart as they draw it on the right. */
+.chart-edit-kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-edit-kind select {
+  font-size: 13px;
+}
+.chart-edit-data {
+  font-size: 13px;
+}
+.chart-edit-plot {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+.chart-edit-plot > .chart {
+  flex: 1 1 auto;
+  min-height: 0;
+}

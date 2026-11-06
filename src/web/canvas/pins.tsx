@@ -15,12 +15,11 @@ import {
   type PinPlace,
 } from '../../core/pins';
 import type { Block, Board, Comment, Pin } from '../../core/types';
-import { api, type PinPart } from '../api';
-import { ActorBadge, Icon, timeAgo } from '../components';
-import { AsksYou, CommentText, MentionTextarea } from '../mentions';
-import { showComments } from '../discussion';
-import { Reactions } from '../reactions';
-import { go } from '../hooks';
+import { api, type PinPart } from '../shared/api';
+import { ActorBadge, Icon, timeAgo } from '../shared/components';
+import { AsksYou, CommentText, MentionTextarea } from '../shared/mentions';
+import { Reactions, showComments } from '../conversation';
+import { go, linkTo } from '../shared/pages';
 import { webKindOf } from './blocks/registry';
 import { useCanvas, type PinDraft } from './context';
 import { DRAFT, markClass, pieces, type TextMark } from './marks';
@@ -646,9 +645,8 @@ export function PinThread(props: {
 // ---- where work was pinned from ------------------------------------------------------
 
 function canvasHref(board: Board, owner: { decision?: { id: string }; task?: { id: string } }): string {
-  const base = `#/b/${encodeURIComponent(board.id)}`;
-  if (owner.task) return `${base}/t/${encodeURIComponent(owner.task.id)}`;
-  return owner.decision ? `${base}/d/${encodeURIComponent(owner.decision.id)}` : `${base}/canvas`;
+  if (owner.task) return linkTo.task(board.id, owner.task.id);
+  return owner.decision ? linkTo.decision(board.id, owner.decision.id) : linkTo.board(board.id, 'canvas');
 }
 
 // A pinned task's detail, or a pinned question's context, ends quoting the

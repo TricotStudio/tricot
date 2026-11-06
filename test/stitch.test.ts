@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-// The "working on it" stitch (web/stitch.tsx, stitch.css): the promises its
+// The "working on it" stitch (web/shared/stitch.tsx, stitch.css): the promises its
 // styles keep, read from the files as the browser gets them.
 
 const web = path.resolve(import.meta.dirname, '../src/web');
-const css = readFileSync(path.join(web, 'stitch.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-const tsx = readFileSync(path.join(web, 'stitch.tsx'), 'utf8');
+const css = readFileSync(path.join(web, 'shared/stitch.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const tsx = readFileSync(path.join(web, 'shared/stitch.tsx'), 'utf8');
 
 // The rules outside the @media block that opens at `query`, and those inside it.
 function split(text: string, query: string): { inside: string; outside: string } {

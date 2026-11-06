@@ -235,7 +235,7 @@ describe('Morphable decisions', () => {
 
     // It leaves Open without counting as decided, and isn't answered while retired.
     const digest = boardDigest(store.getBoard(boardId));
-    assert.match(digest, /## Retired: a person set these aside as no longer relevant; don't build on them \(1\)\n- #1 .+ — retired: "The gateway retries for us now"/);
+    assert.match(digest, /\nRetired: 1 decision a person set aside as no longer relevant; don't build on it\.\n/);
     assert.doesNotMatch(digest, /## Open/);
     assert.deepEqual(store.listBoards()[0].counts, { open: 0, exploring: 0, provisional: 0, decided: 0, deferred: 0, retired: 1 });
     assert.throws(() => store.resolve(decision.id, { optionId: 'b' }, wassim), /is retired as no longer relevant\. Bring it back \(reopen it\) before deciding it/);

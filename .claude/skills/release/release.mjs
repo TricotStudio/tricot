@@ -300,13 +300,22 @@ function verify(version) {
 async function published(version) {
   const tag = `v${version}`;
   const asset = `tricot-${version}.tgz`;
+  const bottleAsset = `tricot-${version}.all.bottle.tar.gz`;
+  let bottleDigest; // what GitHub says the release's bottle's sha256 is
   const rel = run('gh', ['release', 'view', tag, '--repo', slug, '--json', 'url,assets,isDraft']);
-  if (rel.missing) warn(`gh isn't installed: look for ${asset} on https://github.com/${slug}/releases/tag/${tag}.`);
+  if (rel.missing) warn(`gh isn't installed: look for ${asset} and ${bottleAsset} on https://github.com/${slug}/releases/tag/${tag}.`);
   else if (rel.status !== 0) left(`There's no GitHub release ${tag} yet (${firstLine(rel.err)}): the Release workflow makes it once the tag is pushed.`);
   else {
     const info = JSON.parse(rel.out);
     if (info.assets?.some((a) => a.name === asset)) ok(`The GitHub release ${tag} has ${asset} (${info.url}).`);
     else left(`The GitHub release ${tag} has no ${asset} yet (${info.url}).`);
+    const bottle = info.assets?.find((a) => a.name === bottleAsset);
+    if (bottle) {
+      ok(`The GitHub release ${tag} has ${bottleAsset}, the Homebrew bottle.`);
+      bottleDigest = typeof bottle.digest === 'string' ? bottle.digest.replace(/^sha256:/, '') : undefined;
+    } else {
+      left(`The GitHub release ${tag} has no ${bottleAsset} yet. The Release workflow's bottle job makes it, and Homebrew needs it (without it, brew builds from source and wants a recent Xcode). If that job failed, the person runs the Bottle workflow again:\n! gh workflow run bottle.yml --repo ${slug} -f tag=${tag}`);
+    }
     if (info.isDraft) warn(`The GitHub release ${tag} is still a draft.`);
   }
 
@@ -321,7 +330,10 @@ async function published(version) {
 
   const formulaFile = 'packaging/homebrew/Formula/tricot.rb';
   const formula = readFileSync(path.join(root, formulaFile), 'utf8');
+  const bottleSha = /^ {4}sha256 cellar: :any_skip_relocation, all: "([0-9a-f]{64})"$/m.exec(formula)?.[1];
   if (!formula.includes(`/download/${tag}/${asset}"`)) left(`The Homebrew formula is still for an older version: node scripts/homebrew-formula.mjs ${version}.`);
+  else if (!bottleSha) left(`The formula for ${version} names no bottle, so Homebrew would build it from source and ask for a recent Xcode: once the release has ${bottleAsset}, node scripts/homebrew-formula.mjs ${version}.`);
+  else if (bottleDigest && bottleDigest !== bottleSha) left(`The formula's bottle isn't the release's ${bottleAsset} (sha256 ${bottleSha}, the release's is ${bottleDigest}; the bottle was made again?): node scripts/homebrew-formula.mjs ${version}.`);
   else if (git('status', '--porcelain', '--', formulaFile).out) left(`The formula for ${version} is written but not committed ("Homebrew formula for ${version}").`);
   else {
     ok(`The formula for ${version} is committed here.`);

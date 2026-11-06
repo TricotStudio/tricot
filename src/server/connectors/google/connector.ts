@@ -8,10 +8,10 @@
 // Docs (./docs.ts). Sign-ins made before, with the wider scopes, keep working.
 
 import { readdirSync, readFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { describeAccess, type ConnectorStatus } from '../../../core/connectors';
 import { DOCS_SCOPE, DRIVE_FILE, DRIVE_METADATA } from '../../../core/connectors/google/scopes';
+import { osHome } from '../../../platform/paths';
 import {
   ConnectorError,
   idTokenClaims,
@@ -630,7 +630,7 @@ export class GoogleConnector {
 // What a person does once, in their own Google Cloud project, before Connect
 // works: only when Tricot has no client of its own to sign in with (./builtIn.ts).
 function setupSteps(dataDir: string): { folder: string; steps: string[] } {
-  const home = os.homedir();
+  const home = osHome();
   const folder = dataDir === home || dataDir.startsWith(`${home}${path.sep}`) ? `~${dataDir.slice(home.length)}` : dataDir;
   return {
     folder,

@@ -11,7 +11,8 @@
 //   n            deny it: a reason may be typed first, on one line, for the agent
 //   ↑ ↓          pick another, when several wait
 //   o            open the board in the browser
-//   a            add an agent: one Tricot can start that isn't running
+//   a            add an agent: any that isn't running, listed one to a row; picking
+//                one Tricot can't start says why and how to connect it
 //   x            stop one: picked, then y; it is hung up (SIGHUP)
 //   q            quit, as the switch key then q does
 //
@@ -39,11 +40,11 @@ export interface TabAgent extends AgentNow {
   number: number; // what picks it, from 1
 }
 
-// What an agent Tricot can start looks like to the tab's "add".
+// What an agent Tricot knows looks like to the tab's "add".
 export interface AddChoice {
-  id: string; // claude, codex, opencode
+  id: string; // claude, codex, opencode, gemini, pi, omp
   name: string; // Claude Code
-  note?: string; // why it can't be started now, in a few words ("not installed")
+  note?: string; // why it can't be started now, in a few words ("not installed", "connect it first")
   problem?: string; // and in full, said when it is picked
 }
 
@@ -55,7 +56,7 @@ export interface TabHost {
   changed(): void; // draw it again
   open(): void; // the board, in the browser
   quit(): void;
-  choices(): AddChoice[]; // the agents that could be added now
+  choices(): AddChoice[]; // every agent but those running, some with a note on why not now
   add(id: string): string | undefined; // starts it in a tab of its own; a problem, if it can't
   stop(number: number): void; // hangs it up
 }

@@ -1,0 +1,61 @@
+/* A card's own ⋯ (cardActions.tsx): on its bar, after the title, like the
+   board's beside its name. Deleting one asks in the delete dialog
+   (shared/dialog.css), which here also lists what links to the card. */
+.card-menu {
+  flex: none;
+  margin: -6px 0;
+}
+.card-menu .menu-button {
+  width: 30px;
+  height: 30px;
+}
+
+/* The way to keep the card instead: its line, and the button that opens that form. */
+.card-delete-keep {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+}
+.card-delete-keep p {
+  flex: 1;
+}
+.card-delete-keep .btn {
+  flex: none;
+}
+@media (max-width: 520px) {
+  .card-delete-keep {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.card-delete-links {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.card-delete-links h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.card-delete-links ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.delete-dialog .card-delete-links p {
+  font-size: 13px;
+}
+
+/* Dropping a task asks why in the footer, as retiring a decision does. */
+.drop-task {
+  background: var(--deferred-bg);
+  color: var(--deferred-ink);
+}

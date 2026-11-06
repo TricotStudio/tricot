@@ -1,5 +1,5 @@
 import type { MermaidConfig } from 'mermaid';
-import type { ThemeBase } from '../../../theme';
+import type { ThemeBase } from '../../../themes';
 
 // What a label may hold. Mermaid's strict mode keeps HTML in labels (bold,
 // line breaks, KaTeX) and only drops scripts and handlers, so a label could

@@ -3,10 +3,11 @@ import { checksText, STATE_WORDS, type ChecksSummary, type GithubCard } from '..
 import { cardKey, githubTarget, type FileTarget } from '../../../core/connectors/github/link';
 import type { LinkSource } from '../../../core/sources';
 import type { Block } from '../../../core/types';
-import { Icon } from '../../components';
+import { Icon } from '../../shared/components';
 import { useCanvas } from '../../canvas/context';
 import { githubApi } from './api';
 import { useGithubCard } from './cards';
+import { linkTo } from '../../shared/pages';
 
 type LinkBlock = Extract<Block, { type: 'link' }>;
 
@@ -87,7 +88,7 @@ function PullOrIssueDetails({ block, target }: { block: LinkBlock; target: Exclu
           </a>
         )}
         {problem.code === 'needs_sign_in' && (
-          <a className="btn btn-small nodrag" href="#/connectors">
+          <a className="btn btn-small nodrag" href={linkTo.connectors()}>
             Sign in again
           </a>
         )}

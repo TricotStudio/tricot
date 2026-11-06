@@ -7,7 +7,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { panelTexts } from '../src/core/connect';
+import { panelTexts } from '../src/core/agents/registry';
 import { deliveryOf, LISTEN_PHRASE, notListeningHere, sayTo, toWake, wakeWords, type AgentNow, type DeliveryInput } from '../src/core/delivery';
 import {
   agentLine,

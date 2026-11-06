@@ -6,5 +6,7 @@ import type { ServerConnectorKind } from './connector';
 import { figmaServer } from './figma';
 import { githubServer } from './github';
 import { googleServer } from './google';
+import { linearServer } from './linear';
+import { slackServer } from './slack';
 
-export const serverConnectors: readonly ServerConnectorKind[] = [googleServer, figmaServer, githubServer];
+export const serverConnectors: readonly ServerConnectorKind[] = [googleServer, figmaServer, githubServer, slackServer, linearServer];

@@ -75,7 +75,7 @@ const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
 export const agent: AgentHalf<TableTypes> = {
   addShape: { columns: z.array(z.string()).optional(), rows: z.array(z.array(cellShape)).optional() },
   updateShape: { columns: z.array(z.string()).optional(), rows: z.array(z.array(cellShape)).optional() },
-  docs: { add: 'table → columns + rows', update: 'columns/rows' },
+  docs: { brief: 'table → columns + rows', add: 'table → columns + rows', update: 'columns/rows' },
   read(args) {
     if (!args.columns) throw missing('table', 'columns');
     const columns = args.columns as string[];

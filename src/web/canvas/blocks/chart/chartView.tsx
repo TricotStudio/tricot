@@ -4,16 +4,18 @@
 // agent: click a bar, a point or a slice (a category, or one series of it),
 // or a series in the legend, to ask the agent to change it, or to leave a
 // note. The agent changes the chart's data; the view draws it anew, and each
-// pin stays on its category and series, found again by their names.
+// pin stays on its category and series, found again by their names. Edit,
+// or a double-click while viewing, edits its kind and numbers by hand.
 
-import { CHART_KIND_LABEL } from '../../../../core/blocks/chart/chart';
+import { CHART_KINDS, CHART_KIND_LABEL } from '../../../../core/blocks/chart/chart';
 import { pinPart } from '../../../../core/pins';
 import type { Block } from '../../../../core/types';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import type { OverlayProps } from '../kind';
-import { ChartPlot, chartDraft, chartMarkOf, type ChartMark } from './chart';
+import type { BlockPatch } from '../../../shared/api';
+import { ChartData, ChartPlot, chartDraft, chartMarkOf, type ChartMark } from './chart';
 import './chartView.css';
 
 type ChartBlock = Extract<Block, { type: 'chart' }>;
@@ -53,6 +55,36 @@ function pointWords(block: ChartBlock): string {
   return block.columns.length > 2 ? `click ${mark}, or a series in the legend,` : `click ${mark}`;
 }
 
+// Editing it by hand: its kind and the numbers it is drawn from, as on the
+// canvas, each change saved at once and drawn beside them.
+function ChartEdit({ block, save }: { block: ChartBlock; save(patch: BlockPatch): void }) {
+  return (
+    <div className="piece-edit has-preview chart-edit">
+      <div className="piece-edit-field">
+        <label className="piece-edit-label chart-edit-kind">
+          Kind
+          <select value={block.kind} onChange={(e) => save({ kind: e.target.value })}>
+            {CHART_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {CHART_KIND_LABEL[kind]} chart
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="piece-edit-shown chart-edit-data">
+          <ChartData block={block} selected />
+        </div>
+      </div>
+      <div className="piece-edit-preview">
+        <span className="piece-edit-label">Preview</span>
+        <div className="piece-edit-shown chart-edit-plot">
+          <ChartPlot block={block} marks={[]} pinnable={false} full onPick={() => {}} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChartView({ block, name, version, pinId, onClose }: OverlayProps<ChartBlock>) {
   const series = block.columns.length - 1;
   const from = [`${CHART_KIND_LABEL[block.kind]} chart`, `${plural(block.rows.length, 'category', 'categories')}${series > 1 ? `, ${plural(series, 'series', 'series')}` : ''}`, block.unit && `in ${block.unit}`]
@@ -76,6 +108,10 @@ export function ChartView({ block, name, version, pinId, onClose }: OverlayProps
       does="changes the chart's data"
       example="make it 12, say"
       body={(props) => <ChartParts {...props} />}
+      edit={{
+        hint: 'Edit its kind and its numbers by hand (or double-click it while viewing)',
+        live: ({ block: chart, save }) => <ChartEdit block={chart} save={save} />,
+      }}
       onClose={onClose}
     />
   );

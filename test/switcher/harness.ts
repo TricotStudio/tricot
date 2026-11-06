@@ -29,8 +29,11 @@ export const repo = path.resolve(fixtures, '../..');
 export const COLOURS: TerminalColours = { foreground: 'rgb:e6e6/e6e6/e6e6', background: 'rgb:1e1e/1e1e/1e1e' };
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Waits until `check` holds (true), or `ms` have gone by (false).
-export async function waitFor(check: () => boolean | Promise<boolean>, ms = 5_000, every = 25): Promise<boolean> {
+// Waits until `check` holds (true), or `ms` have gone by (false). The default
+// is long because a run waits only as long as the thing takes, and a busy CI
+// runner (this suite's other files, Chrome) can starve an agent and the host
+// for several seconds: 5 s failed intermittently there.
+export async function waitFor(check: () => boolean | Promise<boolean>, ms = 15_000, every = 25): Promise<boolean> {
   const until = Date.now() + ms;
   for (;;) {
     if (await check()) return true;

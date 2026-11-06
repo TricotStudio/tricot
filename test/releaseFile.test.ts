@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { gzipSync } from 'node:zlib';
-import { downloadPath, downloadReleaseFile, packageOf } from '../src/server/releaseFile';
+import { downloadPath, downloadReleaseFile, packageOf } from '../src/install/releaseFile';
 import { integrity, sha256, tarball, tricotTarball } from './updateFixtures';
+import { WINDOWS } from './platform';
 
 // A release's file, downloaded and checked before npm installs it, from a
 // stand-in for GitHub's download: never the network.
@@ -34,8 +35,8 @@ describe("A release's file", () => {
     assert.equal(where, downloadPath(dataDir, '0.2.0'));
     assert.equal(where, path.join(dataDir, 'update-download', 'tricot-0.2.0.tgz'));
     assert.deepEqual(readFileSync(where), file);
-    assert.equal(statSync(where).mode & 0o777, 0o600);
-    assert.equal(statSync(folder()).mode & 0o777, 0o700);
+    if (!WINDOWS) assert.equal(statSync(where).mode & 0o777, 0o600);
+    if (!WINDOWS) assert.equal(statSync(folder()).mode & 0o777, 0o700);
     assert.equal(asked.length, 1);
     assert.equal(asked[0].url, url);
     assert.deepEqual(asked[0].init?.headers, { accept: 'application/octet-stream', 'user-agent': 'tricot' }, 'nothing else: no token, no version');

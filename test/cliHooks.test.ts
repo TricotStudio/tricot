@@ -15,7 +15,7 @@ import { pi } from '../src/server/hooks/pi';
 import type { RunningServer } from '../src/server/start';
 
 // The first `tricot` asks once whether to show the agents' steps, and
-// `tricot hooks` turns them on or off. Every agent folder is in a home made
+// `tricot steps` turns them on or off. Every agent folder is in a home made
 // for the test and PATH is empty: no real agent settings are read or written,
 // and no agent is run.
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,7 +45,7 @@ describe('live steps from the terminal', () => {
 
   // A terminal answers `answer` (undefined: there is no terminal); a bare Enter takes the question's default.
   const ctx = (answer?: boolean | 'enter', env: Record<string, string> = {}): CliContext => ({
-    env: { TRICOT_DATA_DIR: dataDir, PORT: String(port), HOME: home, PATH: '', ...env },
+    env: { TRICOT_DATA_DIR: dataDir, PORT: String(port), HOME: home, USERPROFILE: home, PATH: '', ...env },
     root,
     entry: path.join(repo, 'src/cli/tricot.ts'),
     out: (line) => out.push(line),
@@ -128,7 +128,7 @@ describe('live steps from the terminal', () => {
       mkdirSync(path.join(home, '.pi'));
       await startAndStop(false);
       assert.equal(questions.length, 1);
-      assert.match(said(), /Nothing was changed\. Turn them on later with: tricot hooks on/);
+      assert.match(said(), /Nothing was changed\. Turn them on later with: tricot steps on/);
       assert.equal(pi.status(target()).state, 'off');
       assert.equal(existsSync(path.join(home, '.pi/agent')), false);
       assert.equal(remembered().answer, 'no');
@@ -137,10 +137,10 @@ describe('live steps from the terminal', () => {
       assert.deepEqual(questions, [], 'a no is remembered too');
     });
 
-    it("doesn't ask without a terminal, in CI, or with --no-hooks, and remembers nothing then", async () => {
+    it("doesn't ask without a terminal, in CI, or with --no-ask, and remembers nothing then", async () => {
       mkdirSync(path.join(home, '.claude'));
       await startAndStop(undefined);
-      await startAndStop(true, '--no-hooks');
+      await startAndStop(true, '--no-ask');
       const ci = await run(['--no-open'], true, { CI: 'true' });
       await ci.server?.close();
       servers.pop();
@@ -208,13 +208,13 @@ describe('live steps from the terminal', () => {
     });
   });
 
-  describe('tricot hooks', () => {
+  describe('tricot steps', () => {
     it("says each agent's state, and where", async () => {
       mkdirSync(path.join(home, '.codex'));
       mkdirSync(path.join(home, '.pi'));
       pi.install(target(), { url: 'http://127.0.0.1:1', source: path.join(repo, 'hooks'), name: 'Pi' });
       codex.install(target(), { url: 'http://127.0.0.1:1', source: path.join(repo, 'hooks') });
-      const result = await run(['hooks', 'status']);
+      const result = await run(['steps', 'status']);
       assert.equal(result.exitCode, 0);
       const text = said();
       assert.match(text, /Claude Code +not on this machine/);
@@ -224,53 +224,53 @@ describe('live steps from the terminal', () => {
       assert.match(text, /OMP +not on this machine/);
 
       out = [];
-      assert.equal((await run(['hooks'])).exitCode, 0, 'status is the default');
+      assert.equal((await run(['steps'])).exitCode, 0, 'status is the default');
       assert.match(said(), /Live steps, for every project on this machine/);
       out = [];
-      await run(['hooks', 'status', '--agent', 'pi']);
+      await run(['steps', 'status', '--agent', 'pi']);
       assert.doesNotMatch(said(), /Codex/);
     });
 
     it('turns them on and off, showing the lines and asking first', async () => {
       mkdirSync(path.join(home, '.claude'));
       mkdirSync(path.join(home, '.omp'));
-      assert.equal((await run(['hooks', 'on'], false)).exitCode, 0);
+      assert.equal((await run(['steps', 'on'], false)).exitCode, 0);
       assert.deepEqual(questions, ['Turn on live steps for Claude Code and OMP? [y/N] ']);
       assert.match(said(), /Claude Code, for every project, would:/);
       assert.match(said(), /add to ~\/\.claude\/settings\.json/);
       assert.match(said(), /Nothing was changed/);
       assert.equal(claude.status(target()).state, 'off');
 
-      assert.equal((await run(['hooks', 'on'], 'enter')).exitCode, 0);
+      assert.equal((await run(['steps', 'on'], 'enter')).exitCode, 0);
       assert.equal(claude.status(target()).state, 'off', 'a bare Enter is no here');
 
-      assert.equal((await run(['hooks', 'on'], true)).exitCode, 0);
+      assert.equal((await run(['steps', 'on'], true)).exitCode, 0);
       assert.equal(claude.status(target()).state, 'on');
       assert.equal(existsSync(path.join(home, '.omp/agent/extensions/tricot-steps/index.ts')), true);
-      assert.equal(remembered().how, 'hooks on', 'the first tricot then asks nothing');
+      assert.equal(remembered().how, 'steps on', 'the first tricot then asks nothing');
 
       out = [];
-      assert.equal((await run(['hooks', 'on', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'on', '--yes'])).exitCode, 0);
       assert.match(said(), /already on/);
 
       out = [];
-      assert.equal((await run(['hooks', 'off', '--agent', 'omp', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'off', '--agent', 'omp', '--yes'])).exitCode, 0);
       assert.match(said(), /delete ~\/\.omp\/agent\/extensions\/tricot-steps\/index\.ts/);
       assert.equal(existsSync(path.join(home, '.omp/agent/extensions/tricot-steps')), false);
       assert.equal(claude.status(target()).state, 'on', 'only that agent');
 
-      assert.equal((await run(['hooks', 'off', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'off', '--yes'])).exitCode, 0);
       assert.equal(claude.status(target()).state, 'off');
       out = [];
-      assert.equal((await run(['hooks', 'off', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'off', '--yes'])).exitCode, 0);
       assert.match(said(), /aren't on for any agent/);
     });
 
     it('names the agent with --name, for one agent', async () => {
       mkdirSync(path.join(home, '.claude'));
-      assert.equal((await run(['hooks', 'on', '--agent', 'claude', '--name', 'Claude (reviewer)', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'on', '--agent', 'claude', '--name', 'Claude (reviewer)', '--yes'])).exitCode, 0);
       assert.equal(claude.status(target()).sendsAs, 'Claude (reviewer)');
-      assert.equal((await run(['hooks', 'on', '--name', 'X', '--yes'])).exitCode, 1);
+      assert.equal((await run(['steps', 'on', '--name', 'X', '--yes'])).exitCode, 1);
       assert.match(err.join('\n'), /--name is for one agent/);
     });
 
@@ -279,38 +279,76 @@ describe('live steps from the terminal', () => {
       claude.install(target(), { url: 'http://127.0.0.1:1', source: path.join(repo, 'hooks') }, 'project');
       const projectSettings = readFileSync(path.join(project, '.claude/settings.json'), 'utf8');
       out = [];
-      await run(['hooks', 'status']);
+      await run(['steps', 'status']);
       assert.match(said(), /~\/work\/app has its own hook from earlier, so steps show from that project/);
-      assert.equal((await run(['hooks', 'on', '--agent', 'claude', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'on', '--agent', 'claude', '--yes'])).exitCode, 0);
       assert.doesNotMatch(said(), /twice/);
-      assert.equal((await run(['hooks', 'off', '--agent', 'claude', '--yes'])).exitCode, 0);
-      assert.equal((await run(['hooks', 'on', '--agent', 'claude', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'off', '--agent', 'claude', '--yes'])).exitCode, 0);
+      assert.equal((await run(['steps', 'on', '--agent', 'claude', '--yes'])).exitCode, 0);
       assert.equal(readFileSync(path.join(project, '.claude/settings.json'), 'utf8'), projectSettings, 'on, off and on again: untouched');
       out = [];
-      await run(['hooks', 'status']);
+      await run(['steps', 'status']);
       assert.match(said(), /Also set up in ~\/work\/app from earlier; steps still show once/);
-      assert.match(said(), /To tidy up: tricot connect claude --remove-hooks, run in ~\/work\/app/);
-      assert.equal((await run(['hooks', 'on', '--keep-project-hook'])).exitCode, 1, 'no such option now');
+      assert.match(said(), /To tidy up: tricot steps off --agent claude --project, run in ~\/work\/app/);
+      assert.equal((await run(['steps', 'on', '--keep-project-hook'])).exitCode, 1, 'no such option now');
     });
 
     it('fails with a reason, and changes nothing', async () => {
       mkdirSync(path.join(home, '.claude'));
-      assert.equal((await run(['hooks', 'on'])).exitCode, 1, 'no terminal, no --yes');
+      assert.equal((await run(['steps', 'on'])).exitCode, 1, 'no terminal, no --yes');
       assert.match(err.join('\n'), /add --yes; nothing was changed/);
-      assert.equal((await run(['hooks', 'on', '--agent', 'cursor', '--yes'])).exitCode, 1);
+      assert.equal((await run(['steps', 'on', '--agent', 'cursor', '--yes'])).exitCode, 1);
       assert.match(err.join('\n'), /no live steps for "cursor"/);
-      assert.equal((await run(['hooks', 'on', '--agent', 'pi', '--yes'])).exitCode, 1);
+      assert.equal((await run(['steps', 'on', '--agent', 'pi', '--yes'])).exitCode, 1);
       assert.match(err.join('\n'), /Pi isn't on this machine/);
-      assert.equal((await run(['hooks', 'sideways'])).exitCode, 1);
+      assert.equal((await run(['steps', 'sideways'])).exitCode, 1);
       writeFileSync(path.join(home, '.claude/settings.json'), '{ not json');
-      assert.equal((await run(['hooks', 'on', '--yes'])).exitCode, 1);
+      assert.equal((await run(['steps', 'on', '--yes'])).exitCode, 1);
       assert.match(err.join('\n'), /left as it is/);
       assert.equal(readFileSync(path.join(home, '.claude/settings.json'), 'utf8'), '{ not json');
       assert.equal(claude.status(target()).state, 'off');
 
       rmSync(path.join(home, '.claude'), { recursive: true });
-      assert.equal((await run(['hooks', 'on', '--yes'])).exitCode, 1);
+      assert.equal((await run(['steps', 'on', '--yes'])).exitCode, 1);
       assert.match(err.join('\n'), /found none of Claude Code, Codex, Pi, OMP, Gemini CLI and OpenCode/);
+    });
+  });
+
+  describe('the names it had before', () => {
+    it('refuses `tricot hooks`, as any command it does not have, and writes nothing', async () => {
+      mkdirSync(path.join(home, '.claude'));
+      for (const argv of [['hooks'], ['hooks', 'status'], ['hooks', 'on', '--yes'], ['hooks', 'off', '--yes']]) {
+        err.length = 0;
+        assert.equal((await run(argv, true)).exitCode, 1, argv.join(' '));
+        assert.deepEqual(err, ['Unknown command "hooks". Did you mean "steps"? (hooks was renamed)'], argv.join(' '));
+      }
+      assert.deepEqual(questions, []);
+      assert.equal(claude.status(target()).state, 'off');
+      assert.equal(remembered(), undefined);
+    });
+
+    it('refuses --no-hooks, --hooks and --remove-hooks, as options it does not have', async () => {
+      mkdirSync(path.join(home, '.claude'));
+      for (const flag of ['--no-hooks', '--hooks', '--remove-hooks']) {
+        err.length = 0;
+        const result = await run(['--no-open', flag], true);
+        assert.equal(result.exitCode, 1, flag);
+        assert.equal(result.server, undefined, `${flag}: nothing started`);
+        assert.match(err.join('\n'), new RegExp(`Unknown option '${flag}'`));
+      }
+      assert.deepEqual(questions, [], 'and nothing was asked');
+    });
+
+    it('still starts from the line an update by Tricot 0.1.3 or earlier runs, which has --no-hooks in it, and asks nothing', async () => {
+      mkdirSync(path.join(home, '.claude'));
+      const result = await run(['start', '--port', String(port), '--host', '127.0.0.1', '--data', dataDir, '--no-open', '--no-hooks', '--no-update-check'], true);
+      assert.equal(result.exitCode, 0, err.join('\n'));
+      assert.ok(result.server, 'it started');
+      assert.deepEqual(questions, []);
+      assert.equal(remembered(), undefined);
+      // The same flag typed with anything else around it is refused as above.
+      await servers.pop()?.close();
+      assert.equal((await run(['start', '--no-open', '--no-hooks'], true)).exitCode, 1);
     });
   });
 });

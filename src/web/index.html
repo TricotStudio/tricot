@@ -10,10 +10,10 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cstyle%3E.s-text{stroke:%231a1a18}.f-text{fill:%231a1a18}@media (prefers-color-scheme:dark){.s-text{stroke:%23ececea}.f-text{fill:%23ececea}}%3C/style%3E%3Cg transform='rotate(45 8 8)'%3E%3Cpath class='s-text' d='M1.5 5H9.25M12.75 5H14.5M1.5 11H3.25M6.75 11H14.5M5 1.5V3.25M5 6.75V14.5M11 1.5V9.25M11 12.75V14.5' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3Crect class='f-text' x='6.75' y='6.75' width='2.5' height='2.5' rx='0.5'/%3E%3C/g%3E%3C/svg%3E"
     />
-    <!-- The wordmark's face (the @font-face in styles.css), fetched alongside the app's script so the name draws in it from the first frame. -->
+    <!-- The wordmark's face (the @font-face in styles/shared-bits.css), fetched alongside the app's script so the name draws in it from the first frame. -->
     <link rel="preload" href="./fonts/CalSans-latin.woff2" as="font" type="font/woff2" crossorigin />
     <script>
-      // Apply the theme before first paint; src/web/theme.ts takes over once the app loads.
+      // Apply the theme before first paint; src/web/themes/theme.ts takes over once the app loads.
       // Settings saved under the tool's earlier names move to tricot:* first, once.
       (function () {
         var stored;

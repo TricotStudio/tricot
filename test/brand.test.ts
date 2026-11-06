@@ -11,7 +11,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file: string) => readFileSync(path.join(repo, file), 'utf8');
 const match = (source: string, pattern: RegExp, what: string) => source.match(pattern) ?? assert.fail(`no ${what}`);
 
-const boardMark = match(read('src/web/components.tsx'), /export function BoardMark[\s\S]*?\n}\n/, 'BoardMark')[0];
+const boardMark = match(read('src/web/shared/components.tsx'), /export function BoardMark[\s\S]*?\n}\n/, 'BoardMark')[0];
 const mark = {
   d: match(boardMark, /\sd="([^"]+)"/, "the mark's path")[1],
   rotate: match(boardMark, /<g transform="(rotate\([^"]+\))"/, "the mark's rotation")[1],

@@ -1,48 +1,13 @@
 /* ---- an image block's picture at full size, in the pairing shell -------------
-   The shell draws the bar (canvas/pairing/pairing.css); here, the zoom it
-   shows, and a stage the picture is drawn on at its real size, so it stays
-   sharp at any zoom. */
+   The shell draws the bar (canvas/pairing/pairing.css), and the zoom its
+   stage (canvas/pairing/zoom.css); here, the stage's paper and the picture,
+   drawn at its size on screen, with no transform, so the browser rasters
+   it afresh and it stays sharp at any zoom. */
 
-.image-viewer-zoom {
-  flex: none;
-  min-width: 4ch;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--faint);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-/* The stage: the picture is placed in it by its top left and drawn at its
-   size on screen, with no transform, so the browser rasters it afresh. */
 .image-viewer-stage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
   background: color-mix(in srgb, var(--surface-2) 80%, var(--border-strong));
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  outline: none;
-}
-/* Drawn over the picture, which would cover an inset shadow. */
-.image-viewer-stage:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -2px;
-}
-.image-viewer-stage.is-fitted {
-  cursor: zoom-in;
-}
-.image-viewer-stage.is-pannable {
-  cursor: grab;
-}
-.image-viewer-stage.is-dragging {
-  cursor: grabbing;
 }
 .image-viewer-sheet {
-  position: absolute;
   box-shadow: 0 0 0 1px var(--border), var(--shadow);
   background: var(--surface);
 }
@@ -53,26 +18,6 @@
   max-width: none;
   image-rendering: auto;
   pointer-events: none;
-}
-
-/* How to move around, for the first moments. */
-.image-viewer-hint {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  translate: -50% 0;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--primary) 86%, transparent);
-  color: var(--primary-text);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  pointer-events: none;
-  transition: opacity 0.3s ease-out;
-}
-.image-viewer-hint.is-gone {
-  opacity: 0;
 }
 
 /* Image blocks' own menu: Natural size, when it already is, can't be pressed. */
@@ -130,4 +75,15 @@
 }
 .image-full-chips .pin-chip {
   margin-left: 0;
+}
+/* Editing its caption: the picture, captioned as it is typed. */
+.image-edit-figure {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.image-edit-figure figcaption {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
 }

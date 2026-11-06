@@ -2,8 +2,8 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { pinComments } from '../../../core/pins';
 import type { Block, Pin } from '../../../core/types';
 import { useCanvas } from '../../canvas/context';
-import { Icon } from '../../components';
-import { MentionTextarea } from '../../mentions';
+import { Icon } from '../../shared/components';
+import { MentionTextarea } from '../../shared/mentions';
 import type { DocWords } from './api';
 
 // Asking agents about words in a Google Doc's paragraph, in the doc editor:

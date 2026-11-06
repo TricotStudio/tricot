@@ -14,12 +14,15 @@ import { sized } from './text';
 
 export const MAX_INLINE_IMAGES = 4;
 
+// The topics of the guide an agent reads when needed (server/mcp/guide.ts).
+export const GUIDE_TOPICS = ['decisions', 'tasks', 'canvas', 'blocks', 'conversation'] as const;
+export type GuideTopic = (typeof GUIDE_TOPICS)[number];
+
 // thread_id on the tools that make work: an agent answering a thread names it,
 // and what it makes shows in the thread under its reply (core/threads.ts).
-export const THREAD_HINT = "The thread you're answering, when this answers one (its thread id): what you make shows in it, under your reply, and links back to it";
-export const IN_THREAD = 'When you make it answering a thread, pass thread_id: people see it in the thread, under your reply.';
+export const THREAD_HINT = "The thread you're answering, if any: what you make shows in it, under your reply";
 
-export const AREA_HINT = 'A short theme it belongs to, e.g. "Connectors" or "Name and mark". Reuse one of the board\'s areas (Areas in get_board) when it fits';
+export const AREA_HINT = 'A short theme, e.g. "Connectors"; reuse one of the board\'s areas (Areas in get_board) when it fits';
 
 const threadId = z.string().optional().describe(THREAD_HINT);
 
@@ -28,9 +31,8 @@ const thenWait = z
   .number()
   .int()
   .min(1)
-  .max(600)
   .optional()
-  .describe('After it posts, wait this many seconds for what happens next, as wait_for_updates does, and return that too (values over 240 are capped)');
+  .describe('After it posts, wait up to this many seconds for what happens next, as wait_for_updates does, and return that too');
 
 // ---- blocks ------------------------------------------------------------------
 
@@ -45,11 +47,26 @@ export const blockShape = {
 };
 const optionPin = z.string().optional().describe('On a decision canvas: letter of the option this block is evidence for');
 
-const inlineBlockShape = z.object({
-  ...blockShape,
+const inlineBlockFields = {
   option: optionPin,
   group: z.string().optional().describe('Title of a group to put it in; blocks giving the same title share one'),
-});
+};
+const inlineBlockShape = z.object({ ...blockShape, ...inlineBlockFields });
+
+// A block posted with a decision, as agents are shown it: its type, then the
+// fields add_block takes for that type. It is checked against all of them
+// (inlineBlockShape), but lists only these, so every session doesn't carry
+// add_block's fields twice.
+const inlineBlock = z
+  .looseObject({ type: blockShape.type, title: blockShape.title, ...inlineBlockFields })
+  .superRefine((block, ctx) => {
+    const checked = inlineBlockShape.safeParse(block);
+    if (!checked.success) for (const issue of checked.error.issues) ctx.addIssue({ ...issue } as Parameters<typeof ctx.addIssue>[0]);
+  }) as unknown as typeof inlineBlockShape;
+
+// Fields listed without their descriptions, where another tool's already give them.
+const undescribed = <S extends Record<string, z.ZodType>>(shape: S): S =>
+  Object.fromEntries(Object.entries(shape).map(([name, schema]) => [name, schema.meta({ description: undefined })])) as S;
 
 // What an agent sent to add a block: its kind reads the fields it has.
 export interface BlockArgs {
@@ -133,15 +150,15 @@ export const tools = {
     depends_on: z.array(z.string()).optional().describe('Ids of decisions that must be settled first'),
     affects: affects
       .optional()
-      .describe('Past decisions this one could change or rests on, each with why: people see them beside it, and get_decision lists them'),
+      .describe('Past decisions this one could change or rests on, each with why'),
     area: fields.area.optional().describe(AREA_HINT),
     ask: z.array(z.string()).optional().describe('Names of people to route this question to (see People in get_board)'),
     ask_note: fields.note.optional().describe('What you need from them'),
     criteria: z.array(criterionInPost).optional().describe('What the options should be judged on; people mark them'),
     blocks: z
-      .array(inlineBlockShape)
+      .array(inlineBlock)
       .optional()
-      .describe("Canvas blocks posted with it: options side by side, screenshots, tables, diagrams, links. Pin each to an option's letter with option"),
+      .describe("Canvas blocks posted with it, each with the fields add_block takes for its type. Pin each to an option's letter with option"),
     thread_id: threadId,
   },
   update_decision: {
@@ -166,11 +183,11 @@ export const tools = {
     blocking: z.boolean().optional(),
     depends_on: z.array(z.string()).optional().describe('Replaces the current dependency list'),
     affects: affects.optional().describe('Replaces the decisions it names as ones it could change or rests on; [] clears them'),
-    area: fields.area.optional().describe(`${AREA_HINT}. "" clears it. An area a person set is theirs and can't be changed`),
+    area: fields.area.optional().describe(`${AREA_HINT}. "" clears it`),
     refreshed: z
       .boolean()
       .optional()
-      .describe("You re-checked the card against the app as it is now: finishes a person's refresh request. On a decided or provisional card it checks the answer still holds and changes nothing else"),
+      .describe("You re-checked the card against the app as it is now: finishes a person's refresh request"),
     note: fields.note.optional().describe('With refreshed: what changed, or why the options (or a settled answer) still hold, in a sentence'),
   },
   log_decision: {
@@ -202,7 +219,7 @@ export const tools = {
       .boolean()
       .optional()
       .describe(
-        `Open them in the backlog for people to shape and mark ready, not in to do: a note a person asks for, or a bug or follow-up outside your current work. You can't claim them until a person marks them ready. At most ${LIMITS.backlogCards} an hour`,
+        `Open them in the backlog for people to shape and mark ready, not in to do; you can't claim them until then. At most ${LIMITS.backlogCards} an hour`,
       ),
     thread_id: threadId,
   },
@@ -272,11 +289,16 @@ export const tools = {
   wait_for_updates: {
     board_id: z.string(),
     since: z.number().int().min(0),
-    timeout_seconds: z.number().int().min(1).max(600).optional().describe('Default 60; values over 240 are capped'),
+    timeout_seconds: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('How long to wait at most; leave it out to wait as long as the server allows'),
   },
   report_skills: {
     skills: sized(newSkill, { max: [LIMITS.skills, `Report at most ${LIMITS.skills} skills.`] }).describe(
-      'Every skill you have (Claude Code skills, Codex prompts, Pi or OMP skills, Gemini CLI or OpenCode skills and commands), each with its name and a one-line description. It replaces what you reported before; [] clears it',
+      'Every skill you have (Claude Code skills, Codex prompts, Pi or OMP skills, Gemini CLI or OpenCode skills and commands); [] clears them',
     ),
   },
   finish_sync: {
@@ -317,7 +339,7 @@ export const tools = {
     block_id: z.string(),
     rev: z.number().int().describe('The rev shown when you last read the block (get_canvas or get_block)'),
     title: z.string().optional(),
-    ...updateFields(),
+    ...undescribed(updateFields()),
     option: z.string().optional(),
     group_id: z.string().optional(),
     restore_rev: z
@@ -331,5 +353,6 @@ export const tools = {
   link: { from_block_id: z.string(), to_block_id: z.string(), label: fields.linkLabel.optional() },
   pin: pinShape,
   remove_item: { id: z.string() },
+  read_guide: { topic: z.enum(GUIDE_TOPICS) },
   restore_item: { id: z.string().describe('The removed item\'s id, as get_canvas or get_board lists it under "Deleted lately"') },
 };

@@ -16,6 +16,7 @@ import { AnswerHosts } from '../src/server/answerHosts';
 import { createApp } from '../src/server/app';
 import { Seats, seatsFile, type SignedRequest } from '../src/server/seats';
 import { letIn } from './seatHelper';
+import { WINDOWS } from './platform';
 
 // Seats (T187): the browsers and Tricot terminals the person let in, each
 // holding a key that never leaves it, signing what is consequential. Here:
@@ -94,7 +95,7 @@ describe('Signing and checking a request', () => {
     const seat = letIn(first);
     const request = seat.key.sign(seat.id, 'POST', route, body, Date.now(), 41);
     assert.ok(first.check(signed(request)).ok);
-    assert.equal(statSync(seatsFile(dir)).mode & 0o777, 0o600);
+    if (!WINDOWS) assert.equal(statSync(seatsFile(dir)).mode & 0o777, 0o600);
     const saved = readFileSync(seatsFile(dir), 'utf8');
     assert.doesNotMatch(saved, /"d"\s*:/, 'no private key is kept');
 

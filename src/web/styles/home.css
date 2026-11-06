@@ -1,0 +1,493 @@
+/* ---- home -------------------------------------------------------------- */
+
+/* What needs you across projects, then the projects as rows in one sheet,
+   then a line for agents and connectors. */
+.home {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 44px 24px 64px;
+}
+.home-loading {
+  color: var(--muted);
+}
+.home-head h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.home-sub {
+  margin-top: 6px;
+  max-width: 72ch;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.home-sub strong {
+  color: var(--text);
+  font-weight: 500;
+}
+/* A quiet text link, underlined so it reads as one. */
+.home-link {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.12s;
+}
+.home-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* A sheet: one flat surface whose rows are split by hairlines. */
+.sheet {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.sheet > li + li {
+  border-top: 1px solid var(--border);
+}
+
+/* The status square on its own: a decision's status or a task's lane. */
+.sq {
+  --sq: var(--faint);
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--sq);
+}
+.sq-blocking,
+.sq-blocked { --sq: var(--danger); }
+.sq-open { --sq: var(--open); }
+.sq-exploring,
+.sq-in_progress { --sq: var(--exploring); }
+.sq-provisional,
+.sq-in_review { --sq: var(--provisional); }
+.sq-decided,
+.sq-done { --sq: var(--decided); }
+.sq-deferred,
+.sq-retired,
+.sq-todo,
+.sq-backlog { --sq: var(--deferred); }
+/* Hollow: work not taken up yet, or set aside. */
+.sq-backlog,
+.sq-deferred,
+.sq-retired {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--sq);
+}
+
+/* What needs you: each row opens its item; the button names what to do. */
+.needs {
+  margin-top: 20px;
+}
+.need {
+  display: grid;
+  grid-template-columns: 8px minmax(0, max-content) auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 14px 10px 16px;
+  /* One line box for every size in the row, so centring keeps their baselines together. */
+  line-height: 21px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.need:hover {
+  background: color-mix(in srgb, var(--surface-2) 50%, var(--surface));
+}
+.need:hover .need-act {
+  background: var(--surface-2);
+}
+.need:focus-visible {
+  outline-offset: -2px;
+}
+.need-main {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.need-ref {
+  flex: none;
+  color: var(--faint);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.need-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Why and where sit in the row's grid on wide screens, under the title on narrow ones. */
+.need-meta {
+  display: contents;
+}
+.need-why {
+  grid-column: 3;
+  margin-left: -4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.need-why.is-urgent {
+  color: var(--danger);
+}
+.need-board {
+  grid-column: 5;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--faint);
+}
+.need-act {
+  grid-column: 6;
+}
+.needs-more {
+  margin-top: 10px;
+}
+
+/* A row and its ✕: the row opens the card; the ✕ (none on a decision) dismisses it. */
+.need-line {
+  display: flex;
+  align-items: center;
+}
+.need-line > a {
+  flex: 1;
+  min-width: 0;
+}
+.need-dismiss,
+.need-dismiss-slot {
+  flex: none;
+  margin-right: 8px;
+}
+.need-dismiss-slot {
+  width: 26px;
+}
+.need-line .need-dismiss {
+  opacity: 0.6;
+}
+.need-line:hover .need-dismiss,
+.need-dismiss:focus-visible {
+  opacity: 1;
+}
+
+/* In a bell's panel: the same rows, two lines each. */
+.inbox-item.need-item {
+  text-decoration: none;
+}
+.need-item .sq {
+  margin-top: 6px;
+}
+.need-item .need-ref {
+  color: var(--faint);
+  font-weight: 500;
+}
+.need-item .need-why,
+.need-item .need-board {
+  grid-column: auto;
+  margin: 0;
+  max-width: none;
+}
+
+/* Projects: a heading, how many, and a title-only field to start one. */
+.projects {
+  margin-top: 40px;
+}
+.projects-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.projects-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.projects-count {
+  color: var(--faint);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.new-project {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.new-project input {
+  width: 300px;
+  padding: 7px 10px;
+}
+.new-project-error {
+  flex-basis: 100%;
+}
+.projects-none {
+  padding: 20px 18px;
+  color: var(--muted);
+}
+
+/* One project per row; its name's link covers the row. Its ⋯ menu ends it
+   (projectActions.css). */
+.project {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 190px 72px 30px;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 18px;
+  transition: background 0.12s;
+}
+.project:hover {
+  background: color-mix(in srgb, var(--surface-2) 50%, var(--surface));
+}
+.project:has(.project-link:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.project-link {
+  color: inherit;
+  text-decoration: none;
+}
+.project-link:focus-visible {
+  outline: none;
+}
+.project-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.project-name {
+  min-width: 0;
+}
+.project-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.project-needs {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--open-ink);
+  white-space: nowrap;
+}
+.project-goal {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-work {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+/* A square per item in play, each saying what it is; above the row's link. */
+.mosaic {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  cursor: pointer;
+}
+.mosaic .sq {
+  width: 9px;
+  height: 9px;
+}
+.project-settled {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.project-empty {
+  font-size: 13px;
+  color: var(--faint);
+}
+.project-empty a {
+  position: relative;
+  z-index: 1;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.project-empty a:hover {
+  text-decoration-color: currentColor;
+}
+.project-agent {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.project-agent-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-agent.is-none {
+  color: var(--faint);
+}
+.project-agent-more {
+  color: var(--faint);
+}
+/* Its agent's latest step (steps.tsx): each new one fades in; the line dims
+   when the steps stop, as a card's cue does. "+1" stays in view. */
+.project-agent.has-step {
+  transition: opacity 150ms ease-out;
+}
+.project-agent.has-step.is-dim {
+  opacity: 0.55;
+}
+.project-agent.has-step .project-agent-more {
+  flex: none;
+}
+.project-agent-step {
+  animation: project-step-in 140ms ease-out;
+}
+@keyframes project-step-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-agent.has-step {
+    transition: none;
+  }
+  .project-agent-step {
+    animation: none;
+  }
+}
+/* An agent on it now: its mark and words in the working blue. */
+.project-agent.is-working,
+.project-agent.is-listening,
+.home-agent.is-working,
+.home-agent.is-listening {
+  color: var(--exploring-ink);
+}
+.is-working .actor-mark,
+.is-listening .actor-mark {
+  background: var(--surface);
+  color: var(--exploring-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--exploring) 50%, var(--border));
+}
+.project-when {
+  font-size: 12px;
+  color: var(--faint);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.projects-archived {
+  margin-top: 12px;
+}
+.project.is-archived {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+/* Its buttons sit above the row's link, as the ⋯ does on a row in use. */
+.project-archived-side {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.project-archived-side .project-when {
+  margin-right: 4px;
+}
+.project.is-archived .project-title {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* The bottom line: agents, connectors, and the archived projects. */
+.home-foot {
+  position: relative;
+  margin-top: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.home-foot-group {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.home-foot-label {
+  color: var(--faint);
+}
+.home-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.home-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  text-decoration-color: transparent;
+}
+.home-status:hover {
+  color: var(--text);
+}
+.home-archived-toggle {
+  margin-left: auto;
+}
+/* The version and the Source link: a last line of their own, the same at any width. */
+.home-foot-about {
+  flex-basis: 100%;
+}
+/* Connect opens above the line, from its left edge, so it fits a phone. */
+.home-connect {
+  position: static;
+}
+.home-connect summary {
+  cursor: pointer;
+}
+.home-connect .popover-body {
+  top: auto;
+  right: auto;
+  left: 0;
+  bottom: calc(100% + 8px);
+  color: var(--text);
+  font-size: 14px;
+}

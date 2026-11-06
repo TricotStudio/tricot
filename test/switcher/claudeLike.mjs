@@ -95,7 +95,7 @@ function after(option, run) {
 }
 
 async function start() {
-  const bg = await ask('\x1b]11;?\x1b\\\x1b[c', /\x1b\]11;([^\x07\x1b]*)/, 1000);
+  const bg = await ask('\x1b]11;?\x1b\\\x1b[c', /\x1b\]11;([^\x07\x1b]*)/, 5000);
   theme = bg ? `background ${bg[1]}` : 'no answer about colours';
   out.write(`\x1b]0;${name}\x07\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1006h\x1b[?2004h\x1b[?1004h`);
   if (keysMode) await askKeyboard();
@@ -151,7 +151,7 @@ async function askKeyboard() {
       clearTimeout(t);
       resolve(buf);
     };
-    const t = setTimeout(done, 1000);
+    const t = setTimeout(done, 5000);
     inp.on('data', on);
     out.write('\x1b[?u\x1b[c');
   });

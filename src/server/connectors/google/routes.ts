@@ -8,6 +8,8 @@ import { DocError, type DocChange } from '../../../core/connectors/google/doc';
 import type { Actor } from '../../../core/types';
 import type { GoogleConnector } from './connector';
 import type { DocDrafts } from './docs';
+import { routes } from '../../../core/routes';
+import { routesOn } from '../../routing';
 
 const actorName = z.string().trim().min(1).max(60);
 const listKind = z.enum(['bullet', 'numbered']).nullable().optional();
@@ -51,23 +53,24 @@ const param = (req: Request, name: string): string => String(req.params[name]);
 
 export function googleRoutes(google: GoogleConnector, drafts: DocDrafts): Router {
   const router = Router();
+  const on = routesOn(router, '/api/connectors/google');
 
   // A Google file's name and last edit, for link cards. Fails quietly: null
   // when Google isn't connected or won't show it.
-  router.get('/files/:fileId', async (req, res) => {
+  on(routes.googleFile, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ file: await google.driveFile(param(req, 'fileId')) });
   });
 
   // What the browser's Picker needs to let a person choose docs: a short-lived
   // access token and the public keys. A POST, so the Origin check covers it.
-  router.post('/picker', async (_req, res) => {
+  on(routes.googlePicker, async (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json(await google.pickerConfig());
   });
 
   // Docs were chosen in the Picker (it talks to Google, not to this server): names looked up before may be wrong now.
-  router.post('/chosen', (req, res) => {
+  on(routes.googleChosen, (req, res) => {
     docSchemas.chosen.parse(req.body);
     google.chosen();
     res.json({ ok: true });
@@ -78,30 +81,31 @@ export function googleRoutes(google: GoogleConnector, drafts: DocDrafts): Router
   // draft, and saving it to Google. Problems with access come back with a
   // code: not_set_up, not_connected, needs_sign_in, no_docs_permission…
   const doc = Router({ mergeParams: true });
+  const onDoc = routesOn(doc, '/api/connectors/google/docs/:blockId');
   const block = (req: Request) => param(req, 'blockId');
-  doc.get('/', async (req, res) => {
+  onDoc(routes.googleDoc, async (req, res) => {
     const name = typeof req.query.actor === 'string' && req.query.actor.trim() ? req.query.actor.trim().slice(0, 60) : 'Someone';
     res.json(await drafts.open(block(req), person(name)));
   });
-  doc.post('/draft', async (req, res) => {
+  onDoc(routes.googleDocDraft, async (req, res) => {
     const { actor, revision, changes } = docSchemas.draft.parse(req.body);
     res.json(await drafts.edit(block(req), revision, changes as DocChange[], person(actor)));
   });
-  doc.post('/discard', (req, res) => {
+  onDoc(routes.googleDocDiscard, (req, res) => {
     const { actor } = docSchemas.actor.parse(req.body);
     drafts.discard(block(req), person(actor));
     res.json({ ok: true });
   });
-  doc.post('/save', async (req, res) => {
+  onDoc(routes.googleDocSave, async (req, res) => {
     const { actor } = docSchemas.actor.parse(req.body);
     res.json(await drafts.save(block(req), person(actor)));
   });
   // Words in a paragraph, pinned with a request for agents to edit it, or a comment.
-  doc.post('/pins', async (req, res) => {
+  onDoc(routes.googleDocPins, async (req, res) => {
     const { actor, ask, ...input } = docSchemas.pin.parse(req.body);
     res.status(201).json(await drafts.pin(block(req), { ...input, ask: Boolean(ask) }, person(actor)));
   });
-  doc.post('/resolve', async (req, res) => {
+  onDoc(routes.googleDocResolve, async (req, res) => {
     const { actor, conflict, keep } = docSchemas.resolve.parse(req.body);
     res.json({ draft: (await drafts.resolve(block(req), conflict, keep, person(actor))) ?? null });
   });

@@ -161,7 +161,7 @@ export class TerminalSeat {
   private async follow(id: string, key: string): Promise<SeatEnd> {
     const until = Date.now() + ADMISSION_MS + 5_000;
     while (!this.released && Date.now() < until) {
-      // Not unref'd: waiting for the person is what a one-off command (tricot seats, tricot update) is doing.
+      // Not unref'd: waiting for the person is what a one-off command (tricot access, tricot update) is doing.
       await new Promise((resolve) => setTimeout(resolve, this.options.pollMs ?? POLL_MS));
       let state: Partial<AdmissionState>;
       try {

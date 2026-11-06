@@ -1,9 +1,12 @@
 // Which agents are working on which board, from their tool calls. MCP has no
 // reliable "disconnected" signal, so an agent counts as present for a while
 // after its last call: listening while it waits for updates, working while it
-// makes other calls, and not checking once it has gone quiet. Calls that read
-// or change one card (a task or a decision, or something on its canvas) also
-// put the agent on that card for a minute, so people see it taking a look.
+// makes other calls, and not checking once it has gone quiet. A wait can last
+// 15 minutes (mcp/session.ts): while one is open the agent is listening, and
+// seen just now however long ago the call began, until the wait returns or
+// the agent hangs up (mcp/hangups.ts). Calls that read or change one card (a
+// task or a decision, or something on its canvas) also put the agent on that
+// card for a minute, so people see it taking a look.
 // An agent is also noted as connected, whatever board, as its MCP session
 // starts and with each call: one that hasn't touched a board yet still shows
 // on Home (its first run). Like the rest, it lives in memory only, so after a
@@ -39,6 +42,10 @@ interface Entry {
   stoppedWaiting: number;
   focus?: AgentFocus & { at: number };
 }
+
+// When an agent was last seen on a board: now while it waits there, as it
+// hears what happens the moment it does; else at its last call.
+const seenAt = (e: Entry, now: number): number => (e.waiting > 0 ? now : e.lastSeen);
 
 export class Presence {
   private readonly viewers = new EventEmitter();
@@ -109,7 +116,7 @@ export class Presence {
       .filter(([, e]) => e.waiting > 0 || now - e.lastSeen < PRESENT_MS)
       .map(([name, e]): AgentPresence => ({
         name,
-        lastSeen: new Date(e.lastSeen).toISOString(),
+        lastSeen: new Date(seenAt(e, now)).toISOString(),
         state: this.stateOf(e, now),
         ...(e.focus && now - e.focus.at < FOCUS_MS ? { focus: { kind: e.focus.kind, id: e.focus.id } } : {}),
       }))
@@ -133,10 +140,10 @@ export class Presence {
         const state = this.stateOf(e, now);
         const before = seen.get(name.toLowerCase());
         if (!before) {
-          seen.set(name.toLowerCase(), { name, lastSeen: e.lastSeen, state, board: id, boardSeen: e.lastSeen });
+          seen.set(name.toLowerCase(), { name, lastSeen: seenAt(e, now), state, board: id, boardSeen: e.lastSeen });
           continue;
         }
-        before.lastSeen = Math.max(before.lastSeen, e.lastSeen);
+        before.lastSeen = Math.max(before.lastSeen, seenAt(e, now));
         if (STATE_RANK[state] < STATE_RANK[before.state] || (state === before.state && e.lastSeen > before.boardSeen)) {
           before.state = state;
           before.board = id;

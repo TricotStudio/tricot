@@ -10,22 +10,23 @@
 // which draws its whole window, as Codex does already.
 //
 // What it refuses, before starting anything: an agent named twice, one that
-// can't take the board for one session (gemini, pi, omp), --name (whose?)
+// can't take the board for one session (gemini, omp), --name (whose?)
 // and words after -- (whose?) with several agents, no terminal, Windows,
 // and a computer with no way to give each agent a terminal of its own.
-// One agent runs this way too (`tricot claude`, agentCommand.ts), unless
-// --no-switcher; where this can't run, one agent falls back to running on its
-// own, and only `tricot claude --switcher` is refused as above.
+// One agent runs this way too (`tricot claude`, agentCommand.ts); where this
+// can't run, one agent falls back to running on its own there, and only
+// several agents are refused as above.
 //
 // The first tab is Tricot's own (T192, switcher/tricotTab.ts): the board,
 // the agents, the requests for permission to answer with a key, the board's
-// latest activity. From it, an agent Tricot can start that isn't running
-// is added in a tab of its own, set up exactly as the others were here; and
-// one is stopped. Its answers are given as the person who last acted on the
+// latest activity. From it, any agent Tricot knows that isn't running is
+// offered: one Tricot can start is added in a tab of its own, set up exactly
+// as the others were here (one it can't says to connect it first, and how);
+// and one is stopped. Its answers are given as the person who last acted on the
 // board (as the browser named them), else this computer's account.
 //
 // When the person quits (Ctrl+\ then q, or q in the Tricot tab), it says how
-// each one ended and that the board keeps running, and its exit code is the
+// each one ended and what becomes of the board (agentCommand.ts), and its exit code is the
 // first agent's, in the order named and then added, that ended with one
 // other than 0. An agent still running at a quit, or stopped from the
 // Tricot tab, was closed, not failed.
@@ -33,13 +34,15 @@ import path from 'node:path';
 import { agentUrl } from '../core/connect';
 import { listNames } from '../core/format';
 import { firstMessage } from '../core/sessions';
-import { onPath } from '../server/hooks/installer';
-import { AGENTS, notInstalled, sessionHooks, type AgentEnv } from './agentCommand';
+import { isWindows } from '../platform/os';
+import { which } from '../platform/which';
+import { AGENTS, connectFirst, notInstalled, sessionHooks, type AgentEnv } from './agentCommand';
 import { chooseBoard, personOn } from './chooseBoard';
 import type { CliResult } from './main';
-import { parseSwitchKey, SWITCH_KEY_DEFAULT } from './switcher/keys';
+import { SWITCH_KEY } from './switcher/keys';
 import type { HostedAgent } from './switcher/host';
 import type { SwitcherRun } from './switcher/run';
+import type { AddChoice } from './switcher/tricotTab';
 
 export async function severalAgents(a: AgentEnv, ids: string[], passthrough: string[]): Promise<CliResult> {
   const { ctx, values } = a;
@@ -52,19 +55,17 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
   if (twice) return refuse(`${AGENTS[twice].name} is named twice: each agent runs once here.`);
   for (const id of ids) {
     const agent = AGENTS[id];
-    if (!agent.session) return refuse(`Tricot can't start ${agent.name} for you yet: ${agent.why}, and this command leaves its settings alone. Start the others without it, and connect ${agent.name} once with: tricot connect ${id}`);
+    if (!agent.session) return refuse(`Tricot can't start ${agent.name} for you yet: ${agent.cantStart}, and this command leaves its settings alone. Start the others without it, and connect ${agent.name} once with: tricot connect ${id}`);
   }
   if (several && values.name) return refuse(`--name names one agent: with several, each has its usual name on the board (${listNames(ids.map((id) => AGENTS[id].boardName))}).`);
   if (several && passthrough.length) return refuse("Words after -- go to one agent, and with several Tricot can't tell whose they are: start that one on its own, as tricot claude -- …");
-  if ((ctx.platform ?? process.platform) === 'win32') return refuse("Several agents in one terminal don't work on Windows yet: start each in a terminal of its own, with tricot claude, tricot codex.");
-  const key = parseSwitchKey(values['switch-key'] ?? SWITCH_KEY_DEFAULT);
-  if ('problem' in key) return refuse(key.problem);
+  if (isWindows(ctx.platform)) return refuse("Several agents in one terminal don't work on Windows yet: start each in a terminal of its own, with tricot claude, tricot codex.");
   if (!ctx.host) return refuse('Several agents at once need a terminal: run this in one, not with its input or output redirected.');
   const problem = ctx.host.problem();
   if (problem) return refuse(problem);
   const commands: string[] = [];
   for (const id of ids) {
-    const command = onPath(AGENTS[id].command!, ctx.env);
+    const command = which(AGENTS[id].command!, ctx.env);
     if (!command) {
       notInstalled(ctx, id, AGENTS[id], `Then run tricot ${ids.join(' ')} again.`);
       return { exitCode: 1 };
@@ -90,7 +91,7 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
   if (!values.board) ctx.out(''); // the picker, below
   const choice = await chooseBoard({ url: lock.url, dataDir: a.dataDir, folder, board: values.board, keys: ctx.keys, question: `Which board should ${listNames(names)} work on?` });
   if ('cancelled' in choice) {
-    ctx.out(`${products} ${several ? "weren't" : "wasn't"} started. Tricot keeps running at ${lock.url}; stop it with: tricot stop`);
+    ctx.out(`${products} ${several ? "weren't" : "wasn't"} started. ${await a.parting()}`);
     return { exitCode: 130 };
   }
   if ('problem' in choice) {
@@ -106,6 +107,9 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
   await a.firstRun(lock);
 
   const message = firstMessage(board.id);
+  // Asked before any agent's folder is made: it waits on the board for a few
+  // seconds, and a Ctrl+C then must have nothing of ours to leave behind.
+  const actor = await personOn(lock.url, a.dataDir, board.id);
   // Each agent as it starts here, those named and those added from the
   // Tricot tab alike: connected for this session only, with its own name.
   const hostedAgent = (id: string, who: string, command: string, extra: string[], said: (line: string) => void): HostedAgent => {
@@ -114,50 +118,71 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     if (hooks.said) said(hooks.said);
     const launch = agent.session!({ url: agentUrl(lock.mcpUrl, who), token: access.token, message, passthrough: extra, env: ctx.env, ...(hooks.settings && { settings: hooks.settings }) });
     // The emulator Tricot keeps each screen in is an xterm, so agents are told
-    // they draw on one; Claude Code draws its whole window, as Codex does.
-    const env = { ...ctx.env, ...launch.env, TERM: 'xterm-256color', ...(id === 'claude' && { CLAUDE_CODE_NO_FLICKER: '1' }) };
-    return { name: who, id, command, args: launch.args, env, cwd: folder };
+    // they draw on one; an agent that needs more says so (its hostEnv).
+    const env = { ...ctx.env, ...launch.env, TERM: 'xterm-256color', ...agent.hostEnv };
+    return { name: who, id, command, args: launch.args, env, cwd: folder, ...(launch.cleanup && { cleanup: launch.cleanup }) };
   };
-  const hosted: HostedAgent[] = ids.map((id, at) =>
-    hostedAgent(id, names[at], commands[at], several ? [] : passthrough, (said) => {
-      const agent = AGENTS[id];
-      ctx.out(several && !said.startsWith(agent.name) ? `${agent.name}: ${said[0].toLowerCase()}${said.slice(1)}` : said);
-    }),
-  );
+  const hosted: HostedAgent[] = [];
+  try {
+    for (const [at, id] of ids.entries()) {
+      hosted.push(
+        hostedAgent(id, names[at], commands[at], several ? [] : passthrough, (said) => {
+          const agent = AGENTS[id];
+          ctx.out(several && !said.startsWith(agent.name) ? `${agent.name}: ${said[0].toLowerCase()}${said.slice(1)}` : said);
+        }),
+      );
+    }
+  } catch (error) {
+    for (const made of hosted) made.cleanup?.();
+    ctx.err(`${products} didn't start: ${error instanceof Error ? error.message : error}`);
+    return { exitCode: 1 };
+  }
   // The Tricot tab's part (T192): the board, who answers there, its keys.
   const tricot: SwitcherRun['tricot'] = {
     title: board.title,
-    actor: await personOn(lock.url, a.dataDir, board.id),
+    actor,
     open: () => a.openBoard(lock, board.id, { always: true }),
+    // Every agent Tricot knows but those running. One that isn't installed
+    // says so; one Tricot can't give the board for one session says to
+    // connect it first, and picking it says why and how.
     choices: (running) =>
       Object.entries(AGENTS)
-        .filter(([id, agent]) => agent.session && agent.command && !running.includes(id))
-        .map(([id, agent]) =>
-          onPath(agent.command!, ctx.env)
-            ? { id, name: agent.name }
-            : { id, name: agent.name, note: 'not installed', problem: `${agent.name} isn't installed here, or isn't on your PATH: Tricot looked for \`${agent.command}\`. Install it, then add it again.` },
-        ),
+        .filter(([id]) => !running.includes(id))
+        .map(([id, agent]): AddChoice => {
+          if (!which(agent.command!, ctx.env)) {
+            return { id, name: agent.name, note: 'not installed', problem: `${agent.name} isn't installed here, or isn't on your PATH: Tricot looked for \`${agent.command}\`. Install it, then add it again.` };
+          }
+          if (!agent.session) return { id, name: agent.name, note: 'connect it first', problem: connectFirst(id, agent) };
+          return { id, name: agent.name };
+        }),
     make: (id) => {
       const agent = AGENTS[id];
-      const command = agent?.session && agent.command && onPath(agent.command, ctx.env);
+      if (agent && !agent.session) return { problem: connectFirst(id, agent) };
+      const command = agent?.session && agent.command && which(agent.command, ctx.env);
       if (!command) return { problem: `Tricot can't start ${agent?.name ?? id} here.` };
-      return hostedAgent(id, agent.boardName, command, [], () => {});
+      try {
+        return hostedAgent(id, agent.boardName, command, [], () => {});
+      } catch (error) {
+        return { problem: `${agent.name} didn't start: ${error instanceof Error ? error.message : error}` };
+      }
     },
   };
   ctx.out(`Starting ${products} on "${board.title}"…`);
   ctx.out(`> ${message}`);
   ctx.out(
     several
-      ? `${key.label} switches between them, ${key.label} then a number picks one, and ${key.label} then q quits.`
-      : `${key.label} then q quits; the strip at the bottom says what ${names[0]} is doing.`,
+      ? `${SWITCH_KEY.label} switches between them, ${SWITCH_KEY.label} then a number picks one, and ${SWITCH_KEY.label} then q quits.`
+      : `${SWITCH_KEY.label} then q quits; the strip at the bottom says what ${names[0]} is doing.`,
   );
 
   let outcome;
   try {
-    outcome = await ctx.host.run({ agents: hosted, key, live: { url: lock.url, board: board.id, dataDir: a.dataDir }, tricot });
+    outcome = await ctx.host.run({ agents: hosted, key: SWITCH_KEY, live: { url: lock.url, board: board.id, dataDir: a.dataDir }, tricot });
   } catch (error) {
     ctx.err(`${products} didn't start: ${error instanceof Error ? error.message : error}`);
     return { exitCode: 1 };
+  } finally {
+    for (const made of hosted) made.cleanup?.(); // the host does as each ends; this is for one it never started
   }
   // Those named, then those added from the Tricot tab.
   const ran = outcome.agents?.map((agent) => (agent.id && AGENTS[agent.id]?.name) || agent.name) ?? agents.map((agent) => agent.name);
@@ -167,6 +192,6 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     return code === 0 ? `${name} ended.` : `${name} ended with exit code ${code}.`;
   });
   ctx.out(`${outcome.quit ? 'You quit. ' : ''}${how.join(' ')}`);
-  ctx.out(`Tricot keeps running at ${lock.url}; stop it with: tricot stop`);
+  ctx.out(await a.parting());
   return { exitCode: outcome.exits.find((code) => code !== undefined && code !== 0) ?? 0 };
 }

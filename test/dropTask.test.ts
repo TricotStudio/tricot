@@ -149,7 +149,9 @@ describe('Dropping a task as work that won\'t be done', () => {
     const board = store.getBoard(boardId);
 
     const digest = boardDigest(board, 'Claude');
-    assert.match(digest, /Dropped: a person set these aside as work that won't be done; don't work on them \(1\):\n- T1 \[id: \w+\] Add retries — by Sam: "The gateway retries for us"/);
+    // Counted only: get_task says who dropped it and why.
+    assert.match(digest, /\nDropped: 1 task a person set aside as work that won't be done; don't work on it\.\n/);
+    assert.doesNotMatch(digest, /Add retries/);
     assert.doesNotMatch(readyWork(board, 'Claude')!, /T1/);
     assert.match(readyWork(board, 'Claude')!, /T2/);
     assert.doesNotMatch(delegateLine(board, 'Claude')!, /T1 /);

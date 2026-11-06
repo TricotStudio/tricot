@@ -13,7 +13,8 @@ import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_pr
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import type { Duplex, Writable } from 'node:stream';
-import { onPath } from '../../server/hooks/installer';
+import { currentOs, isWindows } from '../../platform/os';
+import { which } from '../../platform/which';
 import { PERL_HELPER, PYTHON_HELPER, scriptWrapper } from './ptyHelpers';
 
 export type PtyHelperName = 'perl' | 'python' | 'script';
@@ -69,21 +70,21 @@ function works(program: string, args: string[]): boolean {
 }
 
 function perlHelper(env: NodeJS.ProcessEnv): PtyHelper | undefined {
-  const program = existsSync('/usr/bin/perl') ? '/usr/bin/perl' : onPath('perl', env);
+  const program = existsSync('/usr/bin/perl') ? '/usr/bin/perl' : which('perl', env);
   return program && works(program, ['-MIO::Pty', '-e', '1']) ? { name: 'perl', program } : undefined;
 }
 
 // On a Mac without the Command Line Tools, /usr/bin/python3 is a stub that
 // offers to install them in a dialog, so it is only run when they are there.
 function pythonHelper(env: NodeJS.ProcessEnv): PtyHelper | undefined {
-  const program = onPath('python3', env);
+  const program = which('python3', env);
   if (!program) return undefined;
-  if (process.platform === 'darwin' && program === '/usr/bin/python3' && !works('/usr/bin/xcode-select', ['-p'])) return undefined;
+  if (currentOs() === 'darwin' && program === '/usr/bin/python3' && !works('/usr/bin/xcode-select', ['-p'])) return undefined;
   return works(program, ['-I', '-c', 'import pty, termios, fcntl, select']) ? { name: 'python', program } : undefined;
 }
 
 function scriptHelper(env: NodeJS.ProcessEnv): PtyHelper | undefined {
-  const program = existsSync('/usr/bin/script') ? '/usr/bin/script' : onPath('script', env);
+  const program = existsSync('/usr/bin/script') ? '/usr/bin/script' : which('script', env);
   return program ? { name: 'script', program } : undefined;
 }
 
@@ -93,7 +94,7 @@ let found: PtyHelper | undefined;
 
 // The first helper that works here, or why there is none.
 export function findPtyHelper(env: NodeJS.ProcessEnv = process.env): PtyHelper | { problem: string } {
-  if (process.platform === 'win32') return { problem: "Windows has no pseudo-terminals Tricot can use, so it can't run several agents in one terminal there." };
+  if (isWindows()) return { problem: "Windows has no pseudo-terminals Tricot can use, so it can't run several agents in one terminal there." };
   const asked = env.TRICOT_PTY?.trim();
   if (asked) {
     if (!(PTY_HELPERS as readonly string[]).includes(asked)) return { problem: `TRICOT_PTY is "${asked}": use perl, python or script.` };
@@ -128,7 +129,7 @@ export function spawnPty(file: string, args: string[], options: PtyOptions): Pty
   } else {
     const command = ['/bin/sh', '-c', scriptWrapper(rows, cols, process.pid), 'sh', file, ...args].map(shellQuote).join(' ');
     // BSD's script takes the command as words, util-linux's as one string (untried here).
-    const bsd = process.platform === 'darwin' || process.platform.endsWith('bsd');
+    const bsd = currentOs() === 'darwin' || currentOs().endsWith('bsd');
     const inner = bsd ? `cat | exec ${shellQuote(helper.program)} -q /dev/null ${command}` : `cat | exec ${shellQuote(helper.program)} -q -e -c ${shellQuote(command)} /dev/null`;
     child = spawn('/bin/sh', ['-c', inner], common);
   }
@@ -223,7 +224,7 @@ class HelperPty implements Pty {
     const c = Math.max(1, Math.floor(cols));
     if (this.helper === 'script') {
       if (!this.state.tty) return;
-      const flag = process.platform === 'linux' ? '-F' : '-f';
+      const flag = currentOs() === 'linux' ? '-F' : '-f';
       try {
         execFileSync('stty', [flag, this.state.tty, 'rows', String(r), 'cols', String(c)], { stdio: 'ignore', timeout: 2_000 });
       } catch {

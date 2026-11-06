@@ -6,6 +6,7 @@
 import type { Router } from 'express';
 import { connectorsLine, type ConnectorStatus } from '../../core/connectors';
 import type { Store } from '../../core/store';
+import type { PersonGate } from '../access';
 import type { ConnectorTool, ServerConnector } from './connector';
 import { ConnectorError, PendingSignIns, type Fetch } from './oauth';
 import { serverConnectors } from './registry';
@@ -79,8 +80,8 @@ export class Connectors {
 
   // What the connectors add once the board's store is there: their REST
   // routes (under /api/connectors/<id>) and their MCP tools.
-  routes(store: Store): { id: string; router: Router }[] {
-    return this.all.flatMap((c) => (c.routes ? [{ id: c.id, router: c.routes(store) }] : []));
+  routes(store: Store, person: PersonGate): { id: string; router: Router }[] {
+    return this.all.flatMap((c) => (c.routes ? [{ id: c.id, router: c.routes(store, person) }] : []));
   }
 
   tools(store: Store): ConnectorTool[] {

@@ -145,9 +145,57 @@ describe('the Tricot tab, drawn', () => {
     assert.match(long.plain.find((l) => l.startsWith('   › '))!, /^ {3}› …x+END$/);
   });
 
-  it('asks which agent to add or stop, and to confirm a stop', () => {
-    const add = renderTab(mockView({ prompt: { kind: 'add', choices: [{ name: 'OpenCode' }, { name: 'Gemini', note: 'not installed' }] } }), 100, 23).plain;
-    assert.equal(add.at(-1)!.trimEnd(), ' Add which agent?  1 OpenCode   2 Gemini (not installed)   Esc cancel');
+  it('lists every agent to add, one to a row, with a few words on those that can not be started now', () => {
+    const choices = [{ name: 'Claude Code' }, { name: 'Codex' }, { name: 'OpenCode', note: 'not installed' }, { name: 'Gemini CLI', note: 'connect it first' }, { name: 'Pi', note: 'connect it first' }, { name: 'OMP', note: 'connect it first' }];
+    const add = renderTab(mockView({ prompt: { kind: 'add', choices } }), 100, 23);
+    assert.deepEqual(add.plain.slice(-7).map((l) => l.trimEnd()), [
+      ' Add which agent?   Esc cancel',
+      '   1  Claude Code',
+      '   2  Codex',
+      '   3  OpenCode     not installed',
+      '   4  Gemini CLI   connect it first',
+      '   5  Pi           connect it first',
+      '   6  OMP          connect it first',
+    ]);
+    assert.equal(add.rows.length, 23, 'the rest of the tab gives way to the list');
+    assert.ok(add.rows.at(-1)!.includes('\x1b[0;2mconnect it first'), 'the note is dimmed');
+    assert.deepEqual(renderTab(mockView({ prompt: { kind: 'add', choices } }), 40, 8).plain.map((l) => l.trimEnd()).slice(-3), ['   4  Gemini CLI   connect it first', '   5  Pi           connect it first', '   6  OMP          connect it first'], 'a short window keeps the last rows, the choices');
+    assert.equal(renderTab(mockView({ prompt: { kind: 'add', choices: [] } }), 100, 23).plain.at(-1)!.trimEnd(), ' Every agent is running. Esc back');
+  });
+
+  // The rows above the keys that a note takes, as drawn.
+  const noteRows = (text: string, cols: number, firstWord: string) => {
+    const frame = renderTab(mockView({ note: { text, tone: 'alert' } }), cols, 23).plain.map((l) => l.trimEnd());
+    const at = frame.findIndex((l) => l.startsWith(` ${firstWord}`));
+    assert.ok(at > 0, frame.join('\n'));
+    return { rows: frame.slice(at, frame.length - 1), keys: frame.at(-1) };
+  };
+
+  it('wraps a long note onto a few rows instead of cutting what matters off its end', () => {
+    const text = "Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it for you yet: it adds a server only from a settings file.";
+    const wide = noteRows(text, 80, 'Connect');
+    assert.deepEqual(wide.rows, [" Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it", ' for you yet: it adds a server only from a settings file.']);
+    assert.equal(wide.keys, ' o open the board · a add an agent · x stop one · q quit', 'the keys stay on the last row');
+    const narrow = noteRows(text, 50, 'Connect');
+    assert.deepEqual(narrow.rows, [' Connect Gemini CLI first, with: tricot connect', " gemini. Tricot can't start it for you yet: it", ' adds a server only from a settings file.'], 'the command is whole at 50 columns');
+  });
+
+  it('ends a note that is still too long after four rows in an ellipsis, never one that looks whole and is not', () => {
+    const text = 'Update it with: npm install -g @google/gemini-cli@latest, and then run it again, and read the long and winding explanation of why this was needed, which goes on and on well past what four rows can hold at this width.';
+    assert.deepEqual(noteRows(text, 50, 'Update').rows, [' Update it with: npm install -g', ' @google/gemini-cli@latest, and then run it', ' again, and read the long and winding explanation', ' of why this was needed, which goes on and on…']);
+    // At 80 columns it takes three rows, and is whole.
+    assert.deepEqual(noteRows(text, 80, 'Update').rows, [
+      ' Update it with: npm install -g @google/gemini-cli@latest, and then run it',
+      ' again, and read the long and winding explanation of why this was needed, which',
+      ' goes on and on well past what four rows can hold at this width.',
+    ]);
+    // A word longer than a row is broken at the row's end, not lost; and what is cut says so.
+    assert.deepEqual(noteRows(`See ${'x'.repeat(120)} now`, 50, 'See').rows, [' See', ` ${'x'.repeat(48)}`, ` ${'x'.repeat(48)}`, ` ${'x'.repeat(24)} now`]);
+    assert.deepEqual(noteRows(`See ${'x'.repeat(300)} now`, 50, 'See').rows.map((l) => l.length), [4, 49, 49, 49]);
+    assert.ok(noteRows(`See ${'x'.repeat(300)} now`, 50, 'See').rows[3].endsWith('…'));
+  });
+
+  it('asks which agent to stop, and to confirm a stop', () => {
     const stop = renderTab(mockView({ prompt: { kind: 'stop', choices: [{ number: 1, name: 'Claude' }, { number: 2, name: 'Codex' }] } }), 80, 23).plain;
     assert.equal(stop.at(-1)!.trimEnd(), ' Stop which agent?  1 Claude   2 Codex   Esc cancel');
     const sure = renderTab(mockView({ prompt: { kind: 'confirm-stop', name: 'Codex' } }), 100, 23).plain;
@@ -417,16 +465,25 @@ describe('the Tricot tab, live and answering', () => {
   });
 
   it('opens the board, adds an agent, stops one after a y, and quits', () => {
-    const s = stand({ choices: [{ id: 'opencode', name: 'OpenCode' }, { id: 'gemini', name: 'Gemini CLI', note: 'not installed', problem: "Gemini CLI isn't installed here." }] });
+    const s = stand({
+      choices: [
+        { id: 'opencode', name: 'OpenCode' },
+        { id: 'gemini', name: 'Gemini CLI', note: 'not installed', problem: "Gemini CLI isn't installed here." },
+        { id: 'pi', name: 'Pi', note: 'connect it first', problem: "Tricot can't start Pi for you yet. Connect it once with: tricot connect pi" },
+      ],
+    });
     s.type('o');
     assert.equal(s.opened, 1);
     shows(s.screen(), ' Opened the board in your browser.');
 
     s.type('a');
-    assert.equal(s.screen().at(-1), ' Add which agent?  1 OpenCode   2 Gemini CLI (not installed)   Esc cancel');
+    assert.deepEqual(s.screen().slice(-4).map((l) => l.trimEnd()), [' Add which agent?   Esc cancel', '   1  OpenCode', '   2  Gemini CLI  not installed', '   3  Pi          connect it first']);
     s.type('2');
     assert.deepEqual(s.added, []);
     shows(s.screen(), " Gemini CLI isn't installed here.");
+    s.type('a3');
+    assert.deepEqual(s.added, [], 'one that can not be started says why, and is not started');
+    shows(s.screen(), " Tricot can't start Pi for you yet. Connect it once with: tricot connect pi");
     s.type('a1');
     assert.deepEqual(s.added, ['opencode']);
     s.type('a\x1b');

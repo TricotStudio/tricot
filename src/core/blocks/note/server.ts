@@ -70,6 +70,7 @@ export const agent: AgentHalf<NoteTypes> = {
   // An agent that still asks for a checklist gets a note with its task list.
   aliases: ['checklist'],
   docs: {
+    brief: 'note → text (Markdown; "- [ ] step" lines make a task list)',
     add: 'note → text (Markdown; task lists live in notes, as "- [ ] step" lines people tick and "- [x] step" once done); checklist → items, accepted for compatibility: it makes a note with that task list',
     update: 'text, items (a note\'s task list)',
   },

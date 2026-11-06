@@ -1,7 +1,8 @@
 // Code blocks: a source file, or part of one, as an agent or a person sent
 // it, with the lines that matter highlighted. Shared by the server, which
 // checks what's sent and describes it to agents, and the web UI, which draws
-// it. The server never reads the repo: the text is what was sent.
+// it. The text is what was sent, or what the server read from a file an
+// agent named on this computer (file.ts), kept the same way.
 
 import { lineQuote } from '../diff/diff';
 

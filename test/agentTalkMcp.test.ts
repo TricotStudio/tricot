@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
+import { readGuide } from './guide';
 
 type Agent = 'Claude' | 'Codex' | 'Gemini';
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
@@ -85,11 +86,13 @@ describe('Agents tagging each other, over MCP', () => {
     assert.match(instructions, /@-mention to tell a person; ask_people to ask, which waits for an answer\./, 'as it was');
     const { tools } = await clients.Claude.listTools();
     const described = (name: string) => tools.find((t) => t.name === name)!.description ?? '';
+    for (const name of ['comment', 'reply_in_thread']) assert.match(described(name), /another agent/);
+    const guide = await readGuide(clients.Claude, 'conversation');
     for (const name of ['comment', 'reply_in_thread']) {
-      assert.match(described(name), /another agent/);
-      assert.match(described(name), /never in a side channel, and don't mention an agent just to thank or acknowledge: react instead/);
+      const part = guide.split(`## ${name}\n`)[1].split('\n\n## ')[0];
+      assert.match(part, /never in a side channel, and don't mention an agent just to thank or acknowledge: react instead/);
     }
-    assert.match(described('start_thread'), /or another agent \(@Codex\) to hand it a question or work/);
+    assert.match(guide, /or another agent \(@Codex\) to hand it a question or work/);
   });
 
   it("asks the agent named on a card: it wakes, reads it as asked of it, and the third leaves it", async () => {

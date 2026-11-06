@@ -3,7 +3,7 @@
 // so and can try again.
 
 import { Component, type ReactNode } from 'react';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 
 export class SiteBoundary extends Component<{ children: ReactNode; onClose?: () => void }, { failed: boolean }> {
   state = { failed: false };

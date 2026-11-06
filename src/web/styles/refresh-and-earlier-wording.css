@@ -1,0 +1,71 @@
+/* ---- refresh and earlier wording ---------------------------------------- */
+
+/* Where a card stands with the app as it is now: amber when the board has
+   moved on since it caught up (it waits on you), blue while agents refresh
+   it, a quiet sheet once they have. */
+.refresh-note {
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.refresh-note p {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.refresh-note .btn {
+  justify-self: start;
+}
+.refresh-note.is-drift {
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.refresh-note.is-drift strong {
+  font-weight: 600;
+}
+.refresh-note.is-pending {
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+.refresh-note.is-pending .sync-dot {
+  flex: none;
+  align-self: center;
+}
+.refresh-note.is-pending .btn {
+  margin-top: -2px;
+}
+.refresh-note.is-done {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+.refresh-note.is-done .sync-check {
+  flex: none;
+  transform: translateY(2px);
+}
+.refresh-note.is-done .actor-name {
+  color: var(--text);
+}
+.refresh-quote {
+  font-style: italic;
+  opacity: 0.9;
+}
+.refresh-note.is-done .refresh-quote {
+  padding-left: 21px;
+}
+.refresh-form {
+  display: grid;
+  gap: 8px;
+}
+.refresh-note .refresh-form textarea {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--open) 45%, var(--border-strong));
+}
+.wording-editor input {
+  font-weight: 600;
+}
+.earlier-before {
+  color: var(--text);
+}

@@ -50,12 +50,13 @@ export const pinFields = () => mergedShape((kind) => kind.agent.pinShape, PIN_FI
 
 const docOrder = () => ordered(kinds(), DOC_KINDS, byType);
 
-// "Fields by type: note → text (Markdown); …", one entry from each kind.
-export function fieldsByType(): string {
-  return `Fields by type: ${docOrder().map((kind) => kind.agent.docs.add).join('; ')}.`;
+// "Fields by type: note → text (Markdown); …", one entry from each kind, in
+// full for the guide (read_guide), or in brief for add_block's description.
+export function fieldsByType(brief = false): string {
+  return `Fields by type: ${docOrder().map((kind) => (brief ? kind.agent.docs.brief : kind.agent.docs.add)).join('; ')}.`;
 }
 
-// Advice some kinds add after those entries, and after the advice about a task's canvas.
+// Advice some kinds add after those entries in the guide.
 export const guideSentences = (): string[] => docOrder().flatMap((kind) => (kind.agent.docs.guide ? [kind.agent.docs.guide] : []));
 export const moreSentences = (): string[] => docOrder().flatMap((kind) => (kind.agent.docs.more ? [kind.agent.docs.more] : []));
 

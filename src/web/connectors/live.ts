@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { LinkSource } from '../../core/sources';
-import { timeAgo } from '../components';
+import { timeAgo } from '../shared/components';
 import type { FileInfo } from './connector';
 import { webConnector } from './registry';
 

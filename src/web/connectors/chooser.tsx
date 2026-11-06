@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ConnectorStatus } from '../../core/connectors';
-import { api } from '../api';
+import { api } from '../shared/api';
 import { onConnectorMessage } from './live';
 import { webConnectors } from './registry';
 
 // The ids of the connectors that are signed in, read when asked and again after a sign-in.
-function useConnected(): Set<string> {
+export function useConnected(): Set<string> {
   const [connected, setConnected] = useState<Set<string>>(new Set());
   useEffect(() => {
     const load = () =>

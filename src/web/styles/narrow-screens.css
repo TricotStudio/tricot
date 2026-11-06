@@ -1,0 +1,170 @@
+/* ---- narrow screens ---------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .home {
+    padding: 28px 16px 48px;
+  }
+  /* Rows stack: name and goal, then the squares and counts, then agent,
+     time and ⋯. An archived row's buttons go under its name. */
+  .project {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+  .project-name,
+  .project-work {
+    grid-column: 1 / -1;
+  }
+  .project-archived-side {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .new-project {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .new-project input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  /* A need's title wraps; why and where go under it, the button beside both. */
+  .need {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    align-items: start;
+    row-gap: 2px;
+    padding: 10px 12px 10px 14px;
+  }
+  .need > .sq {
+    margin-top: 7px;
+  }
+  .need-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .need-meta {
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+  }
+  .need-why,
+  .need-board {
+    grid-column: auto;
+    margin: 0;
+    max-width: 100%;
+  }
+  .need-act {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+  .home-archived-toggle {
+    margin-left: 0;
+  }
+  .card-view {
+    height: auto;
+  }
+  .card-view-body {
+    grid-template-columns: 1fr;
+  }
+  .panel-handle {
+    display: none;
+  }
+  .card-view-canvas,
+  .board-canvas {
+    height: 70vh;
+  }
+  .decision-panel {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .board-page {
+    height: auto;
+  }
+  .board-layout,
+  .board-layout-full,
+  .board-layout:has(> .thread-dock) {
+    grid-template-columns: 1fr; /* the docked conversation is a sheet here (chatBar.css) */
+  }
+  .board-layout > .activity {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .board-layout > .thread-dock {
+    justify-self: normal;
+    width: auto;
+  }
+  .board-layout {
+    padding-bottom: var(--bar-room);
+  }
+  .lanes {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    overflow: visible;
+    padding: 16px;
+  }
+  .lane-cards {
+    overflow: visible;
+  }
+  .activity {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 60vh;
+  }
+  .topbar {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+  .attention,
+  .archived-bar {
+    padding: 10px 16px;
+  }
+  .board-goal {
+    white-space: normal;
+  }
+  .live {
+    display: none;
+  }
+  /* The title takes a line of its own, in full, under the back link and status. */
+  .card-bar {
+    flex-wrap: wrap;
+  }
+  .card-bar-title {
+    order: 1;
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Beside a board title on a phone the wordmark sits on the title's
+     baseline rather than centred on a wrapped goal. */
+  :is(.board-page, .card-view) .topbar-left {
+    align-items: baseline;
+  }
+  :is(.board-page, .card-view) .topbar-rule {
+    align-self: stretch;
+    height: auto;
+  }
+  /* Six controls at 14px apart run 6px past a 390px phone. */
+  :is(.board-page, .card-view) .topbar-right {
+    gap: 10px;
+  }
+  /* The controls wrap under the title here, so the inbox opens across the
+     bar, within its gutters, rather than from the bell's right edge. */
+  .topbar {
+    position: relative;
+  }
+  .topbar .inbox {
+    position: static;
+  }
+  .topbar .inbox-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+}

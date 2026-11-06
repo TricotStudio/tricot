@@ -33,8 +33,9 @@ import {
 } from '../../../../core/blocks/code/code';
 import { lineQuote } from '../../../../core/blocks/diff/diff';
 import type { Block, Pin } from '../../../../core/types';
-import { useDismiss } from '../../../hooks';
+import { useDismiss } from '../../../shared/hooks';
 import { useCanvas } from '../../context';
+import { DropOverlay } from '../../dropOverlay';
 import { coloursOf, highlightLine, type Token } from '../../highlight';
 import { Code, LineThread, useLinePick } from '../../lines';
 import { PinStrip, type PlacedPin } from '../../pins';
@@ -451,14 +452,5 @@ export function useCodeDrop(enabled: boolean) {
 
 export function CodeDropOverlay({ drop }: { drop: CodeDrop }) {
   const what = drop.name ? <b>{drop.name}</b> : drop.count === 1 ? 'the file' : `${drop.count} files`;
-  return (
-    <div className="code-drop" aria-hidden>
-      <div className="code-drop-card">
-        <p className="code-drop-what">
-          Drop to add {what} as {drop.count === 1 ? 'a Code block' : 'Code blocks'}
-        </p>
-        {drop.about && <p className="code-drop-about">{drop.about}</p>}
-      </div>
-    </div>
-  );
+  return <DropOverlay what={what} as={drop.count === 1 ? 'a Code block' : 'Code blocks'} about={drop.about} />;
 }

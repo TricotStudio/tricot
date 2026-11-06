@@ -10,8 +10,8 @@ import { samePerson } from '../../../core/format';
 import { boardAgents } from '../../../core/mentions';
 import { addressTo, PAIRING_BEAT_MS, pairingRequests, type PairingRequest, type PairingSession } from '../../../core/pairing';
 import type { Block } from '../../../core/types';
-import { api, type RequestError } from '../../api';
-import { useAgents } from '../../looking';
+import { api, type RequestError } from '../../shared/api';
+import { useAgents } from '../../agents';
 import { useCanvas } from '../context';
 
 const LAST_AGENT = 'tricot:pair-agent'; // the agent this browser last paired with

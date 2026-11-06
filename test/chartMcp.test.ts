@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
@@ -76,15 +77,18 @@ describe('Chart blocks over MCP and REST', () => {
   it('tells agents how to pick a chart', async () => {
     const { tools } = await client.listTools();
     const add = tools.find((t) => t.name === 'add_block')!;
+    assert.match(add.description ?? '', /chart → kind \+ columns \+ rows/);
+    const blocks = await readGuide(client, 'blocks');
     assert.match(
-      add.description ?? '',
+      blocks,
       /Show numbers to people with a chart block, picking the form by the job: comparing → bar; change over time → line \(area for one series\); parts of a whole → pie, only with a few parts/,
     );
-    assert.match(add.description ?? '', /chart → kind \(bar, line, area, stacked-bar or pie\) \+ columns \+ rows: the first column holds the categories/);
-    assert.match(add.description ?? '', /Never mix units on one chart: make two\. A single number is a note, not a chart\./);
+    assert.match(blocks, /chart → kind \(bar, line, area, stacked-bar or pie\) \+ columns \+ rows: the first column holds the categories/);
+    assert.match(blocks, /Never mix units on one chart: make two\. A single number is a note, not a chart\./);
     for (const field of ['kind', 'unit', 'subtitle', 'highlight']) assert.ok((add.inputSchema.properties as Record<string, unknown>)[field], field);
     const pin = tools.find((t) => t.name === 'pin')!;
-    assert.match(pin.description ?? '', /a chart's bar, point or slice \(category, and series on a chart of several\)/);
+    assert.match(pin.description ?? '', /Name the part with the fields for the block's type/);
+    assert.match(await readGuide(client, 'canvas'), /a chart's bar, point or slice \(category, and series on a chart of several\)/);
   });
 
   it('adds a chart, refuses what it cannot draw, and describes it compactly and in full', async () => {

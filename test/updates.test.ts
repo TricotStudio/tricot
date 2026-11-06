@@ -39,7 +39,7 @@ import {
   whyNoAnswer,
   type Found,
   type Timer,
-} from '../src/server/updates';
+} from '../src/install/updates';
 import { fakeReleases, freePort, githubRelease, integrity, registrySays, sha256, tricotTarball, type FakeReleases } from './updateFixtures';
 
 const RELEASES = releasesUrl('TricotStudio/tricot');

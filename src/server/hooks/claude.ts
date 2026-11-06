@@ -1,6 +1,6 @@
 // Claude Code's steps: a command hook (https://code.claude.com/docs/en/hooks)
 // in ~/.claude/settings.json, so it runs in every project, or in one
-// project's .claude/settings.json (`tricot connect claude --hooks`). It runs
+// project's .claude/settings.json (`tricot steps on --agent claude --project`). It runs
 // hooks/tricot-steps.mjs, copied into that .claude/hooks/, with "async": true,
 // so Claude never waits for it. CLAUDE_CONFIG_DIR, when set, is where Claude
 // Code keeps its user settings instead of ~/.claude.

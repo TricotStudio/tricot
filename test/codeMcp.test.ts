@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
@@ -63,12 +64,14 @@ describe('Code blocks over MCP and REST', () => {
   it('tells agents about code blocks', async () => {
     const { tools } = await client.listTools();
     const add = tools.find((t) => t.name === 'add_block')!;
+    assert.match(add.description ?? '', /code → file \(\+ lines\), or path \+ text/);
+    const blocks = await readGuide(client, 'blocks');
     assert.match(
-      add.description ?? '',
-      /When people are debugging or ask to see a file, add it as a code block \(type code, with its path and text\), the lines that matter highlighted\. People comment on the lines of diffs and code: get_canvas lists what they said under the block; answer each with comment\(pin_id\)\./,
+      blocks,
+      /When people are debugging or ask to see a file, add it as a code block \(type code, with its full path as file, and lines for the part that matters\), the lines that matter highlighted\. People comment on the lines of diffs and code: get_canvas lists what they said under the block; answer each with comment\(pin_id\)\./,
     );
-    assert.match(add.description ?? '', /code → path and text \(a source file as it is, or the lines that matter with start/);
-    for (const field of ['path', 'highlight', 'start', 'total', 'commit', 'language']) {
+    assert.match(blocks, /code → file \([^)]*\), or path and text \(a source file as it is, or the lines that matter with start/);
+    for (const field of ['file', 'lines', 'path', 'highlight', 'start', 'total', 'commit', 'language']) {
       assert.ok((add.inputSchema.properties as Record<string, unknown>)[field], field);
       assert.ok((tools.find((t) => t.name === 'update_block')!.inputSchema.properties as Record<string, unknown>)[field], field);
     }

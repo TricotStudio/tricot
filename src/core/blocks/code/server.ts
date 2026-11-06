@@ -4,10 +4,12 @@
 import { z } from 'zod';
 import type { CodeTypes } from './index';
 import { type CodeInput, codeAdvice, codeLineOf, CodeError, type CodeFields, codeChanges, codeDigest, codeFields, codeLineAt, linesText, samePath } from './code';
-import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
+import type { AgentHalf, AgentIo, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
 import { blockNamed, partAsksDigest, type AskWords } from '../asks';
 import { highlightType, plainText } from '../schema';
 import { missing } from '../shared';
+import type { Block } from '../../types';
+import { fileCode } from './file';
 import { blockLabel } from '../../canvas';
 import { clip } from '../../format';
 import { BoardError } from '../../store/errors';
@@ -49,6 +51,11 @@ function lineAnchor(block: CodeBlock, part: { file?: string; line: number; side?
 
 // The fields add_block and update_block read for a code block, the same for both.
 const SHAPE = {
+  file: z
+    .string()
+    .optional()
+    .describe('Code blocks, instead of text: a file on this computer for Tricot to read (full path or ~/…, inside your home folder); fills text, path and commit'),
+  lines: z.string().optional().describe('Code blocks, with file: the lines to show, e.g. "120-180" or "120-" (default: all); fills start and total'),
   path: z.string().optional().describe("Code blocks: the file's path in the repo, e.g. src/core/store.ts; it names the block"),
   language: z.string().optional().describe("Code blocks: its language, when the path's extension doesn't say, e.g. TypeScript"),
   start: z.number().int().min(1).optional().describe("Code blocks: the first line's number in the file, when text is an excerpt (default 1)"),
@@ -69,7 +76,7 @@ const shortCommit = (commit: string) => (/^[0-9a-f]{12,}$/i.test(commit) ? commi
 // over a range of them, in its full view, and ask an agent to change them.
 // The agent changes the block's text, and the file it shows when that is in
 // its repository: a code block names its file by its path in the repo, at a
-// commit when it says (the board never reads the repo itself).
+// commit when it says (the board doesn't keep where the file is, nor read it again).
 const part: PartWords = {
   kind: 'code',
   anchors: ['line'],
@@ -100,18 +107,43 @@ const ask: AskWords = {
   view: 'the code',
 };
 
+// A code block's text read from a file, in place of the fields that named it:
+// text, start and total, the path in its repository unless one was sent, and
+// the commit when git has the file as committed. A change clears what the
+// file doesn't set (the first line, the line count, an older commit).
+async function fill(args: Record<string, unknown>, io: AgentIo, block?: Block): Promise<Record<string, unknown> | undefined> {
+  if (args.file === undefined && args.lines === undefined) return undefined;
+  if (block && block.type !== 'code') throw new BoardError(`${blockLabel(block)} isn't a code block: file and lines make a code block's text.`);
+  if (args.file === undefined) throw new BoardError('Pass lines with file: the file to read them from.');
+  if (args.text !== undefined) throw new BoardError('Send text or file, not both.');
+  if (args.start !== undefined || args.total !== undefined) throw new BoardError('With file, leave out start and total: Tricot counts them (pass lines for part of the file).');
+  if (!io.localFiles) throw new BoardError('This server is reachable from other machines, so file is disabled. Send text.');
+  const read = await fileCode(args.file as string, args.lines as string | undefined);
+  const { file: _file, lines: _lines, ...rest } = args;
+  return {
+    ...rest,
+    path: args.path ?? read.path,
+    text: read.text,
+    start: read.start,
+    total: read.total ?? 0,
+    commit: args.commit ?? read.commit ?? '',
+  };
+}
+
 export const agent: AgentHalf<CodeTypes> = {
   addShape: SHAPE,
   updateShape: SHAPE,
   docs: {
-    add: "code → path and text (a source file as it is, or the lines that matter with start, the first one's number, and total, the file's line count), plus optional highlight (line ranges, e.g. [[123, 130]]), commit and language. Up to 1 MB of text; people see it with line numbers and comment on its lines",
-    more: 'When people are debugging or ask to see a file, add it as a code block (type code, with its path and text), the lines that matter highlighted. People comment on the lines of diffs and code: get_canvas lists what they said under the block; answer each with comment(pin_id).',
-    updateSpecial: 'for code path, highlight, start, total, commit, language',
+    brief: 'code → file (+ lines), or path + text',
+    add: "code → file (a file on this computer, read for you, plus optional lines, e.g. \"120-180\"), or path and text (a source file as it is, or the lines that matter with start, the first one's number, and total, the file's line count), plus optional highlight (line ranges, e.g. [[123, 130]]), commit and language. Up to 1 MB of text; people see it with line numbers and comment on its lines",
+    more: 'When people are debugging or ask to see a file, add it as a code block (type code, with its full path as file, and lines for the part that matters), the lines that matter highlighted. People comment on the lines of diffs and code: get_canvas lists what they said under the block; answer each with comment(pin_id).',
+    updateSpecial: 'for code file and lines, path, highlight, start, total, commit, language',
   },
+  fill,
   read(args) {
     const path = (args.path ?? args.title) as string | undefined; // it is named by its path
-    if (!path?.trim()) throw missing('code', "path (the file's path, e.g. src/core/store.ts)");
-    if (args.text === undefined) throw missing('code', "text (the file's text, or the lines that matter with start)");
+    if (!path?.trim()) throw missing('code', "path (the file's path, e.g. src/core/store.ts) and text, or file (a file on this computer, read for you)");
+    if (args.text === undefined) throw missing('code', "text (the file's text, or the lines that matter with start), or file (a file on this computer, read for you)");
     const { text, language, start, total, highlight, commit } = args as Omit<CodeInput, 'path'>;
     return () => ({ type: 'code', path, text, language, start, total, highlight, commit });
   },

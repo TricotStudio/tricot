@@ -19,6 +19,15 @@
 //
 //    o open the board · a add an agent · x stop one · q quit
 //
+// "a" lists every agent Tricot knows that isn't running, one to a row, a
+// number each, and a few words after one that can't be started now:
+//
+//    Add which agent?   Esc cancel
+//      1  Claude Code
+//      2  Codex
+//      3  OpenCode    not installed
+//      4  Gemini CLI  connect it first
+//
 // Every size gets what fits: each row has a priority, and the rows kept are
 // the most important ones, in their order (a short window loses the blank
 // rows, then the activity, then all but the first lines of a long
@@ -257,8 +266,8 @@ export function renderTab(view: TabView, cols: number, rows: number, light = fal
 
   // ---- the keys, and what the last one did: the last rows, always
   const footer: Part[][] = [];
-  if (view.note) footer.push([[` ${oneLine(view.note.text)}`, toneSgr(view.note.tone)]]);
-  footer.push(promptParts(view));
+  if (view.note) for (const line of wrap(oneLine(view.note.text), Math.max(10, cols - 2), NOTE_ROWS)) footer.push([[` ${line}`, toneSgr(view.note.tone)]]);
+  footer.push(...promptRows(view));
 
   // Keep the rows that matter most, in their order.
   const room = Math.max(0, rows - footer.length);
@@ -306,28 +315,69 @@ function tail(text: string, room: number): string {
   return out;
 }
 
-function promptParts(view: TabView): Part[] {
+// The last rows: the keys, or the question one of them asks (the add list is
+// one row to an agent, the rest are one row).
+function promptRows(view: TabView): Part[][] {
   const key = (k: string, words: string): Part[] => [[k, BOLD], [` ${words}`]];
   const sep: Part = [' · '];
-  if (view.quitting) return [[' Closing the agents…', DIM]];
+  if (view.quitting) return [[[' Closing the agents…', DIM]]];
   switch (view.prompt.kind) {
     case 'add': {
-      if (!view.prompt.choices.length) return [[' Every agent Tricot can start is running. '], ['Esc', BOLD], [' back']];
-      const parts: Part[] = [[' Add which agent?  ']];
-      for (const [i, choice] of view.prompt.choices.entries()) parts.push([`${i + 1}`, BOLD], [` ${choice.name}${choice.note ? ` (${choice.note})` : ''}   `]);
-      parts.push(['Esc', BOLD], [' cancel']);
-      return parts;
+      if (!view.prompt.choices.length) return [[[' Every agent is running. '], ['Esc', BOLD], [' back']]];
+      const width = Math.max(...view.prompt.choices.map((choice) => columns(oneLine(choice.name))));
+      const rows: Part[][] = [[[' Add which agent?   '], ['Esc', BOLD], [' cancel']]];
+      for (const [i, choice] of view.prompt.choices.entries()) {
+        const name = oneLine(choice.name);
+        rows.push([[`   ${i + 1}`, BOLD], [`  ${name}${' '.repeat(width - columns(name))}`], ...(choice.note ? ([['  '], [oneLine(choice.note), DIM]] as Part[]) : [])]);
+      }
+      return rows;
     }
     case 'stop': {
-      if (!view.prompt.choices.length) return [[' No agent is running. '], ['Esc', BOLD], [' back']];
+      if (!view.prompt.choices.length) return [[[' No agent is running. '], ['Esc', BOLD], [' back']]];
       const parts: Part[] = [[' Stop which agent?  ']];
       for (const choice of view.prompt.choices) parts.push([`${choice.number}`, BOLD], [` ${oneLine(choice.name)}   `]);
       parts.push(['Esc', BOLD], [' cancel']);
-      return parts;
+      return [parts];
     }
     case 'confirm-stop':
-      return [[` Stop ${oneLine(view.prompt.name)}?  `], ['y', BOLD], [' stop · any other key keeps it']];
+      return [[[` Stop ${oneLine(view.prompt.name)}?  `], ['y', BOLD], [' stop · any other key keeps it']]];
     default:
-      return [[' '], ...key('o', 'open the board'), sep, ...key('a', 'add an agent'), sep, ...key('x', 'stop one'), sep, ...key('q', 'quit')];
+      return [[[' '], ...key('o', 'open the board'), sep, ...key('a', 'add an agent'), sep, ...key('x', 'stop one'), sep, ...key('q', 'quit')]];
   }
+}
+
+// The note's rows: as many as it needs, to this many; what doesn't fit ends
+// the last row with an ellipsis, so a note never looks whole when it isn't.
+const NOTE_ROWS = 4;
+function wrap(text: string, width: number, rows: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    let rest = word;
+    // A word longer than a row is broken at the row's end.
+    while (columns(rest) > width) {
+      let head = '';
+      for (const ch of rest) {
+        if (columns(head + ch) > width) break;
+        head += ch;
+      }
+      if (!head) break;
+      if (line) lines.push(line);
+      lines.push(head);
+      line = '';
+      rest = rest.slice(head.length);
+    }
+    if (!rest) continue;
+    if (line && columns(`${line} ${rest}`) > width) {
+      lines.push(line);
+      line = rest;
+    } else line = line ? `${line} ${rest}` : rest;
+  }
+  if (line) lines.push(line);
+  if (lines.length <= rows) return lines;
+  const shown = lines.slice(0, rows);
+  let last = shown[rows - 1];
+  while (last && columns(`${last}…`) > width) last = [...last].slice(0, -1).join('').trimEnd();
+  shown[rows - 1] = `${last}…`;
+  return shown;
 }

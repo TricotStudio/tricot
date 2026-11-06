@@ -204,7 +204,7 @@ describe('Tasks', () => {
     const ask = "Sam approved T1 and asked you to commit it. Commit that task's work alone, from your main session, then report the hash with update_task (commit); if there is nothing to commit, say why with update_task (nothing_to_commit).";
     assert.ok(taskDetail(store.getBoard(boardId), task).includes(`\n\n${ask}`));
     assert.ok(boardDigest(store.getBoard(boardId)).includes(`Sam approved T1 [id: ${task.id}] and asked you to commit it.`));
-    assert.match(boardDigest(store.getBoard(boardId)), /T1 \[id: \w+\] Add retry option — done, Claude \(agent\) · .* · commit approved by Sam, not reported yet/);
+    assert.match(boardDigest(store.getBoard(boardId)), /\ndone \(1\):\n- T1 \[id: \w+\] Add retry option — by Claude \(agent\)\n/);
 
     assert.throws(() => store.updateTask(task.id, { commit: 'not a hash' }, claude), /Pass the commit hash in commit, e\.g\. "abc1234"\./);
     store.updateTask(task.id, { commit: ' ABC1234DEF ' }, claude);
@@ -213,7 +213,7 @@ describe('Tasks', () => {
     assert.match(eventsOf(store, boardId).at(-1)!.summary, /^updated T1 "Add retry option": committed it as abc1234$/);
     assert.equal(commitsDigest(store.getBoard(boardId)), undefined);
     assert.match(taskDetail(store.getBoard(boardId), task), /\n\nCommitted as abc1234def; Sam approved the commit\./);
-    assert.match(boardDigest(store.getBoard(boardId)), /committed as abc1234 \(commit approved by Sam\)/);
+    assert.doesNotMatch(boardDigest(store.getBoard(boardId)), /abc1234/, 'a done task is a line on the board; get_task has its commit');
     assert.equal(taskClosure(store.getBoard(boardId), task)?.kind, 'done', 'reporting the hash is not a move to done');
 
     // Reopened, the work changes, so the approved commit goes with it.
@@ -305,7 +305,8 @@ describe('Tasks', () => {
     assert.equal(noCommit?.by.name, 'Claude');
     assert.match(eventsOf(store, boardId).at(-1)!.summary, /^updated T1 "Spike the importer": found nothing to commit: a spike; findings on the canvas$/);
     assert.equal(commitsDigest(store.getBoard(boardId)), undefined);
-    assert.match(boardDigest(store.getBoard(boardId)), /T1 .* done, Claude \(agent\) · .* · nothing to commit: a spike; findings on the canvas/);
+    assert.match(boardDigest(store.getBoard(boardId)), /\ndone \(1\):\n- T1 \[id: \w+\] Spike the importer — by Claude \(agent\)\n/);
+    assert.match(taskDetail(store.getBoard(boardId), task), /\n\nNothing to commit: a spike; findings on the canvas\./);
     assert.deepEqual(taskClosure(store.getBoard(boardId), task), { kind: 'done', by: sam, at: task.doneAt, approved: true });
 
     // A commit that has its hash is no longer waiting on an answer.

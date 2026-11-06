@@ -21,20 +21,23 @@ import { agentStepName, agentUsage, agentUsageParams, describeIssues } from '../
 import { BoardError, type Store } from '../core/store';
 import { dayStarts, type AgentBoardActivity, type AgentUsageReport } from '../core/usage';
 import type { Usage } from './usage';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
 
 const WEEK_MS = 7 * 24 * 60 * 60_000;
 
 export function createUsageRouter(store: Store, usage: Usage, now: () => number = Date.now): Router {
   const router = Router();
+  const on = routesOn(router, '/api/agents');
 
-  router.post('/:name/usage', (req, res) => {
+  on(routes.recordUsage, (req, res) => {
     const { name } = agentStepName.parse(req.params);
     const body = agentUsage.parse(req.body);
     const result = usage.record(name, body.usage, body.at);
     res.status(result.kept ? 200 : result.reason === 'limited' ? 429 : 202).json(result);
   });
 
-  router.get('/:name/usage', (req, res) => {
+  on(routes.agentUsage, (req, res) => {
     const { name } = agentStepName.parse(req.params);
     const params = agentUsageParams.parse(req.query);
     const latest = usage.get(name);

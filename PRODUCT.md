@@ -40,7 +40,7 @@ The board is a boundary object, after Maggie Appleton's *Planning with Agents*: 
 - Web UI in React (Vite) with React Flow for canvases and Mermaid for diagrams; Express server with REST, SSE, and an MCP endpoint, bundled into the `tricot` command (Node 22.13 or newer). Boards live in one SQLite database, `tricot.db`, in `~/.tricot` (or `TRICOT_DATA_DIR`), with images in `assets/` beside it.
 - Local-only by default: it binds to `127.0.0.1` with no token, refuses requests whose `Origin` isn't its own and requests addressed to other hostnames, and keeps the data folder private to the account. Any program running as the person can still act on a local board, so the steps left to people are a convention agents keep, not a wall. Set to listen beyond this machine (`HOST`), it requires a token on everything, over plain HTTP, so only on a trusted network or through a tunnel.
 - Human identity is a self-chosen name stored in the browser; agents are labelled by `?agent=Name` or their MCP client name.
-- Connectors are internal, not plugins: Google Docs (the person picks each doc), GitHub and Figma, plus link cards that recognise common sites without signing in.
+- Connectors are internal, not plugins: Google Docs (the person picks each doc), GitHub, Figma and Linear (read-only), plus link cards that recognise common sites without signing in.
 - Terminology to keep: *board*, *decision*, *option* (lettered a, b, c), *recommendation*, *finding*, *criteria* and *marks*, *ask*, *task*, *stale*, *project context*, *canvas*, *block*, *group*, *link*, *pin*, *thread*, *live steps*, *Needs you*.
 - Open source: the core and the `tricot` command are under Apache-2.0, free for anyone, companies included, and contributions come under the CLA. The source is at https://github.com/TricotStudio/tricot, and every running Tricot links to it from Home.
 
@@ -51,7 +51,7 @@ The board is a boundary object, after Maggie Appleton's *Planning with Agents*: 
 
 ## Evidence on Hand
 
-- `scripts/demo.ts` seeds a realistic example board ("API client retry logic") with decisions in every status, findings with metrics, and canvas blocks.
+- `scripts/demo.ts` seeds a realistic example board ("API client retry logic") with decisions in most statuses (resolved and deferred ones too with `--let-in`, once a person allows it), findings with metrics, and canvas blocks.
 - No users, testimonials, usage data, or benchmarks exist. Future work must not invent them.
 
 ## Product Principles

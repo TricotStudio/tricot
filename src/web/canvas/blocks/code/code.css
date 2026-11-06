@@ -159,39 +159,6 @@ button.code-path:hover {
   font-size: 12px;
 }
 
-/* ---- dropping a file on the canvas ---- */
-
-.code-drop {
-  position: absolute;
-  inset: 10px;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  border: 2px dashed color-mix(in srgb, var(--exploring) 65%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--exploring-bg) 55%, transparent);
-  pointer-events: none;
-}
-.code-drop-card {
-  max-width: min(440px, calc(100% - 40px));
-  padding: 12px 22px 13px;
-  border: 1px solid color-mix(in srgb, var(--exploring) 30%, var(--border));
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  text-align: center;
-}
-.code-drop-what {
-  color: var(--exploring-ink);
-  font-size: 16px;
-  overflow-wrap: anywhere;
-}
-.code-drop-about {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 /* ---- its full view (codeView.tsx) ----------------------------------------------
    Every line on a sheet, at a reading size; while pairing, a line under the
    pointer is marked as one to point at, and a drag over several marks them

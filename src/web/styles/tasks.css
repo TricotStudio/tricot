@@ -1,0 +1,216 @@
+/* ---- tasks ------------------------------------------------------------- */
+
+.task-card {
+  cursor: default;
+}
+.task-card.is-stale {
+  border-color: color-mix(in srgb, var(--open) 55%, var(--border));
+}
+.task-detail {
+  font-size: 13px;
+  color: var(--muted);
+}
+.task-decisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+a.relation {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.task-card > * {
+  min-width: 0;
+}
+.stale-banner {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 12.5px;
+}
+.tag-stale {
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-weight: 600;
+}
+.tab-stale {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--open-ink);
+}
+.task-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+/* Task card footers carry a status picker plus counts; let them wrap whole. */
+.task-card .card-foot {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.task-card .card-foot > span {
+  white-space: nowrap;
+}
+.task-time {
+  margin-left: auto;
+}
+.task-status {
+  width: auto;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: var(--radius-xs);
+}
+
+/* On a lane card, tasks speak the decision card's language: the decision a
+   task implements reads like a card's option line rather than a boxed chip,
+   and the pickers are quiet in-card controls instead of browser defaults. */
+.task-card .task-decisions {
+  display: grid;
+  gap: 4px;
+}
+.task-card .relation {
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+.task-card .relation:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.task-card .relation::before {
+  margin-right: 7px;
+  vertical-align: 1px;
+}
+/* A task held by an open question says so in one quiet line, in place of
+   its plain link: "Waits on #32" and the question. The chip's dot takes the
+   needs-you amber when the question is asked of the viewer. */
+.task-waits {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.task-waits-label {
+  flex: none;
+}
+.task-waits .ref-chip {
+  flex: none;
+  color: var(--text);
+}
+.task-waits.is-asked .ref-chip {
+  --marker: var(--open);
+}
+.task-waits-q {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-card .task-status {
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.task-card .task-status {
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  padding: 0 2px 0 6px;
+  font-weight: 500;
+  field-sizing: content;
+}
+.task-card .task-status:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.task-card .task-status:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.task-card .task-links a {
+  color: var(--muted);
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+.task-card .task-links a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+.built-on {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.built-on li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.built-on a {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.built-on a:hover {
+  text-decoration: underline;
+}
+.task-chip {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.task-chip-backlog { background: none; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.task-chip-in_progress { background: var(--exploring-bg); color: var(--exploring-ink); }
+.task-chip-in_review { background: var(--provisional-bg); color: var(--provisional-ink); }
+.task-chip-blocked { background: var(--danger-bg); color: var(--danger); }
+.task-chip-done { background: var(--decided-bg); color: var(--decided-ink); }
+.task-chip-dropped { background: var(--deferred-bg); color: var(--deferred-ink); }
+.plan-request {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.confirm-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 13px;
+}
+.confirm-row textarea {
+  color: var(--text);
+  font-size: 14px;
+}

@@ -14,10 +14,13 @@ import { randomBytes } from 'node:crypto';
 import { Router, type ErrorRequestHandler, type Request, type Response } from 'express';
 import { z, ZodError } from 'zod';
 import type { ConnectorStatus } from '../../core/connectors';
+import { linkTo } from '../../core/pages';
 import { BoardError, type Store } from '../../core/store';
 import { asPerson, peopleChange, type PersonGate } from '../access';
 import { callbackPath } from './connector';
 import { ConnectorError, type Connectors } from './index';
+import { routes } from '../../core/routes';
+import { routesOn } from '../routing';
 
 const startBody = z.object({ permissions: z.array(z.string()).max(5).optional() });
 
@@ -39,7 +42,7 @@ export function callbackUri(host: string | undefined, id: string): string {
   }
   if (!LOOPBACK.includes(url.hostname)) {
     throw new ConnectorError(
-      `Connect from this computer, at http://127.0.0.1:${url.port || 80}: Google only sends a desktop sign-in back to a loopback address.`,
+      `Connect from this computer, at http://127.0.0.1:${url.port || 80}: a desktop sign-in only comes back to a loopback address.`,
       400,
     );
   }
@@ -49,15 +52,16 @@ export function callbackUri(host: string | undefined, id: string): string {
 // `person`: who is a person (access.ts); the app's, with its terminals, unless given.
 export function createConnectorsRouter(connectors: Connectors, store: Store, person: PersonGate = (req, tier) => asPerson(req, tier)): Router {
   const router = Router();
+  const on = routesOn(router, '/api/connectors');
   router.use(peopleChange(person, 'B'));
 
-  router.get('/', (_req, res) => {
+  on(routes.connectors, (_req, res) => {
     res.json(connectors.list());
   });
 
   // The service's consent page, which the UI opens in a new tab. `permissions`
   // asks for more than the connector has, such as "docs" for Google Docs.
-  router.post('/:id/start', (req, res) => {
+  on(routes.startConnector, (req, res) => {
     const id = param(req, 'id');
     connectors.get(id); // an unknown connector is a 404, before the host is checked
     const { permissions } = startBody.parse(req.body ?? {});
@@ -66,7 +70,7 @@ export function createConnectorsRouter(connectors: Connectors, store: Store, per
 
   // Where the service sends the person back. Answers with a page, not JSON,
   // that tells the board's tab how it went.
-  router.get('/:id/callback', async (req, res) => {
+  on(routes.connectorCallback, async (req, res) => {
     const id = param(req, 'id');
     try {
       const status = await connectors.finish(id, req.query as Record<string, unknown>);
@@ -79,14 +83,14 @@ export function createConnectorsRouter(connectors: Connectors, store: Store, per
     }
   });
 
-  router.post('/:id/disconnect', async (req, res) => {
+  on(routes.disconnectConnector, async (req, res) => {
     const id = param(req, 'id');
     const { revoked } = await connectors.disconnect(id);
     res.json({ connector: connectors.get(id).status(), revoked });
   });
 
   // What a connector adds, under its id: /api/connectors/google/files/:fileId…
-  for (const { id, router: own } of connectors.routes(store)) router.use(`/${id}`, own);
+  for (const { id, router: own } of connectors.routes(store, person)) router.use(`/${id}`, own);
 
   router.use((_req, res) => {
     res.status(404).json({ error: 'Not found' });
@@ -185,7 +189,7 @@ p strong { color: var(--text); font-weight: 500; }
 <p>${outcome.ok ? 'You can close this tab.' : 'Close this tab and try again from Connectors.'}</p>
 <div class="row">
 <button class="btn btn-primary" id="close" type="button">Close tab</button>
-<a class="btn" href="/#/connectors">Go to Connectors</a>
+<a class="btn" href="/${linkTo.connectors()}">Go to Connectors</a>
 </div>
 </main>
 <script type="application/json" id="outcome">${message}</script>

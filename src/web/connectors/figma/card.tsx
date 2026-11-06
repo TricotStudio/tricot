@@ -3,6 +3,8 @@ import type { LinkSource } from '../../../core/sources';
 import type { Block, BlockVersion } from '../../../core/types';
 import { useCanvas } from '../../canvas/context';
 import { figmaApi, useFigmaCard } from './api';
+import { routes, routeUrl } from '../../../core/routes';
+import { linkTo } from '../../shared/pages';
 
 type LinkBlock = Extract<Block, { type: 'link' }>;
 type ImageBlock = Extract<Block, { type: 'image' }>;
@@ -40,7 +42,7 @@ export function FigmaLinkCard({ block, source }: { block: LinkBlock; source: Lin
     <div className="figma-card nodrag">
       <div className="figma-card-preview">
         {card?.thumbnail ? (
-          <img src={`/api/assets/${encodeURIComponent(card.thumbnail)}`} alt={`Preview of ${card.name}`} draggable={false} />
+          <img src={routeUrl(routes.asset, { id: card.thumbnail })} alt={`Preview of ${card.name}`} draggable={false} />
         ) : answer ? (
           <p className="faint small">{missing(answer.problem?.code, frame, answer.problem?.message)}</p>
         ) : (
@@ -50,7 +52,7 @@ export function FigmaLinkCard({ block, source }: { block: LinkBlock; source: Lin
       <div className="figma-card-actions">
         {card && frame && <span className="faint small figma-card-file">In {card.fileName}</span>}
         {needsConnecting && (
-          <a className="btn btn-small btn-primary" href={`#/connectors?from=${encodeURIComponent(canvas.board.id)}`}>
+          <a className="btn btn-small btn-primary" href={linkTo.connectors(canvas.board.id)}>
             Connect Figma
           </a>
         )}

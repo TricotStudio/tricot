@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -13,6 +13,8 @@ import { Store } from '../src/core/store';
 import { LENSES, shownTitle, threadDetail, threadTitle, threadWaiting, threadWork, threadsDigest } from '../src/core/threads';
 import type { Actor, Thread } from '../src/core/types';
 import { createApp } from '../src/server/app';
+import { EDGE, LENS_MENU_WIDTH, lensMenuPlace, type LensMenuPlace } from '../src/web/threads/lensPlace';
+import { lensTone } from '../src/web/threads/lensTone';
 import { eventsOf } from './tables';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -215,6 +217,18 @@ describe('Thread lenses', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('offers Architect and Marketing like the other presets, each with a brief agents are told', async () => {
+    for (const name of ['Architect', 'Marketing']) {
+      const preset = LENSES.find((l) => l.name === name);
+      assert.ok(preset?.brief, `${name} is a preset with a brief`);
+      assert.ok(preset.brief.length <= 300, `${name}'s brief fits the limit a brief has`);
+      const thread = store.startThread(boardId, `Question for ${name}`, wassim, { name: name.toLowerCase() });
+      assert.deepEqual(thread.lens, { name, brief: preset.brief }, "the name as the board spells it, with the preset's brief");
+      assert.match(threadDetail(store.getBoard(boardId), thread, 'Claude'), new RegExp(`Lens: ${name}\\. Answer through it: `));
+    }
+    assert.deepEqual(LENSES.map((l) => l.name), ['General', 'Legal', 'Design', 'Performance', 'Security', 'Architect', 'Marketing']);
+  });
+
   it('keeps a preset with its brief, one of your own with yours, and General as no lens', async () => {
     const pi = store.startThread(boardId, 'Can we bundle Pi?', wassim, { name: 'legal' });
     assert.deepEqual(pi.lens, { name: 'Legal', brief: legal }, "a preset's name as the board spells it, with its brief");
@@ -304,6 +318,123 @@ describe('Thread lenses', () => {
     assert.deepEqual(threadWaiting(board, thread)?.agents, ['Claude'], 'a mention goes where it says');
     store.postToThread(thread.id, '@Sam do you know?', wassim);
     assert.equal(threadWaiting(board, thread), undefined, 'one for a person waits on them');
+  });
+});
+
+// Each preset's chip takes its tint from a rule of its own in threads.css,
+// named by lensTone, so a lens added to LENSES can't go untinted (T231).
+describe('Lens chips', () => {
+  const web = path.resolve(import.meta.dirname, '../src/web');
+  const read = (file: string) => readFileSync(path.join(web, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // What each one-class rule in threads.css sets, by its class.
+  const rules = new Map<string, Map<string, string>>();
+  for (const [, selectors, body] of read('threads/threads.css').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const selector of selectors.split(',').map((s) => s.trim())) {
+      if (!/^\.[\w-]+$/.test(selector)) continue;
+      const set = rules.get(selector.slice(1)) ?? new Map<string, string>();
+      for (const [, name, value] of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+)/g)) set.set(name, value.trim());
+      rules.set(selector.slice(1), set);
+    }
+  }
+  const themes = readdirSync(path.join(web, 'themes'))
+    .filter((file) => file.endsWith('.css'))
+    .map((file) => ({ file, tokens: new Set([...read(`themes/${file}`).matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1])) }));
+
+  it('gives each preset a tint of its own, from tokens every theme defines', () => {
+    assert.ok(themes.some((t) => t.file === 'light.css'), 'no theme files were read');
+    const own = rules.get(lensTone({ name: '' }))?.get('--lens-bg');
+    assert.ok(own, 'one of your own has a plain tint to tell the presets from');
+    const taken = new Map([[own, 'a lens of your own']]); // a tint, by whose it is
+    for (const preset of LENSES) {
+      const tone = lensTone(preset);
+      const set = rules.get(tone);
+      const bg = set?.get('--lens-bg');
+      const ink = set?.get('--lens-ink');
+      assert.ok(bg && ink, `The ${preset.name} lens has no tint: add a .${tone} rule to src/web/threads/threads.css that sets --lens-bg and --lens-ink from a tint in src/web/themes/.`);
+      const other = taken.get(bg);
+      assert.equal(other, undefined, `The ${preset.name} lens shares its tint (${bg}) with ${other}: give .${tone} in src/web/threads/threads.css one of its own, adding a tint to each theme in src/web/themes/ if none is free.`);
+      taken.set(bg, `the ${preset.name} lens`);
+      for (const [, token] of `${bg} ${ink}`.matchAll(/var\((--[\w-]+)\)/g)) {
+        for (const { file, tokens } of themes) assert.ok(tokens.has(token), `The ${preset.name} lens's tint uses ${token}, which src/web/themes/${file} doesn't define.`);
+      }
+    }
+  });
+});
+
+// The lens menu opens by its chip and stays inside the window: the threads
+// panel sits against the window's right edge, and a chip there has less room
+// to its right than the menu is wide (T232).
+describe('The lens menu', () => {
+  const chip = (left: number, top: number) => ({ left, top, bottom: top + 20 });
+  const menu = { width: LENS_MENU_WIDTH, height: 162 };
+  const wide = { width: 1440, height: 900 };
+  // Where it is drawn: as tall as it is, or as its place lets it be.
+  const box = (place: LensMenuPlace, view: { height: number }, height = menu.height) => {
+    const drawn = Math.min(height, place.maxHeight);
+    const top = place.top ?? view.height - place.bottom! - drawn;
+    return { left: place.left, right: place.left + place.width, top, bottom: top + drawn };
+  };
+
+  it("starts at the chip's left edge when there's room", () => {
+    const place = lensMenuPlace(chip(1019, 223), menu, wide);
+    assert.equal(place.left, 1013, 'a little left of the chip, so its pills line up with it');
+    assert.equal(place.width, LENS_MENU_WIDTH);
+    assert.equal(place.top, 251, 'under the chip');
+  });
+
+  it("moves left, as far as the window's right edge needs, from the open thread's chip", () => {
+    // Measured before the fix: from here it ended at 1495, past the window.
+    const place = lensMenuPlace(chip(1121, 223), menu, wide);
+    assert.equal(place.left + place.width, wide.width - EDGE);
+    assert.equal(place.width, LENS_MENU_WIDTH);
+    assert.equal(place.top, 251, 'still under the chip');
+  });
+
+  it('keeps clear of the left edge too', () => {
+    assert.equal(lensMenuPlace(chip(2, 223), menu, wide).left, EDGE);
+  });
+
+  it('narrows to fit a window narrower than itself', () => {
+    const place = lensMenuPlace(chip(120, 300), menu, { width: 320, height: 700 });
+    assert.equal(place.left, EDGE);
+    assert.equal(place.width, 320 - 2 * EDGE);
+  });
+
+  it('opens over the chip when only that side has room, growing upward', () => {
+    const view = { width: 1100, height: 800 };
+    const place = lensMenuPlace(chip(700, 680), menu, view);
+    assert.equal(place.top, undefined);
+    assert.equal(place.bottom, view.height - 680 + 8, 'its foot just over the chip');
+    assert.equal(place.maxHeight, 680 - 8 - EDGE);
+  });
+
+  it('with room on neither side, takes the roomier one and scrolls', () => {
+    const view = { width: 1100, height: 300 };
+    const tall = { width: LENS_MENU_WIDTH, height: 400 };
+    const under = lensMenuPlace(chip(700, 60), tall, view);
+    assert.equal(under.top, 88);
+    assert.equal(under.maxHeight, 300 - EDGE - 88);
+    const over = lensMenuPlace(chip(700, 220), tall, view);
+    assert.equal(over.bottom, 300 - 220 + 8);
+    assert.equal(over.maxHeight, 220 - 8 - EDGE);
+  });
+
+  it('stays inside the window, beside its chip, wherever the chip is', () => {
+    for (const view of [wide, { width: 1100, height: 800 }, { width: 700, height: 800 }, { width: 360, height: 640 }, { width: 900, height: 260 }]) {
+      for (const height of [162, 330, 900]) {
+        for (let x = 0; x <= view.width - 90; x += 37) {
+          for (let y = 0; y <= view.height - 20; y += 23) {
+            const at = `a ${height}px menu from a chip at ${x},${y} in a ${view.width}x${view.height} window`;
+            const place = lensMenuPlace(chip(x, y), { width: LENS_MENU_WIDTH, height }, view);
+            const drawn = box(place, view, height);
+            assert.ok(drawn.left >= EDGE && drawn.right <= view.width - EDGE, `${at} runs off the side: ${JSON.stringify(drawn)}`);
+            assert.ok(drawn.top >= EDGE && drawn.bottom <= view.height - EDGE, `${at} runs off the top or foot: ${JSON.stringify(drawn)}`);
+            assert.ok(drawn.top >= y + 20 || drawn.bottom <= y, `${at} covers it: ${JSON.stringify(drawn)}`);
+          }
+        }
+      }
+    }
   });
 });
 

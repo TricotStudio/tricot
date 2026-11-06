@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
+import { appStyles } from './appStyles';
 import { CHROME, runInChrome } from './mermaidPage';
 
 // A task's or decision's view, and a board tab with the threads panel docked,
@@ -15,8 +16,8 @@ import { CHROME, runInChrome } from './mermaidPage';
 // and threads.tsx draw it.
 
 const web = path.resolve(import.meta.dirname, '../src/web');
-const CSS = ['themes/light.css', 'styles.css', 'chatBar.css', 'threads.css', 'delivery.css', 'reactions.css', 'agentTalk.css', 'stitch.css']
-  .map((file) => readFileSync(path.join(web, file), 'utf8'))
+const CSS = ['themes/light.css', 'styles.css', 'threads/chatBar.css', 'threads/threads.css', 'conversation/delivery.css', 'conversation/reactions.css', 'conversation/agentTalk.css', 'shared/stitch.css']
+  .map((file) => (file === 'styles.css' ? appStyles(web) : readFileSync(path.join(web, file), 'utf8')))
   .join('\n');
 
 const PARAGRAPH =

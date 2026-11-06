@@ -69,6 +69,8 @@ export const LENSES: { name: string; brief?: string }[] = [
   { name: 'Design', brief: 'Look at it as a product designer: flows, clarity and visuals. Show mocks or screenshots rather than describe them.' },
   { name: 'Performance', brief: 'Measure before you claim. Give numbers and profiles, and what each fix would cost.' },
   { name: 'Security', brief: 'Look for ways it could be misused or leak data. Be concrete: where it happens, and how to fix it.' },
+  { name: 'Architect', brief: "Look at it as a software architect: how it is structured, where the boundaries are, and how it will grow. Prefer designs that stay extensible and fit the codebase's own conventions. Name the trade-offs and what a later change would cost, and draw a diagram when it helps." },
+  { name: 'Marketing', brief: "Look at it as a marketer: who it is for, what to say and where to say it. Give concrete copy, channels and ways to measure each, and say what you are unsure of rather than inventing numbers." },
 ];
 
 export function presetLens(name: string): { name: string; brief?: string } | undefined {

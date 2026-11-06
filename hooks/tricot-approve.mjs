@@ -15,7 +15,8 @@
 // listens: it tries once more after a moment, so the terminal asks within a
 // second), when Tricot goes away for a minute while it waits, when the
 // request is too large to show, when Tricot refuses it, when what answers
-// isn't the Tricot that holds the data folder (below, "is it Tricot?"), or
+// can't prove it is the Tricot that holds the data folder (below, "is it
+// Tricot?"), or
 // when anything goes wrong, it prints nothing and exits 0: the agent then
 // asks in the terminal as it always did. While it waits, a Tricot that
 // restarts has forgotten the request; it asks again, for as long as Tricot
@@ -36,8 +37,8 @@
 // TRICOT_TOKEN, when set, is sent as the bearer token a board listening
 // beyond this machine needs. No dependencies: Node 18 or newer.
 
-import { execFile } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, readlinkSync } from 'node:fs';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { closeSync, fstatSync, openSync, readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -51,7 +52,6 @@ const SEND_TIMEOUT_MS = 3_000;
 const MAX_STDIN = 1024 * 1024;
 const MAX_REQUEST = 256 * 1024; // past this, a request is too large to show on the board
 const MAX_MESSAGE = 2_000;
-const CHECK_MS = 5_000; // the check that it is Tricot (lsof, the instance id): slow only on a busy computer
 // What a card shows of "for this session": this many items, each in full up to
 // this length (core/approvals.ts APPROVAL_SESSION_ITEMS and APPROVAL_SESSION_ITEM).
 const SESSION_ITEMS = 20;
@@ -65,7 +65,8 @@ function option(name, fallback) {
 const URL_ = option('url', 'http://127.0.0.1:4545').replace(/\/+$/, '');
 const NAME = option('name', CODEX ? 'Codex' : 'Claude');
 const TOKEN = process.env.TRICOT_TOKEN;
-// Where Tricot keeps its lock, as the tricot command finds it.
+// Where Tricot keeps its lock, as the tricot command finds it. The default is
+// the one src/platform/paths.ts gives (test/platformPaths.test.ts holds them together).
 const DATA_DIR = path.resolve(option('data', undefined) || process.env.TRICOT_DATA_DIR || path.join(os.homedir(), '.tricot'));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,34 +159,53 @@ function decisionOf(answer, permissions) {
 
 // ---- is it Tricot? -----------------------------------------------------------------
 // The hook believes only the Tricot that holds the data folder's lock
-// (<data dir>/server.lock, src/server/lock.ts): the lock is for the address
-// the hook sends to, its process is alive, that process alone listens on
-// the port (lsof; Linux's /proc where lsof isn't installed), and the server
-// says the instance id the lock holds, which is new on each start
-// (GET /api/instance). The data folder is --data, else $TRICOT_DATA_DIR,
-// else ~/.tricot, as the tricot command finds it.
+// (<data dir>/server.lock, src/platform/lock.ts). Each start of Tricot writes
+// a random secret in it, private to the person's account. With everything it
+// asks, the hook sends a fresh random challenge (X-Tricot-Challenge), and the
+// board answers with a proof (X-Tricot-Proof): the HMAC-SHA256, keyed by that
+// secret, of the challenge and what the answer is about (src/server/proof.ts
+// says each; test/approvals.test.ts runs it against this). The hook checks
+// it, in constant time, with the secret it read from the lock. The data
+// folder is --data, else $TRICOT_DATA_DIR, else ~/.tricot, as the tricot
+// command finds it.
 //
-// With no such lock, nothing is sent and the terminal asks. The rest of the
-// check runs alongside the request, so the request reaches the board as
-// fast as before, and one whose server fails the check is taken back. An
-// answer is believed only once the check passes again, for the same run of
-// Tricot the request was given to; so is a server that answers again after
-// Tricot was away. A Tricot that restarted is asked again the same way.
+//   1. It reads the lock, which must name the address the hook sends to,
+//      a process that is alive, and a secret; and be private to this account
+//      (below). Otherwise nothing is sent and the terminal asks.
+//   2. It asks GET /api/instance with a challenge, and goes on only with
+//      the right proof: before that, nothing the agent wants to run is sent.
+//   3. It sends the request with another challenge. The proof binds the id
+//      Tricot gave it to the SHA-256 of the body Tricot read and the agent's
+//      name it read from the path, which must be the ones the hook sent: a
+//      program in between can't change what the person is shown, or whose
+//      it is. A request whose proof is wrong is taken back.
+//   4. Each wait carries a challenge of its own, and the proof binds the id
+//      and all the hook acts on in the answer: that it is one, whether it
+//      allows or denies, for the session, and the message. Only a proven
+//      answer is printed.
+//
+// Every challenge is used once, so an answer taken from an earlier exchange
+// is for another challenge and fails. A Tricot that restarts has a new
+// secret, which the hook reads again when it asks again.
 //
 // What this stops: a program that listens on Tricot's port while Tricot is
 // down or restarting (the hook keeps trying for up to a minute then), takes
 // the request, and answers "allow, for this session" to it and to every one
-// after. What it doesn't stop: an agent that also rewrites Tricot's lock
-// file (or this hook, or the agent's settings), which it can, as it runs as
-// the same user (T188 frames the rest: an agent in a sandbox that can't
-// reach Tricot's files or port). And where the server can't be placed at
-// all (a board on another machine through --url, a data folder the hook
-// isn't told of, a system with neither lsof nor /proc), the terminal asks:
-// a token sent to whatever listens says nothing about who listens.
+// after: it has no secret, so no proof. It needs nothing of the system (no
+// lsof, no /proc), so it works the same everywhere. What it doesn't stop: an
+// agent that also reads Tricot's lock file (or rewrites it, this hook, or
+// the agent's settings), which it can, as it runs as the same user (T188
+// frames the rest: an agent in a sandbox that can't reach Tricot's files or
+// port). And where the hook has no lock to read (a board on another machine
+// through --url, a data folder the hook isn't told of), the terminal asks:
+// a token sent to whatever listens says nothing about who listens. A Tricot
+// from before T220 writes no secret: the terminal asks.
 
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const EVERY_ADDRESS = ['0.0.0.0', '::'];
-const LSOF = ['/usr/sbin/lsof', '/usr/bin/lsof']; // the system's own, never one found first on PATH
+const CHALLENGE_HEADER = 'X-Tricot-Challenge';
+const PROOF_HEADER = 'X-Tricot-Proof';
+const MIN_SECRET = 32;
 
 const target = (() => {
   try {
@@ -205,134 +225,137 @@ function alive(pid) {
   }
 }
 
-// The data folder's lock, when it names the address the hook sends to and
-// its process is alive: one small file read, no more.
-function lockHere() {
-  let lock;
+// The secret is only as private as the file that holds it: on a system with
+// file modes, the lock must be this account's own and closed to others (600),
+// in a folder no one else can write in. Where there are none (Windows), the
+// account's own folders are what keeps it. `info` is the lock's own, from the
+// descriptor it is read through (readLock), so it is the file read that is checked.
+function privateToMe(info, file) {
+  if (process.platform === 'win32') return true;
   try {
-    lock = JSON.parse(readFileSync(path.join(DATA_DIR, 'server.lock'), 'utf8'));
-  } catch {
-    return undefined;
-  }
-  if (!target || !isObject(lock) || !Number.isInteger(lock.pid) || lock.pid <= 0 || lock.port !== target.port || !text(lock.instance, 200)) return undefined;
-  const host = typeof lock.host === 'string' ? lock.host : '';
-  const sameHost = host === target.host || (LOOPBACK.includes(target.host) && (LOOPBACK.includes(host) || EVERY_ADDRESS.includes(host)));
-  return sameHost && alive(lock.pid) ? lock : undefined;
-}
-
-// Whether `pid`, and no other process, listens on `port`. Where neither
-// lsof nor /proc can tell (Windows), it can't be placed: no.
-function listensAlone(port, pid) {
-  const lsof = LSOF.find((file) => existsSync(file));
-  if (!lsof) return Promise.resolve(process.platform === 'linux' && procListensAlone(port, pid));
-  return new Promise((resolve) => {
-    execFile(lsof, ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { timeout: CHECK_MS }, (error, stdout) => {
-      // It exits 1 when nothing listens, or when it couldn't read some other process's files.
-      const ran = !error || (typeof error.code === 'number' && !error.killed);
-      const pids = ran ? String(stdout).split('\n').map((line) => line.trim()).filter(Boolean) : [];
-      resolve(pids.length > 0 && pids.every((p) => p === String(pid)));
-    });
-  });
-}
-
-// Linux without lsof: every socket listening on the port (/proc/net/tcp and
-// tcp6, state 0A) is one of the process's open files (/proc/<pid>/fd).
-function procListensAlone(port, pid) {
-  const sockets = new Set();
-  for (const table of ['/proc/net/tcp', '/proc/net/tcp6']) {
-    let rows = [];
-    try {
-      rows = readFileSync(table, 'utf8').split('\n').slice(1);
-    } catch {
-      continue;
-    }
-    for (const row of rows) {
-      const [, local, , state, , , , , , inode] = row.trim().split(/\s+/);
-      if (state === '0A' && inode && parseInt(local?.split(':')[1] ?? '', 16) === port) sockets.add(`socket:[${inode}]`);
-    }
-  }
-  if (sockets.size === 0) return false;
-  const owned = new Set();
-  try {
-    for (const fd of readdirSync(`/proc/${pid}/fd`)) {
-      try {
-        const link = readlinkSync(`/proc/${pid}/fd/${fd}`);
-        if (sockets.has(link)) owned.add(link);
-      } catch {
-        // closed meanwhile
-      }
-    }
+    const mine = process.getuid?.();
+    const folder = statSync(path.dirname(file));
+    return info.uid === mine && (info.mode & 0o077) === 0 && folder.uid === mine && (folder.mode & 0o022) === 0;
   } catch {
     return false;
   }
-  return owned.size === sockets.size;
 }
 
-// What the server at the address says it is: { pid, instance }.
-async function instanceThere() {
+// The lock, parsed: opened once, and what is read is the file checked, a
+// regular file that may be relied on (privateToMe), not another one put in
+// its place between a check by path and a read by path.
+function readLock(file) {
+  let fd;
   try {
-    const res = await fetch(`${URL_}/api/instance`, { headers: { ...(TOKEN && { Authorization: `Bearer ${TOKEN}` }) }, signal: AbortSignal.timeout(CHECK_MS) });
-    return res.ok ? await res.json() : undefined;
+    fd = openSync(file, 'r');
+    const info = fstatSync(fd);
+    return info.isFile() && privateToMe(info, file) ? JSON.parse(readFileSync(fd, 'utf8')) : undefined;
   } catch {
     return undefined;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
-// Whether what answers at the address is the Tricot that `lock` names.
-async function isTricot(lock) {
-  const [alone, said] = await Promise.all([listensAlone(lock.port, lock.pid), instanceThere()]);
-  return alone && isObject(said) && said.pid === lock.pid && said.instance === lock.instance;
+// The data folder's secret, when its lock names the address the hook sends
+// to, a process that is alive, and may be relied on: one small file read.
+function secretHere() {
+  const file = path.join(DATA_DIR, 'server.lock');
+  const lock = readLock(file);
+  if (!target || !isObject(lock) || !Number.isInteger(lock.pid) || lock.pid <= 0 || lock.port !== target.port) return undefined;
+  if (typeof lock.secret !== 'string' || lock.secret.length < MIN_SECRET) return undefined;
+  const host = typeof lock.host === 'string' ? lock.host : '';
+  const sameHost = host === target.host || (LOOPBACK.includes(target.host) && (LOOPBACK.includes(host) || EVERY_ADDRESS.includes(host)));
+  return sameHost && alive(lock.pid) ? lock.secret : undefined;
 }
 
-// Whether it is still the run of Tricot that `asked` was given to.
-async function stillTricot(asked) {
-  const lock = lockHere();
-  return lock !== undefined && lock.instance === asked.instance && (await isTricot(lock));
+// What is proved (src/server/proof.ts): the same function.
+const challenge = () => randomBytes(32).toString('base64url');
+const macOf = (secret, purpose, asked, parts) => createHmac('sha256', secret).update(JSON.stringify(['tricot-approval/1', purpose, asked, ...parts])).digest();
+
+// Whether the response carries the proof of `purpose` for `asked` (the
+// challenge sent) and `parts`, made with `secret`. Compared in constant time.
+function proves(res, secret, purpose, asked, parts) {
+  const given = Buffer.from(res.headers.get(PROOF_HEADER) ?? '', 'base64url');
+  const expected = macOf(secret, purpose, asked, parts);
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }
+
+// All the hook acts on in an answer (src/server/proof.ts answerParts).
+const answerParts = (state, answer) =>
+  state === 'answered' && isObject(answer) ? [state, String(answer.behavior), answer.session === true, typeof answer.message === 'string' ? answer.message : ''] : [state];
 
 // ---- talking to Tricot ------------------------------------------------------------
 
-let ticket; // { id, key, instance }: this process's request, and the run of Tricot it was given to
+let ticket; // { id, key, secret }: this process's request, and the secret of the run of Tricot it was given to
 
-function post(route, body, ms) {
+const bearer = () => (TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {});
+
+function post(route, body, ms, asked) {
   return fetch(`${URL_}${route}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(TOKEN && { Authorization: `Bearer ${TOKEN}` }) },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', ...bearer(), ...(asked && { [CHALLENGE_HEADER]: asked }) },
+    body,
     signal: AbortSignal.timeout(ms),
   });
 }
 
-const withdraw = (asked) => post(`/api/approvals/${encodeURIComponent(asked.id)}/withdraw`, { key: asked.key }, 800).catch(() => {});
+const withdraw = (asked) => post(`/api/approvals/${encodeURIComponent(asked.id)}/withdraw`, JSON.stringify({ key: asked.key }), 800).catch(() => {});
+
+// Whether what listens at the address proves it is the Tricot that holds
+// `secret`: 'yes', 'no' (something answers, and can't), or 'closed' (nothing
+// answers: Tricot may be coming up).
+async function proveTricot(secret, ms) {
+  const asked = challenge();
+  try {
+    const res = await fetch(`${URL_}/api/instance`, { headers: { ...bearer(), [CHALLENGE_HEADER]: asked }, signal: AbortSignal.timeout(ms) });
+    await res.arrayBuffer();
+    return res.ok && proves(res, secret, 'instance', asked, []) ? 'yes' : 'no';
+  } catch {
+    return 'closed';
+  }
+}
+
+// Sends the request. The ticket for it when Tricot proves it read exactly
+// this one; otherwise 'closed' (can't be reached), 'refused' (Tricot said
+// no), or 'no' (not Tricot's proof: the request is taken back).
+async function send(request, secret, ms) {
+  const body = JSON.stringify(request);
+  const asked = challenge();
+  let res;
+  let said;
+  try {
+    res = await post(`/api/agents/${encodeURIComponent(NAME)}/approvals`, body, ms, asked);
+    said = res.ok ? await res.json() : undefined;
+  } catch {
+    return 'closed';
+  }
+  if (!said) return 'refused';
+  if (typeof said.id !== 'string' || typeof said.key !== 'string') return 'no';
+  const given = { id: said.id, key: said.key, secret };
+  if (proves(res, secret, 'ask', asked, [said.id, createHash('sha256').update(body).digest('hex'), NAME.trim()])) return given;
+  await withdraw(given); // not the Tricot the lock names: the request is taken back, and the terminal asks
+  return 'no';
+}
 
 // Asks Tricot. Undefined when it can't be reached, refuses the request, or
-// isn't the Tricot that holds the lock. At first (no `patience`) a Tricot
-// that can't be reached is tried once more, a moment later, and then left:
-// it is closed, and the terminal asks without making the person wait. A
-// Tricot that went away while the hook waited (a restart) is tried again for
-// up to `patience`.
+// can't prove it is the Tricot that holds the lock. At first (no `patience`)
+// a Tricot that can't be reached is tried once more, a moment later, and then
+// left: it is closed, and the terminal asks without making the person wait.
+// A Tricot that went away while the hook waited (a restart) is tried again
+// for up to `patience`.
 async function ask(request, patience) {
   const until = Date.now() + (patience ?? 0);
   for (let tries = 1; ; tries++) {
-    const lock = lockHere();
-    if (lock) {
-      const checked = isTricot(lock); // alongside the request, which isn't held up for it
-      let asked;
-      try {
-        const res = await post(`/api/agents/${encodeURIComponent(NAME)}/approvals`, request, patience === undefined ? FIRST_SEND_MS : SEND_TIMEOUT_MS);
-        if (!res.ok) return undefined;
-        const body = await res.json();
-        if (typeof body?.id !== 'string' || typeof body?.key !== 'string') return undefined;
-        asked = { id: body.id, key: body.key, instance: lock.instance };
-      } catch {
-        asked = undefined;
-      }
-      if (asked) {
-        ticket = asked; // should the agent stop waiting meanwhile, stopped() takes it back
-        if (await checked) return asked;
-        ticket = undefined;
-        await withdraw(asked); // not the Tricot the lock names: the request is taken back, and the terminal asks
-        return undefined;
+    const secret = secretHere();
+    if (secret) {
+      const ms = patience === undefined ? FIRST_SEND_MS : SEND_TIMEOUT_MS;
+      const proved = await proveTricot(secret, ms); // before anything is sent
+      if (proved === 'no') return undefined;
+      if (proved === 'yes') {
+        const sent = await send(request, secret, ms);
+        if (typeof sent === 'object') return sent;
+        if (sent !== 'closed') return undefined;
       }
     }
     if (patience === undefined ? tries >= 2 : Date.now() + RETRY_MS > until) return undefined;
@@ -345,9 +368,10 @@ async function answerFor(request) {
   ticket = await ask(request);
   let lostSince;
   while (ticket) {
+    const asked = challenge();
     let res;
     try {
-      res = await post(`/api/approvals/${encodeURIComponent(ticket.id)}/wait`, { key: ticket.key }, WAIT_TIMEOUT_MS);
+      res = await post(`/api/approvals/${encodeURIComponent(ticket.id)}/wait`, JSON.stringify({ key: ticket.key }), WAIT_TIMEOUT_MS, asked);
     } catch {
       res = undefined;
     }
@@ -359,10 +383,10 @@ async function answerFor(request) {
     }
     if (res?.ok) {
       const body = await res.json().catch(() => undefined);
-      const answered = body?.state === 'answered';
-      // An answer, or a server back after Tricot was away: only from the run of Tricot asked.
-      if ((answered || lostSince !== undefined) && !(await stillTricot(ticket))) return undefined;
-      if (answered) return body.answer;
+      const state = body?.state;
+      // Whatever it says, an answer or that it still waits, only as the run of Tricot asked proves it.
+      if ((state !== 'answered' && state !== 'pending') || !proves(res, ticket.secret, 'wait', asked, [ticket.id, ...answerParts(state, body.answer)])) return undefined;
+      if (state === 'answered') return body.answer;
       lostSince = undefined;
       continue; // still waiting
     }

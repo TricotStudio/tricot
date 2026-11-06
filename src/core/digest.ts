@@ -12,6 +12,7 @@ import { canvasesOf, canvasName, pinAsk, pinComments, pinLost, pinPart, pinsTo, 
 import { kindOf } from './blocks/registry';
 import { askingWords, partAsks, partOf, partWords } from './parts';
 import { cell } from './blocks/shared';
+import { taskClosure } from './closure';
 import { requestHeading, requestsDigest } from './requests';
 import { fromThreadLine, isThreadEvent, threadEventLine, threadsDigest, threadsSection } from './threads';
 import { agentsIn, mentionEventLine, mentionTag, mentionsDigest, peopleIn, skillInstructionLines } from './mentions';
@@ -42,7 +43,6 @@ const SECTIONS: { status: Status; heading: string }[] = [
   { status: 'provisional', heading: 'Provisional: proceed, but keep it cheap to change' },
   { status: 'decided', heading: 'Decided: binding' },
   { status: 'deferred', heading: "Deferred: don't build on these; use a reversible default" },
-  { status: 'retired', heading: "Retired: a person set these aside as no longer relevant; don't build on them" },
 ];
 
 const ENDED: Record<PastAnswer['ended'], string> = {
@@ -100,19 +100,7 @@ function decisionLine(decision: Decision): string {
     parts.push(`— options: ${options}`);
   }
   if (decision.exploreRequest?.text) parts.push(`— asked: "${decision.exploreRequest.text}"`);
-  if (decision.refreshRequest) {
-    const note = decision.refreshRequest.text ? `: "${decision.refreshRequest.text}"` : '';
-    parts.push(
-      isSettled(decision)
-        ? `— ${decision.refreshRequest.by.name} asked agents to check it still holds${note} (re-check it, then update_decision with refreshed: true and a note)`
-        : `— ${decision.refreshRequest.by.name} asked agents to refresh the options${note} (re-check it, then update_decision with refreshed: true)`,
-    );
-  }
-  if (decision.retirement?.text) parts.push(`— retired: "${decision.retirement.text}"`);
-  if (decision.planRequest) {
-    const note = decision.planRequest.text ? `: "${decision.planRequest.text}"` : '';
-    parts.push(`— ${decision.planRequest.by.name} asked for a task plan${note} (use plan_tasks)`);
-  }
+  for (const ask of [refreshAsk(decision), planAsk(decision)]) if (ask) parts.push(ask);
   if (decision.deferral?.text) parts.push(`— note: "${decision.deferral.text}"`);
 
   const extras: string[] = [];
@@ -124,6 +112,32 @@ function decisionLine(decision: Decision): string {
     extras.push(`${decision.criteria.length} criteria, ${decision.marks.length}/${cells} marked`);
   }
   if (extras.length) parts.push(`· ${extras.join(', ')}`);
+  return parts.join(' ');
+}
+
+// What a person asked agents to do on a card: check it still holds or refresh
+// its options, or plan its tasks. It stays with the card however briefly the
+// card is listed.
+function refreshAsk(decision: Decision): string | undefined {
+  if (!decision.refreshRequest) return undefined;
+  const note = decision.refreshRequest.text ? `: "${decision.refreshRequest.text}"` : '';
+  return isSettled(decision)
+    ? `— ${decision.refreshRequest.by.name} asked agents to check it still holds${note} (re-check it, then update_decision with refreshed: true and a note)`
+    : `— ${decision.refreshRequest.by.name} asked agents to refresh the options${note} (re-check it, then update_decision with refreshed: true)`;
+}
+
+function planAsk(decision: Decision): string | undefined {
+  if (!decision.planRequest) return undefined;
+  const note = decision.planRequest.text ? `: "${decision.planRequest.text}"` : '';
+  return `— ${decision.planRequest.by.name} asked for a task plan${note} (use plan_tasks)`;
+}
+
+// A decided card in a line: its question and its answer. get_decision reads
+// the rest (who decided it and why, its discussion and canvas).
+function decidedLine(decision: Decision): string {
+  const choice = describeChoice(decision);
+  const parts = [`- ${ref(decision)} ${decision.question}${choice ? ` → ${choice}` : ''}`];
+  for (const ask of [refreshAsk(decision), planAsk(decision)]) if (ask) parts.push(ask);
   return parts.join(' ');
 }
 
@@ -157,6 +171,16 @@ function areasLine(board: Board): string | undefined {
   const without = board.decisions.filter((d) => !d.area).length;
   const none = without ? `; ${without} decision${without === 1 ? ' has' : 's have'} none yet` : '';
   return `Areas: ${areas.map((a) => `${a.name} (${a.count})`).join(', ')}${none}. Reuse one when it fits.`;
+}
+
+// The board lists closed work in brief, so one with hundreds of closed cards
+// stays cheap to read: each decided decision in a line, the latest done tasks,
+// and how many were retired or dropped.
+export const LATEST_DONE = 10;
+const CLOSED = 'Closed cards are summarised here: search finds anything older, and get_task and get_decision read any card in full.';
+
+function hasClosed(board: Board): boolean {
+  return board.decisions.some((d) => d.status === 'decided' || d.status === 'retired') || board.tasks.some((t) => t.status === 'done' || t.status === 'dropped');
 }
 
 // `viewer` is the agent reading it: what's asked of it, and the tasks for it,
@@ -206,17 +230,25 @@ export function boardDigest(board: Board, viewer?: string, now = Date.now(), sho
   const talks = threadsSection(board, viewer, now);
   if (talks) lines.push('', talks);
 
+  // What's in play is listed in full; decided cards in brief, retired ones as a count.
   for (const { status, heading } of SECTIONS) {
     const decisions = board.decisions.filter((d) => d.status === status);
     if (decisions.length === 0) continue;
     const entries = decisions.flatMap((d) => {
+      if (status === 'decided') return [decidedLine(d)];
       const drift = driftLine(board, d);
       return drift ? [decisionLine(d), `  ${drift}`] : [decisionLine(d)];
     });
     lines.push('', `## ${heading} (${decisions.length})`, ...entries);
   }
+  const retired = board.decisions.filter((d) => d.status === 'retired').length;
+  if (retired) {
+    const one = retired === 1;
+    lines.push('', `Retired: ${retired} decision${one ? '' : 's'} a person set aside as no longer relevant; don't build on ${one ? 'it' : 'them'}.`);
+  }
   if (board.decisions.length === 0) lines.push('', 'No decisions yet.');
   if (board.tasks.length) lines.push('', tasksDigest(board, viewer));
+  if (hasClosed(board)) lines.push('', CLOSED);
   return lines.join('\n');
 }
 
@@ -621,9 +653,10 @@ export function readyWork(board: Board, viewer?: string): string | undefined {
 
 // Stale tasks first: they need re-checking before anything else moves. The
 // backlog comes after to do: people are still shaping it, so it's not work yet.
-// Dropped ones come last, apart: set aside, never work to pick up.
+// Done comes in brief, the latest first, and dropped ones as a count, apart:
+// set aside, never work to pick up.
 function tasksDigest(board: Board, viewer?: string): string {
-  const order: TaskStatus[] = ['blocked', 'in_progress', 'in_review', 'todo', 'backlog', 'done'];
+  const order: TaskStatus[] = ['blocked', 'in_progress', 'in_review', 'todo', 'backlog'];
   const stale = board.tasks.filter((t) => t.stale && t.status !== 'dropped');
   const lines = [`## Tasks (${board.tasks.length})`];
   if (stale.length) lines.push(`Stale, re-check first (${stale.length}):`, ...stale.map((t) => taskLine(board, t, viewer)));
@@ -633,12 +666,31 @@ function tasksDigest(board: Board, viewer?: string): string {
     const tasks = laneTasks(board.tasks, status).filter((t) => !t.stale);
     if (tasks.length) lines.push(`${TASK_STATUS_LABEL[status]} (${tasks.length}):`, ...tasks.map((t) => taskLine(board, t, viewer)));
   }
-  const dropped = board.tasks.filter((t) => t.status === 'dropped');
-  if (dropped.length) {
-    const line = (t: Task) => `- T${t.number} [id: ${t.id}] ${clip(t.title, 80)}${t.dropped ? ` — by ${t.dropped.by.name}${t.dropped.text ? `: "${clip(t.dropped.text, 120)}"` : ''}` : ''}`;
-    lines.push(`Dropped: a person set these aside as work that won't be done; don't work on them (${dropped.length}):`, ...dropped.map(line));
+  lines.push(...doneLines(board));
+  const dropped = board.tasks.filter((t) => t.status === 'dropped').length;
+  if (dropped) {
+    const one = dropped === 1;
+    lines.push(`Dropped: ${dropped} task${one ? '' : 's'} a person set aside as work that won't be done; don't work on ${one ? 'it' : 'them'}.`);
   }
   return lines.join('\n');
+}
+
+// The latest done tasks, by when they were finished, each in a line with who
+// did it; then how many came before them.
+function doneLines(board: Board): string[] {
+  const finished = (t: Task) => taskClosure(board, t)?.at ?? t.updatedAt;
+  const done = board.tasks
+    .filter((t) => t.status === 'done' && !t.stale)
+    .sort((a, b) => finished(b).localeCompare(finished(a)) || b.number - a.number);
+  if (done.length === 0) return [];
+  const shown = done.slice(0, LATEST_DONE);
+  const line = (t: Task) => `- T${t.number} [id: ${t.id}] ${clip(t.title, 80)}${t.claimedBy ? ` — by ${who(t.claimedBy)}` : ''}`;
+  const rest = done.length - shown.length;
+  return [
+    rest ? `done (${done.length}), the latest ${shown.length}:` : `done (${done.length}):`,
+    ...shown.map(line),
+    ...(rest ? [`and ${rest} done before them.`] : []),
+  ];
 }
 
 function criteriaTable(decision: Decision): string {

@@ -2,7 +2,7 @@
 //
 //   npm run brand
 //
-// The mark is BoardMark's own drawing (src/web/components.tsx), in the light
+// The mark is BoardMark's own drawing (src/web/shared/components.tsx), in the light
 // and dark themes' text colours. Headless Chrome (CHROME_PATH, or the usual
 // places) renders the PNGs from the SVGs, and the favicon.ico is put
 // together here from three of them.
@@ -26,7 +26,7 @@ const n = (value) => String(Math.round(value * 1000) / 1000);
 
 // ---- What the app draws --------------------------------------------------------
 
-const boardMark = pick(read('src/web/components.tsx'), /export function BoardMark[\s\S]*?\n}\n/, 'BoardMark in src/web/components.tsx')[0];
+const boardMark = pick(read('src/web/shared/components.tsx'), /export function BoardMark[\s\S]*?\n}\n/, 'BoardMark in src/web/shared/components.tsx')[0];
 const [, rectX, rectY, rectWidth, rectHeight, rectRx] = pick(
   boardMark,
   /<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="([\d.]+)"/,

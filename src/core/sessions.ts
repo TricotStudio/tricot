@@ -19,6 +19,13 @@
 // entry, token and all, lives in its environment alone. `--prompt` is the
 // first message.
 //
+// Pi: `-e <file>` loads an extension for one run, and the extension adds the
+// board as an MCP server for that session (`pi.registerMcpServer`), so Pi's
+// own settings are left alone. OMP: `-e <folder>` loads an extension package
+// for one run, and OMP reads the MCP servers its `.mcp.json` holds. These,
+// which need a file or a folder for it, live in cli/agentSessions/, where a
+// folder is made for the session and removed when it ends (SessionLaunch.cleanup).
+//
 // Tricot's own tools run without asking in a session Tricot starts, as the
 // person started it to work on the board: Claude Code gets
 // `--allowedTools mcp__tricot__*` (its permission rules: every tool of one
@@ -56,6 +63,9 @@ export interface SessionSetup {
 export interface SessionLaunch {
   args: string[];
   env: Record<string, string>; // added to the agent's environment, and to no one else's
+  // For an agent whose session needs a folder of its own (cli/agentSessions/):
+  // removes it once the agent has ended. Safe to call twice.
+  cleanup?: () => void;
 }
 
 // The first thing the agent reads. Without a board it finds or asks for one,
@@ -122,11 +132,8 @@ function parseObject(value: unknown): Record<string, unknown> {
   }
 }
 
-// The agents Tricot can start this way: the word after `tricot`.
-export const SESSION_AGENTS = ['claude', 'codex', 'opencode'] as const;
-export type SessionAgent = (typeof SESSION_AGENTS)[number];
-
-// What the Connect panel shows for it: `tricot claude --board <id>`.
-export function sessionCommand(agent: SessionAgent, board?: string): string {
+// What the Connect panel shows for an agent Tricot can start this way (the
+// word after `tricot`; agents/registry.ts says which): `tricot claude --board <id>`.
+export function sessionCommand(agent: string, board?: string): string {
   return shellCommand(['tricot', agent, ...(board ? ['--board', board] : [])]);
 }

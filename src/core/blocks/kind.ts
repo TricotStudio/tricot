@@ -129,14 +129,18 @@ export type PartWords = Pick<ConnectorPins, 'kind' | 'where' | 'label' | 'missin
 export interface AgentIo {
   readImage(path?: string, base64?: string): Buffer;
   saveAsset(data: Uint8Array): string;
+  // Whether what an agent names on this computer (a file, a repository) may
+  // be read: only while the server listens on this computer alone.
+  localFiles: boolean;
 }
 
-// The sentences about a kind in add_block's and update_block's descriptions,
-// said where they have always been said.
+// The sentences about a kind: its brief entry in add_block's description, and
+// in the guide's blocks topic (read_guide), its full entry and advice.
 export interface AgentDocs {
-  add: string; // its entry in "Fields by type", without the ; or . that ends it
+  brief: string; // its entry in add_block's "Fields by type", a few words, without the ; or . that ends it
+  add: string; // its full entry in the guide's "Fields by type", without the ; or . that ends it
   guide?: string; // advice after those entries
-  more?: string; // advice after the advice about a task's canvas
+  more?: string; // advice after that
   update?: string; // its fields as update_block lists them, in a row
   updateSpecial?: string; // a clause of their own after that row
 }
@@ -148,6 +152,12 @@ export interface AgentHalf<T extends KindTypes> {
   // became part of this one (a checklist is a note with a task list).
   aliases?: readonly string[];
   docs: AgentDocs;
+  // Reads what an agent named on this computer instead of sending it (a
+  // repository's diff, a file's lines) into the fields it would have sent,
+  // before read or patch: the args with those fields filled in, or undefined
+  // when none of its fields are in `args`. Given the block for update_block,
+  // which asks every kind: one that isn't its kind is refused, saying so.
+  fill?(args: Record<string, unknown>, io: AgentIo, block?: Block): Promise<Record<string, unknown> | undefined>;
   // Reads what an agent sent as a block of this kind, refusing what is wrong
   // with it now. It returns what saves anything pending (an image's file) and
   // gives its content, so a call with a bad block saves nothing.

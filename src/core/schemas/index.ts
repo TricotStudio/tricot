@@ -10,5 +10,5 @@ export { fields } from './fields';
 export * from './shared';
 export { newSkill, skillName, tricotSkill } from './skills';
 export { EVENTS_PAGE, EVENTS_PAGE_MAX, actorName, agentStep, approvals, agentStepName, agentUsage, agentUsageParams, agentsParams, canvas, dismissNeeds, eventsParams, liveSteps, needsParams, people, searchKind, searchParams, seenCursors } from './people';
-export { AREA_HINT, IN_THREAD, MAX_INLINE_IMAGES, THREAD_HINT, blockShape, pinShape, tools } from './agents';
-export type { BlockArgs, PinArgs } from './agents';
+export { AREA_HINT, GUIDE_TOPICS, MAX_INLINE_IMAGES, THREAD_HINT, blockShape, pinShape, tools } from './agents';
+export type { BlockArgs, GuideTopic, PinArgs } from './agents';

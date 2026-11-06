@@ -1,0 +1,96 @@
+/* ---- Slack: a thread's live card under a link, and sharing a decision ------ */
+
+/* Under a link card's title: who wrote it, what they said, the replies. */
+.slack-card {
+  flex: none;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 12px 9px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.slack-head,
+.slack-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+.slack-author {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
+}
+.slack-text {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.slack-spacer {
+  flex: 1;
+}
+.slack-replies {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--deferred-bg);
+  color: var(--deferred-ink);
+}
+.slack-replies.has-replies {
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.slack-refresh {
+  padding-inline: 6px;
+}
+.slack-problem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.35;
+}
+.slack-problem-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The dialog on a decision's ⋯: the message as it will be posted. */
+.slack-share {
+  width: min(520px, 100%);
+}
+.slack-share-preview {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.delete-dialog .slack-share-line {
+  min-height: 1.5em;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.slack-share-link {
+  color: var(--exploring-ink);
+}

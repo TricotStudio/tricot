@@ -4,15 +4,22 @@
 // click a box, an arrow or an arrow's label to ask the agent to change it, or
 // to leave a note. The agent changes the diagram's Mermaid source; the view
 // draws it anew, and each pin stays on its node (by its id, or failing that
-// its text) or its arrow (by the nodes it joins).
+// its text) or its arrow (by the nodes it joins). Edit, or a double-click
+// while viewing, edits its source by hand, drawn beside it as it is typed.
+//
+// It zooms as an image does (canvas/pairing/zoom.tsx): the wheel or a pinch
+// round the pointer, Fit, 100% and 200% in the bar, and dragging pans, while
+// a click still opens or picks the box under it. The drawing is redrawn at
+// its size on screen, so it stays sharp at every zoom.
 
 import { useCallback, useLayoutEffect, useMemo, useState, type MouseEvent } from 'react';
 import { readFlowchart } from '../../../../core/blocks/diagram/flowchart';
 import { pinPart } from '../../../../core/pins';
 import type { Block } from '../../../../core/types';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
+import { usePanDrag, useZoom, ZOOM_KEYS, ZoomControls, ZoomHint, type Size, type Zoom } from '../../pairing/zoom';
 import type { OverlayProps } from '../kind';
 import { diagramPart, drawnParts, useArrowTwins } from './parts';
 import { Mermaid } from './Mermaid';
@@ -20,24 +27,35 @@ import './diagramView.css';
 
 type DiagramBlock = Extract<Block, { type: 'diagram' }>;
 
-const GROW = 1.8; // a small diagram is drawn at most this much larger than Mermaid draws it
+// Scales are CSS pixels to a unit of the drawing, as Mermaid draws it: 100%.
+// Fit draws a small diagram at most GROW times that.
+const GROW = 1.8;
+const RULES = { actual: 1, fitMax: GROW, maxScale: 8, pad: 28 };
 
-function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin }: PieceBodyProps<DiagramBlock>) {
+const LABELS = {
+  fit: { label: 'Fit', title: 'The whole diagram (0)' },
+  actual: { label: '100%', title: 'The diagram at the size Mermaid draws it (1)' },
+  double: { label: '200%', title: 'Twice that size (2)' },
+};
+
+type Sizing = { zoom: Zoom; setNatural(size: Size | null): void };
+
+function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, sizing }: PieceBodyProps<DiagramBlock> & { sizing: Sizing }) {
+  const { zoom, setNatural } = sizing;
+  const pan = usePanDrag(zoom);
   const chart = useMemo(() => readFlowchart(block.source), [block.source]);
   const [svg, setSvg] = useState<SVGSVGElement | null>(null);
   useArrowTwins(svg, Boolean(chart));
 
-  // Drawn to fit the stage, but a small one no more than GROW times its size.
-  const onRender = useCallback((drawn: SVGSVGElement | null) => {
-    if (drawn) {
-      const box = drawn.viewBox.baseVal;
-      if (box?.width && box.height) {
-        drawn.style.setProperty('max-width', `${Math.round(box.width * GROW)}px`, 'important');
-        drawn.style.maxHeight = `${Math.round(box.height * GROW)}px`;
-      }
-    }
-    setSvg(drawn);
-  }, []);
+  // Its size as Mermaid draws it, for the zoom; a diagram that can't be drawn has none.
+  const onRender = useCallback(
+    (drawn: SVGSVGElement | null) => {
+      const box = drawn?.viewBox.baseVal;
+      setNatural(box?.width && box.height ? { width: box.width, height: box.height } : null);
+      setSvg(drawn);
+    },
+    [setNatural],
+  );
 
   // Its pinned parts in blue (the open one stronger), the one asked about in
   // amber, each marked with its pins for the prompt and threads to find.
@@ -87,14 +105,28 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin }: 
     if (on) openPin(on.pin.id);
   };
 
+  const cursor = pan.dragging ? ' is-dragging' : zoom.pannable ? ' is-pannable' : '';
+  const title = block.title || 'Diagram';
   return (
     <div className="diagram-full-wrap">
       <div
-        className={`block-diagram diagram-full${pointing && chart ? ' is-pinnable' : ''}${placed.length ? ' has-pins' : ''}`}
-        onClick={onClick}
-        title={pointing ? (chart ? 'Click a box, an arrow or its label to ask about it' : 'Only a flowchart’s boxes and arrows can be pointed at') : undefined}
+        ref={zoom.stageRef}
+        className={`zoom-stage diagram-full-stage${cursor}`}
+        tabIndex={0}
+        aria-label={`${title} at ${zoom.percent}. ${ZOOM_KEYS}`}
+        {...pan.handlers}
       >
-        <Mermaid source={block.source} onRender={onRender} />
+        <div
+          className={`zoom-sheet block-diagram diagram-full${zoom.sheet ? '' : ' is-unsized'}${pointing && chart ? ' is-pinnable' : ''}${placed.length ? ' has-pins' : ''}`}
+          style={zoom.sheet ?? undefined}
+          onClick={onClick}
+          title={pointing ? (chart ? 'Click a box, an arrow or its label to ask about it' : 'Only a flowchart’s boxes and arrows can be pointed at') : undefined}
+        >
+          <Mermaid source={block.source} onRender={onRender} />
+        </div>
+        {zoom.sheet && (
+          <ZoomHint zoom={zoom}>{pointing ? 'Click a box or an arrow to ask about it · drag to pan · scroll to zoom' : 'Scroll or pinch to zoom · drag to pan'}</ZoomHint>
+        )}
       </div>
       {placed.length > 0 && (
         <div className="diagram-full-chips">
@@ -111,6 +143,11 @@ export function DiagramView({ block, name, version, pinId, onClose }: OverlayPro
   const chart = readFlowchart(block.source);
   const kind = block.source.trim().split(/\s/)[0] || 'Mermaid';
   const from = chart ? `Flowchart · ${chart.nodes.length} boxes, ${chart.arrows.length} arrows` : `Mermaid ${kind}`;
+  const [natural, setNaturalSize] = useState<Size | null>(null);
+  // The same size again keeps the zoom as it is.
+  const setNatural = useCallback((size: Size | null) => setNaturalSize((was) => (was && size && was.width === size.width && was.height === size.height ? was : size)), []);
+  const zoom = useZoom(natural, RULES);
+  const sizing = { zoom, setNatural };
   return (
     <PieceView
       block={block}
@@ -123,12 +160,22 @@ export function DiagramView({ block, name, version, pinId, onClose }: OverlayPro
       icon={<Icon name="diagram" />}
       title={block.title || 'Diagram'}
       from={from}
-      browse={{ label: 'View', hint: 'Look at it on your own; click a marked part to see what was said about it' }}
+      browse={{ label: 'View', hint: 'Look at it on your own, zooming and panning; click a marked part to see what was said about it' }}
       it="the diagram"
       point="click a box, an arrow or its label"
       does="changes the diagram's source"
       example="call it Retry later, say"
-      body={(props) => <DiagramParts {...props} />}
+      controls={natural ? <ZoomControls zoom={zoom} labels={LABELS} /> : undefined}
+      body={(props) => <DiagramParts {...props} sizing={sizing} />}
+      edit={{
+        hint: 'Edit its Mermaid source by hand (or double-click it while viewing)',
+        label: 'Mermaid source',
+        code: true,
+        of: (diagram) => diagram.source,
+        patch: (source) => ({ source }),
+        check: (source) => (source.trim() ? null : 'A diagram needs its Mermaid source: write some, or discard your changes.'),
+        preview: (source) => (source.trim() ? <Mermaid source={source} /> : <p className="placeholder">Nothing to draw yet.</p>),
+      }}
       onClose={onClose}
     />
   );

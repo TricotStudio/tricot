@@ -7,9 +7,9 @@
 import { clip } from '../../../core/format';
 import { requestCount, requestWords, type PairingRequest } from '../../../core/pairing';
 import type { Pin } from '../../../core/types';
-import { Icon } from '../../components';
-import { StepText } from '../../steps';
-import { Stitch } from '../../stitch';
+import { Icon } from '../../shared/components';
+import { StepText } from '../../agents';
+import { Stitch } from '../../shared/stitch';
 import { usePinDelivery } from './pinLine';
 import type { Pairing } from './session';
 

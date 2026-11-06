@@ -15,7 +15,7 @@
 //   key this server keeps in memory, and redoes the plan: when what it would
 //   write is no longer what they saw, nothing is written.
 //
-// The `tricot hooks` command does the same from a terminal (src/cli).
+// The `tricot steps` command does the same from a terminal (src/cli).
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Router, type ErrorRequestHandler, type Request, type Response } from 'express';
@@ -24,6 +24,8 @@ import type { LiveStepsPreview, LiveStepsReport, LiveStepsResult } from '../core
 import { describeIssues, liveSteps as bodies } from '../core/schemas';
 import { asPerson, fromThisMachine, type PersonGate, type Tier } from './access';
 import { applyLiveSteps, liveStepsAgents, LiveStepsError, planLiveSteps, UnreadableSettings, type LiveStepsContext } from './hooks';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
 
 export interface LiveStepsRoutesOptions extends LiveStepsContext {
   fromThisMachine?: (req: Request) => boolean; // tests stand in for another device
@@ -31,12 +33,13 @@ export interface LiveStepsRoutesOptions extends LiveStepsContext {
 }
 
 export const NOT_FROM_HERE =
-  "Live steps change files on the computer Tricot runs on, so they are turned on or off from that computer: open Tricot there, or run `tricot hooks` in its terminal.";
+  "Live steps change files on the computer Tricot runs on, so they are turned on or off from that computer: open Tricot there, or run `tricot steps` in its terminal.";
 const CHANGED =
   'What this would write has changed since you saw it (a file changed, or the preview is from before Tricot restarted). Look at it again before saying yes.';
 
 export function createLiveStepsRouter(options: LiveStepsRoutesOptions): Router {
   const router = Router();
+  const on = routesOn(router, '/api/live-steps');
   const local = options.fromThisMachine ?? fromThisMachine;
   const person = options.person ?? ((req: Request, tier?: Tier) => asPerson(req, tier, { local }));
   const context: LiveStepsContext = { target: options.target, source: options.source, url: options.url };
@@ -59,13 +62,13 @@ export function createLiveStepsRouter(options: LiveStepsRoutesOptions): Router {
     return true;
   };
 
-  router.get('/', (req, res) => {
+  on(routes.liveSteps, (req, res) => {
     const canChange = local(req);
     const report: LiveStepsReport = { agents: liveStepsAgents(context), canChange, ...(!canChange && { why: NOT_FROM_HERE }) };
     res.json(report);
   });
 
-  router.post('/:agent/preview', (req, res) => {
+  on(routes.previewLiveSteps, (req, res) => {
     if (!mayChange(req, res)) return;
     const { agent } = bodies.agent.parse(req.params);
     const { action, name, scope } = bodies.preview.parse(req.body);
@@ -74,7 +77,7 @@ export function createLiveStepsRouter(options: LiveStepsRoutesOptions): Router {
     res.json(preview);
   });
 
-  router.post('/:agent/apply', (req, res) => {
+  on(routes.applyLiveSteps, (req, res) => {
     if (!mayChange(req, res)) return;
     const { agent } = bodies.agent.parse(req.params);
     const { action, name, scope, fingerprint } = bodies.apply.parse(req.body);

@@ -1,0 +1,23 @@
+{
+  "dataVersion": 7,
+  "blockKinds": ["note","table","image","diagram","comparison","link","diff","code","chart","scene","site"],
+  "enums": {
+    "Actor.kind": ["agent","human"],
+    "ContextRequest.status": ["cancelled","done","open","working"],
+    "DeletedCard.kind": ["decision","task"],
+    "DeletedKind": ["block","group","link","pin","thread","version"],
+    "DocEdit.op": ["add","delete","edit"],
+    "Emoji": ["👀","👍","👎"],
+    "EventType": ["board_archived","board_created","board_unarchived","board_updated","canvas_changed","card_deleted","comment_added","comment_reacted","criteria_changed","criterion_marked","decision_asked","decision_deferred","decision_posted","decision_reopened","decision_resolved","decision_retired","decision_revised","decision_updated","exploration_requested","finding_attached","first_look_lapsed","first_look_taken","option_added","pairing_ended","pairing_started","plan_requested","refresh_cancelled","refresh_finished","refresh_requested","request_asked","request_cancelled","request_finished","request_taken","seats_changed","sync_cancelled","sync_finished","sync_requested","task_brought_back","task_dropped","task_planned","task_reordered","task_updated","tasks_stale","thread_deleted","thread_lens_changed","thread_replied","thread_restored","thread_started"],
+    "FirstLook.status": ["done","open","taken"],
+    "MarkValue": ["no","partly","yes"],
+    "PastAnswer.ended": ["confirmed","deferred","explore","reopened","replaced","retired"],
+    "PastAnswer.status": ["decided","provisional"],
+    "PinAnchor.kind": ["arrow","block","box","cells","doc","line","node","point","site","spot","text"],
+    "Revision.field": ["context","description","label","question"],
+    "Status": ["decided","deferred","exploring","open","provisional","retired"],
+    "TaskStatus": ["backlog","blocked","done","dropped","in_progress","in_review","todo"],
+    "ThreadDoor": ["canvas","decisions","tasks","threads"],
+    "ThreadRef.kind": ["block","comment","decision","task"]
+  }
+}

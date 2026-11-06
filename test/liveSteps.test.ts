@@ -190,7 +190,7 @@ describe('Live steps, for the person', () => {
       assert.equal(liveStepsAgents(ctx)[0].alsoInProject, '~/work/app', 'still said, quietly');
     });
 
-    it('tidies it up on its own, as connect claude --remove-hooks does, only ever taking it out', () => {
+    it('tidies it up on its own, as steps off --agent claude --project does, only ever taking it out', () => {
       const ctx = withProjectHook();
       applyLiveSteps(ctx, planLiveSteps(ctx, 'claude', 'on'));
       const tidy = planLiveSteps(ctx, 'claude', 'off', { scope: 'project' });

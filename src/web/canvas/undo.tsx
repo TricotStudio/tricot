@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { capital } from '../../core/deletions';
-import { api, type DeletedItem } from '../api';
-import { typing } from '../hooks';
+import { api, type DeletedItem } from '../shared/api';
+import { typing } from '../shared/hooks';
 import './undo.css';
 
 // Right after a person deletes something on a canvas, a toast offers to undo

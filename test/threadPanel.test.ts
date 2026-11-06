@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
+import { appStyles } from './appStyles';
 import { CHROME, runInChrome } from './mermaidPage';
 
 // The threads side panel scrolls up and down, never sideways, at any width it
@@ -11,8 +12,8 @@ import { CHROME, runInChrome } from './mermaidPage';
 // styles, around a message shaped as threads.tsx and threadWork.tsx draw one.
 
 const web = path.resolve(import.meta.dirname, '../src/web');
-const CSS = ['themes/light.css', 'styles.css', 'chatBar.css', 'threads.css', 'delivery.css', 'reactions.css']
-  .map((file) => readFileSync(path.join(web, file), 'utf8'))
+const CSS = ['themes/light.css', 'styles.css', 'threads/chatBar.css', 'threads/threads.css', 'conversation/delivery.css', 'conversation/reactions.css']
+  .map((file) => (file === 'styles.css' ? appStyles(web) : readFileSync(path.join(web, file), 'utf8')))
   .join('\n');
 
 const LINK = 'https://example.com/a/very/long/path/that/never/breaks?with=a-query-string-that-goes-on-and-on-and-on#and-a-fragment-too';

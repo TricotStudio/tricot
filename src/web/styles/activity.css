@@ -1,0 +1,56 @@
+/* ---- activity ---------------------------------------------------------- */
+
+.activity {
+  border-left: 1px solid var(--border);
+  padding: 16px 16px 24px;
+  overflow-y: auto;
+  min-height: 0;
+  background: var(--surface);
+}
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.activity-item {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 6px;
+  cursor: pointer;
+}
+.activity-item:disabled {
+  cursor: default;
+}
+.activity-item:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.activity .section-title {
+  font-size: 14px;
+  padding: 0 6px;
+}
+.activity-text {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.activity-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.activity-time {
+  display: block;
+  color: var(--faint);
+  font-size: 11px;
+  margin-top: 1px;
+}

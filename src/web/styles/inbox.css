@@ -1,0 +1,243 @@
+/* ---- inbox ------------------------------------------------------------- */
+
+.inbox {
+  position: relative;
+}
+.inbox-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font-size: 17px;
+  cursor: pointer;
+}
+.inbox-button:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+.inbox-button.has-new,
+.inbox-button.needs-you {
+  color: var(--text);
+}
+.inbox-count {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--focus);
+  color: var(--primary-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.inbox-button.needs-you .inbox-count {
+  background: var(--open);
+  color: #fff;
+}
+.inbox-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.inbox-head,
+.inbox-foot {
+  padding: 10px 14px;
+}
+.inbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.inbox-head .link-button {
+  padding: 0;
+}
+/* This board, or what needs you on every other one: a switch like the
+   connect panel's tool tabs. */
+.inbox-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.inbox-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.inbox-tabs button:hover {
+  color: var(--text);
+}
+.inbox-tabs button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.inbox-tab-count {
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.inbox-foot {
+  border-top: 1px solid var(--border);
+}
+.inbox-empty {
+  padding: 22px 14px;
+  color: var(--muted);
+  text-align: center;
+}
+.inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+.inbox-item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.inbox-item:hover {
+  background: var(--surface-2);
+}
+.inbox-item.is-for-you {
+  background: color-mix(in srgb, var(--open-bg) 70%, transparent);
+}
+.inbox-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.inbox-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.inbox-subject {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.notify-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.notify-toggle input {
+  width: auto;
+  margin-top: 2px;
+  accent-color: var(--focus);
+}
+.new-comments {
+  color: var(--focus);
+  font-weight: 600;
+}
+.comment.is-unread {
+  border-color: color-mix(in srgb, var(--focus) 50%, var(--border));
+}
+/* Shown from the chip of the part it's about. */
+.comment.is-flash {
+  animation: comment-flash 1.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes comment-flash {
+  0%,
+  30% {
+    border-color: var(--pin);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pin) 22%, transparent);
+  }
+}
+/* The part of the canvas a comment is about; it shows the part there. */
+.comment-quote {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  max-width: 100%;
+  margin: 2px 0 2px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--pin-bg);
+  color: var(--pin-ink);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.comment-quote span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
+  overflow: hidden;
+}
+.comment-quote .icon {
+  flex: none;
+  align-self: flex-start;
+  width: 12px;
+  height: 12px;
+  margin-top: 0.3em; /* on the first line, when the quote takes two */
+}
+.comment-quote:hover {
+  background: color-mix(in srgb, var(--pin) 20%, var(--surface));
+}
+.comment-quote.is-gone {
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

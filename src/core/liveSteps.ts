@@ -2,7 +2,7 @@
 // (Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode), whether it is on this machine and whether
 // its steps hook is set up, in words, and what turning it on or off would
 // write. The server works it out from the hook installers (server/hooks); the
-// `tricot hooks` command, an agent's panel and the Connect panel show it.
+// `tricot steps` command, an agent's panel and the Connect panel show it.
 // Types and words only: the browser imports this.
 
 import { samePerson } from './format';
@@ -34,7 +34,7 @@ export interface LiveStepsAgent {
   // to the board too, for a person to answer there (core/approvals.ts).
   approvals?: true;
   // Claude Code: the project Tricot was started in (from ~) has its own
-  // steps hook from earlier (`tricot connect claude --hooks`). With both,
+  // steps hook from earlier (`tricot steps on --agent claude --project`). With both,
   // each step still shows once: the server keeps one of the two copies.
   alsoInProject?: string;
 }
@@ -92,7 +92,7 @@ export function liveStepsLabel(agent: LiveStepsAgent): string {
 }
 
 // The command that turns one agent's steps on, for a hint.
-export const liveStepsCommand = (agent: Pick<LiveStepsAgent, 'id'>) => `tricot hooks on --agent ${agent.id}`;
+export const liveStepsCommand = (agent: Pick<LiveStepsAgent, 'id'>) => `tricot steps on --agent ${agent.id}`;
 
 // Which agent an agent on the board runs in: the one whose hook sends steps
 // under its name, else the one whose usual name it has ("Claude", or

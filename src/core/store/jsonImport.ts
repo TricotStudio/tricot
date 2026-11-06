@@ -1,6 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { keepPrivate } from '../../platform/private';
 import { BoardWriter, readBoards } from './boardTables';
 import { BoardImage, Dirty, firstDifference } from './boardRows';
 import { EventTables } from './eventTables';
@@ -86,7 +87,7 @@ function moveToBackup(dataDir: string, files: string[], today: Date): string {
   mkdirSync(dir, { mode: 0o700 });
   for (const file of files) {
     renameSync(path.join(dataDir, file), path.join(dir, file));
-    if (process.platform !== 'win32') chmodSync(path.join(dir, file), 0o600);
+    keepPrivate(path.join(dir, file));
   }
   return dir;
 }

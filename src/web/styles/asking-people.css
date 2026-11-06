@@ -1,0 +1,60 @@
+/* ---- asking people ----------------------------------------------------- */
+
+.ask-callout {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--open-bg);
+  border: 1px solid color-mix(in srgb, var(--open) 35%, transparent);
+  font-size: 13px;
+}
+.ask-callout p:first-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 600;
+}
+.waiting {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -8px;
+}
+.waiting .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.waiting-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px 2px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.chip-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+.chip-remove:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.ask-form {
+  display: grid;
+  gap: 8px;
+}

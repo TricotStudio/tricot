@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+import { appStyles } from './appStyles';
 
 // DESIGN.md's No Stripes Rule: no coloured left or right borders on cards,
 // chips, callouts or list items; status is a square marker or a tint (T173).
@@ -130,7 +131,7 @@ describe('No coloured side stripes (DESIGN.md)', () => {
   });
 
   it('the decision table keeps a tint for each state that had a stripe', () => {
-    const table = rules(readFileSync(path.join(web, 'styles.css'), 'utf8'));
+    const table = rules(appStyles(web));
     for (const state of ['.dt-row.is-new', '.dt-row.is-needs-you', '.dt-row.is-made']) {
       const rule = table.find((r) => r.selector.split(', ').includes(state) && r.declarations.has('--row-bg'));
       assert.ok(rule && coloured(rule.declarations.get('--row-bg')!), `${state} is tinted`);

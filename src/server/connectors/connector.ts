@@ -10,6 +10,7 @@ import type { ZodRawShape } from 'zod';
 import type { ConnectorStatus } from '../../core/connectors';
 import type { Store } from '../../core/store';
 import type { Actor } from '../../core/types';
+import type { PersonGate } from '../access';
 import type { Fetch, PendingSignIn, PendingSignIns } from './oauth';
 
 // Where the service sends the person back after signing in: a GET on this
@@ -49,7 +50,10 @@ export interface ServerConnector {
   // What a person can allow on top, by name ("docs"): the scopes that asks for.
   readonly permissions?: Readonly<Record<string, string>>;
   // Its REST routes, under /api/connectors/<id>, once the board's store is there.
-  routes?(store: Store): Router;
+  // Everything but a GET is already a person's (the router they are mounted in
+  // asks `person`, tier B); a route that acts as the person in the service says
+  // so again with personOnly(person, 'B').
+  routes?(store: Store, person: PersonGate): Router;
   // Its MCP tools, once the board's store is there.
   tools?(store: Store): ConnectorTool[];
 }

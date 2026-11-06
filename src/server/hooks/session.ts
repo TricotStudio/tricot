@@ -8,7 +8,7 @@
 //
 // What the person's own settings run already is left out (installedHooks),
 // so nothing runs twice. Should both run all the same (a project's own
-// steps hook from `tricot connect claude --hooks`), the server keeps one
+// steps hook from `tricot steps on --agent claude --project`), the server keeps one
 // step of each (steps.ts) and one request, which both hooks wait for
 // (approvals.ts).
 //

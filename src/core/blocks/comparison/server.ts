@@ -9,7 +9,7 @@ import { BoardError } from '../../store/errors';
 export const agent: AgentHalf<ComparisonTypes> = {
   addShape: {},
   updateShape: {},
-  docs: { add: "comparison → nothing (decision canvases only; renders the options' finding metrics side by side)" },
+  docs: { brief: "comparison → nothing (decision canvases: the options' finding metrics)", add: "comparison → nothing (decision canvases only; renders the options' finding metrics side by side)" },
   read: () => () => ({ type: 'comparison' }),
 };
 

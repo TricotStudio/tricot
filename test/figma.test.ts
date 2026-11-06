@@ -18,6 +18,7 @@ import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { drawPng, FakeFigma, FILE_KEY, FRAME, NO_USER_SCOPE_TOKEN, OTHER_TOKEN, VALID_TOKEN } from './fakeFigma';
 import { versionsOf } from './tables';
+import { WINDOWS } from './platform';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const FRAME_URL = `https://www.figma.com/design/${FILE_KEY}/Onboarding?node-id=12-34&t=abc`;
@@ -144,8 +145,8 @@ describe('Figma connector', () => {
       assert.equal(json.connector.state, 'connected');
       assert.equal(json.connector.account.email, 'ada', 'the name Figma gave');
       assert.ok(json.connector.access.every((a: { granted: boolean }) => a.granted));
-      assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
-      assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
+      if (!WINDOWS) assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+      if (!WINDOWS) assert.equal(statSync(path.dirname(tokenFile())).mode & 0o777, 0o700);
       assert.equal(JSON.parse(readFileSync(tokenFile(), 'utf8')).token, VALID_TOKEN);
       assert.deepEqual(figma.requests.map((r) => r.path), ['/v1/me']);
       assert.equal(figma.requests[0].token, VALID_TOKEN);
@@ -509,7 +510,7 @@ describe('Figma connector', () => {
       assert.equal(figmaStatus.state, 'needs_sign_in');
       assert.equal(figmaStatus.message, 'Figma no longer accepts the saved token: it expired or was revoked. Paste a new one on the Connectors page.');
       assert.equal(figmaStatus.account.email, 'ada', 'still says whose it was');
-      assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+      if (!WINDOWS) assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
 
       const asked = figma.requests.length;
       const result = await call('read_figma_frame', { url: FRAME_URL });

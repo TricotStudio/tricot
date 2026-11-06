@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import { defaultDataDir } from '../src/server/dataDir';
+import { defaultDataDir } from '../src/platform/dataDir';
 
 describe('Data folder', () => {
   let home: string;

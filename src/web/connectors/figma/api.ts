@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ConnectorStatus } from '../../../core/connectors';
 import type { Block } from '../../../core/types';
-import { request } from '../../api';
+import { routes } from '../../../core/routes';
+import { get, post } from '../../shared/api';
 import { forgetFiles } from '../live';
 
 // Figma's calls to the server (server/connectors/figma/routes.ts).
@@ -37,19 +38,18 @@ export const figmaApi = {
   card(fileId: string): Promise<CardAnswer> {
     const known = answers.get(fileId);
     if (known && Date.now() - known.at < FRESH) return known.answer;
-    const answer = request<CardAnswer>('GET', `/api/connectors/figma/files/${encodeURIComponent(fileId)}`);
+    const answer = get(routes.figmaFile)<CardAnswer>({ fileId });
     answers.set(fileId, { at: Date.now(), answer });
     answer.catch(() => answers.delete(fileId));
     return answer;
   },
 
   // A token pasted: checked with Figma and kept, or why not.
-  connect: (token: string) => request<{ connector: ConnectorStatus }>('POST', '/api/connectors/figma/token', { token }),
+  connect: (token: string) => post(routes.figmaToken)<{ connector: ConnectorStatus }>({ token }),
 
   // "Bring in this frame", from the link card's block; "Refresh", on an image brought in.
-  bringIn: (blockId: string, actor: string) => request<{ block: Block }>('POST', '/api/connectors/figma/frames', { actor, blockId }),
-  refresh: (blockId: string, actor: string) =>
-    request<{ block: Block; changed: boolean }>('POST', `/api/connectors/figma/images/${encodeURIComponent(blockId)}/refresh`, { actor }),
+  bringIn: (blockId: string, actor: string) => post(routes.figmaBringIn)<{ block: Block }>({ actor, blockId }),
+  refresh: (blockId: string, actor: string) => post(routes.figmaRefresh)<{ block: Block; changed: boolean }>({ actor }, { blockId }),
 };
 
 // A link's card, looked up through the server: null while it loads.

@@ -16,6 +16,7 @@ import { Store } from '../src/core/store';
 import { boardKey, type Actor, type Board } from '../src/core/types';
 import { jsonFolder, savedBoard } from './savedBoard';
 import { eventsOf, legacyBoard, versionsOf } from './tables';
+import { WINDOWS } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'claude' };
 const human: Actor = { kind: 'human', name: 'Sam' };
@@ -121,7 +122,7 @@ describe('Boards in SQLite', () => {
       const read = (id: string) => savedBoard(folder, id);
       const { events: _events, ...emptyNow } = empty;
       assert.deepEqual(read('empty-cd34'), emptyNow, 'with no log of its own to hold');
-      // The one with lists missing was imported as it was; loading then tidied it, and kept what the store doesn't know.
+      // The one with lists missing had them added as it was imported (shapeDefaults.ts), and kept what the store doesn't know.
       const tidied = read('bare-ab12');
       assert.deepEqual((tidied as Board & { extra: unknown }).extra, bare.extra);
       assert.deepEqual(tidied.canvas, { blocks: [], groups: [], links: [], pins: [] });
@@ -192,7 +193,7 @@ describe('Boards in SQLite', () => {
       real.close();
     });
 
-    it('copies the file first when it upgrades one, and runs only the migrations it lacks', () => {
+    it('copies the file first when it upgrades one, and runs only the migrations it lacks', { skip: WINDOWS && 'checks POSIX file modes' }, () => {
       const file = path.join(dir, 'tricot.db');
       openDatabase(file, [first]).close();
       const db = openDatabase(file, [first, second]);
@@ -289,7 +290,7 @@ describe('Boards in SQLite', () => {
       return { legacy, doomed };
     }
 
-    it('copies a version 1 file first, then moves the events and versions out of the rows they were kept in', async () => {
+    it('copies a version 1 file first, then moves the events and versions out of the rows they were kept in', { skip: WINDOWS && 'checks POSIX file modes' }, async () => {
       const { legacy } = await legacyOf('Roadmap');
       assert.ok(legacy.events.length > 130, 'more events than one row holds');
       const file = path.join(dir, 'tricot.db');
@@ -506,7 +507,7 @@ describe('Boards in SQLite', () => {
       db.close();
     });
 
-    it('holds the database and its side files at 600, in a folder at 700', async () => {
+    it('holds the database and its side files at 600, in a folder at 700', { skip: WINDOWS && 'checks POSIX file modes' }, async () => {
       const store = new Store(dir);
       store.load();
       store.createBoard({ title: 'Private' }, human);

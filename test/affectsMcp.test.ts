@@ -11,6 +11,7 @@ import { couldAffect, mayChange, revisitNote } from '../src/core/affects';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
+import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 type Schema = { properties?: Record<string, Schema>; description?: string; items?: Schema; required?: string[] };
@@ -83,7 +84,8 @@ describe('What a decision could affect, over MCP and REST', () => {
       assert.deepEqual(affects.items!.required?.sort(), ['decision_id', 'why']);
     }
     const postDecision = tools.find((t) => t.name === 'post_decision')!;
-    assert.match(postDecision.description ?? '', /Name past decisions it could change or rests on with affects, each with why: people see them beside it\./);
+    assert.match(postDecision.description ?? '', /affects names past decisions it could change or rests on/);
+    assert.match(await readGuide(client, 'decisions'), /Name past decisions it could change or rests on with affects, each with why: people see them beside it\./);
     assert.match(tools.find((t) => t.name === 'get_decision')!.description ?? '', /the other decisions it could affect, to weigh when you recommend/);
   });
 

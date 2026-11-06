@@ -185,7 +185,8 @@ export function approvalText(approval: Pick<Approval, 'tool' | 'input' | 'sealed
 export const waitingWords = (approval: Pick<Approval, 'agent' | 'role'>): string =>
   `${approval.agent}${approval.role ? ` (${approval.role} subagent)` : ''} is waiting for your OK`;
 
-// The tab's title while it is in the background: "⏸ Claude needs you".
+// What leads the tab's title while it is in the background: "⏸ Claude needs
+// you", before the page's name (web/shared/tabTitle.ts).
 export function needsYouTitle(agents: string[]): string {
   const names = [...new Set(agents)];
   if (names.length === 0) return '';

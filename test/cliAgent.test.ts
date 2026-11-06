@@ -8,6 +8,7 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { Key, TerminalKeys } from '../src/cli/boardPicker';
 import { FOLDER_BOARDS_FILE } from '../src/cli/chooseBoard';
+import { renderTab } from '../src/cli/switcher/tabView';
 import { runCli, type CliContext, type CliResult } from '../src/cli/main';
 import { ANSWER_FILE } from '../src/cli/hooks';
 import type { HostOutcome } from '../src/cli/switcher/host';
@@ -16,8 +17,9 @@ import type { AgentLaunch } from '../src/cli/terminal';
 import { APPROVAL_STATUS, APPROVAL_TIMEOUT_S } from '../src/server/hooks/commandHooks';
 import { claude as claudeHooks } from '../src/server/hooks/claude';
 import { codex as codexHooks } from '../src/server/hooks/codex';
-import { lockFile, readLock } from '../src/server/lock';
+import { lockFile, readLock } from '../src/platform/lock';
 import type { RunningServer } from '../src/server/start';
+import { WINDOWS } from './platform';
 
 // `tricot claude`, `tricot codex` and `tricot opencode`: the board, then the
 // agent in this terminal with the board for one session. PATH holds only fake
@@ -39,6 +41,35 @@ const FAKE_AGENT = `#!/bin/sh
     name=\${name%%=*}
     case $name in ''|*[!A-Za-z0-9_]*) ;; *) printf 'env %s\\n' "$name" ;; esac
   done
+} > "$FAKE_AGENT_LOG"
+exit "\${FAKE_AGENT_EXIT:-0}"
+`;
+
+// The stand-ins for Pi and OMP also record what they were handed with -e while
+// they run: Pi's extension file or OMP's folder with its .mcp.json, with their
+// permissions and what is in them (PATH holds only the fake agents, so it uses
+// the shell's own commands and /bin/ls).
+const FAKE_WITH_FILES = `#!/bin/sh
+{
+  printf 'command %s\\n' "$0"
+  for arg in "$@"; do printf 'arg %s\\n' "$arg"; done
+  export -p | while IFS= read -r line; do
+    name=\${line#export }
+    name=\${name#declare -x }
+    name=\${name%%=*}
+    case $name in ''|*[!A-Za-z0-9_]*) ;; *) printf 'env %s\\n' "$name" ;; esac
+  done
+  if [ "$1" = "-e" ]; then
+    file=$2
+    folder=\${file%/*}
+    if [ -d "$file" ]; then folder=$file; file=$file/.mcp.json; fi
+    set -- $(/bin/ls -ld "$file")
+    printf 'mode %s\\n' "$1"
+    set -- $(/bin/ls -ldH "$folder")
+    printf 'folder %s\\n' "$1"
+    printf 'files %s\\n' "$(/bin/ls -A "$folder" | while IFS= read -r name; do printf '%s,' "$name"; done)"
+    while IFS= read -r line; do printf 'ext %s\\n' "$line"; done < "$file"
+  fi
 } > "$FAKE_AGENT_LOG"
 exit "\${FAKE_AGENT_EXIT:-0}"
 `;
@@ -100,7 +131,7 @@ before(() => {
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
-describe('tricot <agent>', () => {
+describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for the agents, and uses TMPDIR' }, () => {
   let here: string;
   let home: string;
   let project: string;
@@ -141,19 +172,19 @@ describe('tricot <agent>', () => {
     env?: Record<string, string>;
     realLaunch?: boolean;
     noTerminal?: boolean;
-    // The terminal the strip runs in, as the stand-in host. Several agents and
-    // --switcher have it unless noTerminal; one agent runs on its own in most
-    // of these tests, as it does without a terminal, unless this says it has it.
+    // The terminal the strip runs in, as the stand-in host. Several agents
+    // have it unless noTerminal; one agent runs on its own in most of these
+    // tests, as it does without a terminal, unless this says it has it.
     terminal?: boolean;
     platform?: NodeJS.Platform;
   }
   let term: ReturnType<typeof terminal> | undefined;
   const ctx = (options: Options = {}, argv: string[] = []): CliContext => {
-    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp'].includes(word)).length > 1 || argv.includes('--switcher');
+    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp'].includes(word)).length > 1;
     const withHost = !options.noTerminal && (options.terminal ?? several);
     term = options.keys ? terminal(options.keys) : undefined;
     return {
-      env: { TRICOT_DATA_DIR: dataDir, PORT: String(port), HOME: home, PATH: bin, FAKE_AGENT_LOG: agentLog, ...options.env },
+      env: { TRICOT_DATA_DIR: dataDir, PORT: String(port), HOME: home, USERPROFILE: home, PATH: bin, FAKE_AGENT_LOG: agentLog, ...options.env },
       root,
       entry: path.join(repo, 'src/cli/tricot.ts'),
       out: (line) => out.push(line),
@@ -189,6 +220,11 @@ describe('tricot <agent>', () => {
       command: lines.find((l) => l.startsWith('command '))!.slice(8),
       args: lines.filter((l) => l.startsWith('arg ')).map((l) => l.slice(4)),
       env: lines.filter((l) => l.startsWith('env ')).map((l) => l.slice(4)),
+      // Pi's and OMP's: what they were handed with -e while they ran, and the permissions of it and its folder.
+      extension: lines.filter((l) => l.startsWith('ext ')).map((l) => l.slice(4)).join('\n'),
+      mode: lines.find((l) => l.startsWith('mode '))?.slice(5),
+      folderMode: lines.find((l) => l.startsWith('folder '))?.slice(7),
+      files: lines.find((l) => l.startsWith('files '))?.slice(6),
     };
   };
   // A board running in this process, with boards on it, as `tricot` leaves it.
@@ -217,9 +253,16 @@ describe('tricot <agent>', () => {
     writeFileSync(path.join(home, '.codex/config.toml'), '[mcp_servers.tricot]\nurl = "http://127.0.0.1:4545/mcp"\n');
     mkdirSync(path.join(home, '.config/opencode'), { recursive: true });
     writeFileSync(path.join(home, '.config/opencode/opencode.json'), '{"mcp":{}}\n');
+    mkdirSync(path.join(home, '.omp/agent'), { recursive: true });
+    writeFileSync(path.join(home, '.omp/agent/config.yml'), 'modelRoles:\n  default: anthropic/claude-haiku-5-5\n');
+    writeFileSync(path.join(home, '.omp/agent/mcp.json'), '{"mcpServers":{"tricot":{"type":"http","url":"http://127.0.0.1:4545/mcp?agent=OMP"}}}\n');
+    mkdirSync(path.join(home, '.pi/agent'), { recursive: true });
+    writeFileSync(path.join(home, '.pi/agent/settings.json'), '{"defaultProvider":"anthropic"}\n');
+    writeFileSync(path.join(home, '.pi/agent/mcp.json'), '{"mcpServers":{"tricot":{"url":"http://127.0.0.1:4545/mcp?agent=Pi"}}}\n');
     bin = path.join(here, 'bin');
     mkdirSync(bin);
     for (const agent of ['claude', 'codex', 'opencode']) writeFileSync(path.join(bin, agent), FAKE_AGENT, { mode: 0o755 });
+    for (const agent of ['pi', 'omp']) writeFileSync(path.join(bin, agent), FAKE_WITH_FILES, { mode: 0o755 });
     agentLog = path.join(here, 'agent.log');
     dataDir = path.join(here, 'data');
     root = path.join(here, 'pkg');
@@ -288,7 +331,7 @@ describe('tricot <agent>', () => {
         message,
       ]);
       assert.match(said(), /Starting Codex on "Roadmap"…/);
-      assert.match(said(), /Codex asks for approvals in the terminal: they come to the board once its live steps are on \(tricot hooks on --agent codex\)/);
+      assert.match(said(), /Codex asks for approvals in the terminal: they come to the board once its live steps are on \(tricot steps on --agent codex\)/);
 
       assert.equal((await run(['opencode', '--board', ids[0], '--no-open'])).exitCode, 0, err.join('\n'));
       assert.deepEqual(recorded().args, ['--prompt', message]);
@@ -297,6 +340,96 @@ describe('tricot <agent>', () => {
         mcp: { tricot: { type: 'remote', url: `${server.mcpUrl}?agent=OpenCode`, enabled: true, timeout: 300000 } },
       });
       assert.deepEqual(snapshot(home), before, 'no file in the home folder changed');
+    });
+
+    it("starts Pi with an extension for the session, in a folder made for it and gone after, writing nothing of Pi's", async () => {
+      const { server, ids } = await boardWith('Roadmap');
+      const before = snapshot(home);
+      const { exitCode } = await run(['pi', '--board', ids[0], '--no-open']);
+      assert.equal(exitCode, 0, err.join('\n'));
+      assert.deepEqual(out, [
+        `Tricot is running at ${server.url}.`,
+        'Pi gets the board for this session only; its settings stay as they are.',
+        'Starting Pi on "Roadmap"…',
+        `> Use the Tricot board ${ids[0]} and start listening.`,
+        `Tricot keeps running at ${server.url}; stop it with: tricot stop`,
+      ]);
+      const pi = recorded();
+      assert.equal(pi.command, path.join(bin, 'pi'));
+      assert.deepEqual([pi.args[0], pi.args.slice(2)], ['-e', [`Use the Tricot board ${ids[0]} and start listening.`]]);
+      const file = pi.args[1];
+      assert.equal(path.basename(file), 'tricot.js');
+      assert.equal(pi.mode?.slice(0, 10), '-rw-------', "its file, while Pi ran: this account's alone");
+      assert.equal(pi.folderMode?.slice(0, 10), 'drwx------', 'and its folder');
+      assert.match(pi.extension, new RegExp(`pi\\.registerMcpServer\\("tricot", \\{"url":"${server.mcpUrl.replaceAll('/', '\\/').replaceAll('.', '\\.')}\\?agent=Pi","timeout":300\\}\\)`));
+      assert.ok(!pi.env.includes('TRICOT_TOKEN'));
+      assert.equal(existsSync(path.dirname(file)), false, 'the folder is gone once Pi ended');
+      assert.equal(launches[0].cwd, project);
+      assert.deepEqual(snapshot(home), before, "no file in the home folder changed, ~/.pi's included, its own tricot entry too");
+    });
+
+    it("starts OMP with an extension folder for the session that holds the board's entry, and writes nothing of OMP's", async () => {
+      const { server, ids } = await boardWith('Roadmap');
+      const before = snapshot(home);
+      const { exitCode } = await run(['omp', '--board', ids[0], '--no-open']);
+      assert.equal(exitCode, 0, err.join('\n'));
+      assert.deepEqual(out, [
+        `Tricot is running at ${server.url}.`,
+        'OMP gets the board for this session only; its settings stay as they are.',
+        'Starting OMP on "Roadmap"…',
+        `> Use the Tricot board ${ids[0]} and start listening.`,
+        `Tricot keeps running at ${server.url}; stop it with: tricot stop`,
+      ]);
+      const omp = recorded();
+      assert.equal(omp.command, path.join(bin, 'omp'));
+      assert.deepEqual([omp.args[0], omp.args.slice(2)], ['-e', [`Use the Tricot board ${ids[0]} and start listening.`]]);
+      const folder = omp.args[1];
+      assert.equal(omp.folderMode?.slice(0, 10), 'drwx------', "its folder, while OMP ran: this account's alone");
+      assert.equal(omp.mode?.slice(0, 10), '-rw-------');
+      assert.equal(omp.files, '.mcp.json,', 'and nothing else in it');
+      assert.deepEqual(JSON.parse(omp.extension), { mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=OMP`, timeout: 300000 } } });
+      assert.ok(!omp.env.includes('TRICOT_TOKEN'));
+      assert.equal(existsSync(folder), false, 'the folder is gone once OMP ended');
+      assert.deepEqual(snapshot(home), before, "no file in the home folder changed, ~/.omp's included, its own tricot entry too");
+    });
+
+    it("says so when the folder for Pi's session can't be made, and starts nothing", async () => {
+      const { ids } = await boardWith('Roadmap');
+      const tmp = process.env.TMPDIR;
+      process.env.TMPDIR = path.join(here, 'no-such-folder');
+      try {
+        assert.equal((await run(['pi', '--board', ids[0], '--no-open'])).exitCode, 1);
+        assert.equal(err.join('\n'), "Pi didn't start: Tricot couldn't make a folder for the session (ENOENT).", 'plain words: no path, no raw error');
+        assert.deepEqual(launches, []);
+        err.length = 0;
+        assert.equal((await run(['pi', 'codex', '--board', ids[0], '--no-open'])).exitCode, 1);
+        assert.equal(err.join('\n'), "Pi and Codex didn't start: Tricot couldn't make a folder for the session (ENOENT).");
+        assert.deepEqual(hosted, []);
+      } finally {
+        if (tmp === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = tmp;
+      }
+    });
+
+    it("tells the Tricot tab in a few plain words when the folder for Pi's session can't be made, whole at 50 columns and at 80", async () => {
+      const { server, ids } = await boardWith('Roadmap');
+      hostOutcome = { exits: [0, 0], quit: false };
+      assert.equal((await run(['claude', 'codex', '--board', ids[0], '--no-open'])).exitCode, 0, err.join('\n'));
+      const { tricot } = hosted[0];
+      const tmp = process.env.TMPDIR;
+      process.env.TMPDIR = path.join(here, 'no-such-folder');
+      let problem: string;
+      try {
+        problem = (tricot!.make!('pi') as { problem: string }).problem;
+      } finally {
+        if (tmp === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = tmp;
+      }
+      assert.equal(problem, "Pi didn't start: Tricot couldn't make a folder for the session (ENOENT).");
+      for (const [cols, rows] of [[50, [" Pi didn't start: Tricot couldn't make a folder", ' for the session (ENOENT).']], [80, [" Pi didn't start: Tricot couldn't make a folder for the session (ENOENT)."]]] as const) {
+        const frame: string[] = renderTab({ url: server.url, connected: true, agents: [], approvals: [], selected: 0, activity: [], prompt: { kind: 'keys' }, now: Date.now(), note: { text: problem, tone: 'alert' } }, cols, 12).plain.map((l) => l.trimEnd());
+        assert.deepEqual(frame.slice(-1 - rows.length, -1), rows, `${cols} columns`);
+      }
     });
 
     it('passes what comes after -- to the agent, and names it with --name', async () => {
@@ -411,13 +544,29 @@ describe('tricot <agent>', () => {
       assert.ok(codex.env.includes('TRICOT_TOKEN'), 'in its environment');
       assert.equal(launches[1].env.TRICOT_TOKEN, token);
 
+      assert.equal((await run(['pi', '--board', id, '--no-open'])).exitCode, 0, err.join('\n'));
+      const pi = recorded();
+      assert.ok(pi.env.includes('TRICOT_TOKEN'), 'in its environment');
+      assert.equal(launches[2].env.TRICOT_TOKEN, token);
+      assert.ok(!pi.args.join(' ').includes(token), 'not in its arguments');
+      assert.ok(!pi.extension.includes(token), 'not in its file');
+      assert.match(pi.extension, /"headers":\{"Authorization":"Bearer \$\{TRICOT_TOKEN\}"\}/, "which Pi fills in from its environment");
+
+      assert.equal((await run(['omp', '--board', id, '--no-open'])).exitCode, 0, err.join('\n'));
+      const omp = recorded();
+      assert.ok(omp.env.includes('TRICOT_TOKEN'), 'in its environment');
+      assert.equal(launches[3].env.TRICOT_TOKEN, token);
+      assert.ok(!omp.args.join(' ').includes(token), 'not in its arguments');
+      assert.ok(!omp.extension.includes(token), 'not in its file');
+      assert.equal(JSON.parse(omp.extension).mcpServers.tricot.headers.Authorization, 'Bearer ${TRICOT_TOKEN}', 'which OMP fills in from its environment');
+
       assert.ok(!said().includes(token) && !err.join('\n').includes(token), 'never on screen');
       assert.deepEqual(snapshot(home), before);
     });
   });
 
   describe('the board', () => {
-    it('is started in the background when none is running, and keeps running after the agent', async () => {
+    it('is started in the background when none is running, and stops when the agent quits (test/stopWithAgents.test.ts)', async () => {
       const { server, ids } = await boardWith('Roadmap');
       await server.close();
       servers.length = 0;
@@ -425,11 +574,10 @@ describe('tricot <agent>', () => {
 
       const { exitCode } = await run(['codex', '--board', ids[0], '--no-open']);
       assert.equal(exitCode, 0, err.join('\n'));
-      const lock = readLock(dataDir)!;
-      assert.notEqual(lock.pid, process.pid, 'in a process of its own');
-      assert.equal(out[0], `Tricot is running at ${lock.url} (started in the background).`);
-      assert.equal((await fetch(`${lock.url}/api/info`)).status, 200, 'still running');
-      assert.equal(recorded().args[1], `mcp_servers.tricot.url="${lock.mcpUrl}?agent=Codex"`);
+      assert.match(out[0], /^Tricot is running at http:\/\/127\.0\.0\.1:\d+ \(started in the background\)\.$/);
+      assert.equal(out.at(-1), 'Tricot stopped, as no agent needs it now.');
+      assert.equal(existsSync(lockFile(dataDir)), false, 'the board went with the agent');
+      assert.match(recorded().args[1], /^mcp_servers\.tricot\.url="http:\/\/127\.0\.0\.1:\d+\/mcp\?agent=Codex"$/);
     });
 
     it('is reused when it is running', async () => {
@@ -513,26 +661,30 @@ describe('tricot <agent>', () => {
     assert.deepEqual(opened, []);
   });
 
-  it("prints how to connect the agents it can't start yet, and starts nothing", async () => {
-    for (const agent of ['gemini', 'pi', 'omp']) {
-      out.length = 0;
-      const { exitCode } = await run([agent]);
-      assert.equal(exitCode, 1);
-      assert.match(said(), new RegExp(`Tricot can't start (Gemini CLI|Pi|OMP) for you yet`));
-    }
-    assert.match(said(), /OMP has|\.omp\/agent\/mcp\.json/);
+  it("prints how to connect the agent it can't start yet, and starts nothing", async () => {
+    const { exitCode } = await run(['gemini']);
+    assert.equal(exitCode, 1);
+    assert.match(said(), /gemini mcp add --scope user/);
+    assert.match(said(), /Tricot can't start Gemini CLI for you yet/);
     assert.equal(existsSync(lockFile(dataDir)), false);
     assert.deepEqual(launches, []);
   });
 
-  it('lists the command in --help', async () => {
+  it('lists the command in --help, and says what it does in its own help', async () => {
     await run(['--help']);
-    assert.match(said(), /tricot claude {11}Start the board, then Claude Code in this terminal/);
-    assert.match(said(), /Also: tricot codex, tricot opencode/);
-    assert.match(said(), /tricot claude codex {5}Start several agents on one board, in this terminal/);
-    assert.match(said(), /--switch-key <key> With several agents: the key that switches \(default ctrl-\\\)/);
-    assert.match(said(), /--switcher {9}tricot claude: with the strip and the Tricot tab, as it runs by\n {21}default where it can/);
-    assert.match(said(), /--no-switcher {6}tricot claude: run it on its own in this terminal, with no strip/);
+    assert.match(said(), /tricot claude {11}Start the board and Claude Code on it, in this terminal/);
+    assert.match(said().replace(/\s+/g, ' '), /Also codex[^;]*; several at once: tricot claude codex/);
+    assert.doesNotMatch(said(), /--switcher|--no-switcher|--switch-key/);
+    out.length = 0;
+    await run(['claude', '--help']);
+    assert.match(said(), /^tricot claude: start the board and Claude Code together, in this terminal/);
+    const flat = said().replace(/\s+/g, ' '); // however it wraps
+    assert.match(flat, /with the Tricot tab and a strip at the bottom, as with several \(on its own without a terminal, and on Windows\)\./);
+    assert.match(flat, /a strip at the bottom lists them all, and Ctrl\+\\ switches \(then a number picks one, q quits\)\. Any of claude, codex/);
+    assert.match(flat, /anything after -- goes to the agent/);
+    assert.doesNotMatch(said(), /--switcher|--no-switcher|--switch-key/);
+    assert.deepEqual(launches, [], '--help starts nothing');
+    assert.equal(existsSync(lockFile(dataDir)), false);
   });
 
   // `tricot claude codex`: several agents, one terminal (severalAgents.ts).
@@ -555,7 +707,7 @@ describe('tricot <agent>', () => {
         `Tricot is running at ${server.url}.`,
         'Claude Code and Codex get the board for this session only; their settings stay as they are.',
         'Claude Code: approvals come to the board for this session.',
-        "Codex asks for approvals in the terminal: they come to the board once its live steps are on (tricot hooks on --agent codex), as Codex can't take hooks for one session.",
+        "Codex asks for approvals in the terminal: they come to the board once its live steps are on (tricot steps on --agent codex), as Codex can't take hooks for one session.",
         'Starting Claude Code and Codex on "Roadmap"…',
         `> ${message(ids[0])}`,
         'Ctrl+\\ switches between them, Ctrl+\\ then a number picks one, and Ctrl+\\ then q quits.',
@@ -597,9 +749,34 @@ describe('tricot <agent>', () => {
       assert.ok(tricot);
       assert.equal(tricot.title, 'Roadmap');
       assert.equal(tricot.actor, 'Sam', 'the person who last acted on the board');
-      assert.deepEqual(tricot.choices!(['claude', 'codex']), [{ id: 'opencode', name: 'OpenCode' }], 'what Tricot can start and is not running');
+      // Every agent Tricot knows but those running; those it can't find on PATH say so.
+      const byId = (running: string[]) => Object.fromEntries(tricot.choices!(running).map((c) => [c.id, c]));
+      for (const agent of ['pi', 'omp']) rmSync(path.join(bin, agent));
+      assert.deepEqual(Object.keys(byId(['claude', 'codex'])), ['opencode', 'gemini', 'pi', 'omp'], 'in the order Tricot lists them, those running left out');
+      const missing = byId(['claude', 'codex']);
+      assert.deepEqual(['opencode', 'gemini', 'pi', 'omp'].map((id) => missing[id].note), [undefined, 'not installed', 'not installed', 'not installed']);
+      assert.equal(missing.gemini.name, 'Gemini CLI');
+      assert.equal(missing.gemini.problem, "Gemini CLI isn't installed here, or isn't on your PATH: Tricot looked for `gemini`. Install it, then add it again.");
+      // Installed, but not one Tricot can give the board for one session (Gemini CLI): connect it first, and why.
+      writeFileSync(path.join(bin, 'gemini'), FAKE_AGENT, { mode: 0o755 });
+      const first = byId(['claude']);
+      assert.equal(first.gemini.note, 'connect it first');
+      assert.equal(first.gemini.problem, "Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it for you yet: it adds a server only from a settings file.");
+      assert.equal(first.codex.note, undefined);
+      assert.ok(!('claude' in first), 'those running are left out');
+      assert.equal((tricot.make!('gemini') as { problem: string }).problem, first.gemini.problem, 'picked, it says the same, and nothing is started');
+      // What the tab shows of these, at a narrow window and a wide one: the command whole, the reason after it.
+      for (const [cols, rows] of [[50, [' Connect Gemini CLI first, with: tricot connect', " gemini. Tricot can't start it for you yet: it", ' adds a server only from a settings file.']], [80, [" Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it", ' for you yet: it adds a server only from a settings file.']]] as const) {
+        const frame: string[] = renderTab({ url: server.url, connected: true, agents: [], approvals: [], selected: 0, activity: [], prompt: { kind: 'keys' }, now: Date.now(), note: { text: first.gemini.problem!, tone: 'alert' } }, cols, 12).plain.map((l) => l.trimEnd());
+        assert.deepEqual(frame.slice(-1 - rows.length, -1), rows, `${cols} columns`);
+      }
+      for (const [cols, rows] of [[50, [' Gemini CLI isn\'t installed here, or isn\'t on', ' your PATH: Tricot looked for `gemini`. Install', ' it, then add it again.']], [80, [" Gemini CLI isn't installed here, or isn't on your PATH: Tricot looked for", ' `gemini`. Install it, then add it again.']]] as const) {
+        const frame: string[] = renderTab({ url: server.url, connected: true, agents: [], approvals: [], selected: 0, activity: [], prompt: { kind: 'keys' }, now: Date.now(), note: { text: missing.gemini.problem!, tone: 'alert' } }, cols, 12).plain.map((l) => l.trimEnd());
+        assert.deepEqual(frame.slice(-1 - rows.length, -1), rows, `${cols} columns`);
+      }
+      rmSync(path.join(bin, 'gemini'));
       rmSync(path.join(bin, 'opencode'));
-      assert.deepEqual(tricot.choices!(['claude']).map((c) => [c.id, c.note]), [
+      assert.deepEqual(tricot.choices!(['claude']).slice(0, 2).map((c) => [c.id, c.note]), [
         ['codex', undefined],
         ['opencode', 'not installed'],
       ]);
@@ -614,7 +791,6 @@ describe('tricot <agent>', () => {
       assert.equal(added.cwd, project);
       const again = tricot.make!('claude');
       assert.ok(!('problem' in again) && again.args.includes('--settings'), "Claude Code with Tricot's hooks for the session, as when named");
-      assert.ok('problem' in tricot.make!('gemini'));
       tricot.open();
       assert.deepEqual(opened, [`${server.url}/#/b/${ids[0]}`], 'o opens the board, --no-open or not');
       assert.equal(out.at(-2), 'You quit. Claude Code ended. Codex ended. OpenCode ended.', 'those added are said too');
@@ -627,6 +803,63 @@ describe('tricot <agent>', () => {
       assert.deepEqual(hosted[0].agents.map((a) => a.name), ['Codex', 'OpenCode', 'Claude']);
       assert.ok(hosted[0].agents[1].env.OPENCODE_CONFIG_CONTENT);
       assert.match(said(), /Starting Codex, OpenCode and Claude Code on "Roadmap"…/);
+    });
+
+    it("starts Pi and OMP among the others, their folders taken away once the host is done, and one added from the Tricot tab the same", async () => {
+      const { server, ids } = await boardWith('Roadmap');
+      const before = snapshot(home);
+      hostOutcome = { exits: [0, 0, 0], quit: false };
+      assert.equal((await run(['codex', 'pi', 'omp', '--board', ids[0], '--no-open'])).exitCode, 0, err.join('\n'));
+      const [codex, pi, omp] = hosted[0].agents;
+      assert.deepEqual([codex.name, pi.name, omp.name], ['Codex', 'Pi', 'OMP']);
+      assert.equal(pi.command, path.join(bin, 'pi'));
+      assert.equal(omp.command, path.join(bin, 'omp'));
+      assert.deepEqual([pi.args[0], pi.args.slice(2)], ['-e', [message(ids[0])]]);
+      assert.deepEqual([omp.args[0], omp.args.slice(2)], ['-e', [message(ids[0])]]);
+      assert.equal(pi.env.TERM, 'xterm-256color');
+      assert.equal(codex.cleanup, undefined, 'only an agent that needed a folder has anything to take away');
+      assert.equal(typeof pi.cleanup, 'function');
+      assert.equal(typeof omp.cleanup, 'function');
+      assert.equal(existsSync(pi.args[1]), false, "the host is done: Pi's folder is gone");
+      assert.equal(existsSync(omp.args[1]), false, "and OMP's");
+
+      const added = hosted[0].tricot!.make!('pi');
+      assert.ok(!('problem' in added));
+      assert.equal(added.name, 'Pi');
+      assert.equal(added.args[0], '-e');
+      assert.match(readFileSync(added.args[1], 'utf8'), new RegExp(`${server.mcpUrl.replaceAll('/', '\\/').replaceAll('.', '\\.')}\\?agent=Pi`));
+      added.cleanup!();
+      assert.equal(existsSync(added.args[1]), false, 'as the host does when it ends');
+      const addedOmp = hosted[0].tricot!.make!('omp');
+      assert.ok(!('problem' in addedOmp));
+      assert.equal(JSON.parse(readFileSync(path.join(addedOmp.args[1], '.mcp.json'), 'utf8')).mcpServers.tricot.url, `${server.mcpUrl}?agent=OMP`);
+      addedOmp.cleanup!();
+      assert.equal(existsSync(addedOmp.args[1]), false);
+      assert.deepEqual(snapshot(home), before);
+    });
+
+    it("makes no folder for an agent until it has found out who answers on the board, which waits on the network: a Ctrl+C then leaves none", async () => {
+      const { ids } = await boardWith('Roadmap');
+      const tmp = path.join(here, 'tmp');
+      mkdirSync(tmp);
+      const saved = { tmpdir: process.env.TMPDIR, fetch: globalThis.fetch };
+      const seen: string[][] = [];
+      process.env.TMPDIR = tmp;
+      globalThis.fetch = async (input, init) => {
+        if (String(input).endsWith(`/api/boards/${ids[0]}`)) seen.push(readdirSync(tmp)); // as the board is asked who acted on it
+        return saved.fetch(input, init);
+      };
+      try {
+        hostOutcome = { exits: [0, 0], quit: false };
+        assert.equal((await run(['codex', 'pi', '--board', ids[0], '--no-open'])).exitCode, 0, err.join('\n'));
+      } finally {
+        globalThis.fetch = saved.fetch;
+        if (saved.tmpdir === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = saved.tmpdir;
+      }
+      assert.ok(seen.length > 0, 'the board was asked');
+      assert.deepEqual(seen.flat(), [], 'with no folder made yet');
+      assert.deepEqual(readdirSync(tmp), [], 'and none left');
     });
 
     it("returns the first agent's exit code other than 0, in the order named; one closed by quitting isn't a failure", async () => {
@@ -658,12 +891,10 @@ describe('tricot <agent>', () => {
       const refused: [string[], RegExp, Options?][] = [
         [['claude', 'claude', '--board', 'x'], /Claude Code is named twice: each agent runs once here\. Nothing was started\./],
         [['claude', 'gemini', '--board', 'x'], /Tricot can't start Gemini CLI for you yet: it adds a server only from a settings file.*connect Gemini CLI once with: tricot connect gemini Nothing was started\./],
-        [['pi', 'codex', '--board', 'x'], /Tricot can't start Pi for you yet/],
         [['claude', 'codex', '--name', 'Reviewer', '--board', 'x'], /--name names one agent: with several, each has its usual name on the board \(Claude and Codex\)/],
         [['claude', 'codex', '--board', 'x', '--', '--model', 'opus'], /Words after -- go to one agent/],
         [['claude', 'codex', '--board', 'x'], /Several agents at once need a terminal/, { noTerminal: true }],
         [['claude', 'codex', '--board', 'x'], /don't work on Windows yet/, { platform: 'win32' }],
-        [['claude', 'codex', '--board', 'x', '--switch-key', 'ctrl-c'], /--switch-key can't be ctrl-c: Ctrl\+C interrupts the agent/],
       ];
       for (const [argv, problem, options] of refused) {
         err.length = 0;
@@ -685,18 +916,34 @@ describe('tricot <agent>', () => {
       nothingStarted();
     });
 
-    it('takes another switch key, and words that are not agents still go after --', async () => {
-      const { ids } = await boardWith('Roadmap');
-      await run(['claude', 'codex', '--board', ids[0], '--no-open', '--switch-key', 'ctrl-]']);
-      assert.deepEqual(hosted[0].key, { byte: 0x1d, label: 'Ctrl+]' });
-      assert.match(said(), /Ctrl\+\] switches between them/);
-      err.length = 0;
+    it('words that are not agents still go after --', async () => {
       assert.equal((await run(['claude', 'codex', 'fix'])).exitCode, 1);
       assert.match(err.join('\n'), /put them after --: tricot claude -- codex fix/);
     });
 
-    // One agent: the strip and the Tricot tab by default, on its own where
-    // that can't run or with --no-switcher.
+    // The strip, the Tricot tab and their key are not options: Ctrl+\ always,
+    // and an old command line that names one gets the error any unknown option
+    // does, with the help, before anything starts.
+    it('no longer takes --switcher, --no-switcher or --switch-key: an unknown option, with the help, starting nothing', async () => {
+      const gone: string[][] = [['--switcher'], ['--no-switcher'], ['--switch-key', 'ctrl-]']];
+      for (const flag of gone) {
+        for (const argv of [['claude', ...flag, '--board', 'x'], ['claude', 'codex', ...flag, '--board', 'x'], ['codex', ...flag], [...flag]]) {
+          out.length = 0;
+          err.length = 0;
+          const { exitCode } = await run(argv, { terminal: true });
+          assert.equal(exitCode, 1, argv.join(' '));
+          const text = err.join('\n');
+          assert.equal(err.length, 1, 'one message: the error, then the help');
+          assert.match(text, new RegExp(`^Unknown option '${flag[0]}'`), argv.join(' '));
+          assert.match(text, /\n\nUsage\n {2}tricot \[start\] /, 'followed by the help');
+          assert.doesNotMatch(text.slice(text.indexOf('\n\nUsage')), /--switcher|--no-switcher|--switch-key/, 'which no longer lists them');
+          assert.deepEqual(out, []);
+          nothingStarted();
+        }
+      }
+    });
+
+    // One agent: the strip and the Tricot tab, on its own where that can't run.
     describe('one agent', () => {
       const bare = (reason: string) => {
         assert.equal(launches.length, 1, `${reason}: run on its own`);
@@ -758,53 +1005,9 @@ describe('tricot <agent>', () => {
         assert.deepEqual(recorded().args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
       });
 
-      it('runs on its own with --no-switcher, even in a terminal', async () => {
-        const { ids } = await boardWith('Roadmap');
-        assert.equal((await run(['claude', '--no-switcher', '--board', ids[0], '--no-open', '--name', 'Reviewer', '--', '--model', 'opus'], { terminal: true })).exitCode, 0, err.join('\n'));
-        bare('--no-switcher');
-        assert.deepEqual(recorded().args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
-      });
-
-      it('still refuses --switcher where the strip can not run, instead of running on its own', async () => {
-        const argv = ['claude', '--switcher', '--board', 'x'];
-        const refused: [Options, RegExp][] = [
-          [{ noTerminal: true }, /need a terminal/],
-          [{ terminal: true, platform: 'win32' }, /don't work on Windows yet/],
-        ];
-        for (const [options, problem] of refused) {
-          err.length = 0;
-          assert.equal((await run(argv, options)).exitCode, 1);
-          assert.match(err.join('\n'), problem);
-        }
-        hostProblem = 'found none of them here.';
-        err.length = 0;
-        assert.equal((await run(argv, { terminal: true })).exitCode, 1);
-        assert.match(err.join('\n'), /found none of them here\. Nothing was started\./);
-        assert.equal(existsSync(lockFile(dataDir)), false, 'no board started');
-        assert.deepEqual(launches, []);
-        assert.deepEqual(hosted, []);
-      });
-
-      it('refuses --switcher with --no-switcher in one line, and --no-switcher with several, starting nothing', async () => {
-        for (const argv of [['claude', '--switcher', '--no-switcher', '--board', 'x'], ['claude', 'codex', '--switcher', '--no-switcher', '--board', 'x']]) {
-          err.length = 0;
-          assert.equal((await run(argv, { terminal: true })).exitCode, 1);
-          assert.deepEqual(err, ["--switcher and --no-switcher can't go together: pick one. Nothing was started."]);
-        }
-        err.length = 0;
-        assert.equal((await run(['claude', 'codex', '--no-switcher', '--board', 'x'])).exitCode, 1);
-        assert.deepEqual(err, ['--no-switcher runs one agent on its own: several run together in this terminal. Nothing was started.']);
-        assert.equal(existsSync(lockFile(dataDir)), false, 'no board started');
-        assert.deepEqual(launches, []);
-        assert.deepEqual(hosted, []);
-      });
-
       it('leaves what it can not start for one session as it was', async () => {
-        for (const agent of ['gemini', 'pi', 'omp']) {
-          out.length = 0;
-          assert.equal((await run([agent], { terminal: true })).exitCode, 1);
-          assert.match(said(), /Tricot can't start .* for you yet/);
-        }
+        assert.equal((await run(['gemini'], { terminal: true })).exitCode, 1);
+        assert.match(said(), /Tricot can't start .* for you yet/);
         assert.equal(existsSync(lockFile(dataDir)), false);
         assert.deepEqual(hosted, []);
         assert.deepEqual(launches, []);

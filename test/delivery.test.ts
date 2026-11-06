@@ -3,9 +3,9 @@ import { describe, it } from 'node:test';
 import { deliveryBusy, deliveryOf, deliveryTitle, deliveryWords, inWindow, leavesWithReply, meantFor, motionOf, newRepliesTo, stepText, type AgentNow, type DeliveryInput, type StepNow } from '../src/core/delivery';
 import { pathParts, shortDuration } from '../src/core/format';
 import type { Actor, Board, Comment, Decision, Reaction, Task, Thread } from '../src/core/types';
-import type { AgentStep } from '../src/web/api';
-import { newestMine, onItsWay, settledKeys, withOutgoing, type Outgoing } from '../src/web/outbox';
-import { GONE_MS, LIVE_MS, busyOfPhase, latestSteps, phaseOf, rowStep } from '../src/web/steps';
+import type { AgentStep } from '../src/web/shared/api';
+import { newestMine, onItsWay, settledKeys, withOutgoing, type Outgoing } from '../src/web/conversation/outbox';
+import { GONE_MS, LIVE_MS, busyOfPhase, latestSteps, phaseOf, rowStep } from '../src/web/agents/steps';
 
 // What becomes of a person's message to agents, as the line under it says it
 // (core/delivery.ts), read from presence, reactions, steps and replies.

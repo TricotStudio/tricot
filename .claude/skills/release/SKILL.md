@@ -122,8 +122,9 @@ gh run watch <id> --repo TricotStudio/tricot --exit-status
 
 The workflow takes several minutes, so run the watch in the background if you can.
 
-- **It passed:** the GitHub release is out with `tricot-x.y.z.tgz` (https://github.com/TricotStudio/tricot/releases/tag/vx.y.z). Go on to steps 7 and 8.
-- **It failed:** run `gh run view <id> --repo TricotStudio/tricot --log-failed | tail -n 80`. Show the person the few lines that matter, say which step failed and what it means, and stop with a suggestion:
+- **It passed:** the GitHub release is out with `tricot-x.y.z.tgz` and `tricot-x.y.z.all.bottle.tar.gz`, the Homebrew bottle (https://github.com/TricotStudio/tricot/releases/tag/vx.y.z). Go on to steps 7 and 8.
+- **Only its bottle job failed** (the jobs are `release`, `bottle` and `npm`; the other two passed): the release and npm are fine, and the tag stays where it is. Only the formula in step 8 has to wait for the bottle, because without one Homebrew builds from source and stops on an Xcode or Command Line Tools that aren't recent. Look at why (`--log-failed`, as below). When it was by chance, the person runs the job again with `! gh run rerun <id> --failed --repo TricotStudio/tricot`, or makes the bottle on its own with `! gh workflow run bottle.yml --repo TricotStudio/tricot -f tag=vx.y.z`. Go on with step 7 meanwhile. When it fails the same way again, it is a problem in `.github/workflows/bottle.yml` or `scripts/homebrew-formula.mjs` to fix on `main`, and the bottle is made again with that workflow (not by moving the tag).
+- **Another job failed:** run `gh run view <id> --repo TricotStudio/tricot --log-failed | tail -n 80`. Show the person the few lines that matter, say which step failed and what it means, and stop with a suggestion:
   - **A failure by chance** (network, runner): the person re-runs it, with `! gh run rerun <id> --failed --repo TricotStudio/tricot`, or from the run's page.
   - **A real problem:** it needs a fix on `main`. The tag can move onto the fix only while npm doesn't have x.y.z. Check with `release.mjs published x.y.z`. With the person's yes, run `git tag -fa vx.y.z -m "Tricot x.y.z"` on the fixed commit, and hand over `! git push origin main && git push -f origin vx.y.z`. If npm already has x.y.z, release the next patch version instead.
 
@@ -146,14 +147,20 @@ Homebrew doesn't wait for npm, so go on with step 8 while they approve. `release
 
 ## 8. Homebrew
 
-Ask first, then write the formula from the GitHub release's file:
+Homebrew installs a bottle, made by the workflow's `bottle` job on a Mac and attached to the release as `tricot-x.y.z.all.bottle.tar.gz`. Without it, brew builds Tricot from source, and stops with "Your Xcode is too outdated" on a Mac whose Xcode or Command Line Tools aren't recent. So the formula waits for the bottle. Check that the release has it:
+
+```sh
+gh release view vx.y.z --repo TricotStudio/tricot --json assets --jq '.assets[].name'
+```
+
+When it isn't there, the bottle job is still running or has failed (step 6 says what to do): wait, and never write the formula with `--no-bottle` unless the person asks for that on purpose. Then ask, and write the formula from the GitHub release's files:
 
 ```sh
 node scripts/homebrew-formula.mjs x.y.z
 git diff packaging/homebrew/Formula/tricot.rb
 ```
 
-The script downloads `tricot-x.y.z.tgz` from the release and checks it against GitHub's digest, and against npm's record once npm has the version. If it stops, show why and stop too: a mismatch means the files differ, and no formula should go out.
+The script downloads `tricot-x.y.z.tgz` and the bottle from the release and checks them against GitHub's digests, the package against npm's record once npm has the version, and the bottle against the package (every file in it is the release's, but for the node line Homebrew writes at the top of the scripts). The formula it writes has a `bottle do ... end` block with the bottle's sha256. If it stops, show why and stop too: a mismatch means the files differ, and no formula should go out.
 
 Commit it here:
 
@@ -177,7 +184,7 @@ Hand over both pushes:
 ! git -C <tap> push origin main
 ```
 
-Don't run `brew`. The person can try it afterwards with `brew upgrade tricotstudio/tap/tricot` and `brew test tricot`.
+Don't run `brew`. The person can try it afterwards with `brew upgrade tricotstudio/tap/tricot` and `brew test tricot`; the install should say "Pouring tricot-x.y.z.all.bottle.tar.gz".
 
 ## 9. Check that it's out
 
@@ -185,11 +192,11 @@ Don't run `brew`. The person can try it afterwards with `brew upgrade tricotstud
 node ${CLAUDE_SKILL_DIR}/release.mjs published x.y.z --tap <tap>
 ```
 
-It checks four things and lists what's left:
+It checks these and lists what's left:
 
-- the GitHub release has `tricot-x.y.z.tgz`;
+- the GitHub release has `tricot-x.y.z.tgz` and its Homebrew bottle, `tricot-x.y.z.all.bottle.tar.gz`;
 - npm has the version, and it is npm's latest;
-- the formula is committed and `main` is pushed;
+- the formula names that bottle (with the same sha256 GitHub gives for it), is committed, and `main` is pushed;
 - the tap has the formula, committed and pushed.
 
 Tell the person in a few sentences what is out and what, if anything, is left for them.

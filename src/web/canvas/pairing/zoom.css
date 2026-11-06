@@ -1,0 +1,63 @@
+/* ---- zooming a piece in its full view (zoom.tsx) -----------------------------
+   The stage the piece is placed on, at its size on screen; the zoom in the
+   bar; how to move around, for the first moments. A kind gives the stage
+   its paper and the sheet its edge. */
+
+.zoom-percent {
+  flex: none;
+  min-width: 4ch;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.zoom-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+/* Drawn over the piece, which would cover an inset shadow. */
+.zoom-stage:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.zoom-stage.is-fitted {
+  cursor: zoom-in;
+}
+.zoom-stage.is-pannable {
+  cursor: grab;
+}
+.zoom-stage.is-dragging,
+.zoom-stage.is-dragging * {
+  cursor: grabbing !important;
+}
+.zoom-sheet {
+  position: absolute;
+}
+
+.zoom-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  translate: -50% 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 86%, transparent);
+  color: var(--primary-text);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.3s ease-out;
+}
+.zoom-hint.is-gone {
+  opacity: 0;
+}

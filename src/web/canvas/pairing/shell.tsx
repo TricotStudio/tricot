@@ -4,7 +4,8 @@
 // mark, its title and where it is from, the mode switch (Browse, or Read,
 // and "Pair with <agent> ▾", where the agent is picked), the piece's own view
 // controls, and Close. While pairing, a band says how to point at a part,
-// and the session's requests are listed beside the piece.
+// and the session's requests are listed beside the piece. A piece people can
+// edit by hand has Edit between the two (piece.tsx, edit.tsx).
 //
 // The piece is the body. It knows how to point at one of its parts, show the
 // pins on its parts and come back after a change (the site reloads in place,
@@ -13,13 +14,21 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Pin } from '../../../core/types';
-import { ActorBadge, Icon, timeAgo } from '../../components';
-import { otherPanelOpen, typing, useDismiss } from '../../hooks';
+import { ActorBadge, Icon, timeAgo } from '../../shared/components';
+import { otherPanelOpen, typing, useDismiss } from '../../shared/hooks';
 import { PairingList } from './requests';
 import type { AgentChoice, Pairing } from './session';
 import './pairing.css';
 
 const NO_PANEL = { current: null };
+
+// Edit, for a piece people can edit by hand: `stop` saves and says whether it closed.
+export interface ShellEdit {
+  on: boolean;
+  hint: string;
+  start(): void;
+  stop(): Promise<boolean>;
+}
 
 // Whether a panel of the shell (the agent picker) is open, so the piece's
 // Escape leaves the view be while it closes that first.
@@ -46,6 +55,7 @@ export function reachWords(choice: AgentChoice | undefined, agent: string): stri
 
 export function PairingShell(props: {
   pairing: Pairing;
+  edit?: ShellEdit;
   label: string; // the dialog's name: "Website Tricot site"
   icon: ReactNode;
   title: string;
@@ -63,7 +73,7 @@ export function PairingShell(props: {
   foot?: ReactNode;
   children: ReactNode;
 }) {
-  const { pairing, label, icon, title, from, fromTitle, browse, pairHint, pairBand, band, controls, open, onOpenRequest, onClose, className, foot, children } = props;
+  const { pairing, edit, label, icon, title, from, fromTitle, browse, pairHint, pairBand, band, controls, open, onOpenRequest, onClose, className, foot, children } = props;
   const isPairing = pairing.mode === 'pair';
   // The block shown stays selected on the canvas underneath, where Delete and
   // Backspace would remove it, so they never reach the canvas while the view
@@ -88,7 +98,7 @@ export function PairingShell(props: {
             {from}
           </p>
         </div>
-        {!pairing.readOnly && <ModeSwitch pairing={pairing} browse={browse} pairHint={pairHint} />}
+        {!pairing.readOnly && <ModeSwitch pairing={pairing} edit={edit} browse={browse} pairHint={pairHint} />}
         {controls && <div className="pair-controls">{controls}</div>}
         <button className="btn btn-small btn-quiet pair-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
           <Icon name="x" />
@@ -117,22 +127,41 @@ export function PairingShell(props: {
   );
 }
 
-// Browse (or Read) and "Pair with Claude ▾": the second picks the agent.
-function ModeSwitch({ pairing, browse, pairHint }: { pairing: Pairing; browse: { label: string; hint: string }; pairHint: string }) {
+// Browse (or Read), Edit for a piece people can edit, and "Pair with Claude ▾":
+// the last picks the agent. Leaving Edit saves what was typed; if it can't
+// yet, Edit stays on and its band says why.
+function ModeSwitch({ pairing, edit, browse, pairHint }: { pairing: Pairing; edit?: ShellEdit; browse: { label: string; hint: string }; pairHint: string }) {
   const [picking, setPicking] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPicking(false), []);
   useDismiss(picking, close, root);
   const on = pairing.mode === 'pair';
+  const editing = Boolean(edit?.on);
+  const reading = !on && !editing;
   const { agent } = pairing;
   const choice = pairing.agents.find((a) => a.name === agent);
+  const pair = (name?: string) => {
+    if (!edit?.on) return pairing.pair(name);
+    void edit.stop().then((closed) => closed && pairing.pair(name));
+  };
   return (
     <div className="pair-modes" role="group" aria-label="Mode" ref={root}>
-      <button type="button" className={`pair-mode${on ? '' : ' is-on'}`} aria-pressed={!on} onClick={pairing.browse} title={browse.hint}>
+      <button
+        type="button"
+        className={`pair-mode${reading ? ' is-on' : ''}`}
+        aria-pressed={reading}
+        onClick={() => (edit?.on ? void edit.stop() : pairing.browse())}
+        title={browse.hint}
+      >
         {browse.label}
       </button>
+      {edit && (
+        <button type="button" className={`pair-mode${editing ? ' is-on' : ''}`} aria-pressed={editing} onClick={() => !editing && edit.start()} title={edit.hint}>
+          Edit
+        </button>
+      )}
       <span className={`pair-mode pair-mode-pair${on ? ' is-on' : ''}`}>
-        <button type="button" className="pair-mode-main" aria-pressed={on} disabled={pairing.busy} onClick={() => pairing.pair()} title={agent ? `${pairHint} ${reachWords(choice, agent)}` : pairHint}>
+        <button type="button" className="pair-mode-main" aria-pressed={on} disabled={pairing.busy} onClick={() => pair()} title={agent ? `${pairHint} ${reachWords(choice, agent)}` : pairHint}>
           {agent && <span className={`live-dot pair-dot live-${choice?.state ?? 'away'}`} aria-hidden />}
           {agent ? `Pair with ${agent}` : 'Pair'}
         </button>
@@ -154,7 +183,7 @@ function ModeSwitch({ pairing, browse, pairHint }: { pairing: Pairing; browse: {
           pairing={pairing}
           onPick={(name) => {
             setPicking(false);
-            pairing.pair(name);
+            pair(name);
           }}
         />
       )}

@@ -1,0 +1,970 @@
+/* ---- canvas ------------------------------------------------------------ */
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+.canvas .react-flow,
+.canvas .react-flow.dark {
+  --xy-background-color: var(--bg);
+  --xy-background-pattern-color: var(--border-strong);
+  --xy-edge-stroke: var(--muted);
+  --xy-edge-stroke-selected: var(--text);
+  --xy-edge-stroke-width: 1.5;
+  --xy-connectionline-stroke: var(--exploring);
+  --xy-resize-background-color: var(--text);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--text);
+  --xy-controls-button-color-hover: var(--text);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: var(--shadow);
+  font-family: var(--font);
+}
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: var(--shadow);
+  max-width: calc(100% - 30px);
+}
+.canvas-toolbar > button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.canvas-toolbar > button:hover,
+.canvas-toolbar > button[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+/* Add → Link, dropped under the toolbar. */
+.add-link {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(340px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.add-link label {
+  display: grid;
+  gap: 6px;
+}
+/* Choosing a file from a connected service, above the address. */
+.add-link-choose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.add-link-choose .error {
+  flex-basis: 100%;
+}
+.toolbar-label {
+  font-size: 12px;
+  color: var(--faint);
+  padding: 0 4px 0 8px;
+}
+.toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 4px;
+}
+/* The board context's sync, top right, across from the add toolbar. */
+.sync {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  max-width: calc(100% - 30px);
+  min-height: 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 4px 4px 12px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.sync-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sync-state.is-pending {
+  color: var(--exploring-ink);
+  font-weight: 500;
+}
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--exploring);
+  animation: sync-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sync-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+.sync-check {
+  color: var(--decided);
+}
+.sync-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 4px 0;
+}
+.sync-error {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: 12px;
+  color: var(--danger);
+  padding: 0 6px 4px 0;
+}
+/* Where the canvas is too narrow for it beside the toolbar, it moves to the
+   bottom, clear of the zoom controls. */
+.board-canvas {
+  container-type: inline-size;
+}
+/* The canvas's foot clears the chat bar floating over it. */
+.board-layout:has(> .chat-float) .canvas-bottom {
+  margin-bottom: 80px;
+}
+@container (max-width: 920px) {
+  .sync {
+    top: auto;
+    bottom: 24px;
+    max-width: calc(100% - 80px);
+  }
+  .sync-sep {
+    display: none;
+  }
+  .canvas-bottom {
+    margin-bottom: 76px;
+  }
+  /* The sync and what's at the foot clear the chat bar floating there too. */
+  .board-layout:has(> .chat-float) .sync {
+    bottom: 84px;
+  }
+  .board-layout:has(> .chat-float) .canvas-bottom {
+    margin-bottom: 140px;
+  }
+}
+
+/* Across the bottom of a canvas: an error, and on the board context the bar
+   for syncing the blocks a person selected. */
+.canvas-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 30px);
+}
+.sync-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  background: var(--primary);
+  color: var(--primary-text);
+  border-radius: 12px;
+  padding: 6px 6px 6px 16px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+}
+.sync-selection-count {
+  font-weight: 500;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+.sync-selection-clear {
+  background: transparent;
+  color: inherit;
+  border-color: color-mix(in srgb, var(--primary-text) 22%, transparent);
+}
+.sync-selection-clear:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary-text) 12%, transparent);
+}
+.sync-selection-go {
+  border-color: var(--surface);
+}
+.sync-selection-error {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 12px;
+  padding: 0 10px 4px 0;
+}
+
+/* Older requests waiting on an agent, above the chat bar at the canvas's foot. */
+.ask-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100cqw - 32px);
+}
+.ask-pending-more {
+  font-size: 12px;
+  color: var(--faint);
+}
+.ask-pending .request-chip {
+  max-width: 100%;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+/* How a request is going: on its group's header, or by the bar. Blue while
+   it waits or an agent works on it, quiet once it's over. */
+.request-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.request-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 1px 10px 1px 3px;
+  border-radius: 999px;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  font-size: 12.5px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.request-chip.is-open .request-pill {
+  padding-left: 9px;
+}
+.request-pill .looking-mark,
+.request-pill .actor-mark {
+  flex: none;
+}
+.request-pill .frame-title,
+.request-title {
+  font-size: inherit;
+  font-weight: 600;
+}
+.request-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.request-chip.is-done .request-pill,
+.request-chip.is-cancelled .request-pill {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.request-chip.is-cancelled .request-pill {
+  padding-left: 10px;
+}
+.request-action {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.request-action:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.request-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+/* While an agent works and nothing has arrived yet, the group shows where
+   its answer will go. */
+.request-ghost {
+  position: absolute;
+  inset: 48px 16px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 150px) minmax(0, 64px);
+  align-content: start;
+  gap: 16px;
+  pointer-events: none;
+}
+.request-ghost span:last-child {
+  grid-column: 1 / -1;
+}
+.request-ghost span {
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--exploring) 18%, var(--border));
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--exploring-bg) 70%, var(--surface)) 30%,
+    color-mix(in srgb, var(--exploring-bg) 30%, var(--surface)) 50%,
+    color-mix(in srgb, var(--exploring-bg) 70%, var(--surface)) 70%
+  );
+  background-size: 300% 100%;
+  animation: request-ghost 2.4s ease-in-out infinite;
+}
+@keyframes request-ghost {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .request-ghost span {
+    animation: none;
+  }
+}
+.frame.is-request.is-open,
+.frame.is-request.is-working {
+  border-color: color-mix(in srgb, var(--exploring) 50%, transparent);
+  background: color-mix(in srgb, var(--exploring-bg) 45%, transparent);
+}
+/* The chip says what's going on while it's open; the count, and syncing the
+   group, come back after. */
+.frame.is-request.is-open :is(.frame-count, .frame-sync),
+.frame.is-request.is-working :is(.frame-count, .frame-sync) {
+  display: none;
+}
+.frame.is-request.is-selected {
+  border-style: solid;
+  border-color: var(--text);
+}
+
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  max-width: 440px;
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+.canvas-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+
+.placeholder {
+  color: var(--faint);
+}
+.editable {
+  cursor: text;
+}
+.editable-input {
+  padding: 2px 6px;
+  font-size: inherit;
+  font-weight: inherit;
+  min-width: 0;
+}
+
+.block {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.block.is-selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text), var(--shadow);
+}
+.block.is-highlighted {
+  border-color: var(--open);
+  box-shadow: 0 0 0 1px var(--open), var(--shadow);
+}
+.block-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  min-width: 0;
+}
+.block-head:active {
+  cursor: grabbing;
+}
+.block-kind {
+  flex: none;
+  font-size: 11px;
+  color: var(--faint);
+}
+.block-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.block-pin {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.block-pin.is-outdated {
+  background: none;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  text-decoration: line-through;
+}
+.block-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 13px;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+}
+.block-body > * {
+  flex-shrink: 0;
+}
+/* A note is the canvas's reading surface: it reads at the body size, not the
+   13px of other blocks' content, so it holds up at the zoom a canvas opens at. */
+.block-note {
+  flex: 1 0 auto;
+  font-size: 14px;
+}
+.block-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  resize: none;
+  font-size: 13px;
+}
+.block-editor-code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.block-table-wrap {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.block-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.block-table th,
+.block-table td {
+  position: relative;
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.block-table th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.block-table .editable {
+  display: block;
+  min-height: 1.4em;
+}
+.block-table .editable-input {
+  width: 100%;
+}
+.table-add-col,
+.table-row-remove {
+  width: 24px;
+  border: none !important;
+  background: none !important;
+  padding: 0 2px !important;
+}
+.table-add-col button,
+.table-row-remove button,
+.cell-remove {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  color: var(--faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  padding: 3px;
+  cursor: pointer;
+}
+.table-add-col button:hover,
+.table-row-remove button:hover,
+.cell-remove:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.block-table th .cell-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+}
+.block-table th:hover .cell-remove {
+  opacity: 1;
+}
+.block-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.block-add:hover {
+  color: var(--text);
+}
+
+/* A note's tasks, how far along: beside its title, quietly. */
+.note-progress {
+  flex: none;
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Pictures and diagrams take the block's room, less their pins' strip. */
+.block-body > .block-image,
+.block-body > .block-diagram {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.block-image {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.block-image-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.block-image img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.block-image figcaption {
+  font-size: 12px;
+  color: var(--muted);
+}
+.block-diagram,
+.block-diagram .mermaid {
+  width: 100%;
+  height: 100%;
+}
+/* Scale the whole diagram to fit the block, keeping its proportions. */
+.block-diagram .mermaid svg {
+  width: 100%;
+  height: 100%;
+  max-width: none !important;
+}
+.mermaid-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+.block-type-comparison .table-wrap {
+  border: none;
+}
+
+/* A link block is one compact row: its site's icon, its title over its host,
+   and the usual badges. The whole row drags the block; only the title opens.
+   A site Tricot has no icon for shows a plain link icon (.site-icon). */
+.block-head.block-link {
+  flex: 1;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: none;
+}
+.site-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.block-link-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.block-link-title,
+.block-link-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.block-link-title {
+  justify-self: start;
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.block-link-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.block-link-host {
+  font-size: 12px;
+  color: var(--faint);
+}
+.block-link-editor {
+  flex: 1;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+.block-link-editor input,
+.add-link input {
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.block-link-editor input[aria-invalid='true'],
+.add-link input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+/* A recognised link shows its source's mark, and a link to a site people
+   link often shows that site's (canvas/sources/sites.tsx), drawn on a tile in
+   the service's own colours. A recognised link has Open here when it can be
+   shown in place. Open, the card's row heads an embedded view that takes the
+   rest of the block. */
+.source-mark {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+.source-mark svg {
+  display: block;
+}
+/* Near-black tiles keep an edge on a dark canvas. */
+.source-mark.is-dark {
+  outline: 1px solid var(--dark-tile-edge);
+  outline-offset: -1px;
+}
+.block-link-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.block-head.block-link.is-open {
+  flex: none;
+}
+.block-link-host:has(.block-link-lead) {
+  display: flex;
+  white-space: pre;
+}
+.block-link-lead {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block-link-rest {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.link-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 8px;
+  cursor: default;
+}
+.link-frame-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.link-frame-stage iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.link-frame-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--faint);
+}
+/* After a while without loading, a plain note covers the frame; it lifts if
+   the view turns up after all. */
+.link-frame-note {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--surface-2);
+}
+.link-frame-banner {
+  display: grid;
+  gap: 10px;
+  max-width: 46ch;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.link-frame-banner .btn-quiet {
+  color: var(--open-ink);
+}
+.link-frame-help {
+  font-size: 12px;
+  color: var(--faint);
+}
+.link-frame-help a {
+  color: var(--muted);
+  text-underline-offset: 2px;
+}
+.link-frame-help a:hover {
+  color: var(--text);
+}
+/* An embedded page swallows the pointer, which would stall a drag or resize
+   passing over it. */
+.react-flow:has(.react-flow__node.dragging, .react-flow__pane.dragging, .block.is-resizing) .link-frame iframe {
+  pointer-events: none;
+}
+
+.block-handle.react-flow__handle {
+  width: 11px;
+  height: 11px;
+  background: var(--surface);
+  border: 1.5px solid var(--muted);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.block:hover .block-handle.react-flow__handle,
+.block.is-selected .block-handle.react-flow__handle {
+  opacity: 1;
+}
+/* On an archived board nothing links, so the handles stay hidden. */
+.canvas.is-read-only .block .block-handle.react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+.canvas.is-read-only .block-head {
+  cursor: default;
+}
+.block-target.react-flow__handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  opacity: 0;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+}
+.block-target.react-flow__handle.is-active {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  border-radius: var(--radius);
+  pointer-events: all;
+}
+
+.frame {
+  width: 100%;
+  height: 100%;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+.frame.is-selected {
+  border-style: solid;
+  border-color: var(--text);
+}
+.frame-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+}
+.frame-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.frame-count {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+/* By the name, clear of the toolbars over its selected blocks' right ends. */
+.frame-sync {
+  margin-left: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.frame-sync:hover {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.node-toolbar {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  box-shadow: var(--shadow);
+}
+.node-toolbar button,
+.node-toolbar select {
+  width: auto;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.node-toolbar button:hover,
+.node-toolbar select:hover {
+  background: var(--surface-2);
+}
+
+/* Link labels sit above blocks so a label in a narrow gap stays readable. */
+.canvas .react-flow__edgelabel-renderer {
+  z-index: 4;
+}
+.link-path.is-selected {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+.link-label {
+  position: absolute;
+  pointer-events: all;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+.link-label.is-selected {
+  border-color: var(--text);
+  color: var(--text);
+}
+.link-label input {
+  width: 150px;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  background: transparent;
+}

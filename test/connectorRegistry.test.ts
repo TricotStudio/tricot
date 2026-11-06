@@ -10,10 +10,12 @@ import { serverConnectors } from '../src/server/connectors/registry';
 
 describe('The connector registries', () => {
   it('lists each connector once on the core and server sides, by the same ids', () => {
-    assert.deepEqual(connectorKinds().map((k) => k.id), ['google', 'figma', 'github']);
+    assert.deepEqual(connectorKinds().map((k) => k.id), ['google', 'figma', 'github', 'slack', 'linear']);
     assert.deepEqual(serverConnectors.map((k) => k.id), connectorKinds().map((k) => k.id));
     assert.equal(findConnector('google')?.name, 'Google');
     assert.equal(findConnector('github')?.name, 'GitHub');
+    assert.equal(findConnector('slack')?.name, 'Slack');
+    assert.equal(findConnector('linear')?.name, 'Linear');
     assert.equal(findConnector('nope'), undefined);
   });
 
@@ -24,6 +26,8 @@ describe('The connector registries', () => {
     assert.equal(linkSource('https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOp/edit')?.editable, undefined);
     assert.equal(linkSource('https://www.figma.com/file/aBcD1234/Old-file')?.connector, 'figma');
     assert.equal(linkSource('https://www.figma.com/community/file/836596421863073964/mobile-ui-kit')?.connector, undefined);
+    assert.equal(linkSource('https://linear.app/acme/issue/ENG-123/fix-the-login')?.connector, 'linear');
+    assert.equal(linkSource('https://linear.app/acme/team/ENG/active')?.connector, undefined);
     assert.equal(linkSource('https://www.youtube.com/watch?v=dQw4w9WgXcQ')?.connector, undefined);
   });
 
@@ -36,7 +40,7 @@ describe('The connector registries', () => {
       { scope: 'email', label: 'See your email address, to show which account is connected', granted: true },
       { scope: DOCS_SCOPE, label: 'See and edit your Google Docs', granted: false },
     ]);
-    assert.match(connectorsLine([]), /^Connectors: none connected\. People connect services such as Google, Figma and GitHub on the Connectors page/);
+    assert.match(connectorsLine([]), /^Connectors: none connected\. People connect services such as Google, Figma, GitHub, Slack and Linear on the Connectors page/);
   });
 
   it('finds the connector that owns a kind of pin', () => {

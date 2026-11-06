@@ -2,7 +2,7 @@
 // the update options the `tricot` command gives it, except that npm, Homebrew
 // and npx are stand-ins, and so is the `tricot` they install.
 //
-//   handoffChild.ts --pkg <dir> start --port <n> --host <h> --data <dir> --no-open --no-hooks
+//   handoffChild.ts --pkg <dir> start --port <n> --host <h> --data <dir> --no-open --no-ask
 //   handoffChild.ts --pkg <dir> --version
 //   handoffChild.ts --as <version> start …       npx's stand-in: runs as that version
 //
@@ -11,6 +11,7 @@
 //   HANDOFF_ROOT     the package folder it says it runs from, which says how it was installed
 //   HANDOFF_NPM      npm's stand-in, as JSON {command, args}
 //   HANDOFF_BROKEN   a version that fails to start
+//   HANDOFF_MIGRATES a version that migrates the boards to a data version newer than this code reads, then fails to start
 //   HANDOFF_WEB      the built pages to serve, for screenshots
 //   TRICOT_UPDATE_URL  what the registry says
 //   TRICOT_RELEASES_URL  where GitHub's latest release is asked for (a stand-in)
@@ -18,9 +19,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import type { Command } from '../src/server/handoff';
+import { DATABASE_FILE } from '../src/core/store/boardDb';
+import { MIGRATIONS, openDatabase, type Migration } from '../src/core/store/migrations';
+import type { Command } from '../src/install/handoff';
 import { startServer } from '../src/server/start';
-import { releasesFromEnv } from '../src/server/updates';
+import { releasesFromEnv } from '../src/install/updates';
 
 const here = fileURLToPath(import.meta.url);
 const repo = path.resolve(path.dirname(here), '..');
@@ -33,7 +36,7 @@ const { values } = parseArgs({
     host: { type: 'string' },
     data: { type: 'string' },
     'no-open': { type: 'boolean' },
-    'no-hooks': { type: 'boolean' },
+    'no-ask': { type: 'boolean' },
     'no-update-check': { type: 'boolean' },
     version: { type: 'boolean' },
   },
@@ -46,6 +49,15 @@ if (values.version) {
 }
 if (process.env.HANDOFF_BROKEN === version) {
   console.error(`Tricot ${version} is broken on purpose.`);
+  process.exit(3);
+}
+// A version whose data is newer than the one that started it: it migrates the
+// boards (after the copy every migration starts with), writes in the form only
+// it reads, and then fails to start.
+if (process.env.HANDOFF_MIGRATES === version) {
+  const newer: Migration = { name: 'what only the newer one reads', up: (db) => db.exec('CREATE TABLE from_the_newer_one (n INTEGER); INSERT INTO from_the_newer_one VALUES (1)') };
+  openDatabase(path.join(values.data!, DATABASE_FILE), [...MIGRATIONS, newer]).close();
+  console.error(`Tricot ${version} migrated the boards, and then failed on purpose.`);
   process.exit(3);
 }
 

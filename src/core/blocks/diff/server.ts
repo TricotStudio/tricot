@@ -4,12 +4,14 @@
 import { z } from 'zod';
 import type { DiffTypes } from './index';
 import { type DiffSide, diffAdvice, DiffError, type DiffFile, countText, diffDigest, diffTotals, lineAt, lineQuote, matchFocus, readPatch, shownLines } from './diff';
-import type { AgentHalf, ServerHalf } from '../kind';
+import type { AgentHalf, AgentIo, ServerHalf } from '../kind';
 import { missing } from '../shared';
 import { BoardError } from '../../store/errors';
 import { blockLabel } from '../../canvas';
 import { clip, listNames } from '../../format';
 import { LIMITS } from '../../store/validate';
+import type { Block } from '../../types';
+import { repoPatch } from './repo';
 
 // The files to open first, as the patch names them. Paths it doesn't have are left out.
 function focusOn(files: DiffFile[], focus: string[] | undefined): { focus?: string[] } {
@@ -31,22 +33,47 @@ function diffContent(patch: string, focus: string[] | undefined): { patch: strin
   }
 }
 
+// The fields that name a diff in a repository instead of sending it, the same for add_block and update_block.
+const FROM_REPO = {
+  repo: z.string().optional().describe("Diff blocks, instead of patch: a git repository's folder on this computer (full path or ~/…, inside your home folder); Tricot runs git diff there"),
+  range: z.string().optional().describe('Diff blocks, with repo: commits to compare, A..B or A...B, or one commit for its own changes'),
+  against: z.string().optional().describe('Diff blocks, with repo: the commit the working tree is compared to, staged, unstaged and new files together (the default: HEAD)'),
+  paths: z.array(z.string()).optional().describe("Diff blocks, with repo: only these files or folders, from the repository's top folder"),
+};
+const REPO_FIELDS = Object.keys(FROM_REPO);
+
+// The patch for a diff named in a repository, read with git, in place of the fields that named it.
+async function fill(args: Record<string, unknown>, io: AgentIo, block?: Block): Promise<Record<string, unknown> | undefined> {
+  if (!REPO_FIELDS.some((name) => args[name] !== undefined)) return undefined;
+  if (block && block.type !== 'diff') throw new BoardError(`${blockLabel(block)} isn't a diff: repo, range, against and paths make a diff's patch.`);
+  if (args.repo === undefined) throw new BoardError("Pass repo with range, against or paths: the repository's folder, for Tricot to diff.");
+  if (args.patch !== undefined) throw new BoardError('Send patch or repo, not both.');
+  if (!io.localFiles) throw new BoardError('This server is reachable from other machines, so repo is disabled. Send patch.');
+  const patch = await repoPatch({ repo: args.repo as string, range: args.range as string | undefined, against: args.against as string | undefined, paths: args.paths as string[] | undefined });
+  const { repo: _repo, range: _range, against: _against, paths: _paths, ...rest } = args;
+  return { ...rest, patch };
+}
+
 export const agent: AgentHalf<DiffTypes> = {
   addShape: {
     patch: z.string().optional().describe('Diff blocks: a unified diff, as git diff or git show prints it'),
+    ...FROM_REPO,
     focus: z.array(z.string()).optional().describe('Diff blocks: paths of the files that matter most, opened first'),
   },
   updateShape: {
     patch: z.string().optional().describe('Diff blocks: a new unified diff, replacing the one shown; the old one is kept as a version'),
+    ...FROM_REPO,
     focus: z.array(z.string()).optional().describe('Diff blocks: the files to open first'),
   },
   docs: {
-    add: 'diff → patch (a unified diff, as git diff or git show prints it), plus optional focus (paths of the files that matter, opened first). People see it file by file and comment on its lines',
-    more: 'When you send code work for review, add a diff block too (type diff, with the git diff of the work as patch), next to the screenshots, with the files that matter as focus.',
-    update: 'patch, focus',
+    brief: 'diff → repo (Tricot runs git diff) or patch',
+    add: "diff → repo (your repository's folder: Tricot diffs it itself, by default your uncommitted work against HEAD) or patch (a unified diff, as git diff or git show prints it), plus optional focus (paths of the files that matter, opened first). People see it file by file and comment on its lines",
+    more: 'When you send code work for review, add a diff block too (type diff, with your repository as repo rather than the patch as text), next to the screenshots, with the files that matter as focus.',
+    update: 'patch or repo (with range, against, paths), focus',
   },
+  fill,
   read(args) {
-    if (args.patch === undefined) throw missing('diff', 'patch (a unified diff: the output of git diff or git show)');
+    if (args.patch === undefined) throw missing('diff', "patch (a unified diff: the output of git diff or git show), or repo (a git repository's folder, for Tricot to diff)");
     const patch = args.patch as string;
     const focus = args.focus as string[] | undefined;
     return () => ({ type: 'diff', patch, focus });

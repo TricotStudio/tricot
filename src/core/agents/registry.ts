@@ -1,0 +1,65 @@
+// The agents Tricot connects to a board, one entry each. A new agent is a
+// folder (core/agents/<id>/: index.ts and server.ts) and an import and an
+// entry here; everything that handles agents asks this list (the commands
+// `tricot <agent>` and `tricot connect`, the Connect panel, first run, usage,
+// the live-steps installers), and none names an agent. Internal: nothing is
+// loaded from outside this repository.
+
+import { agentUrl, type Shell } from '../connect';
+import type { AgentKind } from './agent';
+import { claude } from './claude';
+import { codex } from './codex';
+import { gemini } from './gemini';
+import { omp } from './omp';
+import { opencode } from './opencode';
+import { pi } from './pi';
+
+// Their order is the Connect panel's, and the live-steps installers'. It is a
+// function so the agents are read once they have all loaded, however the
+// modules happen to be imported.
+const registered = (): readonly AgentKind[] => [claude, codex, pi, omp, gemini, opencode];
+
+let all: readonly AgentKind[] | undefined;
+
+export function agentKinds(): readonly AgentKind[] {
+  return (all ??= registered());
+}
+
+export function findAgent(id: string): AgentKind | undefined {
+  return agentKinds().find((kind) => kind.id === id);
+}
+
+// The agent whose MCP client calls itself this when it connects (clientInfo.name).
+export const agentOfMcpClient = (clientName: string | undefined): AgentKind | undefined =>
+  clientName === undefined ? undefined : agentKinds().find((kind) => kind.mcpClient.clientName.toLowerCase() === clientName.toLowerCase());
+
+// The agent whose harness posts its usage as this source.
+export const agentOfSource = (source: string): AgentKind | undefined => agentKinds().find((kind) => kind.usage.source === source);
+
+// In the order `tricot --help` and the Tricot tab list them, which is not the
+// panel's: by cliOrder, those without one last.
+export const agentsInCliOrder = (): AgentKind[] => [...agentKinds()].sort((a, b) => (a.cliOrder ?? Infinity) - (b.cliOrder ?? Infinity));
+
+// What an agent is installed with on this system: Windows' own commands when
+// it has them, else the same everywhere.
+export function installHints(kind: AgentKind, windows: boolean): { commands: string[]; more?: string } {
+  const { commands, windows: onWindows, more } = kind.install;
+  return { commands: windows && onWindows ? onWindows : commands, ...(more && { more }) };
+}
+
+// The Connect panel's tabs: each agent as the tool it is, and any other client.
+export const PANEL_OTHER = 'other';
+export type PanelTool = string;
+
+// What the Connect panel shows, and its Copy button copies, for each agent
+// tool: each named on the board as the tool is. `other` is the bare address,
+// for any client's settings rather than a shell. `shell`: the one the
+// commands are for (the page says it from the person's system).
+export function panelTexts(mcpUrl: string, shell?: Shell): Record<PanelTool, string> {
+  const texts: Record<PanelTool, string> = { [PANEL_OTHER]: mcpUrl };
+  for (const { id, boardName, connect } of agentKinds()) {
+    const url = agentUrl(mcpUrl, boardName);
+    texts[id] = connect.how === 'command' ? connect.lines(url, undefined, shell).join('\n') : connect.entry(url);
+  }
+  return texts;
+}

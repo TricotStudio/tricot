@@ -13,8 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { FromFrame, PickedElement, Rect } from '../../../../core/blocks/site/messages';
 import { siteName, siteSourceWords } from '../../../../core/blocks/site/site';
 import type { Block, Pin } from '../../../../core/types';
-import { api } from '../../../api';
-import { Icon } from '../../../components';
+import { api } from '../../../shared/api';
+import { Icon } from '../../../shared/components';
 import { useCanvas } from '../../context';
 import { PinLine } from '../../pairing/pinLine';
 import { usePairing } from '../../pairing/session';

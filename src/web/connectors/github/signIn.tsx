@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConnectorStatus } from '../../../core/connectors';
 import type { DeviceView } from '../../../core/connectors/github/wire';
-import { Icon } from '../../components';
+import { Icon } from '../../shared/components';
 import { githubApi } from './api';
 import { forgetCards } from './cards';
 

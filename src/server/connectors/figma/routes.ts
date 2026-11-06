@@ -9,6 +9,8 @@ import { ConnectorError } from '../oauth';
 import { FIGMA_CODES } from './client';
 import type { FigmaConnector } from './connector';
 import type { FigmaFrames } from './frames';
+import { routes } from '../../../core/routes';
+import { routesOn } from '../../routing';
 
 const actorName = z.string().trim().min(1).max(60);
 const bodies = {
@@ -24,20 +26,21 @@ const QUIET = [FIGMA_CODES.notConnected, FIGMA_CODES.needsSignIn, FIGMA_CODES.to
 
 export function figmaRoutes(figma: FigmaConnector, frames: FigmaFrames): Router {
   const router = Router();
+  const on = routesOn(router, '/api/connectors/figma');
   router.use((_req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
   });
 
   // A pasted token: checked with Figma, kept, and the connector's new status.
-  router.post('/token', async (req, res) => {
+  on(routes.figmaToken, async (req, res) => {
     const { token } = bodies.token.parse(req.body);
     res.json({ connector: await figma.connect(token) });
   });
 
   // A link card's file or frame: its name and thumbnail, or why not. Never an
   // error, so a board of cards stays quiet while Figma is not connected.
-  router.get('/files/:fileId', async (req: Request, res) => {
+  on(routes.figmaFile, async (req: Request, res) => {
     try {
       res.json({ file: await frames.card(String(req.params.fileId)) });
     } catch (error) {
@@ -50,13 +53,13 @@ export function figmaRoutes(figma: FigmaConnector, frames: FigmaFrames): Router 
   });
 
   // "Bring in this frame": an image block of the frame a link card points to.
-  router.post('/frames', async (req, res) => {
+  on(routes.figmaBringIn, async (req, res) => {
     const { actor, blockId } = bodies.bringIn.parse(req.body);
     res.status(201).json({ block: await frames.bringIn(blockId, person(actor)) });
   });
 
   // "Refresh" on an image brought in from Figma.
-  router.post('/images/:blockId/refresh', async (req, res) => {
+  on(routes.figmaRefresh, async (req, res) => {
     const { actor } = bodies.refresh.parse(req.body);
     res.json(await frames.refresh(String(req.params.blockId), person(actor)));
   });

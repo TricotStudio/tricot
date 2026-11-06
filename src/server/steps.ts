@@ -39,7 +39,7 @@
 // the limit they are dropped, which a hook doesn't notice.
 //
 // One event can come twice: an agent with Tricot's hook both in its own
-// settings and in a project's (`tricot connect claude --hooks` from before)
+// settings and in a project's (`tricot steps on --agent claude --project` from before)
 // runs both copies on each event, at once. The second copy is the same step,
 // and is kept once (duplicateOf): same agent, session and subagent, the same
 // kind of step, and either the same tool call (its id, both carrying one) or,

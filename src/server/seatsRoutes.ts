@@ -26,6 +26,8 @@ import { browserLabel, SEAT_NEEDED, terminalLabel, TERMINAL_LABEL, type SeatPubl
 import { actorName, describeIssues } from '../core/schemas';
 import { NEEDS_SEAT, type PersonGate } from './access';
 import { isSeatKey, type Seat, type Seats } from './seats';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
 
 const askBody = z.object({ publicKey: z.unknown(), label: z.string().max(200).optional() });
 // `terminal`: answering the very first browser, the terminal's own key, to be let in with it.
@@ -35,6 +37,7 @@ const idParam = z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/, 'Not an
 
 export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
   const router = Router();
+  const on = routesOn(router, '/api/seats');
   const needsSeat = { error: NEEDS_SEAT, code: SEAT_NEEDED };
 
   // The seat this request is signed by, at tier B; else the refusal sent.
@@ -47,7 +50,7 @@ export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
 
   // ---- asking to be let in ------------------------------------------------------------
 
-  router.post('/admissions', (req, res) => {
+  on(routes.askToBeLetIn, (req, res) => {
     const verdict = person(req, 'A');
     if (!verdict.ok) {
       res.status(403).json({ error: verdict.error, ...(verdict.code && { code: verdict.code }) });
@@ -72,7 +75,7 @@ export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
     res.status(asked.state.state === 'admitted' ? 200 : 201).json(asked.state);
   });
 
-  router.get('/admissions/:id', (req, res) => {
+  on(routes.admission, (req, res) => {
     const verdict = person(req, 'A');
     if (!verdict.ok) {
       res.status(403).json({ error: verdict.error });
@@ -87,7 +90,7 @@ export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
 
   // A seat sees every admission waiting; a terminal that isn't one, while
   // there is no seat at all, the first browser's.
-  router.get('/admissions', (req, res) => {
+  on(routes.admissions, (req, res) => {
     const verdict = person(req, 'B');
     if (verdict.ok && verdict.seat) {
       res.json(seats.waiting());
@@ -101,7 +104,7 @@ export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
     res.status(403).json(verdict.ok ? needsSeat : { error: verdict.error, ...(verdict.code && { code: verdict.code }) });
   });
 
-  router.post('/admissions/:id/answer', (req, res) => {
+  on(routes.answerAdmission, (req, res) => {
     const { id } = idParam.parse(req.params);
     const { actor, allow, terminal } = answerBody.parse(req.body);
     const verdict = person(req, 'B');
@@ -123,24 +126,24 @@ export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
 
   // ---- the person's list -----------------------------------------------------------------------
 
-  router.get('/', (req, res) => {
+  on(routes.seats, (req, res) => {
     const seat = seatOf(req, res);
     if (seat) res.json(seats.views(seat.id));
   });
 
-  router.post('/ticket', (req, res) => {
+  on(routes.seatTicket, (req, res) => {
     const seat = seatOf(req, res);
     if (seat) res.json(seats.ticket(seat));
   });
 
-  router.post('/beat', (req, res) => {
+  on(routes.seatBeat, (req, res) => {
     const seat = seatOf(req, res);
     if (!seat) return;
     seats.beat(seat.id);
     res.json({ held: true });
   });
 
-  router.post('/release', (req, res) => {
+  on(routes.seatRelease, (req, res) => {
     const seat = seatOf(req, res);
     if (!seat) return;
     if (seat.kind !== 'terminal') {
@@ -151,7 +154,7 @@ export function createSeatsRouter(seats: Seats, person: PersonGate): Router {
     res.json({ released: true });
   });
 
-  router.post('/:id/remove', (req, res) => {
+  on(routes.removeSeat, (req, res) => {
     const seat = seatOf(req, res);
     if (!seat) return;
     const { id } = idParam.parse(req.params);

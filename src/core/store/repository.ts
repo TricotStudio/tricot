@@ -9,8 +9,8 @@ import type { AgentSkill, SkillList, TricotSkill } from '../skills';
 import type { CanvasRef, Located } from './inputs';
 import { randomId, slugify } from './validate';
 import { deletedCardLine } from '../cardLinks';
-import { emptyActivity, noteEvent } from '../activity';
-import { MAX_VERSIONS, emptyCanvas } from '../canvas';
+import { noteEvent } from '../activity';
+import { MAX_VERSIONS } from '../canvas';
 import { boardKey, type Actor, type Block, type BlockVersion, type Board, type BoardEvent, type Canvas, type Decision, type EventType, type Pin, type Task, type Thread } from '../types';
 
 export function refOf(located: Located): CanvasRef {
@@ -56,48 +56,29 @@ export class BoardRepository {
     this.db.beforeWrite = hook;
   }
 
+  // Reads every board in the database. A board comes back whole: the fields
+  // an earlier Tricot saved boards without were added by a migration
+  // (shapeDefaults.ts), so nothing here fills in what a board lacks.
   load(): void {
     for (const board of this.db.readAll()) {
       try {
-        board.activity ??= emptyActivity();
-        board.canvas ??= emptyCanvas(); // boards saved before canvases existed
-        board.tasks ??= [];
-        board.nextTaskNumber ??= 1;
         this.boards.set(board.id, board);
         for (const alias of board.aliases ?? []) this.aliasIndex.set(alias, board.id);
-        board.canvas.pins ??= []; // canvases saved before pins existed
         for (const task of board.tasks) {
-          task.comments ??= [];
-          task.canvas ??= emptyCanvas();
-          task.canvas.pins ??= [];
           this.taskIndex.set(task.id, board.id);
           this.indexCanvas(task.canvas, { taskId: task.id });
-          for (const block of task.canvas.blocks) block.rev ??= 1;
         }
         this.indexCanvas(board.canvas, { boardId: board.id });
-        for (const block of board.canvas.blocks) block.rev ??= 1;
         for (const thread of board.threads ?? []) this.threadIndex.set(thread.id, boardKey(board));
-        // Syncs asked for before people could select blocks had "Include mine";
-        // an open one now reads as a sync of all, which leaves people's blocks alone.
-        for (const record of [board.syncRequest, board.synced]) {
-          if (record) delete (record as { includeMine?: boolean }).includeMine;
-        }
         for (const decision of board.decisions) {
-          decision.canvas ??= emptyCanvas();
-          decision.canvas.pins ??= [];
-          decision.history ??= [];
-          decision.asks ??= [];
-          decision.criteria ??= [];
-          decision.marks ??= [];
           this.decisionIndex.set(decision.id, board.id);
           this.indexCanvas(decision.canvas, { decisionId: decision.id });
-          for (const block of decision.canvas.blocks) block.rev ??= 1;
         }
       } catch (error) {
         console.error(`Skipping unreadable board ${board.id}:`, error);
         continue;
       }
-      // What the board is, once tidied, is what the database should hold.
+      // The board as the store keeps it, once its stale entries are pruned, is what the database should hold.
       this.db.adopt(board);
     }
   }

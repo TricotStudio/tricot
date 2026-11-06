@@ -223,6 +223,8 @@ describe('The person gate, in two tiers', () => {
       ['/token', '/github/token'],
       ['/blocks/:blockId/diff', `/github/blocks/${block}/diff`],
       ['/blocks/:blockId/file', `/github/blocks/${block}/file`],
+      ['/key', '/linear/key'],
+      ['/decisions/:decisionId/share', '/slack/decisions/any-decision/share'], // posts to Slack as the person: only a seat
     ];
     assert.deepEqual(posts.map((r) => r.path).sort(), listed.map(([route]) => route).sort(), 'every change a connector takes is listed here');
     for (const [, route] of listed) await tierB('POST', `/api/connectors${route}`);

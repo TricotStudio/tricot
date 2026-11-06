@@ -13,6 +13,7 @@ import { redirectTo } from '../src/server/sites/proxy';
 import { SiteServer } from '../src/server/sites/siteServer';
 import { watchable } from '../src/server/sites/watch';
 import { startServer, type RunningServer } from '../src/server/start';
+import { WINDOWS } from './platform';
 
 // A home folder of its own, holding a website's folder, and a secret beside it.
 const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'tricot-site-server-')));
@@ -184,7 +185,7 @@ describe('The site server', () => {
     }
   });
 
-  it("says a page's file can't be read, and keeps serving", { skip: process.getuid?.() === 0 && 'root reads anything' }, async () => {
+  it("says a page's file can't be read, and keeps serving", { skip: WINDOWS ? 'chmod cannot lock a file' : process.getuid?.() === 0 && 'root reads anything' }, async () => {
     const locked = path.join(folder, 'locked.html');
     writeFileSync(locked, '<p>locked</p>');
     chmodSync(locked, 0o000);

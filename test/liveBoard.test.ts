@@ -4,9 +4,9 @@ import { emptyActivity } from '../src/core/activity';
 import { emptyCanvas } from '../src/core/canvas';
 import { tallyOf, type BoardChange, type LiveState } from '../src/core/changes';
 import type { Actor, BoardEvent } from '../src/core/types';
-import type { AgentPresence, AgentStep, LiveBoard } from '../src/web/api';
-import { EventFeed } from '../src/web/events';
-import { BoardSession, type SourceLike } from '../src/web/liveBoard';
+import type { AgentPresence, AgentStep, LiveBoard } from '../src/web/shared/api';
+import { EventFeed } from '../src/web/live/events';
+import { BoardSession, type SourceLike } from '../src/web/live/liveBoard';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const alex: Actor = { kind: 'human', name: 'Alex' };

@@ -1,7 +1,7 @@
 // What the person types, sorted between Tricot and the agent that shows
 // (host.ts acts on it). Everything goes to the agent, byte for byte, except:
 //
-//   the switch key (Ctrl+\ unless --switch-key)   next tab, at once
+//   the switch key (Ctrl+\)                       next tab, at once
 //   … then, within a second:  0     the Tricot tab (T192), when there is one
 //                             1–9   that agent
 //                             q     quit: every agent is closed
@@ -25,27 +25,14 @@
 // wheel scroll; q or Esc goes back to the agent.
 import { isModifierKey, legacyOf, readKey, type KeyEvent } from './keyboard';
 
-export const SWITCH_KEY_DEFAULT = 'ctrl-\\';
-
 export interface SwitchKey {
   byte: number; // 0x1c
   label: string; // "Ctrl+\"
 }
 
-// Keys the agents need too much to give up: Ctrl+C, Enter, Tab, Backspace,
-// Esc, Ctrl+J (a new line), and Ctrl+Z, which does nothing here.
-const TAKEN: Record<string, string> = { c: 'Ctrl+C interrupts the agent', m: 'Ctrl+M is Enter', i: 'Ctrl+I is Tab', h: 'Ctrl+H is Backspace', j: 'Ctrl+J is a new line', '[': 'Ctrl+[ is Esc', z: 'Ctrl+Z is off here', '@': 'Ctrl+@ sends nothing most terminals show' };
-
-// "ctrl-\", "ctrl+]", "C-g", "^_": a control key, as --switch-key names it.
-export function parseSwitchKey(text: string): SwitchKey | { problem: string } {
-  const match = /^(?:ctrl[-+]|c-|\^)(.)$/i.exec(text.trim());
-  const ch = match?.[1].toLowerCase();
-  if (!ch || !/^[a-z@\\\]^_[]$/.test(ch)) {
-    return { problem: `--switch-key takes a control key, like ctrl-\\ (the default), ctrl-] or ctrl-g; "${text}" isn't one.` };
-  }
-  if (TAKEN[ch]) return { problem: `--switch-key can't be ${text}: ${TAKEN[ch]}.` };
-  return { byte: ch.toUpperCase().charCodeAt(0) & 0x1f, label: `Ctrl+${/[a-z]/.test(ch) ? ch.toUpperCase() : ch}` };
-}
+// Ctrl+\ and no other: the agents need the rest of the control keys too much
+// (Ctrl+C interrupts, Ctrl+] is Codex's own), and Ctrl+Z does nothing here.
+export const SWITCH_KEY: SwitchKey = { byte: 0x1c, label: 'Ctrl+\\' };
 
 export type HostAction =
   | { kind: 'send'; data: Buffer } // to the agent showing, or the Tricot tab

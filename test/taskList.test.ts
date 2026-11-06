@@ -17,6 +17,7 @@ import type { Actor, Block, Pin } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { jsonFolder } from './savedBoard';
 import { eventsOf, legacyBoard, versionsOf } from './tables';
+import { readGuide } from './guide';
 
 const agent: Actor = { kind: 'agent', name: 'planner' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -405,11 +406,15 @@ describe('Agents asking for checklists, over MCP', () => {
     const { tools } = await client.listTools();
     const add = tools.find((t) => t.name === 'add_block')!;
     const update = tools.find((t) => t.name === 'update_block')!;
-    assert.match(add.description!, /note → text \(Markdown; task lists live in notes, as "- \[ \] step" lines people tick and "- \[x\] step" once done\); checklist → items, accepted for compatibility: it makes a note with that task list;/);
-    assert.match(update.description!, /Items replace a note's task list and leave the prose around it alone; a task keeps its tick when its words match\./);
+    assert.match(add.description!, /note → text \(Markdown; "- \[ \] step" lines make a task list\)/);
+    const blocks = await readGuide(client, 'blocks');
+    assert.match(blocks, /note → text \(Markdown; task lists live in notes, as "- \[ \] step" lines people tick and "- \[x\] step" once done\); checklist → items, accepted for compatibility: it makes a note with that task list;/);
+    assert.match(update.description!, /items leave a note's prose alone/);
+    assert.match(blocks, /Items replace a note's task list and leave the prose around it alone; a task keeps its tick when its words match\./);
     const type = (add.inputSchema.properties as Record<string, { enum?: string[] }>).type;
     assert.deepEqual(type.enum?.slice(0, 3), ['note', 'table', 'checklist']);
     assert.doesNotMatch(add.description!, /a checklist for steps/);
+    assert.doesNotMatch(blocks, /a checklist for steps/);
   });
 
   it('makes a note with the task list an agent sends as a checklist', async () => {

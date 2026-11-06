@@ -1,16 +1,16 @@
 // Live steps for the person: each agent's state, and turning one on or off,
 // for every project on this machine (the user scope). The `tricot` command
-// (its first-run question and `tricot hooks`) and the routes behind each
+// (its first-run question and `tricot steps`) and the routes behind each
 // agent's "Live steps" switch (server/liveStepsRoutes.ts) both come here, and
 // both show the plan before anything is written: applying takes the plan the
 // person saw, never a new one.
 //
 // Turning steps on or off never touches a project's settings. Claude Code
-// can also have a project's own hook from earlier (`tricot connect claude
-// --hooks`); with both, each event comes twice, and the server keeps one
+// can also have a project's own hook from earlier (`tricot steps on
+// --agent claude --project`); with both, each event comes twice, and the server keeps one
 // (server/steps.ts), so it does no harm. The state says it is there, and
 // tidying it up is a plan of its own (scope 'project'), as
-// `tricot connect claude --remove-hooks` is in that project.
+// `tricot steps off --agent claude --project` is in that project.
 
 import { createHash } from 'node:crypto';
 import path from 'node:path';

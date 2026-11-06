@@ -1,9 +1,10 @@
 // This terminal, for `tricot claude`: its keys, one at a time, for the board
 // picker (boardPicker.ts), and the agent run in it. tricot.ts hands both to
 // the command; tests stand in for them.
-import { spawn } from 'node:child_process';
 import os from 'node:os';
 import { emitKeypressEvents } from 'node:readline';
+import { isWindows } from '../platform/os';
+import { runProgram } from '../platform/run';
 import type { Key, TerminalKeys } from './boardPicker';
 
 // Raw mode while the picker listens, and back as it was when it stops, or
@@ -53,12 +54,14 @@ export interface AgentLaunch {
 // a request to terminate is passed on to it.
 export function runInTerminal({ command, args, env, cwd }: AgentLaunch): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit', env, cwd });
+    // On Windows an agent installed with npm is a .cmd file, which runProgram starts
+    // through cmd.exe. It shares this console, so it is not started hidden.
+    const child = runProgram(command, args, { stdio: 'inherit', env, cwd, windowsHide: false });
     const ignore = () => {};
     const passOn = (signal: NodeJS.Signals) => () => void child.kill(signal);
     const handlers: [NodeJS.Signals, () => void][] = [
       ['SIGINT', ignore],
-      ...(process.platform === 'win32' ? [] : ([['SIGQUIT', ignore]] as [NodeJS.Signals, () => void][])),
+      ...(isWindows() ? [] : ([['SIGQUIT', ignore]] as [NodeJS.Signals, () => void][])),
       ['SIGHUP', passOn('SIGHUP')],
       ['SIGTERM', passOn('SIGTERM')],
     ];

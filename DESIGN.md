@@ -382,7 +382,7 @@ One family, drawn inline as SVG on a 16px grid with a 1.5 stroke, round caps and
 - **Do** use blue for "new since you looked" and amber for "needs you", nothing else.
 - **Do** write headings and labels in sentence case, in plain words.
 - **Do** keep to 400/500/600 weights and the type sizes above, with tabular figures for numbers.
-- **Do** draw new icons in the existing SVG family (16px grid, 1.5 stroke) in `src/web/components.tsx`.
+- **Do** draw new icons in the existing SVG family (16px grid, 1.5 stroke) in `src/web/shared/components.tsx`.
 - **Do** check every new surface in both light and dark themes against WCAG 2.2 AA, with visible keyboard focus.
 - **Do** honour `prefers-reduced-motion`; keep transitions to 0.12s colour and border changes.
 

@@ -1,6 +1,7 @@
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import path from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
+import { keepPrivate } from '../../platform/private';
 
 export type Database = DatabaseSync;
 export type Statement = StatementSync;
@@ -37,7 +38,7 @@ export function openPrivate(file: string): Database {
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   if (!existsSync(file)) closeSync(openSync(file, 'a', 0o600));
   const db = new DatabaseSync(file);
-  if (process.platform !== 'win32') chmodSync(file, 0o600);
+  keepPrivate(file);
   return db;
 }
 

@@ -67,3 +67,122 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+
+/* ---- editing it by hand (edit.tsx) -----------------------------------------------
+   The field on the paper, filling the stage, with what it will look like
+   beside it on a sheet. The band says how it saves; amber when someone
+   changed the piece meanwhile, as anything waiting on the person. */
+
+.piece-view .pair-band.is-editing span:first-child,
+.piece-view .pair-band.is-conflict span:first-child {
+  flex: 1;
+}
+.piece-view .pair-band.is-error {
+  color: var(--danger);
+}
+.piece-view .pair-band.is-conflict {
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.pair-band-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+.piece-edit {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 860px);
+  justify-content: center;
+  gap: 20px;
+  padding: 20px 24px 24px;
+}
+.piece-edit.has-preview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.piece-edit.is-single {
+  grid-template-rows: auto;
+  align-content: start;
+}
+.piece-edit.is-single.has-preview {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+.piece-edit-field,
+.piece-edit-preview {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.piece-edit-label {
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+}
+.piece-edit-text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.piece-edit-text.is-code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+.piece-edit-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 15px;
+}
+.piece-edit-text:focus-visible,
+.piece-edit-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.piece-edit-shown {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.piece-edit-shown img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 0 auto;
+}
+.piece-edit-shown .mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+/* The canvas's own controls, on a sheet: a table's or a chart's cells. */
+.piece-edit-sheet {
+  width: min(1100px, calc(100% - 48px));
+  padding: 24px 28px;
+}
+@media (max-width: 760px) {
+  .piece-edit.has-preview,
+  .piece-edit.is-single.has-preview {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

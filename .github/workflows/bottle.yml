@@ -1,0 +1,139 @@
+# The Homebrew bottle of a release: tricot-<version>.all.bottle.tar.gz, attached
+# to the GitHub release next to tricot-<version>.tgz. A bottle is the package
+# already installed, as Homebrew unpacks it. Without one, `brew install` builds
+# the formula from source, and Homebrew first insists on a recent Xcode or
+# Command Line Tools, though Tricot has nothing to compile (T203). With one,
+# it pours the bottle, and none of those checks run.
+#
+# The release workflow runs this after it makes the release (the "bottle" job
+# there). It can also be run on its own, from the Actions page or with
+# `gh workflow run bottle.yml -f tag=v<version>`, for a release whose bottle
+# failed, or that was made before there were bottles. It is made on a Mac
+# because Homebrew's bottle tooling is, and it is "all": the same file for
+# every macOS version and architecture, as Tricot is plain JavaScript.
+#
+# The bottle is built from the formula that scripts/homebrew-formula.mjs writes
+# with --no-bottle, from the release's own package; that script then checks, when
+# the formula for the tap is written (RELEASING.md), that the bottle holds that
+# very package. Nothing here changes the tap or npm: the person puts the bottle's
+# sha256 in the tap's formula by running that script again.
+name: Bottle
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release's tag, like v0.1.4
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of a GitHub release that has its package attached, like v0.1.4
+        required: true
+        type: string
+
+# Nothing by default: the job asks for what it needs.
+permissions: {}
+
+concurrency:
+  group: bottle-${{ inputs.tag }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bottle:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    # Writing releases (to attach the bottle), and nothing else.
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_REPO: ${{ github.repository }}
+      HOMEBREW_NO_ANALYTICS: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      # Uninstalling Tricot must leave node, which pouring it needs again.
+      HOMEBREW_NO_AUTOREMOVE: 1
+    steps:
+      - name: Check the tag
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' isn't a release tag like v0.1.4."
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      # Homebrew takes formulae from taps only: a throwaway one, with the
+      # formula as it will be in the real tap, but without its bottle block.
+      - name: Write the formula, from the release's package
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          brew tap-new --no-git local/bottle
+          # A recent Homebrew loads formulae from a tap only once told to trust it. This one is the job's own.
+          if brew trust --help > /dev/null 2>&1; then brew trust local/bottle; fi
+          node scripts/homebrew-formula.mjs "$VERSION" --no-bottle --out "$(brew --repository local/bottle)/Formula/tricot.rb"
+
+      # Installs it as Homebrew would from source, so that it can be bottled:
+      # npm install of the release's file, with node from Homebrew.
+      - name: Build it, and bottle it
+        run: |
+          brew install --build-bottle local/bottle/tricot
+          brew test local/bottle/tricot
+          mkdir "$RUNNER_TEMP/bottle"
+          cd "$RUNNER_TEMP/bottle"
+          brew bottle --no-rebuild local/bottle/tricot
+          # brew names it for the Mac it was made on, such as tricot--0.1.4.arm64_sequoia.bottle.tar.gz.
+          # The same file serves as the "all" bottle, as Homebrew's own tooling does when
+          # the bottles for every platform are the same.
+          made=(tricot--*.bottle.tar.gz)
+          if [ "${#made[@]}" -ne 1 ] || [ ! -f "${made[0]}" ]; then
+            echo "::error::Expected one bottle from brew bottle, found: ${made[*]}"
+            exit 1
+          fi
+          cp "${made[0]}" "tricot-$VERSION.all.bottle.tar.gz"
+          ls -l
+
+      # Pour it, as someone installing it would, without the build toolchain
+      # checks: it must say "Pouring", and the formula's own test must pass.
+      - name: Pour the bottle, and test it
+        run: |
+          cd "$RUNNER_TEMP/bottle"
+          brew uninstall tricot
+          brew install "./tricot-$VERSION.all.bottle.tar.gz" 2>&1 | tee pour.log
+          grep -q "Pouring tricot-$VERSION.all.bottle.tar.gz" pour.log
+          brew test local/bottle/tricot
+
+      # Is it the release's file? Every file the same, but for the node line Homebrew
+      # puts at the top of the scripts (the script says what it finds otherwise).
+      - name: Check that it holds the release's package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/bottle"
+          gh release download "$TAG" -p "tricot-$VERSION.tgz"
+          node "$GITHUB_WORKSPACE/scripts/homebrew-formula.mjs" --tarball "tricot-$VERSION.tgz" --bottle "tricot-$VERSION.all.bottle.tar.gz" --out "$RUNNER_TEMP/formula-check.rb"
+          cat "$RUNNER_TEMP/formula-check.rb"
+
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/bottle"
+          bottle="tricot-$VERSION.all.bottle.tar.gz"
+          gh release upload "$TAG" "$bottle" --clobber
+          echo "::notice::$bottle is on the release $TAG (sha256 $(shasum -a 256 "$bottle" | cut -d' ' -f1)). Next: node scripts/homebrew-formula.mjs $VERSION, which writes the formula with it (RELEASING.md)."

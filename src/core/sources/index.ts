@@ -9,6 +9,11 @@ import type { LinkSource } from './types';
 
 export type { Embed, LinkSource, LinkSourceKind, SourceMark } from './types';
 
+// A source's hosts are exact ("loom.com"), or "*.slack.com" for any subdomain of one.
+function answersTo(hosts: readonly string[], host: string): boolean {
+  return hosts.some((each) => (each.startsWith('*.') ? host.endsWith(each.slice(1)) : each === host));
+}
+
 // The source a link's address belongs to, or null for any other address.
 export function linkSource(address: string): LinkSource | null {
   let url: URL;
@@ -21,7 +26,7 @@ export function linkSource(address: string): LinkSource | null {
   const host = url.hostname.replace(/^www\./, '');
   const parts = url.pathname.split('/').filter(Boolean);
   for (const { source, connector } of linkSources()) {
-    if (!source.hosts.includes(host)) continue;
+    if (!answersTo(source.hosts, host)) continue;
     const found = source.read(url, parts);
     if (found) return connector ? { ...found, connector } : found;
   }

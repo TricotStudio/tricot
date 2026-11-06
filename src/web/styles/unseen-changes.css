@@ -1,0 +1,298 @@
+/* ---- unseen changes ---------------------------------------------------- */
+/* What others changed since the viewer last looked, marked in the focus
+   blue like an unread dot rather than with another status colour. */
+
+.new-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--focus);
+}
+.card-new,
+.card-new:hover {
+  border-color: color-mix(in srgb, var(--focus) 75%, var(--border));
+}
+/* Just made from your conversation (justMade.ts): lit until seen, then it fades. */
+.card-made,
+.card-made:hover {
+  border-color: var(--focus);
+  background: color-mix(in srgb, var(--focus) 6%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent), var(--shadow-sm);
+}
+.card-made-fading {
+  animation: card-made-fade 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes card-made-fade {
+  0% {
+    border-color: var(--focus);
+    background: color-mix(in srgb, var(--focus) 6%, var(--surface));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent), var(--shadow-sm);
+  }
+}
+/* A card waiting on the viewer (asked of them, a reply to them, work to
+   review) takes the inbox's amber "needs you" wash instead of the blue. */
+.card-needs-you {
+  --flash-strength: 24%; /* deeper, or an amber lane's flash vanishes into the wash */
+  background: color-mix(in srgb, var(--open-bg) 70%, var(--surface));
+  border-color: color-mix(in srgb, var(--open) 40%, var(--border));
+}
+.card-needs-you:hover {
+  border-color: color-mix(in srgb, var(--open) 60%, var(--border));
+}
+/* Faint text warms toward the wash so it keeps its contrast in dark mode. */
+.card-needs-you :is(.card-number, .card-foot, .faint) {
+  color: color-mix(in srgb, var(--open-ink) 30%, var(--faint));
+}
+/* Amber tags would melt into the wash; a step deeper keeps their edges. */
+.card-needs-you :is(.tag-asked, .tag-stale) {
+  background: color-mix(in srgb, var(--open) 18%, var(--surface));
+}
+.activity-item.is-new {
+  background: color-mix(in srgb, var(--focus) 8%, transparent);
+}
+.activity-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 6px 4px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.activity-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.block-new {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--focus);
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+}
+/* A block with earlier versions says which it is at; they open from there. */
+.block-version-wrap {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+.block-version {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  cursor: pointer;
+}
+.block-version:hover,
+.block-version[aria-expanded='true'] {
+  box-shadow: inset 0 0 0 1px var(--exploring);
+}
+.block-version.is-viewing {
+  background: var(--exploring);
+  color: var(--surface);
+}
+.version-menu {
+  top: calc(100% + 6px);
+  width: min(260px, calc(100vw - 32px));
+  max-height: 320px;
+  overflow: auto;
+  cursor: default;
+}
+/* Above the blocks around it while its versions are open. */
+.react-flow__node:has(.version-menu) {
+  z-index: 1000 !important;
+}
+.version-menu-title {
+  margin: 0;
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.version-menu-note {
+  margin: 0;
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--faint);
+}
+.version-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.version-item strong {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.version-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.version-item.is-shown {
+  background: var(--surface-2);
+}
+/* An earlier version's row has an × that deletes it, shown on hover or
+   keyboard focus; the current one has room for it, so names line up. */
+.version-row {
+  position: relative;
+}
+.version-row .version-item {
+  padding-right: 38px;
+}
+.version-row:hover .version-item {
+  background: var(--surface-2);
+}
+.version-delete {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--faint);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.version-row:hover .version-delete,
+.version-item:focus-visible + .version-delete,
+.version-delete:focus-visible {
+  opacity: 1;
+}
+.version-delete:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--border-strong);
+}
+.version-delete:disabled {
+  cursor: default;
+}
+@media (hover: none) {
+  .version-delete {
+    opacity: 1;
+  }
+}
+.version-menu-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 8px 10px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.version-delete-all {
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.version-delete-all:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+.version-delete-all:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.version-menu-note .icon {
+  vertical-align: -0.15em;
+}
+/* Across a block showing an earlier version, read-only. */
+.version-band {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 5px 6px 5px 12px;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+}
+.version-band-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+.version-band .btn-small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.version-band .btn-quiet {
+  color: var(--exploring-ink);
+}
+.block.is-viewing-version {
+  border-color: var(--exploring);
+}
+.block.is-viewing-version.is-selected {
+  box-shadow: 0 0 0 1px var(--exploring), var(--shadow);
+}
+
+/* A block in an open sync of selected blocks, until an agent finishes it. */
+.block-syncing {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--exploring-ink);
+  background: var(--exploring-bg);
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+}
+.block-syncing .sync-dot {
+  width: 5px;
+  height: 5px;
+}
+/* Whose a board-context block is: a person's, which Sync all leaves alone. */
+.block-owner {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.block.is-new:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--focus) 55%, var(--border));
+}

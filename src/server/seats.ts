@@ -269,7 +269,7 @@ export class Seats {
       return { ok: true, state: { id: `seat-${already.id}`, code: '', state: 'admitted', seat: already.id, expiresAt: new Date(now).toISOString() } };
     }
     if (input.kind === 'terminal' && !this.hasBrowser()) {
-      return { ok: false, status: 409, error: "No browser is let in yet, so nothing can let this terminal in. Open Tricot in your browser: it asks you to press y in the terminal where Tricot runs (or run tricot seats), once. Then try again here." };
+      return { ok: false, status: 409, error: "No browser is let in yet, so nothing can let this terminal in. Open Tricot in your browser: it asks you to press y in the terminal where Tricot runs (or run tricot access), once. Then try again here." };
     }
     const waiting = [...this.admissions.values()].filter((a) => a.state === 'waiting');
     const same = waiting.find((a) => sameKey(a.publicKey, input.publicKey));
@@ -391,7 +391,7 @@ export class Seats {
   }
 
   // Lets every browser and terminal go, and the first browser in again from
-  // a terminal: `tricot seats reset`, while Tricot is stopped (the file only).
+  // a terminal: `tricot access revoke`, while Tricot is stopped (the file only).
   static reset(dataDir: string): boolean {
     const file = seatsFile(dataDir);
     if (!existsSync(file)) return false;

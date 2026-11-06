@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
+import { appStyles } from './appStyles';
 import { CHROME, runInChrome } from './mermaidPage';
 
 // The chat bar docking into the threads panel, and letting go of it
@@ -15,8 +16,8 @@ import { CHROME, runInChrome } from './mermaidPage';
 const web = path.resolve(import.meta.dirname, '../src/web');
 const read = (file: string) => readFileSync(path.join(web, file), 'utf8');
 const bare = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
-const CHAT_BAR = bare(read('chatBar.css'));
-const STYLES = bare(read('styles.css'));
+const CHAT_BAR = bare(read('threads/chatBar.css'));
+const STYLES = bare(appStyles(web));
 const ALL = (readdirSync(web, { recursive: true }) as string[])
   .filter((file) => file.endsWith('.css'))
   .map((file) => ({ file, css: bare(read(file)) }));
@@ -159,7 +160,7 @@ describe('The dock motion', () => {
   });
 });
 
-const CSS = ['themes/light.css', 'styles.css', 'chatBar.css', 'threads.css'].map(read).join('\n');
+const CSS = ['themes/light.css', 'styles.css', 'threads/chatBar.css', 'threads/threads.css'].map((file) => (file === 'styles.css' ? appStyles(web) : read(file))).join('\n');
 
 // The board with the bar floating at its foot, then with the panel docked
 // beside it, mid-motion, as a browser without view transitions draws it:

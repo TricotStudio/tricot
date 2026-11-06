@@ -4,7 +4,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { fromFrame, type FromFrame, type ToFrame } from '../../../../core/blocks/site/messages';
 import type { Pin } from '../../../../core/types';
-import { request } from '../../../api';
+import { get } from '../../../shared/api';
+import { routes } from '../../../../core/routes';
 
 // The frame's sandbox: its scripts run and its forms send at the website's
 // own origin (allow-same-origin keeps the origin the page was served from,
@@ -25,7 +26,7 @@ type Known = { address?: SiteAddress; error?: string };
 
 async function lookUp(blockId: string): Promise<Known> {
   try {
-    return { address: await request<SiteAddress>('GET', `/api/sites/${encodeURIComponent(blockId)}`) };
+    return { address: await get(routes.siteAddress)<SiteAddress>({ blockId }) };
   } catch (e) {
     return { error: (e as Error).message };
   }

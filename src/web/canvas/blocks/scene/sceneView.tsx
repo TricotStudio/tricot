@@ -8,9 +8,9 @@
 // object went is listed under the scene, with its thread.
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
-import { findObject, nextSpot, sceneMakeUp, spotQuote, type SceneFacts } from '../../../../core/blocks/scene/scene';
+import { editableSource, findObject, nextSpot, readScene, sceneMakeUp, spotQuote, type SceneFacts } from '../../../../core/blocks/scene/scene';
 import type { SceneView as SceneViewpoint } from '../../../../core/types';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 import { useCanvas } from '../../context';
 import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
@@ -270,6 +270,17 @@ function SceneParts({ block, placed, pointing, chosen, open, pick, openPin }: Pi
   );
 }
 
+// Why typed JSON can't be saved as the scene, if it can't.
+function sceneRefused(source: string): string | null {
+  if (!source.trim()) return 'A scene needs its JSON: write some, or discard your changes.';
+  try {
+    readScene(source);
+    return null;
+  } catch (refused) {
+    return `${(refused as Error).message} Put it right, or discard your changes.`;
+  }
+}
+
 export function SceneFullView({ block, name, version, pinId, onClose }: OverlayProps<SceneBlock>) {
   const facts = factsOf(block.scene);
   const named = facts?.named.length ?? 0;
@@ -292,6 +303,14 @@ export function SceneFullView({ block, name, version, pinId, onClose }: OverlayP
       does="changes the scene"
       example="make it taller, say"
       body={(props) => <SceneParts {...props} />}
+      edit={{
+        hint: "Edit its three.js JSON by hand (or double-click it while viewing)",
+        label: "The scene's three.js JSON",
+        code: true,
+        of: (scene) => editableSource(scene.scene),
+        patch: (scene) => ({ scene }),
+        check: sceneRefused,
+      }}
       onClose={onClose}
     />
   );

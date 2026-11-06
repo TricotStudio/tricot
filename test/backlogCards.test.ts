@@ -17,6 +17,7 @@ import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { INSTRUCTIONS, MAX_INSTRUCTIONS } from '../src/server/mcp';
 import { eventsOf } from './tables';
+import { readGuide } from './guide';
 
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 const codex: Actor = { kind: 'agent', name: 'Codex' };
@@ -203,8 +204,9 @@ describe("Agents' backlog cards, over MCP and REST", () => {
     assert.match(backlog.description, /^Open them in the backlog for people to shape and mark ready, not in to do/);
     assert.match(backlog.description, /At most 5 an hour$/);
     assert.ok(!(plan.inputSchema.required ?? []).includes('backlog'));
+    assert.match(plan.description ?? '', /backlog: true opens them in the backlog for people to shape and mark ready/);
     assert.match(
-      plan.description ?? '',
+      await readGuide(clients.Claude, 'tasks'),
       /When a person asks you to note something for later, or you notice a bug or follow-up outside your current work, open a backlog card with backlog: true instead of planning it into to do\./,
     );
     // The main instructions keep within their cap.

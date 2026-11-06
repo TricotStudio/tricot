@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
+import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
 
@@ -96,8 +97,11 @@ describe('Answering people in one call, over MCP and REST', () => {
       const tool = tools.find((t) => t.name === name)!;
       assert.ok((tool.inputSchema.properties as Record<string, unknown>).then_wait, name);
     }
-    assert.match(tools.find((t) => t.name === 'comment')!.description ?? '', /Pass then_wait \(seconds, as for wait_for_updates\): it posts first, then waits/);
-    assert.match(tools.find((t) => t.name === 'wait_for_updates')!.description ?? '', /comes whole, with the card's title and status, the messages before it you haven't seen, and the call that answers it/);
+    assert.match(tools.find((t) => t.name === 'comment')!.description ?? '', /then_wait posts, then listens in the same call/);
+    assert.match(tools.find((t) => t.name === 'wait_for_updates')!.description ?? '', /A message for you comes whole: answer it, with then_wait to keep listening/);
+    const guide = await readGuide(claude, 'conversation');
+    assert.match(guide, /Pass then_wait \(seconds, as for wait_for_updates\): it posts first, then waits/);
+    assert.match(guide, /comes whole, with the card's title and status, the messages before it you haven't seen, and the call that answers it/);
   });
 
   it('posts the reply first, then waits and brings back what comes next, without saying again what it has', async () => {

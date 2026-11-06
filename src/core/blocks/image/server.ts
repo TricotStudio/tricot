@@ -60,6 +60,7 @@ export const agent: AgentHalf<ImageTypes> = {
     image_base64: z.string().optional().describe('Image blocks: new base64 image data, replacing the current one'),
   },
   docs: {
+    brief: 'image → image_path or image_base64 (+ caption)',
     add: 'image → image_path (local PNG/JPEG/GIF/WebP file) or image_base64, plus optional caption',
     update: 'caption',
     updateSpecial: 'image_path or image_base64 replaces an image',

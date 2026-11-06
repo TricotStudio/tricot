@@ -31,6 +31,7 @@ import { letIn, type TestSeat } from './seatHelper';
 import { Connectors } from '../src/server/connectors';
 import { DOCS_SCOPE, DRIVE_FILE, DRIVE_METADATA, FakeDoc, FakeGoogleServer } from './fakeDocs';
 import { eventsOf } from './tables';
+import { WINDOWS } from './platform';
 
 const wassim: Actor = { kind: 'human', name: 'Wassim' };
 const planner: Actor = { kind: 'agent', name: 'Planner' };
@@ -583,7 +584,7 @@ describe('Google Docs in Tricot, end to end', () => {
     noSecrets(JSON.stringify(opened.json));
     // The version is kept on this computer, for this user only.
     const kept = path.join(dir, 'connectors', 'google-docs', `${DOC_ID}.json`);
-    assert.equal(statSync(kept).mode & 0o777, 0o600);
+    if (!WINDOWS) assert.equal(statSync(kept).mode & 0o777, 0o600);
     assert.deepEqual(store.listBoards().length, 1, 'kept versions are not boards');
   });
 

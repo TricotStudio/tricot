@@ -15,6 +15,7 @@ import { BoardError, Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { readGuide } from './guide';
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
@@ -249,9 +250,11 @@ describe('3D scene blocks over MCP and REST', () => {
     const props = (add.inputSchema as { properties: Record<string, { enum?: string[]; description?: string }> }).properties;
     assert.ok(props.type.enum!.includes('scene'));
     assert.match(props.scene.description!, /a three.js scene as JSON text, as Object3D.toJSON\(\) writes it and ObjectLoader reads it \(up to 200,000 characters\)/);
-    assert.match(add.description!, /scene → scene: a three.js scene as JSON text, in the format Object3D.toJSON\(\) writes \(parametric geometries by type/);
-    assert.ok(add.description!.includes(`A small one: ${SCENE_EXAMPLE}.`));
-    assert.match(tools.find((t) => t.name === 'update_block')!.description!, /; image_path or image_base64 replaces an image; scene replaces a 3D scene's JSON whole\)/);
+    assert.match(add.description!, /scene → scene \(three.js JSON\)/);
+    const blocks = await readGuide(client, 'blocks');
+    assert.match(blocks, /scene → scene: a three.js scene as JSON text, in the format Object3D.toJSON\(\) writes \(parametric geometries by type/);
+    assert.ok(blocks.includes(`A small one: ${SCENE_EXAMPLE}.`));
+    assert.match(blocks, /; image_path or image_base64 replaces an image; scene replaces a 3D scene's JSON whole\./);
     assert.match(JSON.stringify(tools.find((t) => t.name === 'pin')!.inputSchema), /A named object in a 3D scene: its name \(or uuid\)/);
   });
 

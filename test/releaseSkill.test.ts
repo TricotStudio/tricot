@@ -19,7 +19,7 @@ import {
   withReleaseNotes,
 } from '../.claude/skills/release/lib.mjs';
 import { compareVersions as appCompare } from '../src/core/version';
-import { githubRepo as appGithubRepo, releaseFrom } from '../src/server/updates';
+import { githubRepo as appGithubRepo, releaseFrom } from '../src/install/updates';
 
 // The /release skill's pure logic (.claude/skills/release/lib.mjs): the next
 // version, the release notes, the release commit. Its git and network side
@@ -153,7 +153,7 @@ describe('the release skill: release notes', () => {
     assert.deepEqual(good.errors, []);
     assert.equal(good.flat, 'Type # in a comment to link a task or decision. The README is shorter, and the docs moved to their own pages.');
     assert.deepEqual(good.warnings, ['Line breaks become spaces: the notes are kept as one paragraph.']);
-    // The notice shows exactly this text (src/server/updates.ts).
+    // The notice shows exactly this text (src/install/updates.ts).
     assert.equal(releaseFrom({ version: '0.1.1', releaseNotes: good.flat })?.notes, good.flat);
   });
 

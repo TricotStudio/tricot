@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, BlockVersion, VersionSummary } from '../../core/types';
-import { api } from '../api';
-import { Icon, timeAgo } from '../components';
-import { useDismiss } from '../hooks';
+import { api } from '../shared/api';
+import { Icon, timeAgo } from '../shared/components';
+import { useDismiss } from '../shared/hooks';
 import { useCanvas } from './context';
 
 // A block keeps what it showed before each change. Its header shows which

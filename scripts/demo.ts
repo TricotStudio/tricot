@@ -1,11 +1,22 @@
 // Seeds an example board through the same channels real participants use:
 // an agent over MCP and a human over the web API. Usage:
-//   npm run demo [-- http://127.0.0.1:4545]
+//   npm run demo [-- http://127.0.0.1:4545] [--let-in]
+//
+// Resolving and deferring a decision are a person's alone, from a browser or
+// terminal they let in (access.ts asPerson, tier B). The demo leaves those
+// two decisions open for you to answer on the board. With --let-in it asks to
+// be let in as a terminal does (`tricot update`): allow it, with the code it
+// shows, in a browser you've let in, and it resolves one and defers the other.
+// It never lets itself in: on a board with no seat yet that would take the
+// first browser's place (seats.ts bootstrap).
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { asThisTerminal, type ThisTerminal } from '../src/cli/terminalKey';
 
-const base = process.argv[2] ?? 'http://127.0.0.1:4545';
+const args = process.argv.slice(2);
+const letIn = args.includes('--let-in');
+const base = args.find((arg) => !arg.startsWith('--')) ?? 'http://127.0.0.1:4545';
 const human = 'Sam';
 
 const agent = new Client({ name: 'demo', version: '1.0.0' });
@@ -112,8 +123,6 @@ const config = idOf(
     options: [{ label: 'Per-environment config file' }, { label: 'Hard-coded defaults' }],
   }),
 );
-await as_human(`/decisions/${config}/resolve`, { optionId: 'a', rationale: 'Staging needs more aggressive retries than prod.' });
-
 const metrics = idOf(
   await tool('post_decision', {
     board_id: boardId,
@@ -121,7 +130,37 @@ const metrics = idOf(
     options: [{ label: 'Yes, per endpoint' }, { label: 'Aggregate only' }],
   }),
 );
-await as_human(`/decisions/${metrics}/defer`, { note: 'After launch.' });
+// A person's alone, signed by a seat (see the top of this file).
+const seated: [string, Record<string, unknown>, string][] = [
+  [`/decisions/${config}/resolve`, { optionId: 'a', rationale: 'Staging needs more aggressive retries than prod.' }, 'Where should retry configuration live?'],
+  [`/decisions/${metrics}/defer`, { note: 'After launch.' }, 'Expose retry metrics on the ops dashboard?'],
+];
+let leftOpen = seated.map(([, , question]) => question);
+if (letIn) {
+  await asThisTerminal(
+    base,
+    {},
+    async (headers, terminal: ThisTerminal) => {
+      const asked = await terminal.letIn((line) => console.log(line));
+      if (!asked.ok) {
+        console.log(`Not let in (${asked.error}): leaving those decisions open.`);
+        return;
+      }
+      for (const [route, body] of seated) {
+        const text = JSON.stringify({ actor: human, ...body });
+        const response = await fetch(`${base}/api${route}`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json', ...terminal.sign('POST', `/api${route}`, text) },
+          body: text,
+        });
+        if (!response.ok) throw new Error(`${route}: ${(await response.json()).error}`);
+      }
+      leftOpen = [];
+    },
+    fetch,
+    'npm run demo',
+  );
+}
 
 // Shared context on the board canvas.
 const constraints = idOf(
@@ -195,3 +234,5 @@ await tool('add_block', {
 
 await agent.close();
 console.log(`Seeded board ${boardId}: ${base}/#/b/${boardId}`);
+if (leftOpen.length)
+  console.log(`Left open for you to resolve or defer on the board (or run the demo with --let-in): ${leftOpen.map((q) => `"${q}"`).join(', ')}`);

@@ -13,6 +13,7 @@ import { BoardError, Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
 import { createApp } from '../src/server/app';
 import { eventsOf } from './tables';
+import { readGuide } from './guide';
 
 const agent: Actor = { kind: 'agent', name: 'Claude' };
 const human: Actor = { kind: 'human', name: 'Wassim' };
@@ -186,12 +187,13 @@ describe('Areas over MCP and REST', () => {
   it('tells agents to give decisions areas, and describes the field', async () => {
     assert.match(client.getInstructions() ?? '', /Each open question is one decision card \(post_decision\): .+ and a short area \(theme\), reusing the board's areas\./);
     const { tools } = await client.listTools();
-    assert.match(tools.find((t) => t.name === 'post_decision')!.description ?? '', /Give it an area \(theme\) so it joins the right row on the decision map\./);
+    assert.match(tools.find((t) => t.name === 'post_decision')!.description ?? '', /and an area \(theme\)/);
+    assert.match(await readGuide(client, 'decisions'), /Give it an area \(theme\) so it joins the right row on the decision map\./);
     for (const name of ['post_decision', 'update_decision', 'log_decision']) {
       const tool = tools.find((t) => t.name === name)!;
       const area = (tool.inputSchema.properties as Record<string, { description?: string }>).area;
       assert.ok(area, `${name} takes an area`);
-      assert.match(area.description ?? '', /Reuse one of the board's areas/);
+      assert.match(area.description ?? '', /reuse one of the board's areas/);
     }
   });
 

@@ -277,11 +277,14 @@ async function endToEnd(): Promise<void> {
   const { Store } = await import('../src/core/store');
   const { createApp } = await import('../src/server/app');
   const { Connectors } = await import('../src/server/connectors');
+  const { letIn } = await import('../test/seatHelper');
 
   const dir = mkdtempSync(path.join(os.tmpdir(), 'check-connector-'));
   const store = new Store(dir);
   store.load();
-  const server = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors: new Connectors({ dataDir: dir }) }).listen(0, '127.0.0.1');
+  const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused', connectors: new Connectors({ dataDir: dir }) });
+  const seat = letIn(app); // the person's browser, let in: what a person does is signed with its key
+  const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const client = new Client({ name: 'check', version: '1' });
@@ -293,7 +296,9 @@ async function endToEnd(): Promise<void> {
   // As Tricot's page asks: what a person does is taken from it alone (access.ts asPerson).
   const rest = async (method: string, route: string, body?: object, headers: Record<string, string> = {}) => {
     const page: Record<string, string> = method === 'GET' ? { 'Sec-Fetch-Site': 'same-origin' } : { Origin: base };
-    const res = await fetch(`${base}${route}`, { method, headers: { 'content-type': 'application/json', ...page, ...headers }, body: body && JSON.stringify(body) });
+    const sent = body && JSON.stringify(body);
+    const signed = method === 'GET' ? {} : seat.sign(method, route, sent);
+    const res = await fetch(`${base}${route}`, { method, headers: { 'content-type': 'application/json', ...page, ...signed, ...headers }, body: sent });
     const text = await res.text();
     let json: any = {};
     try {
@@ -338,7 +343,7 @@ async function endToEnd(): Promise<void> {
   // its REST route and its place among the connectors
   assert.deepEqual((await rest('GET', '/api/connectors/acme/projects/p42')).json, { name: 'Acme project p42' });
   const listed = (await rest('GET', '/api/connectors')).json as { id: string; state: string }[];
-  assert.deepEqual(listed.map((c) => [c.id, c.state]), [['google', 'not_set_up'], ['figma', 'ready'], ['github', 'ready'], ['acme', 'connected']]);
+  assert.deepEqual(listed.map((c) => [c.id, c.state]), [['google', 'not_set_up'], ['figma', 'ready'], ['github', 'ready'], ['slack', 'not_set_up'], ['linear', 'ready'], ['acme', 'connected']]);
   assert.equal((await rest('POST', '/api/connectors/acme/start', {})).status, 400);
   assert.equal((await rest('POST', '/api/connectors/acme/start', { permissions: ['x'] })).status, 400);
   assert.equal((await rest('POST', '/api/connectors/nope/start', {})).status, 404);

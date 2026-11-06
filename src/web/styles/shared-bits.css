@@ -1,0 +1,166 @@
+/* ---- shared bits ------------------------------------------------------ */
+
+/* The wordmark's face: Cal Sans (SIL Open Font License, fonts/OFL.txt),
+   bundled so the app never asks a font service for it. It has one weight,
+   so the wordmark is set at 400 and never made bolder by the browser.
+   font-display is block: the file comes from the same local server and is
+   preloaded by index.html, so the name is drawn once, in Cal Sans, rather
+   than first in the system face and then swapped (a jump in width and
+   weight in the header). */
+@font-face {
+  font-family: 'Cal Sans';
+  src: url('../fonts/CalSans-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+/* The board mark, then "Tricot" in Cal Sans. The favicon in index.html is
+   the same mark. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  text-decoration: none;
+}
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-lockup-small {
+  gap: 7px;
+}
+.board-mark {
+  flex: none;
+}
+.brand-text {
+  display: grid;
+}
+.wordmark {
+  font-family: 'Cal Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  font-synthesis: none;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+.brand-lockup-small .wordmark {
+  font-size: 18.5px;
+}
+
+.actor {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: middle;
+  max-width: 100%;
+}
+.actor-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+.actor-human .actor-mark {
+  border-radius: 50%;
+  background: hsl(var(--hue, 30) var(--person-mark-bg));
+  color: hsl(var(--hue, 30) var(--person-mark-ink));
+}
+.actor-agent .actor-mark {
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.actor-name {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One status marker everywhere: a small rounded square in the status colour.
+   Text beside it stays neutral so it reads cleanly. */
+.status,
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  --marker: var(--faint);
+}
+.status::before,
+.count::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--marker);
+}
+.status {
+  font-size: 13px;
+  font-weight: 500;
+}
+.count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.status-open, .count-open { --marker: var(--open); }
+.status-exploring, .count-exploring { --marker: var(--exploring); }
+.status-provisional, .count-provisional { --marker: var(--provisional); }
+.status-decided, .count-decided { --marker: var(--decided); }
+.status-deferred { --marker: var(--deferred); }
+/* Hollow: retired is set aside for good, not just for now. */
+.status-retired { --marker: var(--deferred); }
+.status-retired::before {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+}
+.count-blocking { --marker: var(--danger); }
+.count-blocking,
+.count strong {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.tag-blocking { background: var(--danger-bg); color: var(--danger); }
+.tag-agent { background: var(--provisional-bg); color: var(--provisional-ink); }
+.tag-recommended { background: var(--open-bg); color: var(--open-ink); }
+.tag-chosen { background: var(--decided-bg); color: var(--decided-ink); }
+.tag-outdated { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.tag-new { background: var(--exploring-bg); color: var(--exploring-ink); }
+.tag-asked { background: var(--open-bg); color: var(--open-ink); font-weight: 600; }
+.card-waiting { color: var(--muted); font-weight: 500; }
+
+.option-letter {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--surface-2);
+  color: var(--muted);
+}

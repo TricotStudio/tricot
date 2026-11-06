@@ -14,8 +14,8 @@ import {
   type ChartModel,
 } from '../../../../core/blocks/chart/chart';
 import type { Block } from '../../../../core/types';
-import type { BlockContent } from '../../../api';
-import { Icon } from '../../../components';
+import type { BlockContent } from '../../../shared/api';
+import { Icon } from '../../../shared/components';
 import { EditableText, useCanvas, type PinDraft } from '../../context';
 import { pointCovers } from '../../pairing/pointing';
 import type { PlacedPin } from '../../pins';
@@ -564,7 +564,7 @@ function Tooltip({ model, layout, hover }: { model: ChartModel; layout: ChartLay
 
 // ---- Data: the table it's drawn from, edited like a table ----------------------------
 
-function ChartData({ block, selected: picked }: { block: ChartBlock; selected: boolean }) {
+export function ChartData({ block, selected: picked }: { block: ChartBlock; selected: boolean }) {
   const canvas = useCanvas();
   const selected = picked && !canvas.readOnly;
   const update = (columns: string[], rows: string[][]) => canvas.updateBlock(block, { columns, rows });

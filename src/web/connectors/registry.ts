@@ -10,9 +10,11 @@ import type { WebConnector } from './connector';
 import { figma } from './figma';
 import { github } from './github';
 import { google } from './google';
+import { linear } from './linear';
+import { slack } from './slack';
 
 // A function so the connectors are read once they have all loaded.
-const registered = (): readonly WebConnector[] => [google, figma, github];
+const registered = (): readonly WebConnector[] => [google, figma, github, slack, linear];
 
 let all: readonly WebConnector[] | undefined;
 

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runCli, type CliContext, type CliResult } from '../src/cli/main';
-import { lockFile, readLock } from '../src/server/lock';
+import { lockFile, readLock } from '../src/platform/lock';
 import { startServer, type RunningServer } from '../src/server/start';
 import { startFolder } from '../src/server/startFolder';
 
@@ -75,7 +75,7 @@ describe('tricot command', () => {
       assert.equal(server.url, `http://127.0.0.1:${port}`);
       assert.deepEqual(opened, [server.url]);
       assert.match(said(), new RegExp(`Tricot is running: http://127.0.0.1:${port}`));
-      assert.match(said(), new RegExp(`claude mcp add --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"`));
+      assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"`));
       assert.match(said(), new RegExp(`codex mcp add tricot --url "http://127.0.0.1:${port}/mcp\\?agent=Codex"`));
 
       const page = await fetch(server.url);
@@ -217,9 +217,13 @@ describe('tricot command', () => {
 
     it('reports where it runs and how many boards it holds', async () => {
       const { server } = await run('--no-open');
+      const secret = JSON.parse(readFileSync(lockFile(dataDir), 'utf8')).secret as string;
+      assert.match(secret, /^[\w-]{43}$/, "the lock holds the approval hook's secret");
+      assert.equal(said().includes(secret), false, 'the start says nothing of it');
       out.length = 0;
       const { exitCode } = await run('status');
       assert.equal(exitCode, 0);
+      assert.equal(said().includes(secret), false, 'nor does status');
       assert.match(said(), new RegExp(`Tricot 9.9.9 is running: ${server!.url}`));
       assert.match(said(), new RegExp(`MCP endpoint: ${server!.url}/mcp`));
       assert.match(said(), /\(0 boards\)/);
@@ -235,7 +239,7 @@ describe('tricot command', () => {
       assert.ok(token.length >= 43);
       assert.deepEqual(opened, [`${server!.url}/?token=${token}`]);
       assert.match(said(), new RegExp(`Tricot is running: ${server!.url}/\\?token=${token}`));
-      assert.match(said(), new RegExp(`claude mcp add --transport http tricot "${server!.url}/mcp\\?agent=Claude" --header "Authorization: Bearer ${token}"`));
+      assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "${server!.url}/mcp\\?agent=Claude" --header "Authorization: Bearer ${token}"`));
       assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
       assert.match(said(), new RegExp(`codex mcp add tricot --url "${server!.url}/mcp\\?agent=Codex" --bearer-token-env-var TRICOT_TOKEN`));
     });
@@ -253,10 +257,10 @@ describe('tricot command', () => {
       assert.match(said(), /\(0 boards\)/);
 
       out.length = 0;
-      await run('connect', 'mcp-json');
+      await run('connect', '--print', 'mcp-json');
       assert.deepEqual(JSON.parse(out.slice(1).join('\n')).mcpServers.tricot.headers, { Authorization: `Bearer ${server!.token}` });
       out.length = 0;
-      await run('connect', 'url', '--name', 'Dev');
+      await run('connect', '--print', 'url', '--name', 'Dev');
       assert.equal(said(), `${server!.mcpUrl}?agent=Dev&token=${server!.token}`);
     });
 
@@ -264,12 +268,12 @@ describe('tricot command', () => {
       const { server } = await run('--no-open', '--host', '0.0.0.0');
       const token = server!.token!;
       out.length = 0;
-      await run('connect', 'pi');
+      await run('connect', '--print', 'pi');
       assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
       assert.match(said(), new RegExp(`pi mcp add tricot --url "${server!.url}/mcp\\?agent=Pi" --bearer-token-env-var TRICOT_TOKEN`));
 
       out.length = 0;
-      await run('connect', 'omp');
+      await run('connect', '--print', 'omp');
       assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
       const entry = JSON.parse(said().match(/\{[\s\S]*\}/)![0]).mcpServers.tricot;
       assert.deepEqual(entry, {
@@ -281,12 +285,12 @@ describe('tricot command', () => {
       assert.doesNotMatch(JSON.stringify(entry), new RegExp(token));
 
       out.length = 0;
-      await run('connect', 'gemini');
+      await run('connect', '--print', 'gemini');
       assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
       assert.ok(said().includes(`--header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot "${server!.url}/mcp?agent=Gemini"`), said());
 
       out.length = 0;
-      await run('connect', 'opencode');
+      await run('connect', '--print', 'opencode');
       assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
       const opencodeEntry = JSON.parse(said().match(/^\{[\s\S]*?^\}$/m)![0]).mcp.tricot;
       assert.deepEqual(opencodeEntry.headers, { Authorization: 'Bearer {env:TRICOT_TOKEN}' });
@@ -296,8 +300,8 @@ describe('tricot command', () => {
 
     it("keeps the token out of everything on 127.0.0.1", async () => {
       await run('--no-open');
-      await run('connect', 'mcp-json');
-      await run('connect', 'url');
+      await run('connect', '--print', 'mcp-json');
+      await run('connect', '--print', 'url');
       assert.doesNotMatch(said(), /token|Bearer|--header/i);
     });
   });
@@ -306,48 +310,48 @@ describe('tricot command', () => {
     it('prints the Claude Code and Codex commands for the running server', async () => {
       const { server } = await run('--no-open');
       out.length = 0;
-      await run('connect');
-      assert.match(said(), new RegExp(`claude mcp add --transport http tricot "${server!.url}/mcp\\?agent=Claude"`));
+      await run('connect', '--print');
+      assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "${server!.url}/mcp\\?agent=Claude"`));
       assert.match(said(), new RegExp(`codex mcp add tricot --url "${server!.url}/mcp\\?agent=Codex"`));
     });
 
     it('prints the default address when nothing is running yet', async () => {
-      const { exitCode } = await run('connect', 'claude');
+      const { exitCode } = await run('connect', '--print', 'claude');
       assert.equal(exitCode, 0);
       assert.match(said(), /isn't running yet/);
-      assert.match(said(), new RegExp(`claude mcp add --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"`));
+      assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"`));
       assert.match(said(), new RegExp(`--scope project --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"`));
     });
 
     it('lets --name override the default agent names in both commands', async () => {
-      await run('connect', '--name', 'Dev one');
-      assert.match(said(), new RegExp(`claude mcp add --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Dev%20one"`));
+      await run('connect', '--print', '--name', 'Dev one');
+      assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Dev%20one"`));
       assert.match(said(), new RegExp(`codex mcp add tricot --url "http://127.0.0.1:${port}/mcp\\?agent=Dev%20one"`));
     });
 
     it('names the agent and the board when asked', async () => {
-      await run('connect', 'codex', '--name', 'Codex one', '--board', 'plan');
+      await run('connect', '--print', 'codex', '--name', 'Codex one', '--board', 'plan');
       assert.match(said(), new RegExp(`codex mcp add tricot --url "http://127.0.0.1:${port}/mcp\\?agent=Codex%20one"`));
       assert.match(said(), /Use the Tricot board plan/);
     });
 
     it('prints the Pi command, named and quoted', async () => {
-      assert.equal((await run('connect', 'pi')).exitCode, 0);
+      assert.equal((await run('connect', '--print', 'pi')).exitCode, 0);
       assert.match(said(), new RegExp(`^  pi mcp add tricot --url "http://127.0.0.1:${port}/mcp\\?agent=Pi"$`, 'm'));
       assert.match(said(), /--exposure direct/);
       assert.doesNotMatch(said(), /token|Bearer/i);
     });
 
     it('lets --name rename Pi and OMP on the board', async () => {
-      await run('connect', 'pi', '--name', 'Pi two');
+      await run('connect', '--print', 'pi', '--name', 'Pi two');
       assert.match(said(), new RegExp(`--url "http://127.0.0.1:${port}/mcp\\?agent=Pi%20two"`));
       out.length = 0;
-      await run('connect', 'omp', '--name', 'OMP two');
+      await run('connect', '--print', 'omp', '--name', 'OMP two');
       assert.match(said(), new RegExp(`"url": "http://127.0.0.1:${port}/mcp\\?agent=OMP%20two"`));
     });
 
     it('prints the OMP mcp.json entry, and why it matters', async () => {
-      assert.equal((await run('connect', 'omp', '--board', 'plan')).exitCode, 0);
+      assert.equal((await run('connect', '--print', 'omp', '--board', 'plan')).exitCode, 0);
       assert.match(said(), /~\/\.omp\/agent\/mcp\.json/);
       assert.deepEqual(JSON.parse(said().match(/\{[\s\S]*\}/)![0]), {
         mcpServers: { tricot: { type: 'http', url: `http://127.0.0.1:${port}/mcp?agent=OMP`, timeout: 300000 } },
@@ -358,14 +362,14 @@ describe('tricot command', () => {
     });
 
     it('prints the Gemini CLI command, for every session, named and quoted', async () => {
-      assert.equal((await run('connect', 'gemini')).exitCode, 0);
+      assert.equal((await run('connect', '--print', 'gemini')).exitCode, 0);
       assert.match(said(), new RegExp(`^  gemini mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Gemini"$`, 'm'));
       assert.match(said(), /--trust/);
       assert.doesNotMatch(said(), /token|Bearer/i);
     });
 
     it("prints OpenCode's opencode.json entry, and OpenCode 2's command", async () => {
-      assert.equal((await run('connect', 'opencode', '--name', 'OpenCode two', '--board', 'plan')).exitCode, 0);
+      assert.equal((await run('connect', '--print', 'opencode', '--name', 'OpenCode two', '--board', 'plan')).exitCode, 0);
       assert.match(said(), /~\/\.config\/opencode\/opencode\.json/);
       assert.deepEqual(JSON.parse(said().match(/^\{[\s\S]*?^\}$/m)![0]), {
         mcp: { tricot: { type: 'remote', url: `http://127.0.0.1:${port}/mcp?agent=OpenCode%20two`, timeout: 300000 } },
@@ -376,24 +380,24 @@ describe('tricot command', () => {
     });
 
     it('lists Gemini CLI and OpenCode among the agents to connect', async () => {
-      await run('connect');
+      await run('connect', '--print');
       assert.match(said(), new RegExp(`gemini mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Gemini"`));
       assert.match(said(), /OpenCode: tricot connect opencode/);
     });
 
     it('lists Pi and OMP among the agents to connect', async () => {
-      await run('connect');
+      await run('connect', '--print');
       assert.match(said(), new RegExp(`pi mcp add tricot --url "http://127.0.0.1:${port}/mcp\\?agent=Pi"`));
       assert.match(said(), /OMP: tricot connect omp/);
     });
 
     it('prints a JSON config and a bare URL', async () => {
-      await run('connect', 'mcp-json');
+      await run('connect', '--print', 'mcp-json');
       assert.deepEqual(JSON.parse(out.slice(2).join('\n')), {
         mcpServers: { tricot: { type: 'http', url: `http://127.0.0.1:${port}/mcp` } },
       });
       out.length = 0;
-      await run('connect', 'url');
+      await run('connect', '--print', 'url');
       assert.equal(out.at(-1), `http://127.0.0.1:${port}/mcp`);
     });
 
@@ -410,9 +414,12 @@ describe('tricot command', () => {
       assert.equal(said(), '9.9.9');
     });
 
+    // cliHelp.test.ts has the help, the typos and what each says.
     it('rejects unknown commands and options', async () => {
       assert.equal((await run('dance')).exitCode, 1);
+      assert.deepEqual(err, ['Unknown command "dance". Run tricot --help to see the commands.'], 'the line, not the whole help');
       assert.equal((await run('--bogus')).exitCode, 1);
+      assert.deepEqual(out, []);
     });
   });
 

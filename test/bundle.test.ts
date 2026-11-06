@@ -15,7 +15,7 @@ const ENTRY = 'src/web/main.tsx';
 
 const FORBIDDEN: { what: string; matches: (file: string) => boolean; why: string }[] = [
   { what: 'zod', matches: (file) => file.startsWith('node_modules/zod/'), why: 'the input-checking library is for the server; the schema files import it, so the browser takes rules from src/core/schemas/rules.ts instead' },
-  { what: "a kind's or connector's server half", matches: (file) => /^src\/core\/(?:blocks|connectors)\/[^/]+\/server\.ts$/.test(file), why: "a kind's or connector's server.ts is what only the server uses, and the web build stubs it out" },
+  { what: "a kind's, connector's or agent's server half", matches: (file) => /^src\/core\/(?:blocks|connectors|agents)\/[^/]+\/server\.ts$/.test(file), why: "a kind's, connector's or agent's server.ts is what only the server uses, and the web build stubs it out" },
   { what: 'server code', matches: (file) => file.startsWith('src/server/') || file.startsWith('src/cli/'), why: 'the browser talks to the server over HTTP and never imports it' },
   { what: 'elkjs', matches: (file) => /(?:^|\/)node_modules\/elkjs\//.test(file), why: "it is under the EPL-2.0, which stays out of Tricot while #86 stands, so the web build leaves out Mermaid's ELK layouts (scripts/elkLeftOut.ts)" },
 ];

@@ -7,6 +7,7 @@ import { ANSWER_FILE } from '../src/cli/hooks';
 import { runCli, type CliContext } from '../src/cli/main';
 import type { RunningServer } from '../src/server/start';
 import { alive, claudeLike, codexLike, leftAfterReaping, node, play, repo, sleep, waitFor, type Played } from './switcher/harness';
+import { WINDOWS } from './platform';
 
 // All of it, as a person runs it: `tricot claude codex` in a terminal (a
 // pseudo-terminal the test plays, the harness's observer), on a board
@@ -72,7 +73,7 @@ after(async () => {
 const tricot = (...args: string[]): Played => play(node, ['--import', 'tsx', path.join(repo, 'src/cli/tricot.ts'), ...args], { env: { ...process.env, ...env }, cwd: project, cols: 110, rows: 32 });
 const pidOf = (agent: string) => Number(readFileSync(path.join(pids, agent), 'utf8').trim());
 
-describe('tricot claude codex, in a terminal', { timeout: 60_000 }, () => {
+describe('tricot claude codex, in a terminal', { timeout: 60_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
   it('runs both on the board, switches, says when one ends, and quits back to the terminal with its exit code', async () => {
     const t = tricot('claude', 'codex', '--board', board, '--no-open');
     const shows = (text: string, ms?: number) => waitFor(async () => (await t.observer.settled(), t.observer.text().includes(text)), ms ?? 15_000);
@@ -150,7 +151,7 @@ describe('tricot claude codex, in a terminal', { timeout: 60_000 }, () => {
     }
   });
 
-  it('shows one agent with the Tricot tab and the strip too, and runs it on its own with --no-switcher', async () => {
+  it('shows one agent with the Tricot tab and the strip too, and gives --no-switcher the error of any unknown option', async () => {
     const t = tricot('claude', '--board', board, '--no-open');
     try {
       assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes(' Tricot · Roadmap')), 15_000), t.observer.text());
@@ -158,7 +159,7 @@ describe('tricot claude codex, in a terminal', { timeout: 60_000 }, () => {
       await sleep(400);
       t.send('\x1c');
       assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes('Claude (stand-in)'))), t.observer.text());
-      assert.match(t.observer.strip(), / ○ Tricot {3}● 1 Claude · /);
+      assert.ok(await waitFor(async () => / ○ Tricot {3}● 1 Claude · /.test((await t.observer.settled(), t.observer.strip()))), t.observer.strip());
       await sleep(1_100);
       t.send('\x1c');
       await sleep(50);
@@ -167,15 +168,20 @@ describe('tricot claude codex, in a terminal', { timeout: 60_000 }, () => {
     } finally {
       t.pty.kill('SIGKILL');
     }
-    const bare = tricot('claude', '--no-switcher', '--board', board, '--no-open');
-    try {
-      assert.ok(await waitFor(async () => (await bare.observer.settled(), bare.observer.text().includes('Claude (stand-in)')), 15_000), bare.observer.text());
-      assert.doesNotMatch(bare.observer.text(), / Tricot · Roadmap/);
-      assert.equal(bare.observer.strip().includes('1 Claude'), false, 'no strip');
-      bare.send('X');
-      await bare.exited;
-    } finally {
-      bare.pty.kill('SIGKILL');
+    // The option is gone, in a terminal as anywhere: the parser's error and the
+    // help, and no board or agent started.
+    for (const flag of ['--no-switcher', '--switcher']) {
+      const old = tricot('claude', flag, '--board', board, '--no-open');
+      try {
+        assert.equal((await old.exited).exitCode, 1, flag);
+        const shown = old.output();
+        assert.ok(shown.includes(`Unknown option '${flag}'`), shown);
+        assert.match(shown, /Usage\r?\n {2}tricot \[start\] /);
+        assert.doesNotMatch(shown.slice(shown.indexOf('Usage')), /--switcher|--no-switcher|--switch-key/);
+        assert.doesNotMatch(shown, /Claude \(stand-in\)|Starting Claude Code/);
+      } finally {
+        old.pty.kill('SIGKILL');
+      }
     }
   });
 });

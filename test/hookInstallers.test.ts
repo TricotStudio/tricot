@@ -15,6 +15,7 @@ import { writeFileAtomic } from '../src/server/hooks/installer';
 import { omp } from '../src/server/hooks/omp';
 import { opencode } from '../src/server/hooks/opencode';
 import { pi } from '../src/server/hooks/pi';
+import { WINDOWS } from './platform';
 
 // Every installer runs against a home folder made for the test: nothing here
 // reads or writes a real agent's settings, and no agent is run.
@@ -253,7 +254,7 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
   });
 });
 
-describe('Claude Code steps, for one project (connect claude --hooks)', () => {
+describe('Claude Code steps, for one project (steps on --agent claude --project)', () => {
   it("writes the project's .claude, with a command that finds the script from the project", async () => {
     const target = freshHome();
     const project = path.join(target.home, 'work/app');
@@ -287,15 +288,15 @@ describe('Claude Code steps, for one project (connect claude --hooks)', () => {
       cwd: project,
       ...(answer !== undefined && { ask: async () => answer }),
     });
-    assert.equal((await runCli(['connect', 'claude', '--hooks'], ctx(true))).exitCode, 0);
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project'], ctx(true))).exitCode, 0);
     assert.ok(existsSync(path.join(project, '.claude/hooks/tricot-describe.mjs')), 'the module the script imports goes too');
     assert.equal(claude.status({ ...target, project }, 'project').state, 'on');
     out.length = 0;
-    assert.equal((await runCli(['connect', 'claude', '--hooks'], ctx())).exitCode, 0, 'set up already: nothing to ask');
+    assert.equal((await runCli(['steps', 'on', '--agent', 'claude', '--project'], ctx())).exitCode, 0, 'set up already: nothing to ask');
     assert.match(out.join('\n'), /already set up like this/);
     const ran = await runScript(path.join(project, '.claude/hooks/tricot-steps.mjs'), { hook_event_name: 'Stop', session_id: 's' });
     assert.equal(JSON.parse(ran.stdout).text, 'Finished its turn');
-    assert.equal((await runCli(['connect', 'claude', '--remove-hooks'], ctx())).exitCode, 0);
+    assert.equal((await runCli(['steps', 'off', '--agent', 'claude', '--project'], ctx())).exitCode, 0);
     assert.equal(claude.status({ ...target, project }, 'project').state, 'off');
     assert.match(out.join('\n'), /Every other setting is as it was/);
   });
@@ -670,7 +671,7 @@ describe('OpenCode steps (~/.config/opencode/plugins/tricot-steps.js)', () => {
 
 // From the security audit (#77): the files Tricot writes keep their mode, and
 // it never writes through a link, nor replaces one.
-describe('the files Tricot writes', () => {
+describe('the files Tricot writes', { skip: WINDOWS && 'checks POSIX file modes and symlinks' }, () => {
   const modeOf = (file: string) => (statSync(file).mode & 0o777).toString(8);
   const settingsOf = (installer: HookInstaller, home: string) =>
     installer === claude ? path.join(home, '.claude/settings.json') : installer === gemini ? path.join(home, '.gemini/settings.json') : path.join(home, '.codex/hooks.json');
@@ -713,7 +714,7 @@ describe('the files Tricot writes', () => {
     assert.equal(existsSync(path.join(target.home, '.claude/settings.json')), false, 'nothing else written either');
   });
 
-  it('refuses the same in a project, from `tricot connect claude --hooks`', async () => {
+  it('refuses the same in a project, from `tricot steps on --agent claude --project`', async () => {
     const target = freshHome();
     const zshrc = path.join(target.home, '.zshrc');
     write(zshrc, 'export PATH=/mine\n');
@@ -721,7 +722,7 @@ describe('the files Tricot writes', () => {
     mkdirSync(path.join(project, '.claude/hooks'), { recursive: true });
     symlinkSync(zshrc, path.join(project, '.claude/hooks/tricot-steps.mjs'));
     const said: string[] = [];
-    const result = await runCli(['connect', 'claude', '--hooks'], {
+    const result = await runCli(['steps', 'on', '--agent', 'claude', '--project'], {
       env: { TRICOT_DATA_DIR: path.join(target.home, 'data'), PORT: '4801', HOME: target.home },
       root: repo,
       entry: path.join(repo, 'src/cli/tricot.ts'),

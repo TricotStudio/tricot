@@ -3,9 +3,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultDataDir } from './dataDir';
+import { defaultDataDir } from '../platform/dataDir';
+import { stopSignals } from '../platform/stop';
 import { startServer } from './start';
-import { sourceLink } from './updates';
+import { sourceLink } from '../install/updates';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -46,8 +47,8 @@ async function main(): Promise<void> {
     await server.close();
     process.exit(0);
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  for (const signal of stopSignals()) process.on(signal, shutdown);
+  void server.unused.then(shutdown); // asked to stop over HTTP (stopRoutes.ts)
 }
 
 main().catch((error) => {

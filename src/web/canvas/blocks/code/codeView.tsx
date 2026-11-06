@@ -10,7 +10,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import { codeLanguage, codeLines, linesText, shortPath } from '../../../../core/blocks/code/code';
 import { lineQuote } from '../../../../core/blocks/diff/diff';
 import type { Block, Pin } from '../../../../core/types';
-import { Icon } from '../../../components';
+import { Icon } from '../../../shared/components';
 import { coloursOf, highlightLine, type Token } from '../../highlight';
 import { Code } from '../../lines';
 import { PairPinChip } from '../../pairing/ask';

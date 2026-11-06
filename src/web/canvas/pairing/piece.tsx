@@ -11,6 +11,10 @@
 // stay on their parts as far as the kind finds them again; those it can't
 // are listed under it, threads and all.
 //
+// A kind the canvas lets people edit can be edited here too (edit.tsx): Edit
+// in the bar, or a double-click while reading, opens its editor in place of
+// the piece, until they go back to Read or Pair, press Esc or close it.
+//
 // The piece draws the body: its parts, marked where they are pinned, and
 // how pointing at one works. It marks each pinned part's element with
 // data-pair-anchor="<pin ids>", and the part being asked about with
@@ -20,10 +24,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { atVersion } from '../../../core/canvas';
 import { partQuote, pinLost, pinPart, placePin } from '../../../core/pins';
 import type { Block, BlockVersion, Pin } from '../../../core/types';
-import { api } from '../../api';
+import { api } from '../../shared/api';
+import { typing } from '../../shared/hooks';
 import { useCanvas, type PinDraft } from '../context';
 import { PinThread, type PlacedPin } from '../pins';
 import { PairAskPrompt, PairPinChip } from './ask';
+import { useHandEdit, type HandEdit, type PieceEdit } from './edit';
 import { PinLine } from './pinLine';
 import { placeBy, unionRect, type Rect } from './pointing';
 import { usePairing } from './session';
@@ -104,9 +110,10 @@ export function PieceView<B extends Block>(props: {
   controls?: ReactNode;
   className?: string;
   body: (props: PieceBodyProps<B>) => ReactNode;
+  edit?: PieceEdit<B>; // how a person edits it by hand, for a kind they can
   onClose(): void;
 }) {
-  const { block, name, version, pinId, part, label, icon, title, from, fromTitle, browse, it, point, does, example, controls, className, body, onClose } = props;
+  const { block, name, version, pinId, part, label, icon, title, from, fromTitle, browse, it, point, does, example, controls, className, body, edit, onClose } = props;
   const canvas = useCanvas();
   const { seeItem } = canvas;
   const shown = useMemo(() => (version ? (atVersion(block, version) as B) : block), [block, version]);
@@ -120,6 +127,19 @@ export function PieceView<B extends Block>(props: {
   const [thread, setThread] = useState<string | null>(pinId ?? null);
   const [justPinned, setJustPinned] = useState<Pin | null>(null);
   const [threadHeight, setThreadHeight] = useState(THREAD_HEIGHT); // as the open thread is drawn, to place it
+  const hand = useHandEdit(block, name, edit, Boolean(edit) && !pairing.readOnly);
+  const editingRef = useRef(hand.on);
+  editingRef.current = hand.on;
+  const startEdit = useCallback(() => {
+    if (pairing.mode === 'pair') pairing.browse();
+    setChosen(null);
+    setThread(null);
+    hand.start();
+  }, [pairing, hand]);
+  // Closing saves what was typed first; it stays open if that can't be saved yet.
+  const close = useCallback(() => {
+    void hand.stop().then((closed) => closed && onClose());
+  }, [hand, onClose]);
 
   // The pins people talk about on its parts, with one just made until the board has it.
   const boardPins = canvas.pins.get(block.id);
@@ -150,7 +170,8 @@ export function PieceView<B extends Block>(props: {
     if (block.rev === rev.current) return;
     rev.current = block.rev;
     const by = block.updatedBy;
-    if (by.kind === 'human' && by.name === name) return; // their own edit, elsewhere
+    if (by.kind === 'human' && by.name === name) return; // their own edit, elsewhere or here
+    if (editingRef.current) return; // the editing band says it, with what to do
     setChanged(`${by.name} changed ${it}: showing the new version, where you were.`);
   }, [block.rev]); // who changed it is read as the revision lands
   useEffect(() => {
@@ -200,17 +221,21 @@ export function PieceView<B extends Block>(props: {
     reveal(pin.id);
   };
 
-  // Escape closes the prompt, then a thread, then the view (once the agent picker is closed).
+  // Escape ends editing (saving it), or closes the prompt, then a thread, then
+  // the view (once the agent picker is closed). In a cell being edited, it
+  // leaves the cell first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || panelOpen()) return;
-      if (chosen) closeAsk();
+      if (hand.on) {
+        if (!(hand.live && typing(e.target))) void hand.stop();
+      } else if (chosen) closeAsk();
       else if (thread) setThread(null);
       else onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [chosen, thread, onClose, closeAsk]);
+  }, [chosen, thread, onClose, closeAsk, hand]);
 
   // A request to the agent paired with, or a note on the part.
   const submit = async (ask: boolean) => {
@@ -243,9 +268,18 @@ export function PieceView<B extends Block>(props: {
 
   const who = pairing.agent;
   const choice = pairing.agents.find((a) => a.name === who);
+  const canEdit = Boolean(edit) && !pairing.readOnly;
+  // Reading, a double-click on the piece opens its editor, unless it was on a control or a pin.
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (!canEdit || edit?.doubleClick === false || hand.on || pointing) return;
+    if ((e.target as Element).closest('a, button, input, textarea, select, [data-chip-pin], .pair-pin-chip, .pin-thread, .pin-prompt')) return;
+    window.getSelection()?.removeAllRanges(); // the word the double-click selected
+    startEdit();
+  };
   return (
     <PairingShell
       pairing={pairing}
+      edit={canEdit && edit ? { on: hand.on, hint: edit.hint, start: startEdit, stop: hand.stop } : undefined}
       className={`piece-view${className ? ` ${className}` : ''}`}
       label={label}
       icon={icon}
@@ -261,20 +295,24 @@ export function PieceView<B extends Block>(props: {
         </>
       }
       band={
-        changed && (
-          <div className="pair-band is-changed" role="status">
-            {changed}
-          </div>
+        hand.on ? (
+          <EditBands hand={hand} it={it} back={browse.label} />
+        ) : (
+          changed && (
+            <div className="pair-band is-changed" role="status">
+              {changed}
+            </div>
+          )
         )
       }
-      controls={controls}
+      controls={hand.on ? undefined : controls}
       open={thread}
       onOpenRequest={openRequest}
-      onClose={onClose}
+      onClose={close}
     >
-      <div className={`piece-stage${pointing ? ' is-pointing' : ''}`} ref={stage}>
-        {body({ block: shown, placed: version ? [] : drawn, pointing, chosen, open: thread, pick, openPin })}
-        <div className="piece-layer">
+      <div className={`piece-stage${pointing ? ' is-pointing' : ''}${hand.on ? ' is-editing' : ''}`} ref={stage} onDoubleClick={onDoubleClick}>
+        {hand.on ? hand.editor : body({ block: shown, placed: version ? [] : drawn, pointing, chosen, open: thread, pick, openPin })}
+        <div className="piece-layer" hidden={hand.on}>
           {openDrawn && threadAt && (
             <PinThread
               key={openDrawn.id}
@@ -311,7 +349,7 @@ export function PieceView<B extends Block>(props: {
           )}
         </div>
       </div>
-      {lost.length > 0 && (
+      {lost.length > 0 && !hand.on && (
         <footer className="piece-apart">
           <div className="piece-apart-chips">
             <span className="faint small">No longer where they were</span>
@@ -325,5 +363,46 @@ export function PieceView<B extends Block>(props: {
         </footer>
       )}
     </PairingShell>
+  );
+}
+
+// While editing: how it saves, and, if the piece changed meanwhile, whose
+// change it was and what to do about the two.
+function EditBands({ hand, it, back }: { hand: HandEdit<Block>; it: string; back: string }) {
+  if (hand.theirs) {
+    return (
+      <div className="pair-band is-conflict" role="alert">
+        <span>
+          {hand.theirs} changed {it} while you were editing. Keep yours to save it over their change, or take theirs to start again from it.
+        </span>
+        <span className="pair-band-actions">
+          <button type="button" className="btn btn-small" onClick={hand.takeTheirs}>
+            Take theirs
+          </button>
+          <button type="button" className="btn btn-small btn-primary" onClick={hand.keepMine}>
+            Keep yours
+          </button>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={`pair-band is-editing${hand.error ? ' is-error' : ''}`} role="status">
+      <span>
+        {hand.error ??
+          (hand.saving
+            ? 'Saving…'
+            : hand.live
+              ? `Editing on your own: each change saves as you make it. ${back} or Esc goes back.`
+              : `Editing on your own: it saves as you go back to ${back}, or press Esc.`)}
+      </span>
+      {!hand.live && (
+        <span className="pair-band-actions">
+          <button type="button" className="btn btn-small btn-quiet" onClick={hand.discard} disabled={hand.saving}>
+            Discard changes
+          </button>
+        </span>
+      )}
+    </div>
   );
 }

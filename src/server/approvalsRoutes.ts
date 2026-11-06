@@ -7,6 +7,9 @@
 //                                       after a while; 404 for a request this
 //                                       server doesn't know (a restart: ask again)
 //   POST /api/approvals/:id/withdraw    { key }: the agent stopped waiting
+// The first two carry a proof (proof.ts) when the hook sent a challenge:
+// that the one answering holds this data folder's secret, and what it is
+// answering. The hook believes an answer only with it.
 //
 // From one of the person's seats (access.ts asPerson, tier B; seats.ts): a
 // browser or a Tricot terminal they let in, which signs the request:
@@ -52,7 +55,10 @@ import { asPerson, fromThisMachine, HOST_KEY_HEADER, HOST_LET_GO, NOT_A_PERSON, 
 import { AnswerHosts } from './answerHosts';
 import { WAIT_MS, type Approvals } from './approvals';
 import { sendPersonal } from './live';
+import { answerParts, bodyDigest, challengeOf, proofFor, sendProof } from './proof';
 import { Seats } from './seats';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
 
 const PING_MS = 20_000;
 
@@ -92,6 +98,7 @@ export interface ApprovalsRoutesOptions {
 
 export function createApprovalsRouter(store: Store, approvals: Approvals, options: ApprovalsRoutesOptions = {}): Router {
   const router = Router();
+  const on = routesOn(router, '/api');
   const local = options.fromThisMachine ?? fromThisMachine;
   const hosts = options.hosts ?? new AnswerHosts();
   const seats = options.seats ?? new Seats();
@@ -103,7 +110,7 @@ export function createApprovalsRouter(store: Store, approvals: Approvals, option
 
   // A host is a program on this computer, not a page: a browser's request
   // says where it comes from, and one that does is turned away.
-  router.post('/approvals/hosts', (req, res) => {
+  on(routes.registerHost, (req, res) => {
     if (!local(req)) {
       res.status(403).json({ error: NOT_FROM_HERE });
       return;
@@ -120,20 +127,20 @@ export function createApprovalsRouter(store: Store, approvals: Approvals, option
     res.status(201).json(registered);
   });
 
-  router.post('/approvals/hosts/heartbeat', (req, res) => {
+  on(routes.hostHeartbeat, (req, res) => {
     const key = req.header(HOST_KEY_HEADER);
     if (key && local(req) && hosts.heartbeat(key)) res.json({ held: true });
     else res.status(404).json({ error: HOST_LET_GO });
   });
 
-  router.post('/approvals/hosts/release', (req, res) => {
+  on(routes.hostRelease, (req, res) => {
     const key = req.header(HOST_KEY_HEADER);
     res.json({ released: Boolean(key && local(req) && hosts.release(key)) });
   });
 
   // ---- from the hook ---------------------------------------------------------
 
-  router.post('/agents/:name/approvals', (req, res) => {
+  on(routes.requestApproval, (req, res) => {
     const { name } = agentStepName.parse(req.params);
     const request = bodies.request.parse(req.body);
     const asked = approvals.ask(name, request);
@@ -141,12 +148,15 @@ export function createApprovalsRouter(store: Store, approvals: Approvals, option
       res.status(429).json({ error: asked.refused === 'full' ? 'Too many requests are waiting on the board.' : 'Too many requests from this agent at once.' });
       return;
     }
+    const challenge = challengeOf(req);
+    if (challenge) sendProof(res, proofFor(req, 'ask', challenge, [asked.id, bodyDigest(req), name]));
     res.status(asked.joined ? 200 : 201).json({ id: asked.id, key: asked.key });
   });
 
-  router.post('/approvals/:id/wait', (req, res) => {
+  on(routes.waitForApproval, (req, res) => {
     const { id } = bodies.id.parse(req.params);
     const { key } = bodies.key.parse(req.body);
+    const challenge = challengeOf(req);
     const waiting = approvals.wait(id, key, options.waitMs ?? WAIT_MS);
     // The hook went away before its answer came: its wait ends with it.
     res.on('close', () => {
@@ -154,11 +164,14 @@ export function createApprovalsRouter(store: Store, approvals: Approvals, option
     });
     void waiting.result.then((result) => {
       if (res.writableEnded || res.destroyed) return;
+      if (challenge && result.state !== 'unknown') {
+        sendProof(res, proofFor(req, 'wait', challenge, [id, ...answerParts(result.state, result.state === 'answered' ? result.answer : undefined)]));
+      }
       res.status(result.state === 'unknown' ? 404 : 200).json(result);
     });
   });
 
-  router.post('/approvals/:id/withdraw', (req, res) => {
+  on(routes.withdrawApproval, (req, res) => {
     const { id } = bodies.id.parse(req.params);
     const { key } = bodies.key.parse(req.body);
     res.json({ withdrawn: approvals.withdraw(id, key) });
@@ -168,12 +181,12 @@ export function createApprovalsRouter(store: Store, approvals: Approvals, option
 
   // What agents wait for names their commands, secrets and all: it is the
   // person's to read, from a seat (access.ts), as it is to answer.
-  router.get('/approvals', personOnly(person, 'B'), (_req, res) => {
+  on(routes.approvals, personOnly(person, 'B'), (_req, res) => {
     res.json(named(approvals.list()));
   });
 
   // In full to a seat, sealed to a page or terminal that isn't one (live.ts sendPersonal).
-  router.get('/approvals/stream', (req, res) => {
+  on(routes.approvalsStream, (req, res) => {
     const reader = readerOf(req, person, seats);
     if (!reader) {
       res.status(403).json({ error: NOT_A_PERSON });
@@ -189,7 +202,7 @@ export function createApprovalsRouter(store: Store, approvals: Approvals, option
     });
   });
 
-  router.post('/approvals/:id/answer', (req, res) => {
+  on(routes.answerApproval, (req, res) => {
     const verdict = mayAnswer(req);
     if (!verdict.ok) {
       res.status(verdict.status).json({ error: verdict.error, ...(verdict.code && { code: verdict.code }) });

@@ -1,6 +1,10 @@
-# The typecheck and the tests, on every pull request and push to main. The
-# clean-machine check (npm run smoke:release) is left to the release workflow,
-# which runs it on each version tag, to keep this quick.
+# The typecheck and the tests, on every pull request and push to main, on
+# Linux, macOS and Windows. The clean-machine check (npm run smoke:release) is
+# left to the release workflow, which runs it on each version tag, to keep
+# this quick.
+#
+# Tests that need a POSIX shell, file modes, signals or a pseudo-terminal skip
+# themselves on Windows, saying why (test/platform.ts).
 name: CI
 
 on:
@@ -22,11 +26,23 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # A failure on one system shouldn't hide what the others say.
+      fail-fast: false
+      matrix:
+        include:
+          # Each runner's own Chrome, for the diagram and page tests.
+          - os: ubuntu-latest
+            chrome: /usr/bin/google-chrome
+          - os: macos-latest
+            chrome: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+          - os: windows-latest
+            chrome: C:\Program Files\Google\Chrome\Application\chrome.exe
     env:
-      # The runner's own Chrome, for the diagram tests.
-      CHROME_PATH: /usr/bin/google-chrome
+      CHROME_PATH: ${{ matrix.chrome }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,6 +53,28 @@ jobs:
           node-version: 22
           cache: npm
 
+      # Without it the diagram and page tests skip themselves, quietly.
+      - name: Check Chrome is where the tests look
+        run: test -f "$CHROME_PATH" || { echo "::error::No Chrome at $CHROME_PATH, so the browser tests would skip."; exit 1; }
+
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+      # What adding a kind of block or a connector takes (scripts/check-new-kind.ts
+      # and check-new-connector.ts). Each adds a throwaway kind or connector to
+      # this checkout, checks it and takes it out again, even when the check
+      # fails; it touches nothing outside the checkout and the temporary folder.
+      # After the tests, so that nothing else reads the files while they change.
+      # Once is enough, and they start npx, which Windows runs as npx.cmd.
+      - name: Check what adding a kind and a connector takes
+        if: runner.os == 'Linux'
+        run: |
+          npx tsx scripts/check-new-kind.ts
+          npx tsx scripts/check-new-connector.ts
+          # Both have taken out what they added.
+          if [ -n "$(git status --porcelain -- src)" ]; then
+            git status --short -- src
+            echo "::error::The checks left changes in src/."
+            exit 1
+          fi

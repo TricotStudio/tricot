@@ -11,8 +11,12 @@
 //
 // Types and words only: the browser imports this.
 
-export const USAGE_SOURCES = ['claude-statusline', 'codex-rollout', 'pi', 'omp', 'opencode'] as const;
-export type UsageSource = (typeof USAGE_SOURCES)[number];
+import { agentKinds, agentOfSource, findAgent } from './agents/registry';
+
+// What each agent's harness says it is, in what it posts: the registry's
+// (agents/registry.ts), where each agent names its own.
+export const USAGE_SOURCES = agentKinds().flatMap((kind) => kind.usage.source ?? []) as [string, ...string[]];
+export type UsageSource = string;
 
 // One of a plan's windows: "5h", "7d", or "7d:<model>" for a model's own
 // weekly limit. resetsAt is ms since the epoch; minutes, the window's length
@@ -71,19 +75,18 @@ export interface AgentUsageReport {
 // ---- which tools share what ----------------------------------------------------------
 
 // What each tool Tricot has live steps for shares: plan limits (and more),
-// tokens and cost, or nothing Tricot can reach.
+// tokens and cost, or nothing Tricot can reach. Each agent says which
+// (agents/registry.ts).
 export type Shares = 'plan' | 'tokens' | 'none';
 
-const SHARES: Record<string, Shares> = { claude: 'plan', codex: 'plan', pi: 'tokens', omp: 'tokens', opencode: 'tokens', gemini: 'none' };
-
-export const sharesOf = (tool: string | undefined): Shares | undefined => (tool === undefined ? undefined : SHARES[tool]);
+export const sharesOf = (tool: string | undefined): Shares | undefined => (tool === undefined ? undefined : findAgent(tool)?.usage.shares);
 
 // The tool (a live-steps installer's id) a source comes from.
-export const toolOfSource = (source: UsageSource): string => (source === 'claude-statusline' ? 'claude' : source === 'codex-rollout' ? 'codex' : source);
+export const toolOfSource = (source: UsageSource): string => agentOfSource(source)?.id ?? source;
 
 // The quiet line for a tool that doesn't share its plan limits.
 export function notSharedLine(tool: string, toolName: string): string | undefined {
-  if (sharesOf(tool) === 'none') return tool === 'gemini' ? 'Gemini keeps its quota to itself: see /stats in Gemini.' : `${toolName} keeps its usage to itself.`;
+  if (sharesOf(tool) === 'none') return findAgent(tool)?.usage.notShared ?? `${toolName} keeps its usage to itself.`;
   if (sharesOf(tool) === 'tokens') return `${toolName} shares tokens and cost, not plan limits.`;
   return undefined;
 }

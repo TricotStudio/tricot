@@ -1,0 +1,572 @@
+/* ---- decisions table ---------------------------------------------------
+   The Decisions tab as one reference table: what needs a call, then what was
+   decided, newest first, then what was set aside. Rows keep the cards' cues:
+   the amber wash for what waits on the viewer, a blue edge and dot for what
+   changed since they looked. A row's background is --row-bg, painted on its
+   cells here and on the row itself once it stacks on a phone. */
+
+/* The table's columns follow the tab's own width, not the window's, so they
+   read with the conversation docked beside it (the container queries below). */
+.decisions {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  container: decisions / inline-size;
+}
+.dt-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 24px 12px;
+}
+.dt-seg {
+  display: inline-flex;
+  gap: 2px;
+  max-width: 100%;
+  background: var(--surface-2);
+  padding: 3px;
+  border-radius: 8px;
+}
+.dt-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 3px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.dt-seg button:hover {
+  color: var(--text);
+}
+.dt-seg button.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.dt-seg button[aria-disabled='true'] {
+  color: var(--faint);
+  opacity: 0.6;
+  cursor: default;
+}
+/* The filters sit at the right, where the toolbar ends. */
+.dt-filters {
+  margin-left: auto;
+}
+.dt-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 300px;
+  max-width: 100%;
+}
+.dt-search .icon {
+  position: absolute;
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.dt-search input {
+  height: 32px;
+  padding: 0 10px 0 31px;
+  font-size: 13px;
+}
+.dt-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 24px calc(24px + var(--bar-room, 0px));
+}
+.dt-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.dt {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+}
+.dt-c-num { width: 84px; }
+.dt-c-a { width: 30%; }
+.dt-c-b { width: 196px; }
+.dt-c-w { width: 150px; }
+.dt th,
+.dt td {
+  padding: 8px 12px;
+  line-height: 20px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--faint);
+  background: var(--surface);
+}
+.dt thead th:first-child { border-top-left-radius: var(--radius); }
+.dt thead th:last-child { border-top-right-radius: var(--radius); }
+.dt tbody:last-child > tr:last-child > td { border-bottom: none; }
+.dt tbody:last-child > tr:last-child > td:first-child { border-bottom-left-radius: var(--radius); }
+.dt tbody:last-child > tr:last-child > td:last-child { border-bottom-right-radius: var(--radius); }
+.dt .dt-w {
+  text-align: right;
+}
+.dt td.dt-w {
+  color: var(--faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dt-group th {
+  padding: 7px 12px 6px;
+  background: color-mix(in srgb, var(--surface-2) 55%, var(--surface));
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--faint);
+}
+.dt-group strong {
+  margin-right: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dt-row,
+.dt-fold {
+  --row-bg: transparent;
+  cursor: pointer;
+}
+.dt-fold.is-static {
+  cursor: default;
+}
+.dt-row > td,
+.dt-fold > td {
+  background: var(--row-bg);
+  transition: background 0.12s;
+}
+/* Approvals shown from their fold, and what was set aside, sink toward the
+   paper like closed cards. */
+.dt-fold,
+.dt-row.is-approval,
+.dt-section-aside .dt-row {
+  --row-bg: color-mix(in srgb, var(--surface) 45%, var(--bg));
+}
+.dt-row.is-approval .dt-q,
+.dt-section-aside .dt-q {
+  font-weight: 400;
+}
+.dt-section-aside .dt-row:not(.is-needs-you) :is(.dt-q, .dt-a) {
+  color: var(--muted);
+}
+.dt-row:hover,
+.dt-fold:hover {
+  --row-bg: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+}
+/* A row's state is a tint across it, with its marker in the row (the blue
+   dot, the amber tag, "just made"), never a stripe down its edge (DESIGN.md,
+   the No Stripes Rule; test/noStripes.test.ts). */
+.dt-row.is-new,
+.dt-fold.is-new {
+  --row-bg: color-mix(in srgb, var(--focus) 5%, var(--surface));
+}
+.dt-row.is-needs-you,
+.dt-fold.is-needs-you {
+  --row-bg: color-mix(in srgb, var(--open-bg) 70%, var(--surface));
+}
+.dt-row.is-needs-you:hover,
+.dt-fold.is-needs-you:hover {
+  --row-bg: var(--open-bg);
+}
+/* Faint text warms toward the wash, and amber tags step deeper, as on cards. */
+.dt-row.is-needs-you :is(.dt-num, td.dt-w, .dt-built-note) {
+  color: color-mix(in srgb, var(--open-ink) 30%, var(--faint));
+}
+:is(.dt-row, .dt-fold).is-needs-you .tag-asked {
+  background: color-mix(in srgb, var(--open) 18%, var(--surface));
+}
+/* Just made from your conversation (justMade.ts): lit in the focus blue,
+   with its "just made" in place of when, until you've seen it; then it fades. */
+.just-made {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--focus) 12%, var(--surface));
+  color: var(--focus);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.just-made::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.dt-row.is-made {
+  --row-bg: color-mix(in srgb, var(--focus) 8%, var(--surface));
+}
+.dt-row.is-made:hover {
+  --row-bg: color-mix(in srgb, var(--focus) 12%, var(--surface));
+}
+.dt-row.is-made-fading > td {
+  animation: dt-made-fade 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes dt-made-fade {
+  0% {
+    background: color-mix(in srgb, var(--focus) 8%, var(--surface));
+  }
+}
+/* An agent's change washes the row in its status colour, then settles. */
+.dt-row.is-flash > td {
+  animation: dt-flash 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes dt-flash {
+  0% {
+    background: color-mix(in srgb, var(--lane) 14%, var(--surface));
+  }
+}
+
+.dt-num {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.dt-marker::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 2px;
+  background: var(--marker);
+  vertical-align: 0.05em;
+}
+.dt-num .new-dot {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: 0.1em;
+}
+.dt-q-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dt-q-line > * {
+  flex: none;
+}
+.dt-q {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+}
+.dt-q:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.dt-flag {
+  font-size: 12px;
+}
+.dt-q-line .looking {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.dt-a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.dt-a-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-a.is-chosen .option-letter {
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.dt-a.is-provisional .option-letter {
+  background: var(--provisional-bg);
+  color: var(--provisional-ink);
+}
+.dt-a.is-recommended,
+.dt-a.is-words,
+.dt-a.is-none {
+  color: var(--muted);
+}
+.dt-a.is-words,
+.dt-a.is-none {
+  font-style: italic;
+}
+.dt-a .star {
+  font-size: 11px;
+  vertical-align: -1px;
+}
+.dt-built {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+}
+.dt-built .ref-chip {
+  padding: 1px 6px 1px 5px;
+  line-height: 16px; /* with its border, as tall as a line: rows keep one height */
+}
+.dt-built-note {
+  color: var(--faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dt-fold > td {
+  color: var(--muted);
+}
+.dt-fold-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 72px; /* under the questions */
+}
+.dt-fold-line > * {
+  flex: none;
+}
+.dt-fold-line > .row-spacer {
+  flex: 1;
+}
+.dt-fold-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--decided);
+  color: var(--decided);
+  font-size: 10px;
+}
+.dt-fold-line strong {
+  font-weight: 500;
+  color: var(--text);
+}
+.dt-fold-line .dt-fold-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-fold-line .new-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dt-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.dt-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s;
+}
+.dt-fold-toggle[aria-expanded='true'] .dt-chevron {
+  transform: translateY(1px) rotate(225deg);
+}
+
+/* Narrower, by the tab's own width: the columns beside the question give way
+   first, then more; narrower still (a phone, or the tab beside both the
+   conversation and the activity) the table stacks each decision into its
+   question, its answer, then what was built on it and when. */
+@container decisions (max-width: 1100px) {
+  .dt-c-num { width: 80px; }
+  .dt-c-a { width: 26%; }
+  .dt-c-b { width: 150px; }
+  .dt-c-w { width: 124px; }
+  .dt-fold-line { padding-left: 60px; }
+}
+@container decisions (max-width: 900px) {
+  .dt-c-num { width: 76px; }
+  .dt-c-a { width: 24%; }
+  .dt-c-b { width: 120px; }
+  .dt-c-w { width: 108px; }
+  .dt-fold-line { padding-left: 52px; }
+}
+/* On a phone the page scrolls, not the table. */
+@media (max-width: 760px) {
+  .dt-scroll {
+    overflow: visible;
+  }
+}
+@container decisions (max-width: 760px) {
+  .dt-tools {
+    padding: 12px 16px 10px;
+    gap: 8px;
+  }
+  .dt-search {
+    order: 1;
+    width: 100%;
+  }
+  .dt-filters {
+    order: 2;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+  .dt-filters button {
+    padding: 3px 8px;
+  }
+  .dt-scroll {
+    padding: 0 16px calc(16px + var(--bar-room, 0px));
+  }
+  .dt,
+  .dt tbody,
+  .dt tr,
+  .dt th,
+  .dt td {
+    display: block;
+  }
+  .dt colgroup,
+  .dt thead {
+    display: none;
+  }
+  .dt th,
+  .dt td {
+    white-space: normal;
+  }
+  .dt tbody:first-of-type .dt-group th {
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .dt .dt-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'num q q'
+      '. a a'
+      '. b w';
+    gap: 4px 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--row-bg);
+  }
+  .dt tbody:last-child > tr:last-child {
+    border-bottom: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .dt-row > td,
+  .dt tbody:last-child > tr.dt-row:last-child > td {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .dt-row.is-flash {
+    animation: dt-flash 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dt-row.is-flash > td {
+    animation: none;
+  }
+  .dt-row.is-made-fading {
+    animation: dt-made-fade 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dt-row.is-made-fading > td {
+    animation: none;
+  }
+  .dt-num { grid-area: num; }
+  .dt-q-cell { grid-area: q; }
+  .dt-a-cell { grid-area: a; }
+  .dt-b-cell { grid-area: b; }
+  .dt .dt-w {
+    grid-area: w;
+    align-self: center;
+  }
+  .dt-q-line {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .dt-q,
+  .dt-a-text {
+    white-space: normal;
+  }
+  /* A long answer keeps to two lines; the decision has the rest. */
+  .dt-a {
+    align-items: flex-start;
+  }
+  .dt-a-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .dt-a .option-letter {
+    margin-top: 1px;
+  }
+  .dt-built {
+    flex-wrap: wrap;
+  }
+  .dt-fold-line {
+    flex-wrap: wrap;
+    padding-left: 0;
+  }
+  .dt-fold-line .dt-fold-text {
+    flex-basis: 100%;
+    order: 1;
+    white-space: normal;
+  }
+  .dt-fold-sep {
+    display: none;
+  }
+}

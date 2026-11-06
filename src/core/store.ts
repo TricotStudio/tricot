@@ -41,7 +41,7 @@ export type {
   ResolveInput, TaskPatch, WaitOptions,
 } from './store/inputs';
 export { checkImage, sniffImage } from './blocks/image/check';
-export { inBlock } from './store/blockContent';
+export { inBlock, inBlockAsync } from './store/blockContent';
 export { label, taskLabel } from './store/labels';
 export { sameActor } from './store/validate';
 

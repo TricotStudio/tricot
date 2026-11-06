@@ -12,6 +12,8 @@ import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
 import { INSTRUCTIONS, MAX_INSTRUCTIONS } from '../src/server/mcp';
 import { eventsOf, versionsOf } from './tables';
+import { WINDOWS } from './platform';
+import { readGuide } from './guide';
 
 type ToolResult = { content: { type: string; text: string; data?: string; mimeType?: string }[]; isError?: boolean };
 
@@ -77,7 +79,7 @@ describe('MCP + REST end to end', () => {
       [
         'add_block', 'add_group', 'ask_people', 'attach_finding', 'brief_task', 'claim_task', 'comment', 'create_board',
         'finish_request', 'finish_sync', 'get_block', 'get_board', 'get_canvas', 'get_decision', 'get_task', 'get_thread', 'get_updates',
-        'link', 'list_boards', 'log_decision', 'pin', 'plan_tasks', 'post_decision', 'propose_criteria', 'react', 'remove_item', 'reply_in_thread',
+        'link', 'list_boards', 'log_decision', 'pin', 'plan_tasks', 'post_decision', 'propose_criteria', 'react', 'read_guide', 'remove_item', 'reply_in_thread',
         'report_skills', 'restore_item', 'search', 'start_thread', 'take_first_look', 'take_request', 'update_block', 'update_decision', 'update_task',
         'wait_for_updates',
       ],
@@ -476,10 +478,12 @@ describe('MCP + REST end to end', () => {
 
     // A file that exists but can't be sent must not be cached as if it were
     // the image (browsers would keep showing the error for a year).
-    chmodSync(path.join(dir, 'assets', assetId), 0o000);
-    const failed = await fetch(`${base}/api/assets/${assetId}`);
-    assert.notEqual(failed.status, 200);
-    assert.doesNotMatch(failed.headers.get('cache-control') ?? '', /immutable/);
+    if (!WINDOWS) {
+      chmodSync(path.join(dir, 'assets', assetId), 0o000);
+      const failed = await fetch(`${base}/api/assets/${assetId}`);
+      assert.notEqual(failed.status, 200);
+      assert.doesNotMatch(failed.headers.get('cache-control') ?? '', /immutable/);
+    }
   });
 
   it('tells agents about unread activity and shows people who is here', async () => {
@@ -665,8 +669,10 @@ describe('MCP + REST end to end', () => {
 
   it('makes the commit part of the review: people approve it over REST, agents see it and report the hash', async () => {
     const update = (await client.listTools()).tools.find((t) => t.name === 'update_task')!;
-    assert.match(update.description ?? '', /Don't post a "Commit …\?" card for a task's own work: people approve its commit with "Looks good, commit it"/);
-    assert.match(update.description ?? '', /Then commit that task's work alone, from your main session, and pass the hash as commit/);
+    assert.match(update.description ?? '', /Pass commit with the hash once you commit work a person approved with a commit \(refused otherwise\)/);
+    const tasks = await readGuide(client, 'tasks');
+    assert.match(tasks, /Don't post a "Commit …\?" card for a task's own work: people approve its commit with "Looks good, commit it"/);
+    assert.match(tasks, /Then commit that task's work alone, from your main session, and pass the hash as commit/);
     const idOf = (text: string) => text.match(/\[id: ([^\]]+)\]/)![1];
     const boardId = idOf(await callText('create_board', { title: 'Commits' }));
     const planned = await callText('plan_tasks', { board_id: boardId, tasks: [{ title: 'Fix login' }, { title: 'Bump deps' }] });
@@ -702,7 +708,8 @@ describe('MCP + REST end to end', () => {
 
   it('lets an agent say there is nothing to commit: with the review, or answering an approved commit', async () => {
     const update = (await client.listTools()).tools.find((t) => t.name === 'update_task')!;
-    assert.match(update.description ?? '', /send it for review with nothing_to_commit: why, and people are offered only "Looks good"/);
+    assert.match(update.description ?? '', /or nothing_to_commit with in_review when the work isn't in the repository/);
+    assert.match(await readGuide(client, 'tasks'), /send it for review with nothing_to_commit: why, and people are offered only "Looks good"/);
     const idOf = (text: string) => text.match(/\[id: ([^\]]+)\]/)![1];
     const boardId = idOf(await callText('create_board', { title: 'No commit' }));
     const planned = await callText('plan_tasks', { board_id: boardId, tasks: [{ title: 'Plan the cut-over' }, { title: 'Spike the importer' }] });
@@ -1244,8 +1251,10 @@ describe('MCP + REST end to end', () => {
     const cursor = Number((await callText('get_board', { board_id: boardId })).match(/Cursor: (\d+)/)![1]);
     const take = (await client.listTools()).tools.find((t) => t.name === 'take_request')!;
     // People ask in the General thread now; a board's older requests are still taken and finished.
-    assert.match(take.description ?? '', /People now ask from the Board Context in the board's General thread: answer those there \(reply_in_thread\)\./);
-    assert.match(take.description ?? '', /Take one with take_request, .+ finish_request with a one-line note\./);
+    const canvasGuide = await readGuide(client, 'canvas');
+    assert.match(canvasGuide, /People now ask from the Board Context in the board's General thread: answer those there \(reply_in_thread\)\./);
+    assert.match(take.description ?? '', /then finish_request/);
+    assert.match(canvasGuide, /Take one with take_request, .+ finish_request with a one-line note\./);
 
     assert.equal((await post(`/boards/${boardId}/requests`, { actor: 'Wassim', text: '' })).status, 400);
     assert.equal((await post(`/boards/${boardId}/requests`, { actor: 'Wassim' })).status, 400);
@@ -1344,7 +1353,8 @@ describe('MCP + REST end to end', () => {
     );
     assert.match(await callText('get_decision', { decision_id: decisionId }), /## Refresh requested\nBy Wassim \(human\) at \S+: "Config is per environment now"\nRe-check this card/);
     const update = (await client.listTools()).tools.find((t) => t.name === 'update_decision')!;
-    assert.match(update.description ?? '', /When a person asks for a refresh of a decision \(get_board, get_decision and your updates show it\), do it next/);
+    assert.match(update.description ?? '', /refreshed: true, with a note, finishes a person's refresh request/);
+    assert.match(await readGuide(client, 'decisions'), /When a person asks for a refresh of a decision \(get_board, get_decision and your updates show it\), do it next/);
 
     const noReason = await call('update_decision', { decision_id: decisionId, revise_options: [{ option: 'c', outdated: '' }] });
     assert.equal(noReason.isError, true);
@@ -1408,7 +1418,7 @@ describe('MCP + REST end to end', () => {
     const retired = await post(`/decisions/${decisionId}/retire`, { actor: 'Wassim', note: 'The gateway retries for us now' });
     assert.equal(retired.status, 200);
     assert.equal(retired.json.status, 'retired');
-    assert.match(await callText('get_board', { board_id: boardId }), /## Retired: .+ \(1\)\n- #1 .+ — retired: "The gateway retries for us now"/);
+    assert.match(await callText('get_board', { board_id: boardId }), /\nRetired: 1 decision a person set aside as no longer relevant; don't build on it\.\n/);
     assert.match(await callText('get_decision', { decision_id: decisionId }), /## Retired as no longer relevant\nBy Wassim \(human\) at \S+: The gateway retries for us now\./);
     const reworded = await call('update_decision', { decision_id: decisionId, question: 'Still?' });
     assert.match(reworded.content[0].text, /Wassim retired #1 .+ so agents can't reword it/);

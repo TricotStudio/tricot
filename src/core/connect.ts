@@ -6,6 +6,13 @@
 
 export const TOKEN_ENV = 'TRICOT_TOKEN';
 
+// The shell a command is shown for: zsh or bash (macOS and Linux), or
+// PowerShell, the default in Windows Terminal. PowerShell 5, the one Windows
+// ships with, has no `&&` and no `export`, and quotes a word differently.
+export type Shell = 'posix' | 'powershell';
+
+export const shellFor = (windows: boolean): Shell => (windows ? 'powershell' : 'posix');
+
 // One word of a command, as it must be typed into zsh (the Mac's default shell)
 // or bash: bare when every character is plain, in double quotes when nothing in
 // it means anything there, else in single quotes. Unquoted, the `?` of an
@@ -13,15 +20,44 @@ export const TOKEN_ENV = 'TRICOT_TOKEN';
 const PLAIN = /^[\w@%+:,./-][\w@%+=:,./-]*$/;
 const LIVE_IN_DOUBLE_QUOTES = /[$`\\"!]/;
 
-export function shellQuote(word: string): string {
+// In PowerShell a word is bare when it is made of letters, digits and a few
+// marks that mean nothing there (not `,`, which makes a list, nor `%` or
+// `~`, nor a leading `@`, which splats), else in single quotes, in which
+// nothing means anything but the quote itself, written twice. PowerShell 5
+// reads the curly single quotes as quotes too.
+const POWERSHELL_PLAIN = /^[\w+:./\\-][\w+=:./\\@-]*$/;
+const POWERSHELL_QUOTES = /['‘’‚‛]/g;
+
+const powershellString = (text: string): string => `'${text.replace(POWERSHELL_QUOTES, (quote) => quote + quote)}'`;
+
+export function shellQuote(word: string, shell: Shell = 'posix'): string {
+  if (shell === 'powershell') return POWERSHELL_PLAIN.test(word) ? word : powershellString(word);
   if (PLAIN.test(word)) return word;
   if (!LIVE_IN_DOUBLE_QUOTES.test(word)) return `"${word}"`;
   return `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
-export function shellCommand(words: string[]): string {
-  return words.map(shellQuote).join(' ');
+// A command, to type as it is. In PowerShell a program whose name needs
+// quotes is started with `&`: a quoted word alone is only a string there.
+export function shellCommand(words: string[], shell: Shell = 'posix'): string {
+  const line = words.map((word) => shellQuote(word, shell)).join(' ');
+  return shell === 'powershell' && line.startsWith("'") ? `& ${line}` : line;
 }
+
+// Commands to run one after the other, the next only if the one before worked:
+// one line with `&&`; in PowerShell 5, which has none, a line each.
+export const shellChain = (commands: string[], shell: Shell = 'posix'): string => commands.join(shell === 'powershell' ? '\n' : ' && ');
+
+// Setting an environment variable for what this shell runs next. `value` is
+// a word as it is shown (a token, or <token>).
+export function setEnvironment(name: string, value: string, shell: Shell = 'posix'): string {
+  return shell === 'powershell' ? `$env:${name} = ${powershellString(value)}` : `export ${name}=${shellQuote(value)}`;
+}
+
+// What the person is told of the line that sets the token, in a sentence, and
+// of the window it is run in.
+export const tokenLineName = (shell: Shell = 'posix'): string => (shell === 'powershell' ? `the $env:${TOKEN_ENV} line` : 'the export');
+export const shellNoun = (shell: Shell = 'posix'): string => (shell === 'powershell' ? 'PowerShell' : 'shell');
 
 // The MCP address with the agent's name on the board (replacing any it had),
 // and with `token` the token too, for clients that can't send a header.
@@ -37,32 +73,49 @@ export function agentUrl(mcpUrl: string, name?: string, token?: string): string 
 
 // Has its own line, with no comment after it: zsh doesn't take comments from
 // the keyboard unless told to, so a pasted `# ...` would become arguments.
-export function exportToken(token: string): string {
-  return `export ${TOKEN_ENV}=${shellQuote(token)}`;
+export function exportToken(token: string, shell: Shell = 'posix'): string {
+  return setEnvironment(TOKEN_ENV, token, shell);
 }
 
 // Claude Code sends the token as a header, so it stays out of the URL and of
-// `claude mcp list`. `scope` is where it keeps the entry (project: .mcp.json).
-export function claudeCommand(url: string, { token, scope }: { token?: string; scope?: string } = {}): string {
-  const where = scope ? ['--scope', scope] : [];
+// `claude mcp list`. `scope` is where it keeps the entry: user (the default
+// here: its own settings, every session in every folder) or project
+// (.mcp.json). Its own default, local, is for the one folder the command is
+// run in, which is not "every session". The words are what `tricot connect
+// claude` runs; the command is what it prints, quoted for a shell.
+export function claudeWords(url: string, { token, scope = 'user' }: { token?: string; scope?: string } = {}): string[] {
   const header = token ? ['--header', `Authorization: Bearer ${token}`] : [];
-  return shellCommand(['claude', 'mcp', 'add', ...where, '--transport', 'http', 'tricot', url, ...header]);
+  return ['claude', 'mcp', 'add', '--scope', scope, '--transport', 'http', 'tricot', url, ...header];
+}
+
+export function claudeCommand(url: string, options: { token?: string; scope?: string; shell?: Shell } = {}): string {
+  return shellCommand(claudeWords(url, options), options.shell);
 }
 
 // Codex's and Pi's `mcp add` have no header option; each reads a bearer token
-// from an environment variable.
-function readingToken(add: string[], token?: string): string[] {
-  return token ? [exportToken(token), shellCommand([...add, '--bearer-token-env-var', TOKEN_ENV])] : [shellCommand(add)];
+// from an environment variable, which the command names and never holds.
+function readingToken(words: string[], token: string | undefined, shell?: Shell): string[] {
+  return token ? [exportToken(token, shell), shellCommand(words, shell)] : [shellCommand(words, shell)];
 }
 
-export function codexLines(url: string, token?: string): string[] {
-  return readingToken(['codex', 'mcp', 'add', 'tricot', '--url', url], token);
+export function codexWords(url: string, token?: string): string[] {
+  const add = ['codex', 'mcp', 'add', 'tricot', '--url', url];
+  return token ? [...add, '--bearer-token-env-var', TOKEN_ENV] : add;
+}
+
+export function codexLines(url: string, token?: string, shell?: Shell): string[] {
+  return readingToken(codexWords(url, token), token, shell);
 }
 
 // Pi: `pi mcp add` writes ~/.pi/agent/mcp.json. Its default exposure (codemode)
 // reaches the board's tools through scripts, which works for them.
-export function piLines(url: string, token?: string): string[] {
-  return readingToken(['pi', 'mcp', 'add', 'tricot', '--url', url], token);
+export function piWords(url: string, token?: string): string[] {
+  const add = ['pi', 'mcp', 'add', 'tricot', '--url', url];
+  return token ? [...add, '--bearer-token-env-var', TOKEN_ENV] : add;
+}
+
+export function piLines(url: string, token?: string, shell?: Shell): string[] {
+  return readingToken(piWords(url, token), token, shell);
 }
 
 // Any other client that speaks Streamable HTTP, as an .mcp.json entry.
@@ -72,8 +125,10 @@ export function mcpJsonEntry(url: string, token?: string) {
 }
 
 // OMP has no `mcp add` outside a session, so it is an entry for its mcp.json.
-// Its calls time out after 30 seconds unless told otherwise, and wait_for_updates
-// holds for up to 240, so the entry asks for 300 seconds (in milliseconds).
+// Its calls time out after 30 seconds unless told otherwise, so the entry asks
+// for 300 seconds (in milliseconds), and a wait for updates ends inside that
+// (its registry entry, agents/omp/server.ts). A longer one here would not let
+// waits run longer: entries people already have still say 300.
 export const OMP_TIMEOUT_MS = 300_000;
 
 export function ompEntry(url: string, token?: string) {
@@ -92,19 +147,22 @@ export const OMP_FILE = '~/.omp/agent/mcp.json';
 // every session). It has a header option, and expands ${VAR} in its settings
 // when it loads them, so with a token the header names TRICOT_TOKEN (single
 // quotes keep the shell from expanding it) and the token stays out of the file.
-// Its calls wait up to 10 minutes by default, past wait_for_updates' 240 seconds.
-export function geminiLines(url: string, token?: string): string[] {
+// Its calls wait up to 10 minutes by default, and a wait for updates ends inside that (agents/gemini/server.ts).
+export function geminiWords(url: string, token?: string): string[] {
   const add = ['gemini', 'mcp', 'add', '--scope', 'user', '--transport', 'http'];
-  if (!token) return [shellCommand([...add, 'tricot', url])];
-  return [exportToken(token), shellCommand([...add, '--header', `Authorization: Bearer \${${TOKEN_ENV}}`, 'tricot', url])];
+  return token ? [...add, '--header', `Authorization: Bearer \${${TOKEN_ENV}}`, 'tricot', url] : [...add, 'tricot', url];
+}
+
+export function geminiLines(url: string, token?: string, shell?: Shell): string[] {
+  return readingToken(geminiWords(url, token), token, shell);
 }
 
 // OpenCode 1 adds a server only by asking questions (`opencode mcp add`), so
 // it is an entry for opencode.json, which OpenCode 2 reads too. Its {env:…}
 // puts the token in from the environment. In OpenCode 1 a call gives up
-// after a minute unless told otherwise, and wait_for_updates holds for up to
-// 240 seconds, so the entry asks for 300, as OMP's does (OpenCode 2 reads it
-// as the limit for connecting, listing and each call).
+// after a minute unless told otherwise, so the entry asks for 300 seconds, as
+// OMP's does (OpenCode 2 reads it as the limit for connecting, listing and
+// each call), and a wait for updates ends inside that (agents/opencode/server.ts).
 export function opencodeEntry(url: string, token?: string) {
   const headers = token ? { headers: { Authorization: `Bearer {env:${TOKEN_ENV}}` } } : {};
   return { type: 'remote', url, timeout: OMP_TIMEOUT_MS, ...headers };
@@ -118,30 +176,13 @@ export const OPENCODE_FILE = '~/.config/opencode/opencode.json';
 
 // OpenCode 2 has a command for it, writing the same file with --global (a
 // call there may run for 12 hours by default, so it needs no timeout).
-export function opencode2Lines(url: string, token?: string): string[] {
+export function opencode2Lines(url: string, token?: string, shell?: Shell): string[] {
   const add = ['opencode', 'mcp', 'add', 'tricot', '--url', url, '--global'];
-  if (!token) return [shellCommand(add)];
-  return [exportToken(token), shellCommand([...add, '--header', `Authorization=Bearer {env:${TOKEN_ENV}}`])];
+  if (!token) return [shellCommand(add, shell)];
+  return [exportToken(token, shell), shellCommand([...add, '--header', `Authorization=Bearer {env:${TOKEN_ENV}}`], shell)];
 }
 
-// What the Connect panel shows, and its Copy button copies, for each agent
-// tool: each named on the board as the tool is. `other` is the bare address,
-// for any client's settings rather than a shell.
-export type PanelTool = 'claude' | 'codex' | 'pi' | 'omp' | 'gemini' | 'opencode' | 'other';
-
-export function panelTexts(mcpUrl: string): Record<PanelTool, string> {
-  return {
-    claude: claudeCommand(agentUrl(mcpUrl, 'Claude')),
-    codex: codexLines(agentUrl(mcpUrl, 'Codex')).join('\n'),
-    pi: piLines(agentUrl(mcpUrl, 'Pi')).join('\n'),
-    omp: JSON.stringify(ompConfig(agentUrl(mcpUrl, 'OMP')), null, 2),
-    gemini: geminiLines(agentUrl(mcpUrl, 'Gemini')).join('\n'),
-    opencode: JSON.stringify(opencodeConfig(agentUrl(mcpUrl, 'OpenCode')), null, 2),
-    other: mcpUrl,
-  };
-}
-
-// Claude Code's steps hook (`tricot connect claude --hooks`) and the other
+// Claude Code's steps hook (`tricot steps on --agent claude --project`) and the other
 // agents' are set up by the hook installers, in src/server/hooks/.
 
 // Without its own `tricot` entry, OMP borrows Claude Code's and the agent
