@@ -12,6 +12,9 @@ import { createApp } from '../src/server/app';
 import { opencode } from '../src/server/hooks/opencode';
 import { removeScratch } from './platform';
 
+// A path from the project as the step says it: with this system's separators (windowsShell.test.ts).
+const fromProject = (file: string) => file.split('/').join(path.sep);
+
 // The plugin OpenCode loads, as Tricot installs it in a home made for the
 // test, driven as OpenCode 1 and 2 would: no OpenCode is imported or run. A
 // fake fetch keeps what would have been sent.
@@ -89,8 +92,8 @@ describe('the OpenCode plugin, as installed', () => {
 
   it("describes OpenCode's tools (1's and 2's names) as the hook script does Claude Code's, without contents or secrets", async () => {
     const cases: [string, Record<string, unknown>, string | undefined][] = [
-      ['read', { filePath: '/work/app/src/web/Home.tsx', offset: 3 }, 'Reading src/web/Home.tsx'],
-      ['read', { path: '/work/app/src/a.ts' }, 'Reading src/a.ts'],
+      ['read', { filePath: '/work/app/src/web/Home.tsx', offset: 3 }, `Reading ${fromProject('src/web/Home.tsx')}`],
+      ['read', { path: '/work/app/src/a.ts' }, `Reading ${fromProject('src/a.ts')}`],
       ['write', { filePath: '/work/app/notes/a.md', content: 'SECRET-CONTENT' }, 'Writing notes/a.md'],
       ['edit', { filePath: '/elsewhere/styles.css', oldString: 'a', newString: 'SECRET' }, 'Editing styles.css'],
       ['apply_patch', { patchText: '*** Begin Patch\n*** Update File: src/b.ts\n+SECRET\n*** End Patch' }, 'Editing src/b.ts'],
@@ -171,7 +174,7 @@ describe('the OpenCode plugin, as installed', () => {
     assert.deepEqual(
       steps.map((s) => [s.text, s.session, s.worker, s.done]),
       [
-        ['Reading src/a.ts', 's1', 'child-1', undefined],
+        [`Reading ${fromProject('src/a.ts')}`, 's1', 'child-1', undefined],
         ['Finished', 's1', 'child-1', true],
         ['Waiting for your permission in the terminal', 's1', undefined, undefined],
         ['Finished its turn', 's1', undefined, true],
@@ -248,7 +251,7 @@ describe('the OpenCode plugin, as installed', () => {
     await tick();
     assert.deepEqual(
       sent.map((s) => s.body.text),
-      ['Running npm test', 'npm test failed', 'Reading src/a.ts', 'Finished its turn'],
+      ['Running npm test', 'npm test failed', `Reading ${fromProject('src/a.ts')}`, 'Finished its turn'],
     );
     assert.doesNotMatch(JSON.stringify(sent.map((s) => s.body)), /SECRET/);
 

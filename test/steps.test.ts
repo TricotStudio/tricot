@@ -18,6 +18,9 @@ import { Presence } from '../src/server/presence';
 import { DUPLICATE_MS, LATE_MS, RUNNING_KEEP_MS, STEP_KEEP_MS, Steps, type StepResult } from '../src/server/steps';
 import { removeScratch } from './platform';
 
+// A path from the project as the step says it: with this system's separators (windowsShell.test.ts).
+const fromProject = (file: string) => file.split('/').join(path.sep);
+
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOOK = path.join(repo, 'hooks/tricot-steps.mjs');
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -663,7 +666,7 @@ describe('steps beyond this machine', () => {
 describe('the Claude Code hook script', () => {
   it('turns hook events into one-line steps, without contents, output, prompts or secrets', async () => {
     const cases: [Record<string, unknown>, Record<string, unknown> | undefined][] = [
-      [{ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/work/app/src/web/Home.tsx' } }, { text: 'Reading src/web/Home.tsx' }],
+      [{ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/work/app/src/web/Home.tsx' } }, { text: `Reading ${fromProject('src/web/Home.tsx')}` }],
       [{ hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '/work/app/a.ts', content: 'SECRET-CONTENT' } }, { text: 'Writing a.ts' }],
       [{ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: '/elsewhere/styles.css', old_string: 'a', new_string: 'SECRET-CONTENT' } }, { text: 'Editing styles.css' }],
       [{ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'cd /work/app && API_KEY=SECRET npm test -- --grep x', description: 'Run tests' } }, { text: 'Running npm test' }],

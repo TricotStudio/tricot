@@ -23,13 +23,12 @@ const clip = (text, max = MAX_TEXT) => {
 };
 
 // A path as the person knows it: from the project folder when it is inside it,
-// else just the file's name. With forward slashes on every system, as the
-// board shows paths.
+// else just the file's name.
 function shown(file, cwd) {
   if (typeof file !== 'string' || file === '') return undefined;
   if (!path.isAbsolute(file)) return clip(file, 80);
   const relative = cwd ? path.relative(cwd, file) : '';
-  return clip(relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative.split(path.sep).join('/') : path.basename(file), 80);
+  return clip(relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : path.basename(file), 80);
 }
 
 // The first words of a command: what runs, not what it is given. Leading

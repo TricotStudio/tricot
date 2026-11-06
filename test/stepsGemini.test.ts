@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 import { describe as step, fromGemini, isGeminiEvent } from '../hooks/tricot-describe.mjs';
+
+// A path from the project as the step says it: with this system's separators (windowsShell.test.ts).
+const fromProject = (file: string) => file.split('/').join(path.sep);
 
 // Gemini CLI's hook events (https://geminicli.com/docs/hooks/reference/), as
 // the hook script reads them: each the event Claude Code would send, then
@@ -25,7 +29,7 @@ describe("Gemini CLI's hook events, as steps", () => {
 
   it("describes its tools as Claude Code's, without contents, prompts or secrets", () => {
     const cases: [Record<string, unknown>, string | undefined][] = [
-      [before('read_file', { file_path: '/work/app/src/web/Home.tsx', start_line: 3 }), 'Reading src/web/Home.tsx'],
+      [before('read_file', { file_path: '/work/app/src/web/Home.tsx', start_line: 3 }), `Reading ${fromProject('src/web/Home.tsx')}`],
       [before('read_many_files', { include: ['src/**/*.ts', 'docs/*.md'] }), 'Reading files matching src/**/*.ts, docs/*.md'],
       [before('write_file', { file_path: '/work/app/a.ts', content: 'SECRET-CONTENT' }), 'Writing a.ts'],
       [before('replace', { file_path: '/elsewhere/styles.css', old_string: 'a', new_string: 'SECRET', instruction: 'SECRET' }), 'Editing styles.css'],

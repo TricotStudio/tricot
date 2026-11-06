@@ -53,7 +53,7 @@ describe('How Tricot was installed', () => {
       throw new Error('no file');
     };
     const project = (file: string) => {
-      if (file.replaceAll('\\', '/') === '/work/app/package.json') return JSON.stringify({ devDependencies: { tricot: '^0.1.0' } }); // \\work\\app on Windows
+      if (path.resolve(file) === path.resolve('/work/app/package.json')) return JSON.stringify({ devDependencies: { tricot: '^0.1.0' } }); // D:\\work\\app on Windows
       throw new Error('no file');
     };
     const node = '/opt/homebrew/Cellar/node/22.13.0/bin/node';

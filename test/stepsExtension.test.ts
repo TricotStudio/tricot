@@ -14,6 +14,9 @@ import { omp } from '../src/server/hooks/omp';
 import { pi } from '../src/server/hooks/pi';
 import { removeScratch } from './platform';
 
+// A path from the project as the step says it: with this system's separators (windowsShell.test.ts).
+const fromProject = (file: string) => file.split('/').join(path.sep);
+
 // The extension Pi and OMP load, driven by simulated events: no Pi or OMP is
 // imported or run. A fake agent hands its handlers events, and a fake fetch
 // keeps what would have been sent.
@@ -61,7 +64,7 @@ describe('the Pi and OMP extension: their events as steps', () => {
 
   it("describes Pi's tools as the hook script does Claude Code's, without contents or secrets", () => {
     const cases: [string, Record<string, unknown>, string | undefined][] = [
-      ['read', { path: '/work/app/src/web/Home.tsx', offset: 3 }, 'Reading src/web/Home.tsx'],
+      ['read', { path: '/work/app/src/web/Home.tsx', offset: 3 }, `Reading ${fromProject('src/web/Home.tsx')}`],
       ['write', { path: 'notes/a.md', content: 'SECRET-CONTENT' }, 'Writing notes/a.md'],
       ['edit', { path: '/elsewhere/styles.css', edits: [{ oldText: 'a', newText: 'SECRET' }] }, 'Editing styles.css'],
       ['bash', { command: 'cd /work/app && API_KEY=SECRET npm test -- --grep x' }, 'Running npm test'],
@@ -287,7 +290,7 @@ describe('the extension as installed', () => {
       agent.emit('tool_execution_start', { toolCallId: 'c', toolName: 'read', args: { path: '/work/app/src/a.ts' } }, piCtx());
       assert.equal(sent.length, 1);
       assert.equal(sent[0].url, `http://127.0.0.1:4800/api/agents/${name}%20Builder/steps`);
-      assert.equal(sent[0].body.text, 'Reading src/a.ts');
+      assert.equal(sent[0].body.text, `Reading ${fromProject('src/a.ts')}`);
     });
   }
 
