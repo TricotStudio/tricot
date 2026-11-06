@@ -20,6 +20,8 @@ import { removeScratch, WINDOWS } from './platform';
 // A path as a hook command writes it: with forward slashes on Windows, which
 // every shell there leaves alone (shellPath in src/server/hooks/installer.ts).
 const asWritten = (file: string) => (WINDOWS ? file.replaceAll('\\', '/') : file);
+// A path from the project as a step says it: with this system's separators (windowsShell.test.ts).
+const fromProject = (file: string) => file.split('/').join(path.sep);
 // A file's path from the home folder, with forward slashes on every system.
 const fromHome = (home: string, file: string) => path.relative(home, file).split(path.sep).join('/');
 
@@ -181,7 +183,7 @@ describe('Claude Code steps, for every project (~/.claude)', () => {
     // The copy runs from where it was put, with the module beside it.
     const ran = await runScript(f.script, { hook_event_name: 'PreToolUse', session_id: 's', cwd: '/w', tool_name: 'Read', tool_input: { file_path: '/w/src/a.ts' } });
     assert.equal(ran.code, 0);
-    assert.equal(JSON.parse(ran.stdout).text, 'Reading src/a.ts');
+    assert.equal(JSON.parse(ran.stdout).text, `Reading ${fromProject('src/a.ts')}`);
 
     const before = mtimes([f.script, f.describe, f.approve, f.usage, f.kept, f.settings]);
     const again = claude.install(target, { ...setup, name: 'Claude Builder' });
@@ -545,7 +547,7 @@ describe('Gemini CLI steps (~/.gemini/settings.json)', () => {
       assert.doesNotMatch(ran.stdout, /SECRET/);
       return ran.stdout ? JSON.parse(ran.stdout) : undefined;
     };
-    assert.equal((await step({ hook_event_name: 'BeforeTool', tool_name: 'read_file', tool_input: { file_path: '/w/src/a.ts' } })).text, 'Reading src/a.ts');
+    assert.equal((await step({ hook_event_name: 'BeforeTool', tool_name: 'read_file', tool_input: { file_path: '/w/src/a.ts' } })).text, `Reading ${fromProject('src/a.ts')}`);
     const test = { tool_name: 'run_shell_command', tool_input: { command: 'npm test -- --token SECRET', description: 'SECRET' } };
     const started = await step({ hook_event_name: 'BeforeTool', ...test });
     assert.deepEqual([started.text, started.running, started.session], ['Running npm test', true, 'g1']);

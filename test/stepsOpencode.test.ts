@@ -94,7 +94,7 @@ describe('the OpenCode plugin, as installed', () => {
     const cases: [string, Record<string, unknown>, string | undefined][] = [
       ['read', { filePath: '/work/app/src/web/Home.tsx', offset: 3 }, `Reading ${fromProject('src/web/Home.tsx')}`],
       ['read', { path: '/work/app/src/a.ts' }, `Reading ${fromProject('src/a.ts')}`],
-      ['write', { filePath: '/work/app/notes/a.md', content: 'SECRET-CONTENT' }, 'Writing notes/a.md'],
+      ['write', { filePath: '/work/app/notes/a.md', content: 'SECRET-CONTENT' }, `Writing ${fromProject('notes/a.md')}`],
       ['edit', { filePath: '/elsewhere/styles.css', oldString: 'a', newString: 'SECRET' }, 'Editing styles.css'],
       ['apply_patch', { patchText: '*** Begin Patch\n*** Update File: src/b.ts\n+SECRET\n*** End Patch' }, 'Editing src/b.ts'],
       ['patch', { patchText: '*** Begin Patch\n*** Add File: src/c.ts\n+SECRET\n*** End Patch' }, 'Editing src/c.ts'],
