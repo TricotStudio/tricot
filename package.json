@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A shared planning board where humans and agents make decisions together, over MCP",
-  "releaseNotes": "Follow-up fixes to 0.1.2. Tricot now opens board and card addresses when installed through nvm, volta or asdf. With one agent, tricot claude now shows the Tricot tab and a strip at the bottom, so questions for you stay in view. --no-switcher turns that off.",
+  "releaseNotes": "Connect Linear and Slack to read issues and threads. Edit notes, diagrams, tables and captions right in a block's full view, and zoom into big diagrams. Clearer command help, smoother runs on Windows, and failed updates now put your boards back.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
