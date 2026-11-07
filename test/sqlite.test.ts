@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -483,6 +483,18 @@ describe('Boards in SQLite', () => {
       assert.equal(decision.canvas.blocks.length, 1);
       assert.deepEqual(eventsOf(store, boardId).map((e) => e.type), ['board_created', 'decision_posted', 'canvas_changed']);
       await store.flush();
+    });
+
+    it('waits for the disk at every commit, except under the test runner, whose databases are scratch ones', () => {
+      const scratch = openDatabase(path.join(dir, 'tricot.db'));
+      assert.equal((scratch.prepare('PRAGMA synchronous').get() as { synchronous: number }).synchronous, 0, 'OFF under the test runner');
+      scratch.close();
+      // As Tricot runs for people, even with the save checks asked for: FULL.
+      const migrations = new URL('../src/core/store/migrations.ts', import.meta.url).href;
+      const code = `const { openDatabase } = await import(${JSON.stringify(migrations)}); const db = openDatabase(process.argv[1]); process.stdout.write(String(db.prepare('PRAGMA synchronous').get().synchronous)); db.close();`;
+      const env = { ...process.env, NODE_TEST_CONTEXT: undefined, TRICOT_CHECK_SAVES: '1' };
+      const real = execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code, path.join(dir, 'real.db')], { env, encoding: 'utf8' });
+      assert.equal(real, '2', 'FULL in real use');
     });
 
     it('keeps a change that named too little, once the board is compared whole', async () => {

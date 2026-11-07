@@ -9,9 +9,9 @@ import { hookInstallers } from '../src/server/hooks';
 // see claims has to agree with the half it can.
 describe('the agent registry', () => {
   it('lists the agents in the Connect panel order, and the CLI in its own', () => {
-    assert.deepEqual(agentKinds().map((kind) => kind.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode']);
-    assert.deepEqual(hookInstallers().map((installer) => installer.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode']);
-    assert.deepEqual(agentsInCliOrder().map((kind) => kind.id), ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp']);
+    assert.deepEqual(agentKinds().map((kind) => kind.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode', 'goose', 'hermes', 'grok']);
+    assert.deepEqual(hookInstallers().map((installer) => installer.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode', 'goose', 'hermes', 'grok']);
+    assert.deepEqual(agentsInCliOrder().map((kind) => kind.id), ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok']);
   });
 
   it('has each agent once, with the live-steps installer of the same id, name and board name', () => {
@@ -29,11 +29,11 @@ describe('the agent registry', () => {
       assert.equal(typeof kind.session === 'function', !kind.cantStart, kind.id);
       if (kind.sessionHooks) assert.ok(kind.session, `${kind.id} has hooks for a session it cannot start`);
     }
-    assert.deepEqual(agentKinds().filter((kind) => kind.cantStart).map((kind) => kind.id), ['gemini']);
+    assert.deepEqual(agentKinds().filter((kind) => kind.cantStart).map((kind) => kind.id), ['gemini', 'goose', 'hermes', 'grok']);
   });
 
   it('connects by a command or by a file, and the panel has a text for each, and one for any other client', () => {
-    assert.deepEqual(agentKinds().filter((kind) => kind.connect.how === 'file').map((kind) => kind.id), ['omp', 'opencode']);
+    assert.deepEqual(agentKinds().filter((kind) => kind.connect.how === 'file').map((kind) => kind.id), ['omp', 'opencode', 'goose', 'hermes']);
     const texts = panelTexts('http://127.0.0.1:4545/mcp');
     assert.deepEqual(Object.keys(texts).sort(), [...agentKinds().map((kind) => kind.id), 'other'].sort());
     for (const kind of agentKinds()) assert.ok(texts[kind.id], kind.id);

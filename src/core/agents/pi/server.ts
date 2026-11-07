@@ -16,6 +16,7 @@ export const server: AgentServerHalf = {
   // over (Pi 1.4's pi-mcp client: handleProgress re-arms the timer).
   mcpClient: { clientName: 'pi' },
   session: piSession,
+  ruleFlags: ({ model, effort }) => [...(model ? ['--model', model] : []), ...(effort ? ['--thinking', effort] : [])],
   show({ out, url, token, shell }) {
     out('Run once; Pi then has the board in every session:');
     for (const line of piLines(url, token, shell)) out(`  ${line}`);

@@ -37,6 +37,12 @@ export const gemini: AgentKind = {
     ],
   },
   usage: { shares: 'none', notShared: 'Gemini keeps its quota to itself: see /stats in Gemini.' },
+  // The models `gemini --list-models` lists (Gemini CLI 0.67); it has no
+  // thinking level to set from its command line. Tricot can't start it yet,
+  // so this is for when it can.
+  startsOn: {
+    models: [{ id: 'auto', label: 'Auto' }, ...['gemini-2.5-pro', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'].map((id) => ({ id, label: id }))],
+  },
 
   ...server,
 };

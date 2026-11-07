@@ -53,7 +53,8 @@ const asWebBuild: Plugin = {
 // Bundles a page script (TypeScript, imports resolved from the repository
 // root, as the web build bundles them), runs it in headless Chrome and
 // returns what it left, as JSON, in a <pre id="results"> it appends to the page.
-export async function runInChrome<T>(script: string): Promise<T> {
+// `size` is the window's, in CSS pixels, for a page laid out as on a desktop.
+export async function runInChrome<T>(script: string, size?: { width: number; height: number }): Promise<T> {
   if (!CHROME) throw new Error('No Chrome or Chromium here (set CHROME_PATH).');
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-diagram-'));
   try {
@@ -69,7 +70,17 @@ export async function runInChrome<T>(script: string): Promise<T> {
     writeFileSync(page, '<!doctype html><meta charset="utf-8"><body><script src="page.js"></script>');
     const dom = execFileSync(
       CHROME,
-      ['--headless=new', '--disable-gpu', '--no-first-run', '--force-prefers-no-reduced-motion', `--user-data-dir=${path.join(dir, 'profile')}`, '--virtual-time-budget=30000', '--dump-dom', pathToFileURL(page).href],
+      [
+        '--headless=new',
+        '--disable-gpu',
+        '--no-first-run',
+        '--force-prefers-no-reduced-motion',
+        `--user-data-dir=${path.join(dir, 'profile')}`,
+        ...(size ? [`--window-size=${size.width},${size.height}`] : []),
+        '--virtual-time-budget=30000',
+        '--dump-dom',
+        pathToFileURL(page).href,
+      ],
       { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'ignore'] },
     );
     const found = /<pre id="results">([^<]*)<\/pre>/.exec(dom);

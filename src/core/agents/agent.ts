@@ -5,9 +5,11 @@
 //
 //   core/agents/<id>/index.ts   who it is, how it connects, what the Connect
 //                               panel says of it, what its usage shows, how to
-//                               install it (browser-safe: the page imports it)
+//                               install it, the models and thinking levels it
+//                               can start on (browser-safe: the page imports it)
 //   core/agents/<id>/server.ts  what only the command and the server use: how
-//                               it starts for one session, its live-steps hook
+//                               it starts for one session and its flags for a
+//                               model and thinking level, its live-steps hook
 //                               installer, what `tricot connect` says of it
 //                               (swapped for an empty stub in the browser
 //                               build, see scripts/kindServerHalf.ts)
@@ -21,6 +23,7 @@
 // load.
 
 import type { HookInstaller, HookTarget } from '../../server/hooks/installer';
+import type { AgentRule } from '../agentRules';
 import type { Shell } from '../connect';
 import type { SessionLaunch, SessionSetup } from '../sessions';
 import type { Shares } from '../usage';
@@ -51,13 +54,16 @@ export interface CommandConnect {
   readsToken: boolean;
   remove: string[];
   list: string;
+  // The command that says what server it has under the name `tricot` (exit code 0 and its address in what it
+  // says, else it has none). Absent when it has no command to read one: `tricot connect` then only adds.
+  get?: string[];
 }
 
 // It has no command for it: an entry for a file the person edits.
 export interface FileConnect {
   how: 'file';
   file: string; // where its settings are
-  entry(url: string, token?: string): string; // what goes in, as JSON
+  entry(url: string, token?: string): string; // what goes in, as the file's own text: JSON, or YAML (yamlText) for a YAML file
 }
 
 export interface AgentPanel {
@@ -102,6 +108,33 @@ export interface SessionHooksInput {
   stepsAsked: boolean; // the person said yes to live steps
 }
 
+// One choice the agent's panel offers for its rule (core/agentRules.ts): what
+// is passed to the agent, and how the page names it.
+export interface RuleChoice {
+  id: string; // "opus", "xhigh"
+  label: string; // "Opus", "Extra high"
+}
+
+// What it can be started on (core/agentRules.ts): the models its panel
+// suggests (any other can be typed: none means typed only), and its thinking
+// levels from the least, or none when it has none Tricot can set. How a rule
+// becomes its flags is its server half's (ruleFlags).
+export interface RuleTraits {
+  models: RuleChoice[];
+  levels?: RuleChoice[];
+}
+
+// What it does with a tag that asks one message's work of another model and
+// thinking level (`@Claude:opus:high`, core/agentTags.ts): it hands that work
+// to a subagent on them, its own session left as it is. The levels are its
+// startsOn ones. `models`: the models its subagents take, by the names it
+// gives them; a name typed in full goes by the first of them it holds
+// ("claude-opus-4-5" is opus). None: any model its startsOn would take.
+export interface PerMessageTraits {
+  via: 'subagent';
+  models?: string[];
+}
+
 export interface AgentBrowserHalf {
   id: string; // "claude": what follows `tricot`, and the live-steps installer's id
   name: string; // as people know it: "Claude Code"
@@ -116,6 +149,12 @@ export interface AgentBrowserHalf {
   connect: CommandConnect | FileConnect;
   panel: AgentPanel;
   usage: UsageTraits;
+  // The model and thinking level it can be started on. None: Tricot starts
+  // it on its own settings alone, and takes no rule for it.
+  startsOn?: RuleTraits;
+  // How it does one message on another model and thinking level, when a
+  // person tags it so. None: it can't, and uses its own.
+  perMessage?: PerMessageTraits;
 }
 
 // How its MCP client treats one long call. A wait (wait_for_updates, or
@@ -139,6 +178,10 @@ export interface AgentServerHalf {
   session?(setup: SessionSetup): SessionLaunch;
   // Tricot's hooks for that session, and the line that says where approvals go.
   sessionHooks?(input: SessionHooksInput): { settings?: Record<string, unknown>; said?: string };
+  // Its own flags for a rule (core/agentRules.ts ruleFlags, which checks the
+  // rule first): each value a word of its own, never through a shell. With
+  // startsOn, and only then.
+  ruleFlags?(rule: AgentRule): string[];
   // Added to its environment when it runs in the Tricot tab.
   hostEnv?: Record<string, string>;
   // `tricot connect <id> --print`.

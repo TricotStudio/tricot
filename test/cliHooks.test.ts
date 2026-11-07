@@ -10,6 +10,7 @@ import { runCli, type CliContext, type CliResult } from '../src/cli/main';
 import { claude } from '../src/server/hooks/claude';
 import { codex } from '../src/server/hooks/codex';
 import { gemini } from '../src/server/hooks/gemini';
+import { grok } from '../src/server/hooks/grok';
 import { opencode } from '../src/server/hooks/opencode';
 import { pi } from '../src/server/hooks/pi';
 import type { RunningServer } from '../src/server/start';
@@ -102,7 +103,7 @@ describe('live steps from the terminal', () => {
       mkdirSync(path.join(home, '.claude'));
       mkdirSync(path.join(home, '.codex'));
       await startAndStop('enter');
-      assert.deepEqual(questions, ["Show your agents' steps live on your boards? [Y/n] "], 'one question; Enter is yes');
+      assert.deepEqual(questions, ["Show your agents' steps live on your boards?"], 'one question; Enter is yes');
       assert.match(said(), /It found Claude Code and Codex on this machine/);
       assert.match(said(), /~\/\.claude\/hooks\/\{tricot-steps\.mjs, tricot-describe\.mjs, tricot-approve\.mjs, tricot-usage\.mjs, tricot-usage\.json\}, ~\/\.claude\/settings\.json/);
       assert.match(said(), /Claude Code and Codex also bring each permission prompt to the board, with the command or change it asks about/);
@@ -180,6 +181,16 @@ describe('live steps from the terminal', () => {
       assert.deepEqual(json(path.join(home, '.config/opencode/tricot-steps/tricot-steps.json')), { name: 'OpenCode', url: `http://127.0.0.1:${port}` });
     });
 
+    it('asks for Grok Build like the others, and a yes sets it up in its own hook file', async () => {
+      mkdirSync(path.join(home, '.grok'));
+      await startAndStop('enter');
+      assert.match(said(), /It found Grok Build on this machine/);
+      assert.match(said(), /Grok Build +~\/\.grok\/hooks\/\{tricot-steps\.mjs, tricot-describe\.mjs, tricot-steps\.json\}/);
+      assert.equal(grok.status(target()).state, 'on');
+      assert.match(said(), /Grok Build waits for each hook/, 'what to know about it, said after installing');
+      assert.equal(json(path.join(home, '.grok/hooks/tricot-steps.json')).hooks.PreToolUse[0].hooks[0].command.includes(`--url http://127.0.0.1:${port}`), true);
+    });
+
     it('finds an agent by its command on PATH too', async () => {
       const bin = path.join(scratch, 'bin');
       mkdirSync(bin);
@@ -236,7 +247,7 @@ describe('live steps from the terminal', () => {
       mkdirSync(path.join(home, '.claude'));
       mkdirSync(path.join(home, '.omp'));
       assert.equal((await run(['steps', 'on'], false)).exitCode, 0);
-      assert.deepEqual(questions, ['Turn on live steps for Claude Code and OMP? [y/N] ']);
+      assert.deepEqual(questions, ['Turn on live steps for Claude Code and OMP?']);
       assert.match(said(), /Claude Code, for every project, would:/);
       assert.match(said(), /add to ~\/\.claude\/settings\.json/);
       assert.match(said(), /Nothing was changed/);
@@ -311,7 +322,7 @@ describe('live steps from the terminal', () => {
 
       rmSync(path.join(home, '.claude'), { recursive: true });
       assert.equal((await run(['steps', 'on', '--yes'])).exitCode, 1);
-      assert.match(err.join('\n'), /found none of Claude Code, Codex, Pi, OMP, Gemini CLI and OpenCode/);
+      assert.match(err.join('\n'), /found none of Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode, Goose, Hermes Agent and Grok Build/);
     });
   });
 

@@ -157,6 +157,22 @@ export function geminiLines(url: string, token?: string, shell?: Shell): string[
   return readingToken(geminiWords(url, token), token, shell);
 }
 
+// Grok Build: `grok mcp add` keeps the entry in ~/.grok/config.toml for every
+// session with --scope user (its default; `--scope project` is ./.grok/config.toml).
+// It has a header option, stores the value as written and expands ${VAR} in
+// a header when it loads its config, so with a token the header names
+// TRICOT_TOKEN (single quotes keep the shell from expanding it) and the token
+// stays out of the file. A call there may run for 100 minutes, so a wait for
+// updates needs no limit of its own (agents/grok/server.ts).
+export function grokWords(url: string, token?: string): string[] {
+  const add = ['grok', 'mcp', 'add', '--scope', 'user', '--transport', 'http'];
+  return token ? [...add, '--header', `Authorization: Bearer \${${TOKEN_ENV}}`, 'tricot', url] : [...add, 'tricot', url];
+}
+
+export function grokLines(url: string, token?: string, shell?: Shell): string[] {
+  return readingToken(grokWords(url, token), token, shell);
+}
+
 // OpenCode 1 adds a server only by asking questions (`opencode mcp add`), so
 // it is an entry for opencode.json, which OpenCode 2 reads too. Its {env:…}
 // puts the token in from the environment. In OpenCode 1 a call gives up
@@ -180,6 +196,44 @@ export function opencode2Lines(url: string, token?: string, shell?: Shell): stri
   const add = ['opencode', 'mcp', 'add', 'tricot', '--url', url, '--global'];
   if (!token) return [shellCommand(add, shell)];
   return [exportToken(token, shell), shellCommand([...add, '--header', `Authorization=Bearer {env:${TOKEN_ENV}}`], shell)];
+}
+
+// Goose: `goose configure` only asks questions, so it is an entry for the
+// extensions in its config.yaml (a YAML file: yamlText). A call gives up
+// after the entry's timeout, in seconds (300 unless set), whatever progress
+// comes, and the entry says it as OMP's does (agents/goose/server.ts). With a
+// token, `headers` names TRICOT_TOKEN, which `env_keys` has Goose take from its
+// environment, so the token stays out of the file. The entry is named
+// tricot, so the tools Goose lists are tricot__… (the steps hook reads that).
+// What of this is not confirmed is listed in agents/goose/index.ts.
+export const GOOSE_FILE = '~/.config/goose/config.yaml';
+export const GOOSE_WINDOWS_FILE = '%APPDATA%\\Block\\goose\\config\\config.yaml';
+
+export function gooseEntry(url: string, token?: string) {
+  const headers = token ? { env_keys: [TOKEN_ENV], headers: { Authorization: `Bearer \${${TOKEN_ENV}}` } } : {};
+  return { name: 'tricot', type: 'streamable_http', uri: url, enabled: true, timeout: OMP_TIMEOUT_MS / 1000, ...headers };
+}
+
+export function gooseConfig(url: string, token?: string) {
+  return { extensions: { tricot: gooseEntry(url, token) } };
+}
+
+// Hermes: `hermes mcp add` asks questions (it connects, then asks which tools
+// to enable, and keeps a token in its own .env), so it is an entry for the
+// mcp_servers in its config.yaml. A call gives up after `timeout` seconds
+// (300 unless set), and the entry says so. Its ${VAR} in `headers` is filled
+// from its environment or ~/.hermes/.env, and the connection fails when the
+// variable is not set, so the token stays out of the file and a missing one is
+// said. What of this is not confirmed is listed in agents/hermes/index.ts.
+export const HERMES_FILE = '~/.hermes/config.yaml';
+
+export function hermesEntry(url: string, token?: string) {
+  const headers = token ? { headers: { Authorization: `Bearer \${${TOKEN_ENV}}` } } : {};
+  return { url, timeout: OMP_TIMEOUT_MS / 1000, ...headers };
+}
+
+export function hermesConfig(url: string, token?: string) {
+  return { mcp_servers: { tricot: hermesEntry(url, token) } };
 }
 
 // Claude Code's steps hook (`tricot steps on --agent claude --project`) and the other

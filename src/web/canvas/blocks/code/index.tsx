@@ -60,6 +60,7 @@ function CodeTools({ block, viewing }: ToolsProps<CodeBlock>) {
 
 export const code: WebBlockKind<CodeBlock> = {
   type: 'code',
+  copyText: (block) => block.text,
   Body: ({ block, placed }) => <CodeBody block={block} placed={placed} />,
   Title: ({ block, placed, frozen }) => <CodeHead block={block} placed={placed} frozen={frozen} />, // named by its path
   ownPins: true, // its line comments and chips are in the body

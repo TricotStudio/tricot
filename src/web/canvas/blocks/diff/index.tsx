@@ -9,6 +9,7 @@ type DiffBlock = Extract<Block, { type: 'diff' }>;
 
 export const diff: WebBlockKind<DiffBlock> = {
   type: 'diff',
+  copyText: (block) => block.patch,
   Body: ({ block, placed }) => <DiffBody block={block} placed={placed} />,
   Head: ({ block }) => <DiffHead block={block} />,
   ownPins: true, // its line comments and chips are in the body

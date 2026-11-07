@@ -155,9 +155,11 @@ export function createApiRouter(
   on(routes.agents, (req, res) => {
     const { board } = agentsParams.parse(req.query);
     const here = board === undefined ? undefined : store.getBoard(board);
+    // With each, what its latest session said of it: which agent it is, and what it runs on (its panel's head).
     const seen = (presence?.agents(here && boardKey(here)) ?? []).map(({ board: key, ...agent }) => {
       const on = here ?? (key === undefined ? undefined : store.getBoard(key)); // presence keys on a board's first id, which still resolves; none: only connected
-      return on ? { ...agent, board: { id: on.id, title: on.title } } : agent;
+      const session = presence?.sessionOf(agent.name);
+      return { ...agent, ...session, ...(on && { board: { id: on.id, title: on.title } }) };
     });
     res.json(agentsWithSkills(store.agentSkills(), seen, store.tricotSkills(), here ? boardAgents(here, seen.map((a) => a.name)) : []));
   });
@@ -633,6 +635,13 @@ export function createApiRouter(
     const { actor, boardId, decisionId, taskId, moves } = canvasBodies.move.parse(req.body);
     store.moveItems({ boardId, decisionId, taskId }, moves, human(actor));
     res.json({ ok: true });
+  });
+
+  // Blocks copied from any canvas of this Tricot, pasted on this one: the
+  // store makes the copies (core/store/pasting.ts).
+  on(routes.pasteBlocks, (req, res) => {
+    const { actor, boardId, decisionId, taskId, ids, at } = canvasBodies.pasteBlocks.parse(req.body);
+    res.status(201).json(store.pasteBlocks({ boardId, decisionId, taskId }, { ids, at }, human(actor)));
   });
 
   on(routes.addGroup, (req, res) => {

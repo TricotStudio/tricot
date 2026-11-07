@@ -119,9 +119,9 @@ describe('the help', () => {
       [['steps'], ['--agent', '--data', '--name', '--narration', '--port', '--project', '--yes']],
       [['access'], ['--data']],
       [['update'], ['--data', '--port']],
-      [['claude'], ['--board', '--data', '--name', '--no-ask', '--no-open', '--no-update-check', '--port', '--verbose']],
-      [['codex'], ['--board', '--data', '--name', '--no-ask', '--no-open', '--no-update-check', '--port', '--verbose']],
-      [['opencode'], ['--board', '--data', '--name', '--no-ask', '--no-open', '--no-update-check', '--port', '--verbose']],
+      [['claude'], ['--board', '--data', '--effort', '--model', '--name', '--no-ask', '--no-open', '--no-update-check', '--port', '--verbose']],
+      [['codex'], ['--board', '--data', '--effort', '--model', '--name', '--no-ask', '--no-open', '--no-update-check', '--port', '--verbose']],
+      [['opencode'], ['--board', '--data', '--model', '--name', '--no-ask', '--no-open', '--no-update-check', '--port', '--verbose']],
     ];
 
     it("shows the command's own options and no other command's", async () => {
@@ -147,11 +147,11 @@ describe('the help', () => {
       assert.match(connect, /\n {2}--yes {14}Don't ask \(it still shows what it changes\)\n/);
       assert.match(connect, /\n {2}--board <id> {7}Name this board in the connect instructions\n/);
       assert.match(connect, /\n {2}--port <n> {9}Port \(default \$PORT or 4545\)\n/);
-      assert.match(flat(connect), /Connect claude, codex, pi or gemini: shows its own command, asks, and runs it\. --print only shows it \(omp, opencode, mcp-json and url are only ever shown/);
+      assert.match(flat(connect), /Connect claude, codex, pi, gemini or grok: shows its own command, asks, and runs it\. --print only shows it \(omp, opencode, goose, hermes, mcp-json and url are only ever shown/);
 
       const steps = flat(await helpOf('steps', '--help'));
       assert.match(steps, /Usage tricot steps \[status\|on\|off\] \[options\]/);
-      assert.match(steps, /--agent <id> Just this agent \(claude, codex, pi, omp, gemini, opencode\)/);
+      assert.match(steps, /--agent <id> Just this agent \(claude, codex, pi, omp, gemini, opencode, goose, hermes, grok\)/);
       assert.match(steps, /--project on\/off, with --agent claude: only this project's \.claude\/settings\.json, not every project's \(on asks first\)/);
       assert.match(steps, /--narration on --project: also show the first line of each message Claude writes in the terminal \(never its thinking\); off unless asked for/);
 
@@ -160,6 +160,21 @@ describe('the help', () => {
       assert.match(start, /\n {2}--board <id> {7}Open this board\n/);
       assert.match(start, /\n {2}--no-update-check {2}Don't ask GitHub once a day whether a newer Tricot is out/);
       assert.match(start, /\n {2}-d, --background {3}Keep running after this terminal closes \(logs to <data>\/server\.log\)\n/);
+    });
+
+    // T22: each agent's model and thinking level for one run, in its own words.
+    it("says each agent's --model and --effort in its own words, and how they stand in for its panel's rule", async () => {
+      const claude = flat(await helpOf('claude', '--help'));
+      assert.match(claude, /Usage tricot claude \[options\] \[-- <words for Claude Code>\] tricot claude \[--model <name>\] codex \[--model <name>\] \[options\]/);
+      assert.match(claude, /--model <name> The model Claude Code starts on, this run \(opus, sonnet, haiku, fable, or any it takes\)/);
+      assert.match(claude, /--effort <level> Its thinking level, this run: low, medium, high, xhigh or max/);
+      assert.match(claude, /Claude Code starts on the model and thinking level set in its panel on the board, the same on every board \(Default passes nothing, so its own settings apply\)\. --model and --effort stand in for them for this run\. With several, each takes those after its name: tricot claude --model opus codex --model gpt-6\.1-sol\./);
+      const codex = flat(await helpOf('codex', '--help'));
+      assert.match(codex, /--effort <level> Its thinking level, this run: low, medium, high, xhigh, max or ultra/);
+      const opencode = flat(await helpOf('opencode', '--help'));
+      assert.match(opencode, /--model <name> The model OpenCode starts on, this run /);
+      assert.match(opencode, /OpenCode starts on the model set in its panel on the board, the same on every board \(Default passes nothing, so its own settings apply\)\. --model stands in for it for this run\./);
+      assert.doesNotMatch(opencode, /--effort/, 'it has no thinking level Tricot can set');
     });
 
     it('is the same for several agents as for the first', async () => {

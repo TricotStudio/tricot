@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ZodType } from 'zod';
+import type { AgentRule } from '../core/agentRules';
+import { agentOfMcpClient } from '../core/agents/registry';
 import { describeIssues } from '../core/schemas';
 import type { Actor } from '../core/types';
 import type { Store } from '../core/store';
@@ -56,8 +58,9 @@ function slimToolList(server: McpServer): void {
 // the session's presence, steps and unread notices (mcp/session.ts), and
 // measured as the agent gets it (toolCosts.ts). `hangups`: the calls whose
 // HTTP connection closed before their answer, when the transport watches for
-// them (app.ts).
-export function createMcpServer(store: Store, getActor: () => Actor, options: McpOptions, hangups?: Hangups): McpServer {
+// them (app.ts). `runsOn`: the model and thinking level Tricot's terminal
+// started it on, when it did (core/agentRules.ts runsOnUrl).
+export function createMcpServer(store: Store, getActor: () => Actor, options: McpOptions, hangups?: Hangups, runsOn?: AgentRule): McpServer {
   const server = new McpServer(
     { name: 'tricot', version: options.version ?? '0.0.0' },
     { instructions: INSTRUCTIONS },
@@ -65,7 +68,14 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
   refuseInOurWords(server);
   // Connected as soon as its session starts, before it touches any board, so
   // Home can say so on a first run (presence.ts). Each call says so again.
-  server.server.oninitialized = () => options.presence?.connect(getActor().name);
+  // Which agent it is (its client's name) and what it runs on are this
+  // session's, for its panel: a new session says them again.
+  server.server.oninitialized = () => {
+    const name = getActor().name;
+    options.presence?.connect(name);
+    const tool = agentOfMcpClient(server.server.getClientVersion()?.name)?.id;
+    options.presence?.started(name, { ...(tool && { tool }), ...(runsOn && { runsOn }) });
+  };
 
   // Which agent's client this is decides how long one wait may last (session.ts longestWait).
   const session = createSession(store, getActor, options, { clientName: () => server.server.getClientVersion()?.name, hangups });

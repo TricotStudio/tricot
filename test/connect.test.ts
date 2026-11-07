@@ -7,6 +7,9 @@ import {
   codexLines,
   exportToken,
   geminiLines,
+  gooseEntry,
+  grokLines,
+  hermesEntry,
   ompConfig,
   ompEntry,
   opencode2Lines,
@@ -61,6 +64,14 @@ describe('connecting Gemini CLI and OpenCode', () => {
   it('has Gemini CLI read the token from the environment when it loads its settings, never holding it', () => {
     const lines = geminiLines(gemini, 's3cret');
     assert.deepEqual(lines, ['export TRICOT_TOKEN=s3cret', `gemini mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot "${gemini}"`]);
+    assert.doesNotMatch(lines[1], /s3cret/);
+  });
+
+  it('gives Grok Build one command, for every session (--scope user), with the token in a header that names the variable', () => {
+    const grok = 'http://127.0.0.1:4545/mcp?agent=Grok';
+    assert.deepEqual(grokLines(grok), [`grok mcp add --scope user --transport http tricot "${grok}"`]);
+    const lines = grokLines(grok, 's3cret');
+    assert.deepEqual(lines, ['export TRICOT_TOKEN=s3cret', `grok mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot "${grok}"`]);
     assert.doesNotMatch(lines[1], /s3cret/);
   });
 
@@ -219,8 +230,18 @@ describe('the commands, pasted into zsh and bash', () => {
         assertLines(texts.gemini, [['gemini', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', named(address, 'Gemini')]]);
       });
 
+      it('gives Grok Build its address, named Grok, for every session', () => {
+        assertLines(texts.grok, [['grok', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', named(address, 'Grok')]]);
+      });
+
       it('gives OpenCode an entry for its file, named OpenCode', () => {
         assert.deepEqual(JSON.parse(texts.opencode), { mcp: { tricot: { type: 'remote', url: named(address, 'OpenCode'), timeout: 300000 } } });
+      });
+
+      it("gives Goose and Hermes an entry for their YAML files, named, which waits past wait_for_updates", () => {
+        assert.equal(texts.goose, ['extensions:', '  tricot:', '    name: tricot', '    type: streamable_http', `    uri: ${JSON.stringify(named(address, 'Goose'))}`, '    enabled: true', '    timeout: 300'].join('\n'));
+        assert.equal(texts.hermes, ['mcp_servers:', '  tricot:', `    url: ${JSON.stringify(named(address, 'Hermes'))}`, '    timeout: 300'].join('\n'));
+        assert.doesNotMatch(texts.goose + texts.hermes, /^\s*[{[]/, 'YAML, not JSON');
       });
     });
   }
@@ -248,6 +269,23 @@ describe('the commands, pasted into zsh and bash', () => {
         assertLines(geminiLines(address, token).join('\n'), [
           ['export', `TRICOT_TOKEN=${token}`],
           ['gemini', 'mcp', 'add', '--scope', 'user', '--transport', 'http', '--header', 'Authorization: Bearer ${TRICOT_TOKEN}', 'tricot', address],
+        ]);
+      });
+
+      it("has Goose and Hermes fill the header in from the environment, and never hold the token", () => {
+        const goose = gooseEntry(address, token);
+        assert.deepEqual(goose.env_keys, ['TRICOT_TOKEN']);
+        assert.deepEqual(goose.headers, { Authorization: 'Bearer ${TRICOT_TOKEN}' });
+        assert.deepEqual(hermesEntry(address, token).headers, { Authorization: 'Bearer ${TRICOT_TOKEN}' });
+        assert.doesNotMatch(JSON.stringify([goose, hermesEntry(address, token)]), new RegExp(token.replace(/[<>]/g, '\\$&')));
+        assert.equal(gooseEntry(address).headers, undefined);
+        assert.equal(hermesEntry(address).headers, undefined);
+      });
+
+      it('exports it for Grok Build, whose header names the variable for Grok to expand when it loads its config, not the shell', () => {
+        assertLines(grokLines(address, token).join('\n'), [
+          ['export', `TRICOT_TOKEN=${token}`],
+          ['grok', 'mcp', 'add', '--scope', 'user', '--transport', 'http', '--header', 'Authorization: Bearer ${TRICOT_TOKEN}', 'tricot', address],
         ]);
       });
 

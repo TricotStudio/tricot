@@ -329,6 +329,7 @@ describe('Deleting a card over the API and MCP', () => {
     const board = store.createBoard({ title: 'Retries' }, sam);
     const decision = store.postDecision(board.id, { question: 'How often?', options: [{ label: 'Twice' }] }, claude);
     const [task] = store.planTasks(board.id, [{ title: 'Add retries' }], claude);
+    await tool('get_task', { task_id: task.id });
 
     const removing = await tool('remove_item', { id: task.id });
     assert.equal(removing.isError, true);

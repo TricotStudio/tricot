@@ -5,8 +5,8 @@ import { clip } from '../../core/format';
 import { boardKey, type Board } from '../../core/types';
 import { eventsSince } from '../live';
 import { notificationsSupported, notificationsWanted, rememberNotifications, ring, turnOnNotifications, unlockAudio } from '../shared/notifications';
-import { go } from '../shared/pages';
 import { useTitlePart } from '../shared/tabTitle';
+import { eventTarget } from './place';
 
 // A board's notifications: what needs the viewer's input, while they're
 // looking somewhere else (the switch and the chime: shared/notifications.ts).
@@ -24,6 +24,8 @@ export function useNotifications(board: Board | null, name: string): Notificatio
   const [wanted, setWanted] = useState(notificationsWanted);
   const enabled = wanted && permission === 'granted';
   const last = useRef<{ boardId: string; seq: number } | null>(null);
+  const shown = useRef(board); // the board as it is now, for a click on a notification
+  shown.current = board;
 
   // After a reload, the first click anywhere re-arms the sound.
   useEffect(() => {
@@ -45,14 +47,19 @@ export function useNotifications(board: Board | null, name: string): Notificatio
         const fresh = events.filter((e) => needsInput(e, board, name));
         if (fresh.length === 0) return;
         for (const event of fresh.slice(-3)) {
-          const decision = event.decisionId ? board.decisions.find((d) => d.id === event.decisionId) : undefined;
           const notification = new Notification(board.title, {
             body: clip(`${event.actor.name} ${event.summary}`, 180),
-            tag: event.decisionId ?? String(event.seq),
+            // One per decision: a newer one about it takes the older one's
+            // place. A task's names the task's decision too, but is its own.
+            tag: event.decisionId && !event.taskId ? event.decisionId : String(event.seq),
           });
+          // A click brings the tab forward on what it was about, where the
+          // Activity log and the inbox lead (place.ts), as the board is by
+          // then: about a card or thread deleted since, it only comes forward.
           notification.onclick = () => {
             window.focus();
-            if (decision) go.decision(board.id, decision.id);
+            const now = shown.current && boardKey(shown.current) === boardKey(board) ? shown.current : board;
+            eventTarget(now, event)?.();
             notification.close();
           };
         }

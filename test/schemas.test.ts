@@ -455,6 +455,7 @@ describe('REST and MCP refuse the same input in the same words', () => {
     const board = (await rest('POST', '/boards', { ...human, title: 'Schemas' })).json.id as string;
     const decision = (await rest('POST', `/boards/${board}/decisions`, { ...human, question: 'Which?', options: ['One', 'Two'] })).json.id as string;
     const task = (await rest('POST', `/boards/${board}/tasks`, { ...human, title: 'Do it' })).json.id as string;
+    await rest('POST', `/tasks/${task}`, { ...human, status: 'todo' });
     const thread = (await rest('POST', `/boards/${board}/threads`, { ...human, body: 'Hello there' })).json.id as string;
     const block = (await rest('POST', '/canvas/blocks', { ...human, boardId: board, content: { type: 'note', text: 'One' } })).json.id as string;
     const other = (await rest('POST', '/canvas/blocks', { ...human, boardId: board, content: { type: 'note', text: 'Two' } })).json.id as string;

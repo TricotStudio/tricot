@@ -140,6 +140,8 @@ export const server: ServerHalf<ImageTypes> = {
   },
   snapshot: (block) => ({ assetId: block.assetId, caption: block.caption }),
   // The block's picture size is its current picture's.
+  // A copy shows the same file (assets are shared, never copied) and, for a Figma frame, can be refreshed from the same one.
+  copy: (block) => (block.origin ? { origin: { ...block.origin } } : {}),
   restorePatch: (version) => ({ caption: version.caption ?? '' }), // its picture goes back by the asset it kept, which change sets
 
   digest: (block) => (block.caption ? `Caption: ${block.caption}` : '(no caption)'),

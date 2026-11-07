@@ -65,7 +65,7 @@ export function AgentLiveSteps({ name, person, steps }: { name: string; person: 
           <span className="live-steps-state">Tricot can't tell which tool {name} runs in, so there is no switch here.</span>
         </div>
         <p className="live-steps-line">
-          From a terminal: <code>tricot steps on --agent claude --name "{name}"</code> (or codex, pi, omp, gemini, opencode).
+          From a terminal: <code>tricot steps on --agent claude --name "{name}"</code> (or codex, pi, omp, gemini, opencode, goose, hermes, grok).
         </p>
       </section>
     );

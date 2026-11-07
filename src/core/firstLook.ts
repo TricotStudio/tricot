@@ -3,17 +3,18 @@
 // UI work), so the person shapes it with that in hand. Exactly one, even with
 // several agents listening: an agent takes it with take_first_look, which only
 // one can do, and its next comment on the card gives it. A taken first look
-// with no comment for FIRST_LOOK_MS goes back to open. The card's assignee
-// alone may take it, else the agents its text or a person's comment on it
-// @-mentions, else any agent. These are the rules for that, and how agents and
-// people read it. The store applies them (Store.takeFirstLook).
+// with no comment for FIRST_LOOK_MS goes back to open. The agent a person
+// assigned alone may take it, else the agents its text or a comment on it
+// @-mentions, whether a person or another agent wrote it. With neither, the
+// card stays quiet. These rules say how agents and people read it. The store
+// applies them (Store.takeFirstLook).
 //
 // A card an agent opens in the backlog (plan_tasks with backlog) gets none:
-// that agent wrote down what it found. A person who wants another agent's
+// that agent wrote down what it found. Someone who wants another agent's
 // view @-mentions it on the card, which asks it as any comment does.
 
 import { clip, listNames, samePerson } from './format';
-import { addressedTo, agentsIn } from './mentions';
+import { addressedTo, agentsIn, boardAgents, resolveMentions } from './mentions';
 import { LANE_NAMES } from './taskOrder';
 import type { Actor, Board, FirstLook, Task } from './types';
 
@@ -30,26 +31,45 @@ export function awaitsFirstLook(task: Task): task is Task & { firstLook: Exclude
   return task.status === 'backlog' && (task.firstLook?.status === 'open' || task.firstLook?.status === 'taken');
 }
 
-// The agents a card's first look is for: its assignee alone; else those its
-// text, or a person's comment on it, @-mentions; none means any agent.
-export function firstLookAgents(board: Board, task: Task): string[] {
-  if (task.assignee) return [task.assignee];
-  const agents = [...(task.firstLook?.mentions ?? [])];
+// The agents a card's first look is for: the agent a person assigned alone;
+// else those its text, or any comment on it, @-mentions (a comment the loop
+// guard holds asks nobody). None means nobody was asked.
+const requestedAssignee = (task: Task): string | undefined => task.assignedBy?.kind === 'human' ? task.assignee : undefined;
+
+export function firstLookAgents(board: Board, task: Task, viewer?: string): string[] {
+  const assignee = requestedAssignee(task);
+  if (assignee) return [assignee];
+  return mentionedAgents(board, task, viewer, false);
+}
+
+// Anyone may ask another agent for feedback on an assigned card too.
+// Reading it is allowed for every agent they name; taking its first look
+// still gives the assignee priority above.
+export function backlogAgents(board: Board, task: Task, viewer?: string): string[] {
+  return mentionedAgents(board, task, viewer, true);
+}
+
+function mentionedAgents(board: Board, task: Task, viewer: string | undefined, includeHeld: boolean): string[] {
+  const assignee = requestedAssignee(task);
+  const text = [task.title, task.detail].filter(Boolean).join('\n');
+  const mentioned = resolveMentions(text, boardAgents(board, viewer ? [viewer] : []));
+  const agents = [...new Set([...(assignee ? [assignee] : []), ...(task.firstLook?.mentions ?? []), ...mentioned])];
   for (const comment of task.comments) {
-    if (comment.author.kind !== 'human') continue;
+    if (!includeHeld && comment.held) continue;
     for (const agent of agentsIn(board, comment.mentions)) if (!agents.some((a) => samePerson(a, agent))) agents.push(agent);
   }
   return agents;
 }
 
 export function firstLookFor(board: Board, task: Task, agent: string): boolean {
-  const agents = firstLookAgents(board, task);
-  return agents.length === 0 || agents.some((a) => samePerson(a, agent));
+  const agents = firstLookAgents(board, task, agent);
+  return agents.some((a) => samePerson(a, agent));
 }
 
 // Why a card's first look is for those agents, for a refusal.
 function whyFor(task: Task, agents: string[]): string {
-  if (task.assignee) return `assigned to ${task.assignee}`;
+  const assignee = requestedAssignee(task);
+  if (assignee) return `assigned to ${assignee}`;
   return `${listNames(agents)} ${agents.length === 1 ? 'is' : 'are'} @-mentioned on it`;
 }
 
@@ -91,11 +111,12 @@ export function takeFirstLookRefusal(board: Board, task: Task, actor: Actor): st
   if (look.status === 'done') return `${t} already had its first look: ${look.by.name} gave it. Comment on it if you have something to add.`;
   if (task.status === 'dropped') return `${t} was dropped as work that won't be done, so it needs no first look.`;
   if (task.status !== 'backlog') return `${t} is no longer in the backlog (it's in ${LANE_NAMES[task.status]}), so it needs no first look.`;
-  if (look.status === 'taken') {
+  const agents = firstLookAgents(board, task, actor.name);
+  if (!agents.length) return `${t} has no requested agent for a first look. Leave it in the backlog until a person assigns an agent or someone @-mentions one.`;
+  if (look.status === 'taken' && firstLookFor(board, task, look.by.name)) {
     return sameAgent(look.by, actor) ? undefined : `${look.by.name} is taking the first look at ${t}; carry on with something else.`;
   }
-  const agents = firstLookAgents(board, task);
-  if (agents.length === 0 || agents.some((a) => samePerson(a, actor.name))) return undefined;
+  if (agents.some((a) => samePerson(a, actor.name))) return undefined;
   const only = listNames(agents);
   return `${t}'s first look is for ${only} (${whyFor(task, agents)}), so only ${only} can take it; carry on with something else.`;
 }
@@ -104,9 +125,9 @@ export function takeFirstLookRefusal(board: Board, task: Task, actor: Actor): st
 // or, while nobody has taken it, a comment from an agent it's for.
 export function givesFirstLook(board: Board, task: Task, actor: Actor): boolean {
   const look = task.firstLook;
-  if (actor.kind !== 'agent' || !look) return false;
-  if (look.status === 'taken') return sameAgent(look.by, actor);
-  return look.status === 'open' && task.status === 'backlog' && firstLookFor(board, task, actor.name);
+  if (actor.kind !== 'agent' || !look || task.status !== 'backlog' || !firstLookFor(board, task, actor.name)) return false;
+  if (look.status === 'taken') return !firstLookFor(board, task, look.by.name) || sameAgent(look.by, actor);
+  return look.status === 'open';
 }
 
 // ---- activity ---------------------------------------------------------------
@@ -136,18 +157,18 @@ function minutesLeft(look: FirstLook, now: number): number {
 export function firstLookLine(board: Board, task: Task, viewer: string | undefined, now = Date.now()): string | undefined {
   const look = task.firstLook;
   if (!look || !awaitsFirstLook(task)) return undefined;
+  const agents = firstLookAgents(board, task, viewer);
+  if (!agents.length) return undefined;
   const ref = `T${task.number} [task id: ${task.id}] "${clip(task.title, 80)}"`;
-  if (look.status === 'taken') {
+  if (look.status === 'taken' && firstLookFor(board, task, look.by.name)) {
     if (!viewer || !samePerson(look.by.name, viewer)) return undefined;
     const left = minutesLeft(look, now);
     return `You're taking the first look at ${ref}: ${WHAT}. If you haven't commented within ${left} minute${left === 1 ? '' : 's'}, it goes back to open. ${BACKLOG}`;
   }
-  const agents = firstLookAgents(board, task);
   const take = `take it with take_first_look, then ${WHAT}. ${BACKLOG}`;
   const address = addressedTo(agents, viewer);
-  if (address.to === 'anyone') return `${ref} needs a first look: ${take}`;
-  if (address.to === 'you') return `${ref} needs a first look, and it's for you (${task.assignee ? 'assigned to you' : '@-mentioned'}): ${take}`;
-  if (viewer && task.assignee) return undefined;
+  if (address.to === 'you') return `${ref} needs a first look, and it's for you (${requestedAssignee(task) ? 'assigned to you' : '@-mentioned'}): ${take}`;
+  if (viewer && requestedAssignee(task)) return undefined;
   const only = listNames(agents);
   return `${ref} needs a first look, for ${only}: only ${only} can take it${viewer ? '; not for you, carry on.' : '.'}`;
 }
@@ -167,8 +188,9 @@ export function firstLookNote(board: Board, task: Task, viewer: string | undefin
   if (!look && opener && task.status === 'backlog') return `opened by ${yours(opener, viewer)}, needs no first look`;
   if (!look || task.status !== 'backlog') return undefined;
   if (look.status === 'done') return `first look given by ${look.by.name}`;
-  if (look.status === 'taken') return viewer && samePerson(look.by.name, viewer) ? "you're taking its first look" : `${look.by.name} is taking its first look`;
-  const agents = firstLookAgents(board, task);
+  const agents = firstLookAgents(board, task, viewer);
+  if (!agents.length) return 'no first look requested';
+  if (look.status === 'taken' && firstLookFor(board, task, look.by.name)) return viewer && samePerson(look.by.name, viewer) ? "you're taking its first look" : `${look.by.name} is taking its first look`;
   const address = addressedTo(agents, viewer);
   return address.to === 'others' ? `needs a first look, for ${listNames(agents)}` : 'needs a first look (take_first_look)';
 }
@@ -185,12 +207,13 @@ export function firstLookDetail(board: Board, task: Task, viewer: string | undef
   if (!look) return undefined;
   if (look.status === 'done') return `First look given by ${look.by.name} at ${look.doneAt}.`;
   if (task.status !== 'backlog') return undefined;
-  if (look.status === 'taken') {
+  const agents = firstLookAgents(board, task, viewer);
+  if (!agents.length) return 'No first look requested: a person must assign an agent or someone must @-mention one first.';
+  if (look.status === 'taken' && firstLookFor(board, task, look.by.name)) {
     if (!viewer || !samePerson(look.by.name, viewer)) return `${look.by.name} is taking its first look: leave it to them.`;
     const left = minutesLeft(look, now);
     return `You're taking its first look: ${WHAT}. If you haven't commented within ${left} minute${left === 1 ? '' : 's'}, it goes back to open.`;
   }
-  const agents = firstLookAgents(board, task);
   if (addressedTo(agents, viewer).to === 'others') return `Needs a first look, for ${listNames(agents)}: only ${listNames(agents)} can take it; not for you.`;
   return `Needs a first look: take it with take_first_look, then ${WHAT}.`;
 }
@@ -204,9 +227,10 @@ const yours = (by: Actor, viewer: string | undefined) => (viewer && samePerson(b
 export function firstLookCue(board: Board, task: Task): { text: string; by?: string } | undefined {
   if (!awaitsFirstLook(task)) return undefined;
   const look = task.firstLook;
-  if (look.status === 'taken') return { text: `${look.by.name} is taking the first look`, by: look.by.name };
   const agents = firstLookAgents(board, task);
-  return { text: agents.length ? `Waiting for ${listNames(agents)}'s first look` : "Waiting for an agent's first look" };
+  if (!agents.length) return { text: 'Assign or @-mention an agent for a first look' };
+  if (look.status === 'taken' && firstLookFor(board, task, look.by.name)) return { text: `${look.by.name} is taking the first look`, by: look.by.name };
+  return { text: `Waiting for ${listNames(agents)}'s first look` };
 }
 
 // The same line on a backlog card an agent opened, which needs no first look:

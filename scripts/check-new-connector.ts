@@ -11,7 +11,11 @@
 //   npx tsx scripts/check-new-connector.ts install    add them and leave them, to look at
 //   npx tsx scripts/check-new-connector.ts uninstall  take them out
 //
-// Nothing here is loaded by the app; it is the contract's own test.
+// Nothing here is loaded by the app; it is the contract's own test. The
+// registries as they were wait in a file in the system's temporary folder named
+// for this checkout (scripts/savedRegistries.ts): a run that was cut short is
+// put right by the next one in the same checkout, and runs in other checkouts
+// or worktrees at the same time never touch it.
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -19,6 +23,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { savedRegistries } from './savedRegistries';
 
 const root = path.resolve(import.meta.dirname, '..');
 const at = (...parts: string[]) => path.join(root, ...parts);
@@ -34,7 +39,7 @@ const REGISTRIES = {
   'src/core/sources/registry.ts': { imports: "import { loom } from './loom';", entry: /\[figma, youtube, loom, github\]/, add: ', pinboard]', from: "import { pinboard } from './pinboard';" },
   'src/web/canvas/sources/registry.ts': { imports: "import { loom } from './loom';", entry: /\[figma, youtube, loom, github\]/, add: ', pinboard]', from: "import { pinboard } from './pinboard';" },
 } as const;
-const SAVED = path.join(os.tmpdir(), 'tricot-check-new-connector.json'); // the registries as they were, in case a run is cut short
+const SAVED = savedRegistries('check-new-connector', root); // the registries as they were, in case a run is cut short (a file for this checkout only)
 
 // ---- the sample connector -------------------------------------------------------------------------
 

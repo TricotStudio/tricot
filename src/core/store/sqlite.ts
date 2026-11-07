@@ -31,6 +31,16 @@ function sqliteModule(): SqliteModule {
   return (sqlite = loaded);
 }
 
+// Whether a commit waits for the disk. In real use it does (FULL), so not even
+// a power cut loses a saved change, and asking for the save checks
+// (TRICOT_CHECK_SAVES) leaves it so. Under the test runner every database is a
+// scratch one, and the save checks commit after every call on the store
+// (checkSaves.ts): there SQLite hands each commit to the system and goes on
+// (OFF), which spares CI's Windows several milliseconds of flushing a commit.
+// The same writes are made, in the same transactions, and read back the same;
+// a process that is killed still keeps them. Only a power cut could lose them.
+export const SYNCHRONOUS = process.env.NODE_TEST_CONTEXT ? 'OFF' : 'FULL';
+
 // Opens the file, making it first with mode 600 when it is new: SQLite gives
 // its -wal and -shm files the main file's mode, so all three are private.
 export function openPrivate(file: string): Database {

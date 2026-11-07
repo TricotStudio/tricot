@@ -111,6 +111,7 @@ function DiagramTools({ block, viewing }: ToolsProps<Extract<Block, { type: 'dia
 
 export const diagram: WebBlockKind<Extract<Block, { type: 'diagram' }>> = {
   type: 'diagram',
+  copyText: (block) => block.source,
   Body: DiagramBody,
   Tools: DiagramTools,
   overlay: { Component: DiagramView, refocus: true }, // its full view, in the pairing shell

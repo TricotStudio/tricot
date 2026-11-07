@@ -16,7 +16,8 @@ import { deletedLately } from './deletions';
 import { doorNote, doorPlace } from './doors';
 import { clip, listNames, samePerson } from './format';
 import { heldWords } from './agentTalk';
-import { addressedTo, agentsIn, asksToRun, asksYouToRun, peopleIn, skillCalled, skillInstructionLines, waitingMention, withoutLeadingMentions } from './mentions';
+import { addressedTo, agentsIn, asHeard, asksToRun, asksYouToRun, peopleIn, skillCalled, skillInstructionLines, waitingMention, withoutLeadingMentions } from './mentions';
+import type { AgentBrowserHalf } from './agents/agent';
 import { TASK_STATUS_WORDS } from './pins';
 import { answeredBy, reactionsLine } from './reactions';
 import { refLabel } from './refs';
@@ -30,9 +31,10 @@ export const TITLE_LENGTH = 100;
 const LISTED = 12;
 
 // A thread's title, from its first message: its first sentence, without the
-// mentions it opens with, which only say who it's for.
-export function threadTitle(text: string, mentions: string[] = []): string {
-  const flat = withoutLeadingMentions(text, mentions).replace(/\s+/g, ' ').trim();
+// mentions it opens with, which only say who it's for, and a tag on one of
+// `agents` with them ("@Claude:opus:high", agentTags.ts).
+export function threadTitle(text: string, mentions: string[] = [], agents: string[] = []): string {
+  const flat = withoutLeadingMentions(text, mentions, agents).replace(/\s+/g, ' ').trim();
   let title = flat.split(/(?<=[.?!])\s/)[0];
   title = title.charAt(0).toUpperCase() + title.slice(1);
   if (title.length <= TITLE_LENGTH) return title;
@@ -75,6 +77,14 @@ export const LENSES: { name: string; brief?: string }[] = [
 
 export function presetLens(name: string): { name: string; brief?: string } | undefined {
   return LENSES.find((l) => samePerson(l.name, name.trim()));
+}
+
+// A lens as the API takes it: a preset by name, one's own with its brief;
+// null for General answered by any agent.
+export function lensChoice(name: string, brief: string | undefined, agent: string | undefined): ThreadLens | null {
+  const preset = presetLens(name);
+  if (preset?.name === 'General' && !agent) return null;
+  return { name: preset?.name ?? name, ...(!preset && brief ? { brief } : {}), ...(agent ? { agent } : {}) };
 }
 
 export function lensName(thread: Pick<Thread, 'lens'>): string {
@@ -238,15 +248,18 @@ function named(thread: Thread): string {
 
 const reply = (thread: Thread) => `reply_in_thread(thread_id: ${thread.id})`;
 
-// What a message says once its opening mentions are taken off, quoted.
-function said(message: ThreadMessage, max = 300): string {
-  return `"${clip(withoutLeadingMentions(message.body, message.mentions ?? []), max)}"`;
+// What a message says once its opening mentions are taken off, a tag on one
+// with them (agentTags.ts), quoted: for agents other than those it asks.
+function said(board: Board, message: ThreadMessage, max = 300): string {
+  return `"${clip(withoutLeadingMentions(message.body, message.mentions ?? [], agentsIn(board, message.mentions)), max)}"`;
 }
 
 // A message an agent is to answer, after the words naming it: whole, or for
-// one its session has read, that it has (answering.ts).
-function heard(message: ThreadMessage, shown: Shown | undefined): string {
-  return quote(withoutLeadingMentions(message.body, message.mentions ?? []), message.id, shown);
+// one its session has read, that it has (answering.ts); and what a tag asks
+// of it (mentions.ts asHeard, `kind`: which agent it is).
+function heard(board: Board, message: ThreadMessage, viewer: string | undefined, shown: Shown | undefined, kind?: AgentBrowserHalf): { quoted: string; ask: string } {
+  const { text, ask } = asHeard(board, { author: message.author, text: message.body, mentions: message.mentions }, viewer, kind);
+  return { quoted: quote(text, message.id, shown), ask };
 }
 
 // The thread's lens, for the General thread what people ask there, and for
@@ -277,14 +290,16 @@ function generalNote(thread: Thread): string {
 }
 
 // "asked you in thread …: "…". Reply with …", or for a skill request, "asks you
-// to run /review in thread …: "args". Run it, then reply with …".
-function askedYou(thread: Thread, message: ThreadMessage, viewer: string | undefined, shown?: Shown): string {
-  if (asksYouToRun(message.skill, viewer)) return `${asksToRun(message.skill, viewer, `in ${named(thread)}`, reply(thread), 'get_thread')}${through(thread, shown)}`;
-  return `asked you in ${named(thread)}${heard(message, shown)}. Reply with ${reply(thread)}.${through(thread, shown)}`;
+// to run /review in thread …: "args". Run it, then reply with …"; with what a
+// tag asks of it (`kind`: which agent it is, mentions.ts taggedAsk).
+function askedYou(board: Board, thread: Thread, message: ThreadMessage, viewer: string | undefined, shown?: Shown, kind?: AgentBrowserHalf): string {
+  const { quoted, ask } = heard(board, message, viewer, shown, kind);
+  if (asksYouToRun(message.skill, viewer)) return `${asksToRun(message.skill, viewer, `in ${named(thread)}`, reply(thread), 'get_thread')}${ask}${through(thread, shown)}`;
+  return `asked you in ${named(thread)}${quoted}.${ask} Reply with ${reply(thread)}.${through(thread, shown)}`;
 }
 
-function forAnyAgent(thread: Thread, message: ThreadMessage, shown?: Shown): string {
-  return `${named(thread)}${heard(message, shown)}. For any agent: the first to reply answers, with ${reply(thread)}.${through(thread, shown)}`;
+function forAnyAgent(board: Board, thread: Thread, message: ThreadMessage, shown?: Shown): string {
+  return `${named(thread)}${heard(board, message, undefined, shown).quoted}. For any agent: the first to reply answers, with ${reply(thread)}.${through(thread, shown)}`;
 }
 
 // People's messages waiting on an agent, for get_board and an agent's
@@ -294,18 +309,18 @@ function forAnyAgent(thread: Thread, message: ThreadMessage, shown?: Shown): str
 // so instead of saying it again, and one an update above gave is left out.
 // Another agent's message asking the agent reading it waits on it the same
 // way, until it writes there or answers it with a 👍 or 👎 (agentAsking).
-export function threadsDigest(board: Board, viewer?: string, shown?: Shown): string | undefined {
+export function threadsDigest(board: Board, viewer?: string, shown?: Shown, kind?: AgentBrowserHalf): string | undefined {
   const lines = (board.threads ?? []).flatMap((thread) => {
     const waiting = threadWaiting(board, thread);
     const fromAgent = viewer ? agentAsking(board, thread, viewer) : undefined;
     const withContext = (message: ThreadMessage, line: string) => [[line, ...context(thread, message, viewer, shown)].join('\n')];
-    const agentLine = fromAgent && fromAgent !== waiting?.message && !shown?.inThisResult(fromAgent.id) ? withContext(fromAgent, `${fromAgent.author.name} ${askedYou(thread, fromAgent, viewer, shown)}`) : [];
+    const agentLine = fromAgent && fromAgent !== waiting?.message && !shown?.inThisResult(fromAgent.id) ? withContext(fromAgent, `${fromAgent.author.name} ${askedYou(board, thread, fromAgent, viewer, shown, kind)}`) : [];
     if (!waiting || shown?.inThisResult(waiting.message.id)) return agentLine;
     const { message, agents } = waiting;
     const by = message.author.name;
-    if (agents.length === 0) return [...withContext(message, `${by} wrote in ${forAnyAgent(thread, message, shown)}`), ...agentLine];
-    if (viewer && waitsOn(waiting, viewer)) return [...withContext(message, `${by} ${askedYou(thread, message, viewer, shown)}`), ...agentLine];
-    return viewer ? agentLine : [`${by} asked ${listNames(agents)} in ${named(thread)}: ${said(message)}. For ${listNames(agents)} only.`];
+    if (agents.length === 0) return [...withContext(message, `${by} wrote in ${forAnyAgent(board, thread, message, shown)}`), ...agentLine];
+    if (viewer && waitsOn(waiting, viewer)) return [...withContext(message, `${by} ${askedYou(board, thread, message, viewer, shown, kind)}`), ...agentLine];
+    return viewer ? agentLine : [`${by} asked ${listNames(agents)} in ${named(thread)}: ${said(board, message)}. For ${listNames(agents)} only.`];
   });
   return lines.length ? lines.join('\n') : undefined;
 }
@@ -323,8 +338,8 @@ export function agentAsking(board: Board, thread: Thread, viewer: string): Threa
 // of it, for another agent, or for any agent while nobody has answered it,
 // and a new lens with its brief. None for the rest, which read as logged.
 // A message for it comes whole, with what its session (`shown`) needs to
-// answer it (answering.ts).
-export function threadEventLine(event: BoardEvent, board: Board, viewer: string | undefined, shown?: Shown): string | undefined {
+// answer it (answering.ts), and what a tag asks of it (`kind`: which agent it is).
+export function threadEventLine(event: BoardEvent, board: Board, viewer: string | undefined, shown?: Shown, kind?: AgentBrowserHalf): string | undefined {
   const thread = isThreadEvent(event) ? board.threads?.find((t) => t.id === event.itemId) : undefined;
   if (!thread) return undefined;
   const lead = `- (${event.seq}) ${who(event.actor)}`;
@@ -336,12 +351,12 @@ export function threadEventLine(event: BoardEvent, board: Board, viewer: string 
   if (!message) return undefined;
   const address = addressedTo(messageAgents(board, thread, message), viewer);
   if (address.to === 'others') return `${lead} asked ${listNames(address.agents)} in ${named(thread)}. Not for you; carry on.`;
-  if (address.to === 'you' && message.held) return `${lead} mentioned you in ${named(thread)}: ${said(message, 200)}; ${heldWords(message.held)}.`;
+  if (address.to === 'you' && message.held) return `${lead} mentioned you in ${named(thread)}: "${clip(withoutLeadingMentions(message.body, message.mentions ?? []), 200)}"; ${heldWords(message.held)}.`;
   const withContext = (line: string) => [line, ...context(thread, message, viewer, shown)].join('\n');
-  if (address.to === 'you') return withContext(`${lead} ${askedYou(thread, message, viewer, shown)}`);
+  if (address.to === 'you') return withContext(`${lead} ${askedYou(board, thread, message, viewer, shown, kind)}`);
   if (event.actor.kind !== 'human' || threadWaiting(board, thread)?.message !== message) return undefined;
   const wrote = event.type === 'thread_started' ? 'started' : 'wrote in';
-  return withContext(`${lead} ${wrote} ${forAnyAgent(thread, message, shown)}`);
+  return withContext(`${lead} ${wrote} ${forAnyAgent(board, thread, message, shown)}`);
 }
 
 // Who a thread waits on, as get_board and get_thread say it.
@@ -375,7 +390,7 @@ export function threadsSection(board: Board, viewer?: string, now = Date.now()):
     const note = waitNote(waiting, viewer);
     const general = thread.general ? ' · the General thread, where people ask from the Board Context' : '';
     const door = thread.door ? ` · started from ${doorPlace(thread.door)}` : '';
-    return `- ${named(thread)}${general}${door} · ${lensLine(thread)} · ${count} · last by ${who(last.author)} at ${last.at}: ${said(last, 120)}${note ? ` · ${note}` : ''}`;
+    return `- ${named(thread)}${general}${door} · ${lensLine(thread)} · ${count} · last by ${who(last.author)} at ${last.at}: ${said(board, last, 120)}${note ? ` · ${note}` : ''}`;
   });
   const older = threads.length - shown.length;
   if (older > 0) lines.push(`(${older} older thread${older === 1 ? '' : 's'}, none waiting on an agent.)`);

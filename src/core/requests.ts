@@ -6,7 +6,8 @@
 // and how agents and people read it.
 
 import { clip, listNames, samePerson } from './format';
-import { withoutLeadingMentions } from './mentions';
+import type { AgentBrowserHalf } from './agents/agent';
+import { asHeard, withoutLeadingMentions } from './mentions';
 import { LIMITS } from './schemas/limits';
 import type { Actor, Board, ContextRequest } from './types';
 
@@ -45,9 +46,10 @@ const TRAILING = /(?:[\s,.;:!?]+|\s+(?:please|for (?:me|us)|thanks|thank you))+$
 // A short title for a request's group, from its text: its first sentence,
 // without the asking, e.g. "Get me an architecture view of the project" reads
 // "Architecture view". Text that is all asking keeps its own words. The
-// agents it opens by mentioning ("@Codex get me…") only say who it's for.
+// agents it opens by mentioning ("@Codex get me…", "@Claude:opus get me…")
+// only say who it's for.
 export function requestTitle(text: string, mentions: string[] = []): string {
-  const flat = withoutLeadingMentions(text, mentions).replace(/\s+/g, ' ').trim();
+  const flat = withoutLeadingMentions(text, mentions, mentions).replace(/\s+/g, ' ').trim();
   const first = flat.split(/(?<=[.?!])\s/)[0];
   let title = first;
   for (let before = ''; before !== title; ) {
@@ -139,15 +141,19 @@ export function requestOfGroup(board: Board, groupId: string): ContextRequest | 
 
 // People's open requests, and the ones agents are answering, for agents.
 // Named when an agent reads the board, catches up or waits. One that
-// mentions agents reads as asked of the agent reading it, or as theirs.
-export function requestsDigest(board: Board, viewer?: string): string | undefined {
+// mentions agents reads as asked of the agent reading it, or as theirs, with
+// what a tag asks of it (`kind`: which agent it is, mentions.ts taggedAsk).
+export function requestsDigest(board: Board, viewer?: string, kind?: AgentBrowserHalf): string | undefined {
   const lines = (board.requests ?? []).filter(isActive).map((r) => {
     if (r.status === 'open') {
       const take = 'Take it with take_request, build the answer as blocks in its group, then finish_request with a one-line note.';
       const agents = r.mentions ?? [];
       if (agents.length === 0) return `${r.by.name} asked agents on the board context [request id: ${r.id}]: "${clip(r.text, 300)}". ${take}`;
-      const text = `"${clip(withoutLeadingMentions(r.text, agents), 300)}"`;
-      if (viewer && requestFor(r, viewer)) return `${r.by.name} asked you on the board context [request id: ${r.id}]: ${text}. ${take}`;
+      const text = `"${clip(withoutLeadingMentions(r.text, agents, agents), 300)}"`;
+      if (viewer && requestFor(r, viewer)) {
+        const read = asHeard(board, { author: r.by, text: r.text, mentions: agents }, viewer, kind);
+        return `${r.by.name} asked you on the board context [request id: ${r.id}]: "${clip(read.text, 300)}".${read.ask} ${take}`;
+      }
       const only = `only ${listNames(agents)} can take it`;
       return `${r.by.name} asked ${listNames(agents)} on the board context [request id: ${r.id}]: ${text}. For ${listNames(agents)}: ${viewer ? `${only}; not for you, carry on.` : `${only}.`}`;
     }

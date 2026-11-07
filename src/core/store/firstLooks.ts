@@ -1,7 +1,7 @@
 import { BoardError } from './errors';
 import type { BoardRepository } from './repository';
 import { guardArchived, sameActor } from './validate';
-import { firstLookLapsed, lapsedSummary, takeFirstLookRefusal, takenSummary } from '../firstLook';
+import { firstLookFor, firstLookLapsed, lapsedSummary, takeFirstLookRefusal, takenSummary } from '../firstLook';
 import type { Actor, Board, Task } from '../types';
 
 // First looks: an agent's first read of a backlog card (core/firstLook.ts).
@@ -19,7 +19,7 @@ export class FirstLooks {
     if (refused) throw new BoardError(refused);
     const look = task.firstLook!;
     const at = new Date(this.repo.now()).toISOString();
-    if (look.status === 'taken') {
+    if (look.status === 'taken' && sameActor(look.by, actor)) {
       look.activeAt = at;
       this.repo.scheduleSave(board, { taskId: task.id });
       return task;
@@ -34,7 +34,7 @@ export class FirstLooks {
   keepFirstLook(taskId: string, actor: Actor): void {
     const found = this.repo.hasTask(taskId) ? this.repo.getTask(taskId) : undefined;
     const look = found?.task.firstLook;
-    if (!found || look?.status !== 'taken' || !sameActor(look.by, actor) || firstLookLapsed(look, this.repo.now())) return;
+    if (!found || look?.status !== 'taken' || !sameActor(look.by, actor) || !firstLookFor(found.board, found.task, actor.name) || firstLookLapsed(look, this.repo.now())) return;
     look.activeAt = new Date(this.repo.now()).toISOString();
     this.repo.scheduleSave(found.board, { taskId });
   }

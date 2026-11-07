@@ -5,7 +5,7 @@ import type { People } from './people';
 import type { BoardRepository } from './repository';
 import { guardArchived, limited, optional, randomId, required } from './validate';
 import { clip, listNames, samePerson } from '../format';
-import { boardAgents } from '../mentions';
+import { agentsIn, boardAgents } from '../mentions';
 import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT, lensName, presetLens, sameLens, showsWork, threadTitle, threadWork } from '../threads';
 import { type Actor, type Board, type Thread, type ThreadDoor, type ThreadLens, type ThreadMessage, type ThreadRef, boardKey } from '../types';
 
@@ -38,7 +38,7 @@ export class Threads {
     const { mentions, skill } = this.people.requestIn(board, text, actor);
     const thread: Thread = {
       id,
-      title: general ? 'General' : threadTitle(text, mentions),
+      title: general ? 'General' : threadTitle(text, mentions, agentsIn(board, mentions)),
       ...(general && { general: true as const }),
       ...(chosen && { lens: chosen }),
       ...(door && { door }),

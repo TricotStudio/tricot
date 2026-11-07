@@ -3,14 +3,18 @@
 // the Tricot tab fed from the board's stream (live.ts). The host registers
 // with the board, and is let in as one of the person's seats to answer
 // requests for permission from its Tricot tab (answers.ts); it lets go of
-// both as it ends. A closed window (SIGHUP) or a
-// request to stop (SIGTERM, SIGINT) closes every agent, as quitting from the
-// strip does; the terminal is put back even when the process ends some other way.
+// both as it ends. The tab reads the board's threads too, and writes in them as the person
+// (threadsRead.ts, threadsSend.ts). A
+// closed window (SIGHUP) or a request to stop (SIGTERM, SIGINT) closes every
+// agent, as quitting from the strip does; the terminal is put back even when
+// the process ends some other way, and while it is stopped (SIGTSTP), until
+// it continues (SIGCONT).
 import { authHeaders } from '../../server/access';
 import { holdAnswers } from './answers';
 import type { SwitchKey } from './keys';
 import { watchBoard } from './live';
 import { findPtyHelper } from './pty';
+import { threadsAccess } from './threadsSend';
 import { startHost, type HostedAgent, type HostOutcome, type TricotSetup } from './host';
 
 export interface SwitcherRun {
@@ -18,7 +22,7 @@ export interface SwitcherRun {
   key: SwitchKey;
   live?: { url: string; board: string; dataDir: string }; // the board, for the strip
   // The Tricot tab (T192): the board's title, who answers there, and what its keys do.
-  tricot?: Omit<TricotSetup, 'answers' | 'url'> & { actor: string };
+  tricot?: Omit<TricotSetup, 'answers' | 'threads' | 'url'> & { actor: string };
 }
 
 // What `tricot claude codex` runs the agents with (cli/severalAgents.ts):
@@ -69,7 +73,7 @@ export async function runSwitcher({ agents, key, live, tricot }: SwitcherRun): P
     key,
     helper,
     ...(feed && { live: feed }),
-    ...(live && tricot && { tricot: { ...tricot, url: live.url, ...(answers && { answers }) } }),
+    ...(live && tricot && { tricot: { ...tricot, url: live.url, ...(answers && { answers, threads: threadsAccess({ url: live.url, board: live.board, headers, me: tricot.actor, answers }) }) } }),
     terminal: {
       input: stdin,
       write: (text) => void stdout.write(text),
@@ -86,6 +90,13 @@ export async function runSwitcher({ agents, key, live, tricot }: SwitcherRun): P
     },
   });
   const quit = () => host.quit();
+  // A stop sent from outside (Ctrl+Z in raw mode is a key, which the agents
+  // never get): the terminal is put back as it was first, its mouse
+  // reporting included, and set again as it continues.
+  const stop = () => {
+    host.suspend();
+    process.kill(process.pid, 'SIGSTOP');
+  };
   const continued = () => host.redraw();
   const atExit = () => host.restoreNow();
   const hangUp = () => {
@@ -96,6 +107,7 @@ export async function runSwitcher({ agents, key, live, tricot }: SwitcherRun): P
     ['SIGHUP', hangUp],
     ['SIGTERM', quit],
     ['SIGINT', quit],
+    ['SIGTSTP', stop],
     ['SIGCONT', continued],
   ];
   for (const [signal, handler] of handlers) process.on(signal, handler);

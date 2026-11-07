@@ -10,6 +10,7 @@ import { boardKey } from '../../../core/types';
 import { inThread } from '../wording';
 import { defineTool, text, type Tool } from '../tool';
 import type { ToolContext } from './context';
+import { agentBoard } from '../backlog';
 
 export function taskTools({ store, getActor, session: { told } }: ToolContext): Tool[] {
   return [
@@ -62,7 +63,8 @@ export function taskTools({ store, getActor, session: { told } }: ToolContext): 
       handler: async ({ task_id }) => {
         const { board, task } = store.getTask(task_id);
         told.readAll(taskDiscussion(task));
-        return text(taskDetail(board, task, getActor().name, store.now()));
+        const view = agentBoard(board, getActor().name);
+        return text(taskDetail(view, view.tasks.find((item) => item.id === task.id)!, getActor().name, store.now()));
       },
     }),
 
@@ -84,7 +86,8 @@ export function taskTools({ store, getActor, session: { told } }: ToolContext): 
       readOnly: true,
       handler: async ({ task_id }) => {
         const { board, task } = store.getTask(task_id);
-        return text(taskBrief(board, task, boardAgents(board, store.presentAgents(boardKey(board)))));
+        const view = agentBoard(board, getActor().name);
+        return text(taskBrief(view, view.tasks.find((item) => item.id === task.id)!, boardAgents(view, store.presentAgents(boardKey(board)))));
       },
     }),
 
@@ -108,10 +111,10 @@ export function taskTools({ store, getActor, session: { told } }: ToolContext): 
       name: 'take_first_look',
       title: 'Take first look',
       description:
-        "Take the first look at a card a person added to the backlog (get_board and your updates name them), so no other agent does too; if you're refused, leave it. Then comment on the card with feasibility and approach, with a mock on its canvas for UI work: that comment gives the first look. Don't claim or build it until a person marks it ready.",
+        "Take the first look at a backlog card only when a person assigned you or someone @-mentioned you (get_board and your updates name it), so no other agent does too; if you're refused, leave it. Then comment on the card with feasibility and approach, with a mock on its canvas for UI work: that comment gives the first look. Don't claim or build it until a person marks it ready.",
       guide: {
         topic: 'tasks',
-        text: 'Only one agent gets a first look: the others are refused, as is everyone but the agent a card is assigned to or @-mentions. Comment on the card with comment(task_id), with feasibility and approach; for UI work, add a mock to its canvas first. That comment gives the first look. The card stays in the backlog: don\'t claim or build it until a person marks it ready.',
+        text: 'Leave backlog cards alone until a person assigns an agent or someone @-mentions one in their text or comments. Direct mentions from people or agents reveal the card; an agent assignment alone does not. The person’s assignee has first-look priority, else the mentioned agents may take it; only one takes it. Comment on the card with comment(task_id), with feasibility and approach; for UI work, add a mock to its canvas first. That comment gives the first look. The card stays in the backlog: don\'t claim or build it until a person marks it ready.',
       },
       schema: tools.take_first_look,
       takesFirstLook: true,
@@ -119,7 +122,7 @@ export function taskTools({ store, getActor, session: { told } }: ToolContext): 
         const task = store.takeFirstLook(task_id, getActor());
         const minutes = FIRST_LOOK_MS / 60_000;
         return text(
-          `You're taking the first look at T${task.number} "${clip(task.title, 80)}". Read it (get_task), then comment on it (comment with task_id: ${task.id}) with feasibility and approach, and for UI work add a mock to its canvas first (add_block with task_id: ${task.id}). Your comment gives the first look; if none comes within ${minutes} minutes of your last call about the card, it goes back to open for another agent. Don't claim or build it until a person marks it ready.`,
+          `You're taking the first look at T${task.number} "${clip(task.title, 80)}". Read it (get_task), then comment on it (comment with task_id: ${task.id}) with feasibility and approach, and for UI work add a mock to its canvas first (add_block with task_id: ${task.id}). Your comment gives the first look; if none comes within ${minutes} minutes of your last call about the card, it goes back to open for a directly mentioned agent or the person’s assignee. Don't claim or build it until a person marks it ready.`,
         );
       },
     }),

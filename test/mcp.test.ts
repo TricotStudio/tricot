@@ -450,9 +450,9 @@ describe('MCP + REST end to end', () => {
 
     const refused = await call('claim_task', { task_id: added.json.id });
     assert.equal(refused.isError, true);
-    assert.match(refused.content[0].text, /T1 "Login times out" is in the backlog: a person is still shaping it/);
-    assert.match(await callText('get_board', { board_id: boardId }), /backlog, not ready \(1\):\n- T1 /);
-    assert.match(await callText('comment', { task_id: added.json.id, body: 'Seen it too' }), /Commented on T1/);
+    assert.match(refused.content[0].text, /not addressed to you/);
+    assert.ok(!(await callText('get_board', { board_id: boardId })).includes(added.json.id));
+    assert.equal((await call('comment', { task_id: added.json.id, body: 'Seen it too' })).isError, true);
     assert.equal((await call('update_task', { task_id: added.json.id, status: 'todo' })).isError, true);
 
     const ready = await post(`/tasks/${added.json.id}`, { actor: 'Sam', status: 'todo' });
@@ -767,6 +767,7 @@ describe('MCP + REST end to end', () => {
     assert.equal(created.json.task.status, 'backlog');
     assert.equal(created.json.pin.taskId, created.json.task.id);
     const taskId = created.json.task.id;
+    await post(`/tasks/${taskId}/comments`, { actor: 'Wassim', body: '@Planner please review the pinned context.' });
     assert.match(
       await callText('get_canvas', { board_id: boardId }),
       new RegExp(`1 pin \\(parts of blocks[\\s\\S]*\\n  pinned "onboarding and the docs site" → T1 \\(backlog\\) \\[task id: ${taskId}; pin id: \\w+\\]`),
@@ -886,6 +887,7 @@ describe('MCP + REST end to end', () => {
     assert.equal(created.status, 201);
     assert.equal(created.json.pin.quote, 'box 1');
     const brand = created.json.task.id;
+    await post(`/tasks/${brand}/comments`, { actor: 'Wassim', body: '@Planner please review the pinned screenshot.' });
 
     // An agent pins existing work to another box, a node and an arrow.
     const retries = idOf(await callText('plan_tasks', { board_id: boardId, tasks: [{ title: 'Cap retries' }] }));

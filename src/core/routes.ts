@@ -110,6 +110,7 @@ export const routes = {
   commentOnPin: post('/api/canvas/pins/:id/comments'),
   resolvePin: post('/api/canvas/pins/:id/resolve'),
   moveItems: post('/api/canvas/move'),
+  pasteBlocks: post('/api/canvas/paste'), // copies of blocks from one canvas, here or on another board
   addGroup: post('/api/canvas/groups'),
   renameGroup: post('/api/canvas/groups/:id'),
   addLink: post('/api/canvas/links'),
@@ -136,6 +137,8 @@ export const routes = {
   recordUsage: post('/api/agents/:name/usage'),
   agentUsage: get('/api/agents/:name/usage'),
   toolCosts: get('/api/tool-costs'), // what each MCP tool call costs agents, in tokens: sizes only
+  agentRules: get('/api/agent-rules'), // the model and thinking level each agent starts on
+  setAgentRule: post('/api/agent-rules/:agent'),
   addSkill: post('/api/skills'),
   editSkill: post('/api/skills/:skillId'),
   deleteSkill: post('/api/skills/:skillId/delete'),

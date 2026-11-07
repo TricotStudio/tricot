@@ -3,8 +3,11 @@ import express, { type Express } from 'express';
 import { localhostHostValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { runsOnOf } from '../core/agentRules';
 import type { StartFolder } from '../core/firstRun';
 import type { Store } from '../core/store';
+import { AgentRulesStore } from './agentRules';
+import { createAgentRulesRouter } from './agentRulesRoutes';
 import { asPerson, crossSiteCheck, fromThisComputer, fromThisMachine, isLoopbackHost, keepRawBody, originCheck, requireToken, type PersonGate } from './access';
 import { createApiRouter, peoplesCopy } from './api';
 import { AnswerHosts } from './answerHosts';
@@ -66,6 +69,9 @@ export function createApp(
     seats?: Seats;
     // The agent commands that need this board (leases.ts, T212). None: no lease is served.
     leases?: Leases;
+    // The model and thinking level each agent starts on (agentRules.ts), kept
+    // in the data folder: startServer gives them. None: kept in memory (tests).
+    agentRules?: AgentRulesStore;
   },
 ): Express {
   const app = express();
@@ -144,6 +150,9 @@ export function createApp(
   const pairing = new PairingSessions(store);
   // Each agent's plan usage, from its harness, for its panel (usageRoutes.ts).
   app.use('/api/agents', createUsageRouter(store, new Usage()));
+  // The model and thinking level each agent starts on: read by the page and
+  // the terminal, set by the person alone (agentRulesRoutes.ts).
+  app.use('/api/agent-rules', createAgentRulesRouter(options.agentRules ?? new AgentRulesStore(), person));
   // What each MCP tool call costs agents, in tokens, since this server started
   // (toolCosts.ts). Sizes and names only, and it changes nothing, so it is a
   // read like GET /api/agents: no person's gate (access.ts asPerson), behind
@@ -183,9 +192,10 @@ function rpcError(message: string) {
 }
 
 // One MCP session per connected agent. The agent's display name comes from
-// `?agent=` on its MCP URL, falling back to the client's own name. Each
-// session watches its calls' connections, so a wait ends when its agent hangs
-// up (mcp/hangups.ts).
+// `?agent=` on its MCP URL, falling back to the client's own name, and what
+// it runs on from `model=` and `effort=` when Tricot's terminal started it
+// (core/agentRules.ts runsOnUrl). Each session watches its calls'
+// connections, so a wait ends when its agent hangs up (mcp/hangups.ts).
 function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; hangups: Hangups }>();
 
@@ -205,6 +215,7 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
         return;
       }
       const requested = typeof req.query.agent === 'string' ? req.query.agent.trim().slice(0, 60) : '';
+      const runsOn = runsOnOf(req.query);
       const watching = new Hangups();
       const created = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
@@ -220,6 +231,7 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
         () => ({ kind: 'agent', name: requested || server.server.getClientVersion()?.name || 'agent' }),
         mcpOptions,
         watching,
+        runsOn,
       );
       await server.connect(created);
       transport = created;

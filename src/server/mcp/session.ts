@@ -7,8 +7,9 @@ import { mentionsDigest } from '../../core/mentions';
 import { partAsks } from '../../core/parts';
 import { clip } from '../../core/format';
 import { commitsDigest, eventsDigest, readyWork, refreshDigest, syncDigest } from '../../core/digest';
+import type { AgentKind } from '../../core/agents/agent';
 import { agentOfMcpClient } from '../../core/agents/registry';
-import type { Store } from '../../core/store';
+import { BoardError, type Store } from '../../core/store';
 import { boardKey, type Actor, type Board, type BoardEvent } from '../../core/types';
 import { describe as hookStep } from '../../../hooks/tricot-describe.mjs';
 import type { ConnectorTool } from '../connectors/connector';
@@ -18,6 +19,7 @@ import type { Steps } from '../steps';
 import type { ToolCosts } from '../toolCosts';
 import type { Hangups } from './hangups';
 import type { Extra, Tool } from './tool';
+import { agentBoard, hiddenBacklogTarget, seeBoardComments, taskVisible } from './backlog';
 
 // The longest one wait lasts (wait_for_updates, or then_wait after a reply).
 // An idle agent wakes about this often, and each wake is a whole model turn
@@ -129,7 +131,10 @@ export interface Session {
   readonly told: Shown;
   // Whether this session has told Tricot its skills: until it has, get_board and wait_for_updates ask.
   skillsReported: boolean;
-  updates(board: Board, read: BoardEvent[], waited?: number): string;
+  updates(board: Board, since: number, waited?: number): string;
+  // Which agent this is, from its MCP client's name: what a tag asks of it
+  // depends on what it can do (core/agentTags.ts). None for a client Tricot doesn't know.
+  agent(): AgentKind | undefined;
   // Waits as many seconds as asked, or as long as this agent's client allows
   // when it asks for more or says nothing (longestWait).
   listen(board: Board, since: number, seconds: number | undefined, extra: Extra): Promise<string>;
@@ -145,31 +150,58 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
   // Where a page of updates ended when there was more after it, by board key: that, not the board's last event, is how far the agent is caught up.
   const pageEnd = new Map<string, number>();
   const told = new Shown();
+  const agent = () => agentOfMcpClient(connection.clientName());
+  // A deleted task is reported only to sessions that could see it. This
+  // prevents a hidden backlog card's deletion from exposing its title.
+  const knownTasks = new Set<string>();
+  const taskKey = (board: Board, id: string) => `${boardKey(board)}:${id}`;
+  const rememberTasks = (board: Board) => {
+    for (const task of board.tasks) if (taskVisible(board, task, getActor().name)) knownTasks.add(taskKey(board, task.id));
+  };
+  const eventVisible = (board: Board, event: BoardEvent): boolean => {
+    const id = event.taskId ?? (board.deletedCards?.some((card) => card.kind === 'task' && card.id === event.itemId) ? event.itemId : undefined);
+    if (!id) return true;
+    const task = board.tasks.find((item) => item.id === id);
+    if (!task) return knownTasks.has(taskKey(board, id));
+    const visible = taskVisible(board, task, getActor().name);
+    if (visible) knownTasks.add(taskKey(board, task.id));
+    return visible;
+  };
+  const visibleEvents = (board: Board, since: number) => {
+    try {
+      return store.eventsSince(board.id, since, getActor()).filter((event) => eventVisible(board, event));
+    } catch (error) {
+      if (error instanceof BoardError && error.code === 'not_found') return [];
+      throw error;
+    }
+  };
 
   // A board's updates after a cursor, from events read up to one past a page:
   // the page, then what still waits on the agent. A wait (`waited`, its
   // seconds) adds that nothing came, and the ready work to hand out before
   // waiting again. What the session was told in full isn't told again (core/answering.ts).
-  function updates(board: Board, read: BoardEvent[], waited?: number): string {
-    const { events, cursor, more } = updatesPage(read, board.seq);
+  function updates(board: Board, since: number, waited?: number): string {
+    const { events, cursor, more } = updatesPage(visibleEvents(board, since), board.seq);
     if (more) pageEnd.set(boardKey(board), cursor);
     const viewer = getActor().name;
+    const view = agentBoard(board, viewer);
+    const kind = agent();
     told.begin();
-    const digest = eventsDigest(events, cursor, { board, viewer, shown: told }, more);
+    const digest = eventsDigest(events, cursor, { board: view, viewer, shown: told, kind }, more);
     const pending = [
       ...(options.pairing?.lines(boardKey(board), viewer) ?? []),
-      syncDigest(board),
-      requestsDigest(board, viewer),
-      threadsDigest(board, viewer, told),
-      mentionsDigest(board, viewer, told),
-      firstLooksDigest(board, viewer, store.now()),
-      refreshDigest(board),
-      commitsDigest(board, viewer),
-      partAsks(board, viewer),
-      waited === undefined ? undefined : readyWork(board, viewer),
+      syncDigest(view),
+      requestsDigest(view, viewer, kind),
+      threadsDigest(view, viewer, told, kind),
+      mentionsDigest(view, viewer, told, kind),
+      firstLooksDigest(view, viewer, store.now()),
+      refreshDigest(view),
+      commitsDigest(view, viewer),
+      partAsks(view, viewer),
+      waited === undefined ? undefined : readyWork(view, viewer),
     ].filter(Boolean);
     const quiet = waited !== undefined && events.length === 0 ? `\nNothing yet after ${waited}s; call again to keep waiting.` : '';
-    store.seeComments(board.id, getActor(), events); // 👀 on what people wrote that reached it
+    seeBoardComments(store, board, getActor(), events); // 👀 on what people wrote that reached it
     return `${digest}${quiet}${pending.map((line) => `\n${line}`).join('')}`;
   }
 
@@ -193,9 +225,9 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
             extra.sendNotification({ method: 'notifications/progress', params }).catch(() => {});
           }, PROGRESS_EVERY_MS);
     try {
-      const read = await store.waitForEvents(board.id, since, { timeoutMs: seconds * 1000, signal: extra.signal, exclude: getActor(), limit: UPDATES_PAGE + 1 });
+      await store.waitForEvents(board.id, since, { timeoutMs: seconds * 1000, signal: extra.signal, exclude: getActor(), limit: UPDATES_PAGE + 1, accept: (event) => eventVisible(board, event) });
       store.lapseFirstLooks(board); // one may have run out while it waited
-      return updates(board, read, seconds);
+      return updates(board, since, seconds);
     } finally {
       clearInterval(heartbeat);
     }
@@ -213,8 +245,10 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
     const thenWait = typeof args.then_wait === 'number' ? args.then_wait : undefined;
     const waits = tool.listens === true || thenWait !== undefined;
     const agent = getActor().name;
+    if (hiddenBacklogTarget(store, args, agent)) return { content: [{ type: 'text', text: 'This backlog card is not addressed to you. A person must assign you, or someone must @-mention you, before you read or change it.' }], isError: true };
     options.presence?.connect(agent);
     if (key) {
+      rememberTasks(board);
       // First looks that ran out of time open again before anything reads the board.
       store.lapseFirstLooks(board);
       if (!caughtUp.has(key)) caughtUp.set(key, board.seq);
@@ -225,6 +259,7 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
     }
     try {
       const result = await tool.handler(args, extra);
+      if (board) rememberTasks(board);
       if (writes && !result.isError) {
         // What it wrote is on the board: the step its hook sent for this
         // call ("Writing a comment") is over, as no end comes for it.
@@ -247,9 +282,13 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
         return result;
       }
       const since = caughtUp.get(key)!;
-      const unread = store.countEvents(key, { since, exclude: getActor() });
-      if (unread === 0) return result;
-      const [latest] = store.events(key, { since, exclude: getActor(), order: 'desc', limit: 1 });
+      const unreadEvents = visibleEvents(board, since);
+      const unread = unreadEvents.length;
+      if (unread === 0) {
+        caughtUp.set(key, board.seq);
+        return result;
+      }
+      const latest = unreadEvents.at(-1)!;
       const notice = `Unread on this board: ${unread} update${unread === 1 ? '' : 's'} from others since you last checked (latest: ${latest.actor.name} ${clip(latest.summary, 100)}). Call get_updates with since: ${since}.`;
       return { ...result, content: [...result.content, { type: 'text' as const, text: notice }] };
     } finally {
@@ -257,5 +296,5 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
     }
   }
 
-  return { told, skillsReported: false, updates, listen, handle };
+  return { told, skillsReported: false, updates, agent, listen, handle };
 }

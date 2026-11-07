@@ -4,6 +4,10 @@
 //
 //   ○ Tricot   ● 1 Claude · waiting for your OK   ○ 2 Codex · Running npm test · 1m 12s     Ctrl+\ 0 to answer
 //
+// After an agent's name, while the line has room, what it was started on
+// when that was set (core/agentRules.ts): `○ 1 Claude · Opus high · Running
+// npm test`. It is the first thing to go when the line is narrow.
+//
 // What an agent is doing comes from Tricot's own live data where there is
 // some (the board's stream, live.ts): a request for permission waiting on
 // the board (T183) says "waiting for your OK"; its latest step says what it
@@ -31,6 +35,10 @@ export interface BoardLive {
   presence: AgentPresence[];
   title?: string; // as the latest change named it
   activity?: BoardEvent[]; // its latest events, newest first (the Tricot tab's)
+  // Moves each time the board's conversations may have changed (live.ts
+  // touchesChat), and when the stream starts again: whoever reads them (the
+  // Tricot tab's chat and threads) reads again.
+  chatVer?: number;
 }
 
 // An agent, as the host knows it.
@@ -76,7 +84,7 @@ export function agentWords(agent: AgentNow, live: BoardLive | undefined, now: nu
 }
 
 export function agentDoing(agent: AgentNow, live: BoardLive | undefined, now: number): AgentDoing {
-  if (agent.state === 'ended' && agent.closing) return { words: 'stopped', tone: 'quiet' }; // asked to close, from the Tricot tab
+  if (agent.state === 'ended' && agent.closing) return { words: 'stopped', tone: 'quiet' }; // asked to close, as the person quits (one stopped from the Tricot tab has left)
   if (agent.state === 'ended') return { words: agent.exitCode ? `ended (${agent.exitCode})` : 'ended', tone: 'quiet' };
   if (agent.closing) return { words: 'closing', tone: 'quiet' };
   if (waitingFor(agent.name, live).length) return { words: 'waiting for your OK', tone: 'alert' };
@@ -99,6 +107,7 @@ export interface StripEntry extends AgentWords {
   name: string;
   ended: boolean;
   number?: string; // what picks it after the switch key: its place from 1 unless given; '' for none (the Tricot tab)
+  runsOn?: string; // what it was started on, in a few words ("Opus high"); none for its own settings
 }
 
 // Where each agent's label is, for a click: columns from 1, `to` not included.
@@ -121,41 +130,57 @@ interface Palette {
 const DARK: Palette = { bar: '48;5;236', text: '38;5;252', shown: '1;38;5;231;48;5;24', alert: '38;5;214', quiet: '38;5;244', hint: '38;5;245' };
 const LIGHT: Palette = { bar: '48;5;254', text: '38;5;236', shown: '1;38;5;231;48;5;25', alert: '38;5;130', quiet: '38;5;245', hint: '38;5;243' };
 
+// Columns one character takes, by its code point: none for a control
+// character, a combining accent, a joiner or a variation selector; two for a
+// wide one (CJK, most emoji); else one. Its neighbours never change it, so a
+// string's columns are its characters' added up, and a line can be measured
+// once as it is read (wrapLine, fit) instead of again for each character.
+export function columnsOf(code: number): number {
+  if (code < 32 || (code >= 0x300 && code < 0x370) || code === 0x200d || (code >= 0xfe00 && code <= 0xfe0f)) return 0;
+  return (code >= 0x1100 && code <= 0x115f) || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x1f300 && code <= 0x1faff) || (code >= 0x20000 && code <= 0x3fffd) ? 2 : 1;
+}
+
 // Columns a string takes: wide characters (CJK, most emoji) two.
 export function columns(text: string): number {
   let width = 0;
-  for (const ch of text) {
-    const code = ch.codePointAt(0)!;
-    if (code < 32 || (code >= 0x300 && code < 0x370) || code === 0x200d || (code >= 0xfe00 && code <= 0xfe0f)) continue;
-    width += (code >= 0x1100 && code <= 0x115f) || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x1f300 && code <= 0x1faff) || (code >= 0x20000 && code <= 0x3fffd) ? 2 : 1;
-  }
+  for (const ch of text) width += columnsOf(ch.codePointAt(0)!);
   return width;
 }
 
-// The first `room` columns of a string, with … when cut.
+// The first `room` columns of a string, with … when cut: read once, the
+// columns so far added up, and no further than the room.
 export function fit(text: string, room: number): string {
-  if (columns(text) <= room) return text;
-  if (room <= 0) return '';
-  let out = '';
-  for (const ch of text) {
-    if (columns(out + ch) > room - 1) break;
-    out += ch;
+  let used = 0;
+  let cut = text.length; // where it is cut to leave a column for the …
+  for (let at = 0; at < text.length; ) {
+    const code = text.codePointAt(at)!;
+    const size = columnsOf(code);
+    if (cut === text.length && used + size > room - 1) cut = at;
+    used += size;
+    if (used > room) break;
+    at += code > 0xffff ? 2 : 1;
   }
-  return `${out}…`;
+  if (used <= room) return text;
+  if (room <= 0) return '';
+  return `${text.slice(0, cut)}…`;
 }
 
 export function renderStrip(entries: StripEntry[], visible: number, width: number, hint: string, light = false): StripLayout {
   const look = light ? LIGHT : DARK;
   const mark = (entry: StripEntry, at: number) => (entry.ended ? '✕' : at === visible ? '●' : '○');
-  // As much as fits: every agent's words, then those of the agent showing and
-  // any wanting you, then names alone; each label cut to share what is left.
-  const label = (entry: StripEntry, at: number, detail: 'all' | 'some' | 'none') => {
-    const say = detail === 'all' || (detail === 'some' && (at === visible || entry.tone === 'alert'));
+  // As much as fits: every agent's words and what it runs on (while the keys
+  // fit beside them too: it gives way before they do), then its words alone,
+  // then those of the agent showing and any wanting you, then names alone;
+  // each label cut to share what is left.
+  const label = (entry: StripEntry, at: number, detail: 'runs' | 'all' | 'some' | 'none') => {
+    const say = detail === 'runs' || detail === 'all' || (detail === 'some' && (at === visible || entry.tone === 'alert'));
     const number = entry.number ?? String(at + 1);
-    return ` ${mark(entry, at)} ${number ? `${number} ` : ''}${entry.name}${say && entry.words ? ` · ${entry.words}` : ''} `;
+    const runs = detail === 'runs' && entry.runsOn ? ` · ${entry.runsOn}` : '';
+    return ` ${mark(entry, at)} ${number ? `${number} ` : ''}${entry.name}${runs}${say && entry.words ? ` · ${entry.words}` : ''} `;
   };
   const total = (labels: string[]) => labels.reduce((sum, l) => sum + columns(l), 0) + labels.length - 1;
-  let labels = entries.map((e, at) => label(e, at, 'all'));
+  let labels = entries.map((e, at) => label(e, at, 'runs'));
+  if (total(labels) + columns(hint) + 2 > width) labels = entries.map((e, at) => label(e, at, 'all'));
   for (const detail of ['some', 'none'] as const) if (total(labels) > width) labels = entries.map((e, at) => label(e, at, detail));
   if (total(labels) > width) {
     const share = Math.max(4, Math.floor((width - entries.length + 1) / entries.length));
@@ -187,14 +212,23 @@ export function renderStrip(entries: StripEntry[], visible: number, width: numbe
   return { line: `${line}\x1b[0m`, plain, ranges };
 }
 
-// Whether the terminal's background, as it answered OSC 11 ("rgb:ffff/ffff/ffff",
-// "#fdf6e3"), is light.
-export function isLight(background: string | undefined): boolean {
-  if (!background) return false;
+// A colour as red, green and blue, each from 0 to 255.
+export type Rgb = [r: number, g: number, b: number];
+
+// The terminal's background as it answered OSC 11 ("rgb:ffff/ffff/ffff",
+// "#fdf6e3"), or nothing when it didn't say.
+export function rgbOf(background: string | undefined): Rgb | undefined {
+  if (!background) return undefined;
   const rgb = /^rgba?:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)/i.exec(background);
   const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(background);
-  const parts = rgb ? rgb.slice(1, 4).map((p) => parseInt(p, 16) / (16 ** p.length - 1)) : hex ? hex.slice(1, 4).map((p) => parseInt(p, 16) / 255) : undefined;
-  if (!parts) return false;
-  const [r, g, b] = parts;
+  const parts = rgb ? rgb.slice(1, 4).map((p) => (parseInt(p, 16) / (16 ** p.length - 1)) * 255) : hex ? hex.slice(1, 4).map((p) => parseInt(p, 16)) : undefined;
+  return parts && (parts as Rgb);
+}
+
+// Whether the terminal's background, as it answered OSC 11, is light.
+export function isLight(background: string | undefined): boolean {
+  const rgb = rgbOf(background);
+  if (!rgb) return false;
+  const [r, g, b] = rgb.map((c) => c / 255);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5;
 }

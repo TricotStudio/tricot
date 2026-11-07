@@ -115,6 +115,7 @@ function NoteTools({ block, viewing }: ToolsProps<NoteBlock>) {
 
 export const note: WebBlockKind<NoteBlock> = {
   type: 'note',
+  copyText: (block) => block.text,
   Body: NoteBody,
   Head: NoteHead,
   ownPins: true, // its pins are the words themselves, and its body draws the strip

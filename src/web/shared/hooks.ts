@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
+import { dismissClick, interactiveAt, selectedText, type Press } from './dismissClick';
 
 // A per-viewer boolean preference, remembered in localStorage when available.
 export function useStoredFlag(key: string, initial: () => boolean): [boolean, (value: boolean) => void] {
@@ -36,22 +37,29 @@ export function typing(target: EventTarget | null): boolean {
 // part of the field it drops from. `toggle` is the button that opens it,
 // when that isn't in `root`: a press there is the button's, so it toggles
 // once. `close` is told whether it was Escape, and given the press or the
-// key, for a panel that leaves some of them be.
+// key, for a panel that leaves some of them be. `beside` is for a panel
+// docked beside the board (useSidePanel); any other is over the board.
 export function useDismiss(
   open: boolean,
   close: (escape: boolean, event: MouseEvent | KeyboardEvent) => void,
   root: RefObject<HTMLElement | null>,
   toggle?: RefObject<HTMLElement | null>,
+  beside = false,
 ): void {
   useEffect(() => {
     if (!open) return;
-    opened.add(root);
+    if (!beside) opened.add(root);
     const outside = (e: MouseEvent) => {
+      if (!beside) heardOver.add(e);
       const target = e.target as Element;
       if (root.current?.contains(target) || toggle?.current?.contains(target) || target.closest?.('.mention-menu')) return;
       close(false, e);
     };
-    const escape = (e: KeyboardEvent) => e.key === 'Escape' && close(true, e);
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (!beside) heardOver.add(e);
+      close(true, e);
+    };
     document.addEventListener('mousedown', outside, true);
     document.addEventListener('keydown', escape);
     return () => {
@@ -59,18 +67,112 @@ export function useDismiss(
       document.removeEventListener('mousedown', outside, true);
       document.removeEventListener('keydown', escape);
     };
-  }, [open, close, root, toggle]);
+  }, [open, close, root, toggle, beside]);
 }
 
 // The panels open now that close on a click outside them (useDismiss), by
-// their root: a menu, a popover, the inbox, the threads list.
+// their root. Over the board: a menu, a popover, the inbox, the threads list.
+// Docked beside it, in the order they opened: the conversation, Activity.
 const opened = new Set<RefObject<HTMLElement | null>>();
+const besides: RefObject<HTMLElement | null>[] = [];
+// The presses and keys a panel over the board heard, so it has them even
+// once it has closed on them; and the Escape a panel beside it closed on.
+const heardOver = new WeakSet<Event>();
+const escapedBeside = new WeakSet<Event>();
 
-// Whether a panel other than `root`'s is open: a press outside it, or
-// Escape, closes that one first (the docked conversation, threads.tsx).
+// Whether a panel over the board other than `root`'s is open: Escape closes
+// that one first (a full view's agent picker, pairing/shell.tsx). The panels
+// beside the board don't count.
 export function otherPanelOpen(root: RefObject<HTMLElement | null>): boolean {
   for (const other of opened) if (other !== root) return true;
   return false;
+}
+
+// Whether something over the board takes `event`, a press or Escape, from the
+// panels beside it, and closes alone: a dialog, or a panel over the board,
+// open now or as the event began. The panels beside the board aren't over
+// each other: each closes on its own dismiss click.
+export function overBoard(event: Event): boolean {
+  return opened.size > 0 || heardOver.has(event) || (typeof document !== 'undefined' && document.querySelector('[aria-modal="true"]') !== null);
+}
+
+// Puts `root` with the panels beside the board while `open`, in the order
+// they opened, for Escape (escapeCloses).
+export function useBeside(open: boolean, root: RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    if (!open) return;
+    besides.push(root);
+    return () => void besides.splice(besides.indexOf(root), 1);
+  }, [open, root]);
+}
+
+// Whether Escape closes `root`, a panel beside the board: not once something
+// took it (a field, a menu: defaultPrevented), nor while something is over
+// the board, and of the panels beside it, only the one opened last, which
+// takes it, so the next Escape closes the next.
+export function escapeCloses(root: RefObject<HTMLElement | null>, event: KeyboardEvent): boolean {
+  if (event.defaultPrevented || escapedBeside.has(event) || overBoard(event) || besides.at(-1) !== root) return false;
+  escapedBeside.add(event);
+  return true;
+}
+
+// Follows a press outside a panel beside the board, `down` as it went down,
+// that can be a dismiss click (dismissClick.ts) until it's over and its click
+// has done what it does (afterPress): `then` hears whether it was one. Gives
+// what calls it off, or null when the press can't be one.
+export function followPress(down: MouseEvent, then: (dismissed: boolean) => void): (() => void) | null {
+  const target = down.target as Element;
+  const pressed: Press = {
+    button: down.button,
+    metaKey: down.metaKey,
+    ctrlKey: down.ctrlKey,
+    shiftKey: down.shiftKey,
+    altKey: down.altKey,
+    interactive: interactiveAt(target, { x: down.clientX, y: down.clientY }),
+    taken: overBoard(down) || Boolean(target.closest?.('.popover[open]')),
+  };
+  if (!dismissClick(pressed)) return null;
+  const selection = selectedText();
+  return afterPress((end) => {
+    const moved = end.type === 'mouseup' ? Math.hypot(end.clientX - down.clientX, end.clientY - down.clientY) : Infinity;
+    const selected = selectedText();
+    then(dismissClick(pressed, { moved, selected: selected !== '' && selected !== selection }));
+  });
+}
+
+// A panel docked beside the board, as Activity is (the docked conversation
+// does the same, with more of its own: threads.tsx). It stays open while the
+// person uses the board, and closes on Escape, or on a dismiss click outside
+// it (dismissClick.ts) once the press is over, so the click lands on the board
+// as it was. Something over the board takes Escape and a press first; with
+// both panels open, a dismiss click outside each closes it, and Escape closes
+// the one opened last first. `close` is told whether it was Escape. `toggle`
+// is the button that opens it: a press there just toggles it.
+export function useSidePanel(
+  open: boolean,
+  close: (escape: boolean) => void,
+  root: RefObject<HTMLElement | null>,
+  toggle?: RefObject<HTMLElement | null>,
+): void {
+  const press = useRef<(() => void) | null>(null); // a dismiss click under way: calls it off
+  useBeside(open, root);
+  const dismiss = useCallback(
+    (escape: boolean, event: MouseEvent | KeyboardEvent) => {
+      if (escape) {
+        if (escapeCloses(root, event as KeyboardEvent)) close(true);
+        return;
+      }
+      const follow = followPress(event as MouseEvent, (dismissed) => {
+        press.current = null;
+        if (dismissed) close(false);
+      });
+      if (!follow) return;
+      press.current?.();
+      press.current = follow;
+    },
+    [close, root],
+  );
+  useDismiss(open, dismiss, root, toggle, true);
 }
 
 // Runs `then` once the press going down now is over, and its click has done

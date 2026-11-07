@@ -172,6 +172,15 @@ export const canvas = {
     optionId: z.string().nullable().optional(),
     rev: z.number().int().optional(),
   }),
+  // Copies of the blocks and groups with these ids, from one canvas, centred on a point of this one.
+  pasteBlocks: z
+    .object({
+      ...by,
+      ...canvasRef.shape,
+      ids: sized(z.string(), { min: [1, 'Name the blocks to paste.'], max: [LIMITS.blocks, `Paste at most ${LIMITS.blocks} blocks at once.`] }),
+      at: z.object({ x: z.number(), y: z.number() }).optional(),
+    })
+    .refine(namesOneCanvas, { error: ONE_CANVAS }),
   move: z
     .object({ ...by, ...canvasRef.shape, moves: sized(move, { max: [LIMITS.moves, `Move at most ${LIMITS.moves} items at once.`] }) })
     .refine(namesOneCanvas, { error: ONE_CANVAS }),
@@ -341,6 +350,18 @@ export const liveSteps = {
     fingerprint: z
       .string({ error: "Turning live steps on or off needs the fingerprint of the preview the person saw: ask for the preview first, and send its fingerprint." })
       .regex(/^[0-9a-f]{64}$/, { error: "That isn't a preview's fingerprint: ask for the preview, and send the fingerprint it gives." }),
+  }),
+};
+
+// A person setting the model and thinking level an agent starts on
+// (server/agentRulesRoutes.ts): which agent (its id), then each, or null or
+// nothing for the agent's own. What the agent takes is checked against it
+// (core/agentRules.ts ruleProblem).
+export const agentRule = {
+  agent: z.object({ agent: z.string().trim().min(1).max(40) }),
+  rule: z.object({
+    model: z.string({ error: 'model is the name of a model, or null for its own.' }).max(200).nullable().optional(),
+    effort: z.string({ error: 'effort is a thinking level, or null for its own.' }).max(40).nullable().optional(),
   }),
 };
 

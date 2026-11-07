@@ -516,10 +516,10 @@ export interface Task {
 
 // A short feasibility and approach comment on a card a person added to the
 // backlog, from exactly one agent (and a mock on its canvas, for UI work).
-// Open until an agent takes it with take_first_look; taken while that agent
+// Open until an agent a person assigned or someone @-mentioned takes it; taken while that agent
 // writes it, going back to open if no comment comes in time; done with the
 // taker's comment. `mentions` are the agents the card's text @-mentions: only
-// they take it (a task's assignee outranks them).
+// they take it (a person’s assignment outranks them). Without either, it stays quiet.
 export type FirstLook =
   | { status: 'open'; openedAt: string; mentions?: string[] }
   | {

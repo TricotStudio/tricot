@@ -1,6 +1,7 @@
 // Pi: joins by its own command (`pi mcp add`), reading the token from the
 // environment. What only the command and the server use of it is in server.ts.
 
+import { thinkingLevels } from '../../agentRules';
 import { piLines, piWords } from '../../connect';
 import type { AgentKind } from '../agent';
 import { server } from './server';
@@ -35,6 +36,17 @@ export const pi: AgentKind = {
     ],
   },
   usage: { shares: 'tokens', source: 'pi' },
+  // It matches a model by a pattern, across its providers (pi --help, Pi
+  // 1.5), and takes these --thinking levels.
+  startsOn: {
+    models: [
+      { id: 'opus', label: 'Opus' },
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'haiku', label: 'Haiku' },
+      { id: 'fable', label: 'Fable' },
+    ],
+    levels: thinkingLevels('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
+  },
 
   ...server,
 };

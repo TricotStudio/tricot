@@ -12,7 +12,11 @@
 //   npx tsx scripts/check-new-agent.ts uninstall  take it out
 //
 // Nothing here is loaded by the app; it is the contract's own test. The
-// checks that run Tricot's code use a temporary home and data folder.
+// checks that run Tricot's code use a temporary home and data folder. The
+// registry as it was waits in a file in the system's temporary folder named for
+// this checkout (scripts/savedRegistries.ts): a run that was cut short is put
+// right by the next one in the same checkout, and runs in other checkouts or
+// worktrees at the same time never touch it.
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -20,13 +24,14 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { savedRegistries } from './savedRegistries';
 
 const root = path.resolve(import.meta.dirname, '..');
 const at = (...parts: string[]) => path.join(root, ...parts);
 
 const FOLDER = at('src/core/agents/acme');
 const REGISTRY = 'src/core/agents/registry.ts';
-const SAVED = path.join(os.tmpdir(), 'tricot-check-new-agent.json'); // the registry as it was, in case a run is cut short
+const SAVED = savedRegistries('check-new-agent', root); // the registry as it was, in case a run is cut short (a file for this checkout only)
 
 // What the registry takes to list an agent: its import, and its entry in the list.
 const REGISTER = { imports: "import { claude } from './claude';", entry: /\[claude(?:, \w+)*\](?=;)/, add: ', acme]', from: "import { acme } from './acme';" } as const;
@@ -170,7 +175,7 @@ async function endToEnd(): Promise<void> {
   try {
     // the registry, and what reads it
     const { agentKinds, findAgent, panelTexts, agentsInCliOrder, installHints } = await import('../src/core/agents/registry');
-    assert.deepEqual(agentKinds().map((kind) => kind.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode', 'acme']);
+    assert.deepEqual(agentKinds().map((kind) => kind.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode', 'goose', 'hermes', 'grok', 'acme']);
     assert.equal(agentsInCliOrder().at(-1)?.id, 'acme', 'one without a place in the CLI order comes last');
     ok('the registry lists it, after the others');
 
@@ -181,7 +186,7 @@ async function endToEnd(): Promise<void> {
     assert.match(commandHelp('acme')!, /^tricot acme: start the board and Acme Code together, in this terminal/);
     const main = mainHelp('1.0.0').replace(/\s+/g, ' '); // as wrapped, in one line
     assert.match(main, /Also codex, opencode, pi, omp and acme; several at once: tricot claude codex/);
-    assert.match(main, /Connect claude, codex, pi, gemini or acme: shows its own command/, 'acme runs a command of its own, so `tricot connect` runs it');
+    assert.match(main, /Connect claude, codex, pi, gemini, grok or acme: shows its own command/, 'acme runs a command of its own, so `tricot connect` runs it');
     assert.equal(unknownCommand('acmee'), 'Unknown command "acmee". Did you mean "acme"?');
     assert.ok(AGENTS.acme.session);
     ok('CLI help: its command, the list of those that start, and the closest-command hint');
@@ -203,8 +208,8 @@ async function endToEnd(): Promise<void> {
     assert.match(connected.output, /Run once; Acme Code then has the board in every session:\n {2}acme-code mcp add tricot "?http:\/\/127\.0\.0\.1:4999\/mcp\?agent=Acme"?/);
     const overview = tricot(home, ['connect', '--port', '4999']).output;
     assert.match(overview, /^ {2}acme-code mcp add tricot /m);
-    assert.match(overview, /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, acme\)\./);
-    assert.match(tricot(home, ['connect', 'nope']).output, /Unknown agent "nope"\. Try: claude, codex, pi, omp, gemini, opencode, acme, mcp-json, url\./);
+    assert.match(overview, /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, grok, acme\)\./);
+    assert.match(tricot(home, ['connect', 'nope']).output, /Unknown agent "nope"\. Try: claude, codex, pi, omp, gemini, opencode, goose, hermes, grok, acme, mcp-json, url\./);
     ok('`tricot connect`: its --print, the overview, the list of names');
 
     // the Connect panel's data

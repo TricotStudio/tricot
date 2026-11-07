@@ -7,6 +7,7 @@ import { BoardError, inBlock, inBlockAsync } from '../../../core/store';
 import { inThread } from '../wording';
 import { defineTool, text, type Tool } from '../tool';
 import type { ToolContext } from './context';
+import { agentBoard } from '../backlog';
 
 export function decisionTools({ store, getActor, session: { told }, blocks: { fill, readContent } }: ToolContext): Tool[] {
   return [
@@ -20,7 +21,8 @@ export function decisionTools({ store, getActor, session: { told }, blocks: { fi
       handler: async ({ decision_id }) => {
         const { board, decision } = store.getDecision(decision_id);
         told.readAll(decisionDiscussion(decision));
-        return text(decisionDetail(board, decision, undefined, getActor().name));
+        const view = agentBoard(board, getActor().name);
+        return text(decisionDetail(view, view.decisions.find((item) => item.id === decision.id)!, undefined, getActor().name));
       },
     }),
 
@@ -151,7 +153,8 @@ export function decisionTools({ store, getActor, session: { told }, blocks: { fi
           : settled
             ? `Re-checked #${decision.number}, which stays ${decision.status}; people see your note.\n\n`
             : `Refreshed #${decision.number}; people see: ${decision.refreshed!.changes.join(', ') || 'no changes'}.\n\n`;
-        return text(withAdvice(`${refreshed}${decisionDetail(board, decision)}`, advice));
+        const view = agentBoard(board, getActor().name);
+        return text(withAdvice(`${refreshed}${decisionDetail(view, view.decisions.find((item) => item.id === decision.id)!)}`, advice));
       },
     }),
 

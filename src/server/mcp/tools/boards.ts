@@ -8,6 +8,7 @@ import { BoardError } from '../../../core/store';
 import { boardKey } from '../../../core/types';
 import { defineTool, text, type Tool } from '../tool';
 import type { ToolContext } from './context';
+import { agentBoard, seeBoardComments } from '../backlog';
 
 export function boardTools({ store, getActor, options, session }: ToolContext): Tool[] {
   return [
@@ -47,8 +48,9 @@ export function boardTools({ store, getActor, options, session }: ToolContext): 
         const renamed = board.id === board_id ? '' : `\n\nThis board was renamed: its id is now ${board.id}. The old one still works.`;
         const nudge = session.skillsReported ? '' : `\n\n${SKILLS_NUDGE}`;
         session.told.begin();
-        const digest = boardDigest(board, getActor().name, store.now(), session.told);
-        store.seeComments(board.id, getActor()); // 👀 on what people asked of it, which the digest quotes
+        const view = agentBoard(board, getActor().name);
+        const digest = boardDigest(view, getActor().name, store.now(), session.told, session.agent());
+        seeBoardComments(store, board, getActor());
         const pairing = (options.pairing?.lines(boardKey(board), getActor().name) ?? []).map((line) => `\n\n${line}`).join('');
         return text(`${digest}${pairing}${renamed}${nudge}`);
       },
@@ -70,7 +72,7 @@ export function boardTools({ store, getActor, options, session }: ToolContext): 
           openOnly: args.include_closed === false,
           limit: args.limit ?? 20,
         };
-        const found = searchStore(store, args.query, options);
+        const found = searchStore({ listBoards: () => store.listBoards(), getBoard: (id) => agentBoard(store.getBoard(id), getActor().name) }, args.query, options);
         const boardTitle = args.board_id ? store.getBoard(args.board_id).title : undefined;
         return text(searchDigest(found, args.query, { ...options, boardTitle }));
       },

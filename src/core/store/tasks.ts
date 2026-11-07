@@ -54,8 +54,8 @@ export class Tasks {
     // are ready to build, unless they open them in the backlog: a note a
     // person asked for, or a bug or follow-up they noticed.
     const backlog = actor.kind === 'human' ? !options.ready : opening;
-    // Each card a person adds to the backlog waits on one agent's first look,
-    // which the agents its text @-mentions take. One an agent opens needs none.
+    // A person's backlog card can receive a first look once they assign an agent or
+    // someone directly @-mentions one. With nobody named it stays quiet. Agent-opened cards need none.
     const mentioned = prepared.map((p) => (backlog && !opening ? agentsIn(board, this.people.mentionsIn(board, [p.title, p.detail].filter(Boolean).join('\n'), actor)) : []));
     return prepared.map((fields, i) => {
       const assignee = assignees[i];
@@ -198,7 +198,7 @@ export class Tasks {
     if (theirs) throw new BoardError(theirs);
     // Handing it to an agent: one a person picked stays theirs.
     const assignee = patch.assignee === undefined ? undefined : patch.assignee?.trim() ? this.people.agentNamed(board, patch.assignee, actor) : null;
-    const reassigning = assignee !== undefined && (assignee === null ? Boolean(task.assignee) : !assignedTo(task, assignee));
+    const reassigning = assignee !== undefined && (assignee === null ? Boolean(task.assignee) : !assignedTo(task, assignee) || (actor.kind === 'human' && task.assignedBy?.kind !== 'human'));
     const kept = reassigning ? reassignRefusal(task, actor) : undefined;
     if (kept) throw new BoardError(kept);
     // People review what they can see, so an agent's work comes with something
@@ -246,11 +246,14 @@ export class Tasks {
       task.detail = detail;
     }
     // A first look still to come is for the agents the card's text names now.
+    // One an agent opened needs none: the agents its text names just read it.
     const look = task.firstLook;
-    if ((patch.title !== undefined || patch.detail !== undefined) && actor.kind === 'human' && look && look.status !== 'done') {
+    if ((patch.title !== undefined || patch.detail !== undefined) && (look || task.status === 'backlog')) {
       const mentions = agentsIn(board, this.people.mentionsIn(board, [task.title, task.detail].filter(Boolean).join('\n'), actor));
-      if (mentions.length) look.mentions = mentions;
-      else delete look.mentions;
+      if (look) {
+        if (mentions.length) look.mentions = mentions;
+        else delete look.mentions;
+      } else if (mentions.length && !openedBy(task)) task.firstLook = { status: 'open', openedAt: now, mentions };
     }
     if (patch.decisionIds !== undefined) {
       const ids = this.settledDecisions(board, patch.decisionIds);

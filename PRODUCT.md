@@ -26,7 +26,7 @@ The board is a boundary object, after Maggie Appleton's *Planning with Agents*: 
 
 ## Operating Context
 
-- Runs locally: `npm install -g tricot` (or Homebrew, or `npx tricot`), then `tricot` starts the board on `http://127.0.0.1:4545`, or finds the one already running, and prints how to connect each agent. Agents connect over MCP Streamable HTTP: Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode, or any client that speaks it.
+- Runs locally: `npm install -g tricot` (or Homebrew, or `npx tricot`), then `tricot` starts the board on `http://127.0.0.1:4545`, or finds the one already running, and prints how to connect each agent. Agents connect over MCP Streamable HTTP: Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode, Grok Build, or any client that speaks it.
 - The first run is a page, not a manual: until there is a project, Home asks "What are you working on?", and one sentence makes the project and asks the agent what it needs decided, with the command to connect the agent found on the machine beneath it.
 - Live steps: with the person's yes, a small hook in each agent's own settings shows what it is doing on the card it works on ("Running npm test"), for all six of those agents. It sends one line per step, never file contents or command output.
 - Decisions move through five statuses: open, exploring, provisional, decided, deferred. Tasks start in the person's backlog or in to do, move through their own lanes (in progress, in review, blocked, done), can go stale, and can be dropped.

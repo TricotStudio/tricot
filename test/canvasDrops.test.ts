@@ -46,6 +46,34 @@ import { ReadOnlyContext } from './src/web/shared/hooks';
 const board = ${JSON.stringify(board)};
 const withNote = ${JSON.stringify(withNote)};
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Chrome runs this page on virtual time (runInChrome): a sleep ends as soon as
+// the page has nothing left to run, and does not wait for what the browser does
+// off the page's thread, such as reading a file's bytes, which under load
+// takes longer than any sleep. So the page waits for what it needs, not for a
+// time: waitFor for something to appear, and settle for what an event set
+// going (its renders and requests) to be done. A file's bytes are handed over
+// at once, from what the page made the file of.
+const contents = new Map();
+const keyOf = (file) => [file.name, file.size, file.type].join('|');
+const made = (bytes, name, type) => {
+  const file = new File([bytes], name, { type });
+  contents.set(keyOf(file), bytes);
+  return file;
+};
+const readBytes = Blob.prototype.arrayBuffer;
+Blob.prototype.arrayBuffer = function () {
+  const bytes = contents.get(keyOf(this));
+  return bytes ? Promise.resolve(bytes.slice().buffer) : readBytes.call(this);
+};
+const waitFor = async (what, found) => {
+  for (let tries = 0; tries < 1000; tries++) {
+    if (found()) return;
+    await wait(10);
+  }
+  throw new Error('Timed out waiting for ' + what + '.');
+};
+const settle = () => wait(30);
 const style = document.head.appendChild(document.createElement('style'));
 style.textContent = ${JSON.stringify(CSS)} + ' body { margin: 0 }';
 document.documentElement.dataset.theme = 'light';
@@ -74,7 +102,11 @@ const root = createRoot(frame);
 const show = async (readOnly, shown = board) => {
   flushSync(() => root.render(null));
   flushSync(() => root.render(h(ReadOnlyContext.Provider, { value: readOnly }, h(CanvasView, { board: shown, name: 'Sam' }))));
-  await wait(300);
+  await waitFor('the canvas to be drawn', () => {
+    const nodes = [...document.querySelectorAll('.react-flow__node')];
+    return pane() && canvas().getBoundingClientRect().width > 0 && (readOnly || document.querySelector('.canvas-toolbar')) && nodes.length === shown.canvas.blocks.length && nodes.every((node) => node.style.visibility !== 'hidden');
+  });
+  await settle();
   taken();
 };
 const canvas = () => document.querySelector('.canvas');
@@ -82,8 +114,8 @@ const pane = () => document.querySelector('.react-flow__pane');
 const spot = (at) => ({ clientX: canvas().getBoundingClientRect().left + at.x, clientY: canvas().getBoundingClientRect().top + at.y });
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
-const picture = (name = 'shot.png', type = 'image/png') => new File([PNG], name, { type });
-const source = new File(['export const retries = 3;\\n'], 'retries.ts', { type: 'video/mp2t' });
+const picture = (name = 'shot.png', type = 'image/png') => made(PNG, name, type);
+const source = made(new TextEncoder().encode('export const retries = 3;\\n'), 'retries.ts', 'video/mp2t');
 
 // What a drag or a clipboard carries, as a browser would hand it over.
 const carrying = ({ text, uris, html, files = [] }) => {
@@ -100,19 +132,19 @@ const dragEvent = (type, data, at, related = null) => new DragEvent(type, { bubb
 // A drag that comes in over the canvas and is dropped on target.
 const drop = async (data, { target = pane(), at = { x: 300, y: 200 } } = {}) => {
   target.dispatchEvent(dragEvent('dragenter', data, at));
-  await wait(30);
+  await settle();
   const showing = overlay();
   const over = dragEvent('dragover', data, at);
   target.dispatchEvent(over);
   const dropped = dragEvent('drop', data, at);
   target.dispatchEvent(dropped);
-  await wait(120);
+  await settle();
   return { overlay: showing, allowed: over.defaultPrevented, taken: dropped.defaultPrevented, overlayAfter: overlay(), added: taken() };
 };
 const paste = async (data, target = document.body) => {
   const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data });
   target.dispatchEvent(event);
-  await wait(120);
+  await settle();
   return { taken: event.defaultPrevented, added: taken(), form: document.querySelector('.add-link input')?.value ?? null };
 };
 
@@ -152,11 +184,11 @@ try {
   // Dragging in a link or some text and out again leaves no overlay.
   const leaving = carrying({ uris: 'https://example.com/a', text: 'https://example.com/a' });
   pane().dispatchEvent(dragEvent('dragenter', leaving, { x: 100, y: 100 }));
-  await wait(60);
+  await settle();
   const during = overlay();
   document.body.dispatchEvent(dragEvent('dragleave', leaving, { x: -5, y: -5 }));
   canvas().dispatchEvent(dragEvent('dragleave', leaving, { x: -5, y: -5 }));
-  await wait(60);
+  await settle();
   results.drops.leaving = { during, after: overlay() };
 
   // ---- pasting ----
@@ -209,7 +241,7 @@ try {
   // The Add form's own address field, as the canvas draws it.
   await show(false);
   [...canvas().querySelectorAll('.canvas-toolbar button')].find((b) => b.textContent === 'Link').click();
-  await wait(100);
+  await waitFor("Add's link form", () => document.querySelector('.add-link input'));
   const formField = document.querySelector('.add-link input');
   results.guards.addForm = formField ? { paste: await paste(carrying({ text: 'https://example.com/a' }), formField), drop: (await drop(address(), { target: formField })).added.length } : null;
 
@@ -239,7 +271,8 @@ try {
   // ---- a block's full view covers the canvas ----
   await show(false, withNote);
   document.querySelector('.react-flow__node').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-  await wait(600);
+  await waitFor("the block's full view", () => document.querySelector('.pair-shell'));
+  await settle();
   results.guards.fullView = {
     open: Boolean(document.querySelector('.pair-shell')),
     paste: (await paste(words())).added.length,

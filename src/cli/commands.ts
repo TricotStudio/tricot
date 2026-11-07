@@ -29,6 +29,10 @@ export interface Words {
   positionals: string[];
   arg?: string; // the word after the command's name
   passthrough: string[];
+  // Each option that belongs to the word before it (options.ts PER_AGENT:
+  // --model and --effort after an agent's name), in the order given: its
+  // value, and the place in `positionals` of the last word before it (-1: none).
+  placed?: { name: string; value: string; after: number }[];
 }
 
 export interface CliCommand {
@@ -56,7 +60,7 @@ const access = (env: Env, { arg }: Words): Promise<CliResult> => {
   return accessCommand({ dataDir: env.dataDir, out: ctx.out, err: ctx.err, ...(ctx.keys && { keys: ctx.keys }), ...(ctx.ask && { ask: ctx.ask }) }, arg);
 };
 
-const AGENT_OPTION = { name: 'agent', type: 'string', usage: '--agent <id>', words: 'Just this agent (claude, codex, pi, omp, gemini, opencode)' } satisfies Option;
+const AGENT_OPTION = { name: 'agent', type: 'string', usage: '--agent <id>', words: 'Just this agent (claude, codex, pi, omp, gemini, opencode, goose, hermes, grok)' } satisfies Option;
 const PROJECT_OPTION = { name: 'project', type: 'boolean', usage: '--project', words: "on/off, with --agent claude: only this project's .claude/settings.json, not every project's (on asks first)" } satisfies Option;
 const NARRATION_OPTION = { name: 'narration', type: 'boolean', usage: '--narration', words: 'on --project: also show the first line of each message Claude writes in the terminal (never its thinking); off unless asked for' } satisfies Option;
 const PRINT_OPTION = { name: 'print', type: 'boolean', usage: '--print', words: 'Only show the command, run nothing' } satisfies Option;

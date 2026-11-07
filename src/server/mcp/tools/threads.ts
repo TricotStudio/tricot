@@ -6,6 +6,7 @@ import { BoardError } from '../../../core/store';
 import { AGENT_TALK, THEN_WAIT, toAgentsNote } from '../wording';
 import { defineTool, text, type Tool } from '../tool';
 import type { ToolContext } from './context';
+import { agentBoard } from '../backlog';
 
 export function threadTools({ store, getActor, session: { told } }: ToolContext): Tool[] {
   return [
@@ -27,7 +28,8 @@ export function threadTools({ store, getActor, session: { told } }: ToolContext)
       handler: async ({ thread_id }) => {
         const { board, thread } = store.getThread(thread_id);
         told.readAll(threadAsRead(thread));
-        return text(threadDetail(board, thread, getActor().name));
+        const view = agentBoard(board, getActor().name);
+        return text(threadDetail(view, view.threads!.find((item) => item.id === thread.id)!, getActor().name));
       },
     }),
 
@@ -60,7 +62,8 @@ export function threadTools({ store, getActor, session: { told } }: ToolContext)
         const { board } = store.getThread(thread_id);
         const count = `${thread.messages.length} message${thread.messages.length === 1 ? '' : 's'}`;
         const shown = thread.messages.at(-1)!.refs ?? [];
-        const under = shown.length ? `, with ${listNames(shown.map((ref) => workName(board, ref)))} under it` : '';
+        const view = agentBoard(board, getActor().name);
+        const under = shown.length ? `, with ${listNames(shown.map((ref) => workName(view, ref)))} under it` : '';
         const asks = toAgentsNote(board, thread.messages.at(-1)!);
         return text(withAdvice(`Replied in thread "${thread.title}" (${count})${under}. People see it in the thread.${asks}`, peopleTextAdvice(body, 'reply')));
       },

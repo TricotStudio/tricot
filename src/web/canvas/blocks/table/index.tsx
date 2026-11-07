@@ -5,6 +5,7 @@
 import { cellsQuote } from '../../../../core/blocks/table/quote';
 import type { Block } from '../../../../core/types';
 import { api, type PinPart } from '../../../shared/api';
+import { tabular } from '../../clip';
 import { useCanvas, type PinDraft } from '../../context';
 import type { ToolsProps, WebBlockKind } from '../kind';
 import { TableBody } from './cells';
@@ -74,6 +75,7 @@ function TablePinScope({ draft, block, onChange }: { draft: PinDraft; block: Tab
 
 export const table: WebBlockKind<TableBlock> = {
   type: 'table',
+  copyText: (block) => tabular(block.columns, block.rows),
   Body: TableBody,
   Tools: TableTools,
   PinScope: TablePinScope,

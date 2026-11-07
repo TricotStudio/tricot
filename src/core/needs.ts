@@ -17,7 +17,7 @@
 
 import { needsInput } from './attention';
 import { clip, listNames, pendingAsks, samePerson } from './format';
-import { unseenCards, waitsOnYou, type ThreadsSeen } from './threadList';
+import { threadView, unseenCards, waitsOnYou, type ThreadsSeen } from './threadList';
 import { boardKey, type Board, type BoardEvent, type Decision, type Status, type Task, type TaskStatus } from './types';
 
 // ---- squares ------------------------------------------------------------------
@@ -201,15 +201,13 @@ function threadNeeds(board: Board, me: string, seen: ThreadsSeen, counted: Need[
     if (!waitsOnYou(board, thread, me, seen[thread.id])) return [];
     if (unseenCards(board, thread, seen[thread.id]).some((id) => cards.has(id))) return [];
     const last = thread.messages.at(-1)!;
-    const door = thread.general ? 'canvas' : thread.door;
-    const view = door === 'decisions' || door === 'tasks' || door === 'canvas' ? door : 'decisions';
     return [
       {
         kind: 'thread',
         key: thread.id,
         boardId: board.id,
         board: board.title,
-        target: { kind: 'thread', id: thread.id, view },
+        target: { kind: 'thread', id: thread.id, view: threadView(thread) },
         title: thread.title,
         why: `${last.author.name} replied`,
         action: 'Reply',

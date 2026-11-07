@@ -31,9 +31,12 @@ import { parsePlan, runUpdater, withoutLegacyStartFlag, type Command } from '../
 import type { RunningServer } from '../server/start';
 import type { TerminalKeys } from './boardPicker';
 import type { Values } from './commandEnv';
-import { findCommand, parseOptions } from './commands';
+import { Interrupted } from './confirm';
+import { findCommand, parseOptions, type Words } from './commands';
+import { PER_AGENT } from './options';
 import { mainHelp, commandHelp, isKnownCommand, unknownCommand } from './help';
 import type { CommandRunner } from './connectAgent';
+import { findInstalls, otherInstallNote, otherVersion } from './otherInstalls';
 import type { AgentHost } from './switcher/run';
 import type { AgentLaunch } from './terminal';
 
@@ -48,8 +51,10 @@ export interface CliContext {
   open(url: string): void;
   // The folder the command runs in: the project `steps on --project` sets up.
   cwd?: string;
-  // Asks the person a yes/no question in the terminal; none when there is no
-  // terminal to ask in. `fallback` is the answer to a bare Enter: no unless given.
+  // Asks the person a yes/no question in the terminal, with no [y/N] on the end
+  // (the pair of Yes and No shows the default, confirm.ts; a line gets it added);
+  // none when there is no terminal to ask in. `fallback` is the answer to a bare
+  // Enter: no unless given.
   ask?(question: string, fallback?: boolean): Promise<boolean>;
   // npm, run without a shell; tests stand in for it (update).
   npm?: Command;
@@ -79,7 +84,26 @@ export interface CliResult {
   server?: RunningServer;
 }
 
+// Runs the command; Ctrl+C at one of its questions ends it quietly: one line
+// that nothing was changed, and the exit code a shell gives Ctrl+C. Any other
+// error is the caller's, as before.
+export async function runUntilCtrlC(run: () => Promise<CliResult>, out: (line: string) => void): Promise<CliResult> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!(error instanceof Interrupted)) throw error;
+    out('Stopped: nothing was changed.');
+    return { exitCode: 130 };
+  }
+}
+
 export { updatesFor, whereToAsk } from './updateCommand';
+
+// What a word that isn't a command says, and where another `tricot` of another version is, which may have it.
+async function unknownIn(ctx: CliContext, version: string, word: string): Promise<string> {
+  const other = otherVersion(await findInstalls(ctx, version), version);
+  return unknownCommand(word, other && otherInstallNote(version, other));
+}
 
 export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult> {
   argv = withoutLegacyStartFlag(argv);
@@ -90,7 +114,7 @@ export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult
   const passthrough = split < 0 ? [] : argv.slice(split + 1);
   let parsed;
   try {
-    parsed = parseArgs({ args: split < 0 ? argv : argv.slice(0, split), allowPositionals: true, options: parseOptions() });
+    parsed = parseArgs({ args: split < 0 ? argv : argv.slice(0, split), allowPositionals: true, options: parseOptions(), tokens: true });
   } catch (error) {
     // The help, which points at the command's own when a command was given.
     ctx.err(`${error instanceof Error ? error.message : error}\n\n${mainHelp(version, commandIn(split < 0 ? argv : argv.slice(0, split)))}`);
@@ -111,7 +135,7 @@ export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult
     }
     const help = commandHelp(command);
     if (help === undefined) {
-      ctx.err(unknownCommand(command));
+      ctx.err(await unknownIn(ctx, version, command));
       return { exitCode: 1 };
     }
     ctx.out(help);
@@ -140,10 +164,22 @@ export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult
   const [command = 'start', arg] = positionals;
   const entry = findCommand(command);
   if (!entry) {
-    ctx.err(unknownCommand(command));
+    ctx.err(await unknownIn(ctx, version, command));
     return { exitCode: 1 };
   }
-  return entry.run(env, { positionals, arg, passthrough });
+  return entry.run(env, { positionals, arg, passthrough, placed: placedOptions(parsed.tokens) });
+}
+
+// The options that go with the word before them (--model after `claude`),
+// each with where it was: values keeps only the last of each.
+function placedOptions(tokens: NonNullable<ReturnType<typeof parseArgs>['tokens']>): NonNullable<Words['placed']> {
+  const placed: NonNullable<Words['placed']> = [];
+  let after = -1;
+  for (const token of tokens) {
+    if (token.kind === 'positional') after++;
+    else if (token.kind === 'option' && PER_AGENT.includes(token.name) && typeof token.value === 'string') placed.push({ name: token.name, value: token.value, after });
+  }
+  return placed;
 }
 
 // The command named in these arguments, read as far as they go: the first word

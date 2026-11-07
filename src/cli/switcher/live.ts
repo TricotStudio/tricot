@@ -8,13 +8,17 @@
 // listening (`presence`). The Tricot tab (T192) also keeps the board's latest
 // activity, as its page's Activity panel shows it: a few events read once
 // (GET /api/boards/:id/events) and then those each `change` brings, and the
-// board's title as a change renames it. The rest (`ping`, …) is the page's.
+// board's title as a change renames it, and a count of the changes that touch
+// its conversations (`chatVer`: a thread, a comment on a card or on a pinned
+// part, or the name of the card one is on), for the tab's chat to read the
+// board again on. The rest (`ping`, …) is the page's.
 // Nothing is sent back. It reconnects as the page does when the board
 // restarts, and stops when the board is deleted.
 import type { Approval } from '../../core/approvals';
-import type { BoardChange } from '../../core/changes';
+import type { BoardChange, ChangedRow, RowKind, RowPatch, RowRef } from '../../core/changes';
 import type { AdmissionView } from '../../core/seats';
-import type { BoardEvent } from '../../core/types';
+import { isThreadEvent } from '../../core/threads';
+import type { BoardEvent, PinDiscussion } from '../../core/types';
 import { HOST_KEY_HEADER } from '../../server/access';
 import type { AgentPresence } from '../../server/presence';
 import type { AgentStep } from '../../server/steps';
@@ -44,6 +48,31 @@ export interface WatchOptions {
   fetch?: typeof fetch;
 }
 
+// The fields of a card's or a pin's row that the chat shows (core/chatStream.ts):
+// a card's discussion and what names the card, a pin's comments. Any change to
+// a thread is the chat's.
+const CHAT_FIELDS: Partial<Record<RowKind, string[]>> = { task: ['comments', 'title'], decision: ['comments', 'question'], pin: ['discussion'] };
+const COMMENT_EVENTS = new Set(['comment_added', 'comment_reacted']);
+
+// Whether a row put on the board brings something the chat shows: a thread,
+// a card with comments already, a pin of the board context with its own.
+function putShown(row: ChangedRow): boolean {
+  if (row.kind === 'thread') return true;
+  if (row.kind === 'task' || row.kind === 'decision') return Array.isArray(row.body.comments) && row.body.comments.length > 0;
+  return row.kind === 'pin' && Boolean((row.body.discussion as PinDiscussion | undefined)?.thread?.length);
+}
+
+// Whether a change touches the board's conversations: a thread, a comment on
+// a card or a pinned part (one added, reacted to, or gone with its card or
+// its pin on the board context), the title of the card one is on, or too
+// much at once to say.
+export function touchesChat(change: BoardChange): boolean {
+  if (change.reload || change.events?.some((e) => isThreadEvent(e) || COMMENT_EVENTS.has(e.type))) return true;
+  const patched = (row: RowPatch) => row.kind === 'thread' || [...Object.keys(row.set ?? {}), ...(row.unset ?? []), ...Object.keys(row.append ?? {})].some((field) => CHAT_FIELDS[row.kind]?.includes(field));
+  const gone = (row: RowRef) => row.kind === 'thread' || row.kind === 'task' || row.kind === 'decision' || (row.kind === 'pin' && row.owner === 'board');
+  return Boolean(change.put?.some(putShown) || change.patch?.some(patched) || change.del?.some(gone));
+}
+
 // The latest events first, each once, `keep` of them.
 export function latestEvents(known: BoardEvent[], more: BoardEvent[], keep: number): BoardEvent[] {
   const bySeq = new Map<number, BoardEvent>();
@@ -66,6 +95,7 @@ export function watchBoard(options: WatchOptions): LiveFeed {
   // Kept across reconnections: the title as last heard, the events as last read.
   let title = options.title;
   let activity: BoardEvent[] = [];
+  let chatVer = 0;
 
   // The latest events, read again on connecting and when the board says to fetch it.
   const readActivity = async () => {
@@ -93,7 +123,7 @@ export function watchBoard(options: WatchOptions): LiveFeed {
       return;
     }
     if (event === 'hello') {
-      live = { board: options.board, steps: [], approvals: live?.approvals ?? [], admissions: live?.admissions ?? [], seated: live?.seated ?? false, presence: [], ...(title !== undefined && { title }), ...(keep && { activity }) };
+      live = { board: options.board, steps: [], approvals: live?.approvals ?? [], admissions: live?.admissions ?? [], seated: live?.seated ?? false, presence: [], chatVer: ++chatVer, ...(title !== undefined && { title }), ...(keep && { activity }) };
       void readActivity();
     } else if (!live) return;
     else if (event === 'steps' && Array.isArray(parsed)) live = { ...live, steps: parsed as AgentStep[] };
@@ -106,10 +136,11 @@ export function watchBoard(options: WatchOptions): LiveFeed {
       if (typeof change.head?.title === 'string') title = change.head.title;
       if (keep && Array.isArray(change.events)) activity = latestEvents(activity, change.events, keep);
       if (change.reload) void readActivity();
-      live = { ...live, ...(title !== undefined && { title }), ...(keep && { activity }) };
+      if (touchesChat(change)) chatVer++;
+      live = { ...live, chatVer, ...(title !== undefined && { title }), ...(keep && { activity }) };
     } else if (event === 'reset') {
       void readActivity();
-      return;
+      live = { ...live, chatVer: ++chatVer };
     } else if (event === 'deleted') {
       stop();
       return;

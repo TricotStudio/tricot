@@ -180,7 +180,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
   }
   let term: ReturnType<typeof terminal> | undefined;
   const ctx = (options: Options = {}, argv: string[] = []): CliContext => {
-    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp'].includes(word)).length > 1;
+    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok'].includes(word)).length > 1;
     const withHost = !options.noTerminal && (options.terminal ?? several);
     term = options.keys ? terminal(options.keys) : undefined;
     return {
@@ -308,7 +308,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
         '--allowedTools',
         'mcp__tricot__*',
         '--mcp-config',
-        JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Claude` } } }),
+        JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Claude&model=&effort=` } } }),
       ]);
       assert.ok(!agent.env.includes('TRICOT_TOKEN'));
       assert.equal(launches[0].cwd, project, 'in the folder the command ran in');
@@ -323,7 +323,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       const message = `Use the Tricot board ${ids[0]} and start listening.`;
       assert.deepEqual(recorded().args, [
         '-c',
-        `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex"`,
+        `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex&model=&effort="`,
         '-c',
         'mcp_servers.tricot.enabled=true',
         '-c',
@@ -337,7 +337,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.deepEqual(recorded().args, ['--prompt', message]);
       assert.ok(recorded().env.includes('OPENCODE_CONFIG_CONTENT'));
       assert.deepEqual(JSON.parse(launches[1].env.OPENCODE_CONFIG_CONTENT!), {
-        mcp: { tricot: { type: 'remote', url: `${server.mcpUrl}?agent=OpenCode`, enabled: true, timeout: 300000 } },
+        mcp: { tricot: { type: 'remote', url: `${server.mcpUrl}?agent=OpenCode&model=&effort=`, enabled: true, timeout: 300000 } },
       });
       assert.deepEqual(snapshot(home), before, 'no file in the home folder changed');
     });
@@ -361,7 +361,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.equal(path.basename(file), 'tricot.js');
       assert.equal(pi.mode?.slice(0, 10), '-rw-------', "its file, while Pi ran: this account's alone");
       assert.equal(pi.folderMode?.slice(0, 10), 'drwx------', 'and its folder');
-      assert.match(pi.extension, new RegExp(`pi\\.registerMcpServer\\("tricot", \\{"url":"${server.mcpUrl.replaceAll('/', '\\/').replaceAll('.', '\\.')}\\?agent=Pi","timeout":300\\}\\)`));
+      assert.match(pi.extension, new RegExp(`pi\\.registerMcpServer\\("tricot", \\{"url":"${server.mcpUrl.replaceAll('/', '\\/').replaceAll('.', '\\.')}\\?agent=Pi&model=&effort=","timeout":300\\}\\)`));
       assert.ok(!pi.env.includes('TRICOT_TOKEN'));
       assert.equal(existsSync(path.dirname(file)), false, 'the folder is gone once Pi ended');
       assert.equal(launches[0].cwd, project);
@@ -387,7 +387,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.equal(omp.folderMode?.slice(0, 10), 'drwx------', "its folder, while OMP ran: this account's alone");
       assert.equal(omp.mode?.slice(0, 10), '-rw-------');
       assert.equal(omp.files, '.mcp.json,', 'and nothing else in it');
-      assert.deepEqual(JSON.parse(omp.extension), { mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=OMP`, timeout: 300000 } } });
+      assert.deepEqual(JSON.parse(omp.extension), { mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=OMP&model=&effort=`, timeout: 300000 } } });
       assert.ok(!omp.env.includes('TRICOT_TOKEN'));
       assert.equal(existsSync(folder), false, 'the folder is gone once OMP ended');
       assert.deepEqual(snapshot(home), before, "no file in the home folder changed, ~/.omp's included, its own tricot entry too");
@@ -420,7 +420,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       process.env.TMPDIR = path.join(here, 'no-such-folder');
       let problem: string;
       try {
-        problem = (tricot!.make!('pi') as { problem: string }).problem;
+        problem = ((await tricot!.make!('pi')) as { problem: string }).problem;
       } finally {
         if (tmp === undefined) delete process.env.TMPDIR;
         else process.env.TMPDIR = tmp;
@@ -436,14 +436,14 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       const { server, ids } = await boardWith('Roadmap');
       const message = `Use the Tricot board ${ids[0]} and start listening.`;
       await run(['claude', '--board', ids[0], '--no-open', '--name', 'Reviewer', '--', '--model', 'opus', '--continue']);
-      const config = JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Reviewer` } } });
+      const config = JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Reviewer&model=&effort=` } } });
       const settings = JSON.stringify({ hooks: approvalHooksFor('Reviewer', server.url) });
       assert.deepEqual(recorded().args, [message, '--model', 'opus', '--continue', '--settings', settings, '--allowedTools', 'mcp__tricot__*', '--mcp-config', config]);
 
       await run(['codex', '--board', ids[0], '--no-open', '--', '--model', 'o3', '--board', 'theirs']);
       assert.deepEqual(recorded().args, [
         '-c',
-        `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex"`,
+        `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex&model=&effort="`,
         '-c',
         'mcp_servers.tricot.enabled=true',
         '-c',
@@ -577,7 +577,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.match(out[0], /^Tricot is running at http:\/\/127\.0\.0\.1:\d+ \(started in the background\)\.$/);
       assert.equal(out.at(-1), 'Tricot stopped, as no agent needs it now.');
       assert.equal(existsSync(lockFile(dataDir)), false, 'the board went with the agent');
-      assert.match(recorded().args[1], /^mcp_servers\.tricot\.url="http:\/\/127\.0\.0\.1:\d+\/mcp\?agent=Codex"$/);
+      assert.match(recorded().args[1], /^mcp_servers\.tricot\.url="http:\/\/127\.0\.0\.1:\d+\/mcp\?agent=Codex&model=&effort="$/);
     });
 
     it('is reused when it is running', async () => {
@@ -643,7 +643,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
     const { ids } = await boardWith('Roadmap');
     const before = snapshot(home);
     await run(['claude', '--board', ids[0], '--no-open'], { ask: false });
-    assert.deepEqual(questions, ["Show your agents' steps live on your boards? [Y/n] "]);
+    assert.deepEqual(questions, ["Show your agents' steps live on your boards?"]);
     assert.ok(said().indexOf('Nothing was changed') < said().indexOf('Starting Claude Code'));
     assert.deepEqual(snapshot(home), before, 'a no changes nothing');
     assert.equal(launches.length, 1);
@@ -670,6 +670,30 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
     assert.deepEqual(launches, []);
   });
 
+  it("prints the YAML entry for Goose and for Hermes, which it can't start for one session, and starts nothing", async () => {
+    for (const [agent, entry, why] of [
+      ['goose', /^ {4}uri: "http:\/\/127\.0\.0\.1:\d+\/mcp\?agent=Goose"$/m, /Tricot can't start Goose for you yet: its flag for one session names the server after the board's address and can't send the board's token, and this command leaves its settings alone\./],
+      ['hermes', /^ {4}url: "http:\/\/127\.0\.0\.1:\d+\/mcp\?agent=Hermes"$/m, /Tricot can't start Hermes Agent for you yet: it adds a server only to its config file, and this command leaves its settings alone\./],
+    ] as const) {
+      out.length = 0;
+      err.length = 0;
+      assert.equal((await run([agent])).exitCode, 1, agent);
+      assert.match(said(), entry, agent);
+      assert.match(said(), why, agent);
+      assert.equal(existsSync(lockFile(dataDir)), false);
+      assert.deepEqual(launches, []);
+    }
+  });
+
+  it("prints how to connect Grok Build, which it can't start yet either, and starts nothing", async () => {
+    const { exitCode } = await run(['grok']);
+    assert.equal(exitCode, 1);
+    assert.match(said(), /grok mcp add --scope user --transport http tricot/);
+    assert.match(said(), /Tricot can't start Grok Build for you yet: it adds a server only from a config file/);
+    assert.equal(existsSync(lockFile(dataDir)), false);
+    assert.deepEqual(launches, []);
+  });
+
   it('lists the command in --help, and says what it does in its own help', async () => {
     await run(['--help']);
     assert.match(said(), /tricot claude {11}Start the board and Claude Code on it, in this terminal/);
@@ -680,7 +704,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
     assert.match(said(), /^tricot claude: start the board and Claude Code together, in this terminal/);
     const flat = said().replace(/\s+/g, ' '); // however it wraps
     assert.match(flat, /with the Tricot tab and a strip at the bottom, as with several \(on its own without a terminal, and on Windows\)\./);
-    assert.match(flat, /a strip at the bottom lists them all, and Ctrl\+\\ switches \(then a number picks one, q quits\)\. Any of claude, codex/);
+    assert.match(flat, /a strip at the bottom lists them all, and Ctrl\+\\ shows the next one \(pressed again it goes on, or a number picks one, q quits\)\. Any of claude, codex/);
     assert.match(flat, /anything after -- goes to the agent/);
     assert.doesNotMatch(said(), /--switcher|--no-switcher|--switch-key/);
     assert.deepEqual(launches, [], '--help starts nothing');
@@ -729,9 +753,9 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
         '--allowedTools',
         'mcp__tricot__*',
         '--mcp-config',
-        JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Claude` } } }),
+        JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Claude&model=&effort=` } } }),
       ]);
-      assert.deepEqual(codex.args, ['-c', `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex"`, '-c', 'mcp_servers.tricot.enabled=true', '-c', 'mcp_servers.tricot.default_tools_approval_mode="approve"', message(ids[0])]);
+      assert.deepEqual(codex.args, ['-c', `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex&model=&effort="`, '-c', 'mcp_servers.tricot.enabled=true', '-c', 'mcp_servers.tricot.default_tools_approval_mode="approve"', message(ids[0])]);
       assert.equal(claude.env.CLAUDE_CODE_NO_FLICKER, '1', "Claude Code in its full-screen renderer");
       assert.equal(codex.env.CLAUDE_CODE_NO_FLICKER, undefined);
       assert.equal(claude.env.TERM, 'xterm-256color');
@@ -752,9 +776,11 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       // Every agent Tricot knows but those running; those it can't find on PATH say so.
       const byId = (running: string[]) => Object.fromEntries(tricot.choices!(running).map((c) => [c.id, c]));
       for (const agent of ['pi', 'omp']) rmSync(path.join(bin, agent));
-      assert.deepEqual(Object.keys(byId(['claude', 'codex'])), ['opencode', 'gemini', 'pi', 'omp'], 'in the order Tricot lists them, those running left out');
+      assert.deepEqual(Object.keys(byId(['claude', 'codex'])), ['opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok'], 'in the order Tricot lists them, those running left out');
       const missing = byId(['claude', 'codex']);
-      assert.deepEqual(['opencode', 'gemini', 'pi', 'omp'].map((id) => missing[id].note), [undefined, 'not installed', 'not installed', 'not installed']);
+      assert.deepEqual(['opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok'].map((id) => missing[id].note), [undefined, 'not installed', 'not installed', 'not installed', 'not installed', 'not installed', 'not installed']);
+      assert.equal(missing.grok.name, 'Grok Build');
+      assert.equal(missing.grok.problem, "Grok Build isn't installed here, or isn't on your PATH: Tricot looked for `grok`. Install it, then add it again.");
       assert.equal(missing.gemini.name, 'Gemini CLI');
       assert.equal(missing.gemini.problem, "Gemini CLI isn't installed here, or isn't on your PATH: Tricot looked for `gemini`. Install it, then add it again.");
       // Installed, but not one Tricot can give the board for one session (Gemini CLI): connect it first, and why.
@@ -764,7 +790,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.equal(first.gemini.problem, "Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it for you yet: it adds a server only from a settings file.");
       assert.equal(first.codex.note, undefined);
       assert.ok(!('claude' in first), 'those running are left out');
-      assert.equal((tricot.make!('gemini') as { problem: string }).problem, first.gemini.problem, 'picked, it says the same, and nothing is started');
+      assert.equal(((await tricot.make!('gemini')) as { problem: string }).problem, first.gemini.problem, 'picked, it says the same, and nothing is started');
       // What the tab shows of these, at a narrow window and a wide one: the command whole, the reason after it.
       for (const [cols, rows] of [[50, [' Connect Gemini CLI first, with: tricot connect', " gemini. Tricot can't start it for you yet: it", ' adds a server only from a settings file.']], [80, [" Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it", ' for you yet: it adds a server only from a settings file.']]] as const) {
         const frame: string[] = renderTab({ url: server.url, connected: true, agents: [], approvals: [], selected: 0, activity: [], prompt: { kind: 'keys' }, now: Date.now(), note: { text: first.gemini.problem!, tone: 'alert' } }, cols, 12).plain.map((l) => l.trimEnd());
@@ -781,19 +807,92 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
         ['opencode', 'not installed'],
       ]);
       writeFileSync(path.join(bin, 'opencode'), FAKE_AGENT, { mode: 0o755 });
-      const added = tricot.make!('opencode');
+      const added = await tricot.make!('opencode');
       assert.ok(!('problem' in added));
       assert.equal(added.name, 'OpenCode');
       assert.equal(added.command, path.join(bin, 'opencode'));
       assert.deepEqual(added.args, ['--prompt', message(ids[0])]);
-      assert.equal(JSON.parse(added.env.OPENCODE_CONFIG_CONTENT!).mcp.tricot.url, `${server.mcpUrl}?agent=OpenCode`);
+      assert.equal(JSON.parse(added.env.OPENCODE_CONFIG_CONTENT!).mcp.tricot.url, `${server.mcpUrl}?agent=OpenCode&model=&effort=`);
       assert.equal(added.env.TERM, 'xterm-256color');
       assert.equal(added.cwd, project);
-      const again = tricot.make!('claude');
+      const again = await tricot.make!('claude');
       assert.ok(!('problem' in again) && again.args.includes('--settings'), "Claude Code with Tricot's hooks for the session, as when named");
       tricot.open();
       assert.deepEqual(opened, [`${server.url}/#/b/${ids[0]}`], 'o opens the board, --no-open or not');
       assert.equal(out.at(-2), 'You quit. Claude Code ended. Codex ended. OpenCode ended.', 'those added are said too');
+    });
+
+    it('has the Tricot tab knit its wordmark as it opens, or show it whole at once with TRICOT_NO_ANIMATION=1', async () => {
+      const { ids } = await boardWith('Roadmap');
+      hostOutcome = { exits: [0, 0], quit: true };
+      await run(['claude', 'codex', '--board', ids[0], '--no-open']);
+      assert.equal(hosted[0].tricot!.wordmark, 'knit');
+      await run(['claude', 'codex', '--board', ids[0], '--no-open'], { env: { TRICOT_NO_ANIMATION: '1' } });
+      assert.equal(hosted[1].tricot!.wordmark, 'whole', 'read where the switcher is set up, and passed down as a plain setting');
+    });
+
+    it("tells the Tricot tab whether the terminal draws 24-bit colour, for the chat's tints", async () => {
+      const { ids } = await boardWith('Roadmap');
+      hostOutcome = { exits: [0, 0], quit: true };
+      await run(['claude', 'codex', '--board', ids[0], '--no-open']);
+      assert.equal(hosted[0].tricot!.trueColour, false);
+      for (const COLORTERM of ['truecolor', '24bit']) await run(['claude', 'codex', '--board', ids[0], '--no-open'], { env: { COLORTERM } });
+      assert.deepEqual([hosted[1].tricot!.trueColour, hosted[2].tricot!.trueColour], [true, true], 'as COLORTERM says');
+    });
+
+    // T22: each starts on the model and thinking level set in its panel, kept
+    // in the data folder and read from the board as it starts; what the
+    // command line gives after an agent's name stands in for it this run.
+    it('starts each on the rule set in its panel, with --model and --effort after its name standing in for it this run', async () => {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(path.join(dataDir, 'agent-rules.json'), JSON.stringify({ version: 1, rules: { claude: { model: 'opus', effort: 'high' }, codex: { effort: 'low' } } }));
+      const { server, ids } = await boardWith('Roadmap');
+      hostOutcome = { exits: [0, 0], quit: false };
+      const { exitCode } = await run(['claude', '--effort', 'max', 'codex', '--model', 'gpt-6.1-sol', '--board', ids[0], '--no-open']);
+      assert.equal(exitCode, 0, err.join('\n'));
+      assert.ok(out.includes('Claude Code starts on Opus · max.'), out.join('\n'));
+      assert.ok(out.includes('Codex starts on gpt-6.1-sol · low.'), out.join('\n'));
+      const [claude, codex] = hosted[0].agents;
+      assert.deepEqual(claude.args.slice(0, 5), [message(ids[0]), '--model', 'opus', '--effort', 'max'], 'the rule’s model, the command line’s level');
+      assert.equal(claude.args.at(-1), JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Claude&model=opus&effort=max` } } }), 'its address says what it runs on');
+      assert.deepEqual(codex.args.slice(6), ['--model', 'gpt-6.1-sol', '-c', 'model_reasoning_effort="low"', message(ids[0])]);
+      assert.equal(codex.args[1], `mcp_servers.tricot.url="${server.mcpUrl}?agent=Codex&model=gpt-6.1-sol&effort=low"`);
+      assert.deepEqual([claude.runsOn, codex.runsOn], ['Opus max', 'gpt-6.1-sol low'], 'for the strip');
+
+      // One added from the Tricot tab reads the rule as the board has it then.
+      const realFetch = globalThis.fetch;
+      let rules: Record<string, unknown> = { opencode: { model: 'anthropic/claude-sonnet-5' } };
+      globalThis.fetch = (input, init) => (String(input).endsWith('/api/agent-rules') ? Promise.resolve(Response.json({ rules })) : realFetch(input, init));
+      try {
+        const added = await hosted[0].tricot!.make!('opencode');
+        assert.ok(!('problem' in added));
+        assert.deepEqual(added.args, ['--model', 'anthropic/claude-sonnet-5', '--prompt', message(ids[0])]);
+        assert.equal(added.runsOn, 'anthropic/claude-sonnet-5');
+        rules = {};
+        const again = await hosted[0].tricot!.make!('opencode');
+        assert.ok(!('problem' in again));
+        assert.deepEqual(again.args, ['--prompt', message(ids[0])], 'changed since: on its own settings now');
+        assert.equal(again.runsOn, undefined);
+        assert.equal(JSON.parse(again.env.OPENCODE_CONFIG_CONTENT!).mcp.tricot.url, `${server.mcpUrl}?agent=OpenCode&model=&effort=`);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    });
+
+    it("refuses, before starting anything: --effort for an agent with no thinking level, a level it hasn't, a model that reads as an option, and one given to no agent", async () => {
+      const refused: [string[], string][] = [
+        [['claude', 'opencode', '--effort', 'high', '--board', 'x'], "--effort doesn't go to OpenCode: it has no thinking level Tricot can set, so its own settings decide it. Nothing was started."],
+        [['claude', '--effort', 'ultra', 'codex', '--board', 'x'], "--effort ultra doesn't go to Claude Code: its thinking level is one of low, medium, high, xhigh or max. Nothing was started."],
+        [['claude', '--model=--dangerously-skip-permissions', 'codex', '--board', 'x'], '--model for Claude Code: "--dangerously-skip-permissions" can\'t be a model\'s name: it starts with -, so the agent would read it as an option. Nothing was started.'],
+        [['--model', 'opus', 'claude', 'codex', '--board', 'x'], "--model goes after the name of the agent it is for (tricot claude --model opus codex): with several, Tricot can't tell whose it is. Nothing was started."],
+        [['opencode', '--effort', 'high', '--board', 'x'], "--effort doesn't go to OpenCode: it has no thinking level Tricot can set, so its own settings decide it. Nothing was started."],
+      ];
+      for (const [argv, problem] of refused) {
+        err.length = 0;
+        assert.equal((await run(argv)).exitCode, 1, argv.join(' '));
+        assert.deepEqual(err, [problem], argv.join(' '));
+      }
+      nothingStarted();
     });
 
     it('starts them in the order named, OpenCode too', async () => {
@@ -823,16 +922,16 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.equal(existsSync(pi.args[1]), false, "the host is done: Pi's folder is gone");
       assert.equal(existsSync(omp.args[1]), false, "and OMP's");
 
-      const added = hosted[0].tricot!.make!('pi');
+      const added = await hosted[0].tricot!.make!('pi');
       assert.ok(!('problem' in added));
       assert.equal(added.name, 'Pi');
       assert.equal(added.args[0], '-e');
       assert.match(readFileSync(added.args[1], 'utf8'), new RegExp(`${server.mcpUrl.replaceAll('/', '\\/').replaceAll('.', '\\.')}\\?agent=Pi`));
       added.cleanup!();
       assert.equal(existsSync(added.args[1]), false, 'as the host does when it ends');
-      const addedOmp = hosted[0].tricot!.make!('omp');
+      const addedOmp = await hosted[0].tricot!.make!('omp');
       assert.ok(!('problem' in addedOmp));
-      assert.equal(JSON.parse(readFileSync(path.join(addedOmp.args[1], '.mcp.json'), 'utf8')).mcpServers.tricot.url, `${server.mcpUrl}?agent=OMP`);
+      assert.equal(JSON.parse(readFileSync(path.join(addedOmp.args[1], '.mcp.json'), 'utf8')).mcpServers.tricot.url, `${server.mcpUrl}?agent=OMP&model=&effort=`);
       addedOmp.cleanup!();
       assert.equal(existsSync(addedOmp.args[1]), false);
       assert.deepEqual(snapshot(home), before);
@@ -891,6 +990,8 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       const refused: [string[], RegExp, Options?][] = [
         [['claude', 'claude', '--board', 'x'], /Claude Code is named twice: each agent runs once here\. Nothing was started\./],
         [['claude', 'gemini', '--board', 'x'], /Tricot can't start Gemini CLI for you yet: it adds a server only from a settings file.*connect Gemini CLI once with: tricot connect gemini Nothing was started\./],
+        [['claude', 'goose', '--board', 'x'], /Tricot can't start Goose for you yet: its flag for one session.*connect Goose once with: tricot connect goose Nothing was started\./],
+        [['claude', 'grok', '--board', 'x'], /Tricot can't start Grok Build for you yet: it adds a server only from a config file.*connect Grok Build once with: tricot connect grok Nothing was started\./],
         [['claude', 'codex', '--name', 'Reviewer', '--board', 'x'], /--name names one agent: with several, each has its usual name on the board \(Claude and Codex\)/],
         [['claude', 'codex', '--board', 'x', '--', '--model', 'opus'], /Words after -- go to one agent/],
         [['claude', 'codex', '--board', 'x'], /Several agents at once need a terminal/, { noTerminal: true }],
@@ -1003,6 +1104,18 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
         launches.length = 0;
         await run([...argv, '--name', 'Reviewer', '--', '--model', 'opus'], { noTerminal: true });
         assert.deepEqual(recorded().args.slice(0, 3), [message(ids[0]), '--model', 'opus']);
+      });
+
+      it('runs on its rule on its own too, the flags before what comes after --, and takes --model anywhere', async () => {
+        mkdirSync(dataDir, { recursive: true });
+        writeFileSync(path.join(dataDir, 'agent-rules.json'), JSON.stringify({ version: 1, rules: { claude: { model: 'haiku', effort: 'medium' } } }));
+        const { server, ids } = await boardWith('Roadmap');
+        assert.equal((await run(['--model', 'sonnet', 'claude', '--board', ids[0], '--no-open', '--', '--verbose'], { noTerminal: true })).exitCode, 0, err.join('\n'));
+        bare('no terminal');
+        assert.ok(out.includes('Claude Code starts on Sonnet · medium.'), out.join('\n'));
+        const { args } = recorded();
+        assert.deepEqual(args.slice(0, 6), [message(ids[0]), '--model', 'sonnet', '--effort', 'medium', '--verbose']);
+        assert.ok(args.at(-1)!.includes(`${server.mcpUrl}?agent=Claude&model=sonnet&effort=medium`), args.at(-1));
       });
 
       it('leaves what it can not start for one session as it was', async () => {

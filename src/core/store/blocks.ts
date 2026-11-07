@@ -153,7 +153,7 @@ export class Blocks {
 
   // Checks a new block and finds it a spot, without putting it on the canvas
   // yet, so a caller can build several before committing any.
-  private newBlock(located: Located, input: NewBlock, actor: Actor): Block {
+  newBlock(located: Located, input: NewBlock, actor: Actor): Block {
     const { canvas } = located;
     if (canvas.blocks.length >= LIMITS.blocks) throw new BoardError(`A canvas can hold at most ${LIMITS.blocks} blocks.`);
     const content = blockContent(this.assets, input.content, located, this.repo.localFiles);

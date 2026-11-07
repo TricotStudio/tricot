@@ -6,6 +6,7 @@ import { shownTitle } from '../../core/threads';
 import type { Thread } from '../../core/types';
 import { ActorBadge, Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
+import { useRoster } from '../shared/mentions';
 
 // The threads list (core/threadList.ts): every thread on the board, wherever
 // it was started, rising from the chat bar as wide as it is, or dropping from
@@ -112,6 +113,7 @@ function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; 
   const title = shownTitle(thread);
   const last = thread.messages.at(-1);
   const madeWords = madeInWords(entry.made);
+  const { people, me } = useRoster();
   const made = madeWords && <span className="tl-made">{madeWords}</span>;
   return (
     <li className={`tl-row${compact ? ' is-compact' : ''}${waiting ? ' is-waiting' : ''}${current ? ' is-current' : ''}`} data-thread={thread.id}>
@@ -122,7 +124,7 @@ function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; 
           made
         ) : (
           <span className="tl-meta">
-            {last && <span className="tl-last">{lastLine(last, name)}</span>}
+            {last && <span className="tl-last">{lastLine(last, name, (n) => !samePerson(n, me) && !people.some((p) => samePerson(p, n)))}</span>}
             {made}
           </span>
         )}
@@ -142,10 +144,12 @@ function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; 
   );
 }
 
-// The latest message, as a row shows it: "Claude: Should a team…", "You: …".
-function lastLine(message: Thread['messages'][number], name: string): string {
+// The latest message, as a row shows it: "Claude: Should a team…", "You: …",
+// without the mentions it opens with, and a tag on an agent's (`isAgent`).
+function lastLine(message: Thread['messages'][number], name: string, isAgent: (name: string) => boolean): string {
   const who = message.author.kind === 'human' && samePerson(message.author.name, name) ? 'You' : message.author.name;
-  return `${who}: ${clip(withoutLeadingMentions(message.body, message.mentions ?? []), 140)}`;
+  const mentions = message.mentions ?? [];
+  return `${who}: ${clip(withoutLeadingMentions(message.body, mentions, mentions.filter(isAgent)), 140)}`;
 }
 
 function shortAgo(iso: string): string {

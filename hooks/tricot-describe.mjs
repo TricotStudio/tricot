@@ -1,12 +1,12 @@
 // Tricot steps: one agent event as one short line ("Reading src/web/Home.tsx",
 // "Running npm test"), for the Tricot card the agent is working on. Shared by
-// the hook script Claude Code, Codex and Gemini CLI run (tricot-steps.mjs),
+// the hook script Claude Code, Codex, Gemini CLI, Goose, Hermes and Grok Build run (tricot-steps.mjs),
 // the extension Pi and OMP load (tricot-steps-extension.ts) and the plugin
 // OpenCode loads (tricot-steps-opencode.js); the extension and the plugin
 // turn their own events into this shape first. The event is a hook event as
 // Claude Code sends it (https://code.claude.com/docs/en/hooks); Codex sends
 // the same shape (https://learn.chatgpt.com/docs/hooks), and Gemini CLI's
-// own events and tool names are turned into it here (fromGemini).
+// and Grok Build's tool names are turned into it here (fromGemini, fromGrok).
 //
 // A step describes what the agent does, never what it read or wrote: no file
 // contents, no command output, no prompt text, no query strings. A command is
@@ -322,12 +322,226 @@ export function fromGemini(event) {
   }
 }
 
+// ---- Goose and Hermes ------------------------------------------------------------
+// Their hooks send the same common fields (session_id, tool_name, tool_input)
+// under their own names, as Gemini CLI's do. Goose's
+// (https://goose-docs.ai/docs/guides/context-engineering/hooks) have `event`
+// where Claude Code's have hook_event_name, working_dir for cwd and
+// tool_call_id, and name its tools shell, write, edit and tree, and an
+// extension's `<extension>__<tool>`. Hermes's
+// (https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks) are
+// snake_case events (pre_tool_call, post_tool_call, post_llm_call), with a
+// call's id, duration and outcome in `extra`, and its own tool names
+// (terminal, read_file, patch); an MCP tool is mcp__<server>__<tool> there, as
+// in Claude Code. Each becomes the event Claude Code would send, with only the
+// fields the describe reads.
+
+const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
+
+const GOOSE_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop']);
+
+const GOOSE_TOOLS = {
+  shell: (a) => ['Bash', { command: a.command }],
+  write: (a) => ['Write', { file_path: a.path }],
+  edit: (a) => ['Edit', { file_path: a.path }],
+  tree: (a) => ['LS', { path: a.path }],
+  delegate: () => ['Agent', {}],
+  todo__todo_write: () => ['TodoWrite', {}],
+};
+
+// The tools that last, for the hook's PostToolUse matcher: its shell and its subagents.
+export const GOOSE_LONG_TOOLS = ['shell', 'delegate'];
+
+// An extension's tool, as Claude Code names it: Goose says <extension>__<tool>.
+function gooseMcp(name) {
+  const at = name.indexOf('__');
+  return at > 0 && at + 2 < name.length ? `mcp__${name.slice(0, at)}__${name.slice(at + 2)}` : undefined;
+}
+
+export const isGooseEvent = (event) => Boolean(event) && typeof event === 'object' && event.hook_event_name === undefined && GOOSE_EVENTS.has(event.event);
+
+// A Goose hook event as the one Claude Code would send, or undefined for one with no step.
+export function fromGoose(event) {
+  if (!isGooseEvent(event)) return undefined;
+  const common = {
+    ...(typeof event.session_id === 'string' && { session_id: event.session_id }),
+    ...(typeof event.working_dir === 'string' && { cwd: event.working_dir }),
+  };
+  if (event.event === 'Stop') return { hook_event_name: 'Stop', ...common };
+  const name = typeof event.tool_name === 'string' ? event.tool_name : '';
+  const raw = asObject(event.tool_input);
+  const own = Object.hasOwn(GOOSE_TOOLS, name) ? GOOSE_TOOLS[name] : undefined;
+  const mcp = name && !own ? gooseMcp(name) : undefined;
+  const [tool, input] = mcp ? [mcp, naming(raw)] : own ? own(raw) : [name, {}];
+  if (!tool) return undefined;
+  return {
+    hook_event_name: event.event,
+    tool_name: tool,
+    tool_input: input,
+    ...(typeof event.tool_call_id === 'string' && { tool_use_id: event.tool_call_id }),
+    ...common,
+  };
+}
+
+const HERMES_EVENTS = new Set(['pre_tool_call', 'post_tool_call', 'post_llm_call', 'pre_approval_request']);
+
+const HERMES_TOOLS = {
+  terminal: (a) => ['Bash', { command: a.command, run_in_background: a.background === true }],
+  read_file: (a) => ['Read', { file_path: a.path }],
+  write_file: (a) => ['Write', { file_path: a.path }],
+  patch: (a) => ['Edit', { file_path: a.path }],
+  search_files: (a) => (a.target === 'files' ? ['Glob', { pattern: a.pattern }] : ['Grep', { pattern: a.pattern, path: a.path }]),
+  web_search: (a) => ['WebSearch', { query: a.query }],
+  web_extract: (a) => ['WebFetch', { url: Array.isArray(a.urls) ? a.urls.find((u) => typeof u === 'string') : undefined }],
+  delegate_task: () => ['Agent', {}],
+  todo: () => ['TodoWrite', {}],
+  clarify: () => ['AskUserQuestion', {}],
+};
+
+// The tools that last, for the hook's post_tool_call matcher: its terminal and its subagents.
+export const HERMES_LONG_TOOLS = ['terminal', 'delegate_task'];
+
+export const isHermesEvent = (event) => Boolean(event) && typeof event === 'object' && HERMES_EVENTS.has(event.hook_event_name);
+
+// A Hermes hook event as the one Claude Code would send, or undefined for one with no step.
+export function fromHermes(event) {
+  if (!isHermesEvent(event)) return undefined;
+  const common = {
+    ...(typeof event.session_id === 'string' && event.session_id !== '' && { session_id: event.session_id }),
+    ...(typeof event.cwd === 'string' && event.cwd !== '' && { cwd: event.cwd }),
+  };
+  switch (event.hook_event_name) {
+    case 'pre_tool_call':
+    case 'post_tool_call': {
+      const extra = asObject(event.extra);
+      const name = typeof event.tool_name === 'string' ? event.tool_name : '';
+      const raw = asObject(event.tool_input);
+      const own = Object.hasOwn(HERMES_TOOLS, name) ? HERMES_TOOLS[name] : undefined;
+      const [tool, input] = own ? own(raw) : name.startsWith('mcp__') ? [name, naming(raw)] : [name, {}];
+      if (!tool) return undefined;
+      const start = event.hook_event_name === 'pre_tool_call';
+      return {
+        hook_event_name: start ? 'PreToolUse' : extra.status === 'error' ? 'PostToolUseFailure' : 'PostToolUse',
+        tool_name: tool,
+        tool_input: input,
+        ...(typeof extra.tool_call_id === 'string' && { tool_use_id: extra.tool_call_id }),
+        ...(!start && Number.isInteger(extra.duration_ms) && { duration_ms: extra.duration_ms }),
+        ...common,
+      };
+    }
+    case 'post_llm_call':
+      return { hook_event_name: 'Stop', ...common };
+    case 'pre_approval_request':
+      return { hook_event_name: 'Notification', notification_type: 'permission_prompt', ...common };
+    default:
+      return undefined;
+  }
+}
+
+// ---- Grok Build ----------------------------------------------------------------
+// Grok Build's hooks (the hooks guide in github.com/xai-org/grok-build) send
+// Claude Code's event names (hook_event_name: PreToolUse, Stop) and, beside
+// its own camelCase fields, the same ones in snake_case (session_id, tool_name,
+// tool_input, tool_use_id, duration_ms, is_interrupt), but the tools are its
+// own: run_terminal_command, read_file, search_replace, and an MCP tool as
+// <server>__<tool>. Its camelCase fields (hookEventName, notificationType,
+// subagentType) tell its events from Claude Code's.
+//
+// UNVERIFIED: the argument keys of its tools (target_file, target_directory,
+// is_background, block_until_ms, subagent_type…) are those of the tool structs
+// in its source (xai-grok-tools), and toolInput is the model's arguments as
+// sent. Whether an MCP call through its use_tool dispatcher carries the tool's
+// own arguments or a {tool_name, tool_input} wrapper is not stated in its guide:
+// both are read (given, below). No real hook event from a running Grok Build
+// was seen; the events in test/stepsGrok.test.ts follow its guide.
+
+const GROK_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStop']);
+
+const grokFile = (a) => a.file_path ?? a.target_file ?? a.path;
+// A command is in the background when it says so, or waits no time for it.
+const grokBackground = (a) => a.is_background === true || a.block_until_ms === 0 || a.timeout === 0;
+
+// Its own tools, as Claude Code's. Their arguments are read as the model
+// sent them: the keys of each tool's own schema.
+const GROK_TOOLS = {
+  read_file: (a) => ['Read', { file_path: grokFile(a) }],
+  hashline_read: (a) => ['Read', { file_path: grokFile(a) }],
+  write: (a) => ['Write', { file_path: grokFile(a) }],
+  search_replace: (a) => ['Edit', { file_path: grokFile(a) }],
+  hashline_edit: (a) => ['Edit', { file_path: grokFile(a) }],
+  run_terminal_command: (a) => ['Bash', { command: a.command, run_in_background: grokBackground(a) }],
+  grep: (a) => ['Grep', { pattern: a.pattern, path: a.path }],
+  hashline_grep: (a) => ['Grep', { pattern: a.pattern, path: a.path }],
+  list_dir: (a) => ['LS', { path: a.target_directory ?? a.path }],
+  web_fetch: (a) => ['WebFetch', { url: a.url }],
+  web_search: (a) => ['WebSearch', { query: a.query }],
+  todo_write: () => ['TodoWrite', {}],
+  ask_user_question: () => ['AskUserQuestion', {}],
+  exit_plan_mode: () => ['ExitPlanMode', {}],
+  spawn_subagent: (a) => ['Agent', { subagent_type: a.subagent_type, description: a.description, run_in_background: a.run_in_background === true }],
+};
+
+// The tools that can run a while, for the hook's PostToolUse matcher.
+export const GROK_LONG_TOOLS = ['run_terminal_command', 'spawn_subagent'];
+
+// An MCP tool as Claude Code names it (mcp__<server>__<tool>); Grok names it <server>__<tool>.
+function grokMcp(name) {
+  const found = /^([^_].*?)__(.+)$/.exec(name);
+  return found ? `mcp__${found[1]}__${found[2]}` : undefined;
+}
+
+export const isGrokEvent = (event) =>
+  Boolean(event) && typeof event === 'object' && typeof event.hookEventName === 'string' && GROK_EVENTS.has(event.hook_event_name);
+
+// A Grok Build hook event as the one Claude Code would send, or undefined for
+// one with no step (SessionStart, UserPromptSubmit, …).
+export function fromGrok(event) {
+  if (!isGrokEvent(event)) return undefined;
+  const common = {
+    hook_event_name: event.hook_event_name,
+    ...(typeof event.session_id === 'string' && { session_id: event.session_id }),
+    ...(typeof event.cwd === 'string' && { cwd: event.cwd }),
+    ...(typeof event.subagentType === 'string' && { agent_type: event.subagentType }),
+  };
+  switch (event.hook_event_name) {
+    case 'PreToolUse':
+    case 'PostToolUse':
+    case 'PostToolUseFailure': {
+      const name = typeof event.tool_name === 'string' ? event.tool_name : '';
+      const raw = event.tool_input && typeof event.tool_input === 'object' ? event.tool_input : {};
+      const own = Object.hasOwn(GROK_TOOLS, name) ? GROK_TOOLS[name] : undefined;
+      const mcp = name && !own ? grokMcp(name) : undefined;
+      // A call through its use_tool may hold the tool's own arguments one level down.
+      const given = raw.tool_input && typeof raw.tool_input === 'object' ? raw.tool_input : raw;
+      const [tool, input] = mcp ? [mcp, naming(given)] : own ? own(raw) : [name, {}];
+      if (!tool) return undefined;
+      return {
+        ...common,
+        tool_name: tool,
+        tool_input: input,
+        ...(typeof event.tool_use_id === 'string' && { tool_use_id: event.tool_use_id }),
+        ...(Number.isInteger(event.duration_ms) && { duration_ms: event.duration_ms }),
+        ...(event.is_interrupt === true && { is_interrupt: true }),
+      };
+    }
+    case 'Notification':
+      return { ...common, notification_type: event.notificationType };
+    default:
+      return common;
+  }
+}
+
 // One hook event as a step, or nothing to show. With `narration` (off unless
 // a person asked for it), a message Claude shows in the terminal
 // (MessageDisplay) sends its first line: only what the terminal shows, never
-// Claude's thinking. Gemini CLI's events are read as Claude Code's (fromGemini).
+// Claude's thinking. Gemini CLI's, Goose's, Hermes's and Grok Build's events are read as Claude Code's
+// (fromGemini, fromGoose, fromHermes, fromGrok). The four tell their events apart by their own fields, so
+// none claims another's; Grok Build's marker (the camelCase hookEventName) is tested first.
 export function describe(event, options = {}) {
+  if (isGrokEvent(event)) return describe(fromGrok(event), options);
   if (isGeminiEvent(event)) return describe(fromGemini(event), options);
+  if (isGooseEvent(event)) return describe(fromGoose(event), options);
+  if (isHermesEvent(event)) return describe(fromHermes(event), options);
   if (!event || typeof event !== 'object') return undefined;
   const cwd = typeof event.cwd === 'string' ? event.cwd : undefined;
   const who = {

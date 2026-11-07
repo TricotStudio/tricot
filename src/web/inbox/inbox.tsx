@@ -9,8 +9,8 @@ import { useDismiss } from '../shared/hooks';
 import { go } from '../shared/pages';
 import { NeedsPanelList, useNeeds } from './needs';
 import type { Notifications } from './notify';
+import { eventTarget } from './place';
 import { RefText } from '../shared/refs';
-import { openThread, threadTab } from '../threads';
 
 interface Group {
   key: string; // what the events are about: a decision, a task, a board-canvas item, or the board
@@ -79,15 +79,14 @@ export function Inbox({ board, name, away, notifications }: Props) {
   const elsewhere = report?.rows.filter((r) => r.boardId !== board.id) ?? null;
   const elsewhereCount = elsewhere?.reduce((n, r) => n + r.count, 0) ?? 0;
 
+  // A row leads where its events do, as the Activity log's and a
+  // notification's (place.ts); what's about the board itself opens it.
   const openGroup = (group: Group) => {
     setOpen(false);
     away.markSeen(group.key);
-    if (group.task) go.task(board.id, group.task.id);
-    else if (group.decision) go.decision(board.id, group.decision.id);
-    else if (group.thread) openThread(group.thread.id, undefined, { boardId: board.id, view: threadTab(board, group.thread.id, 'decisions') });
-    else if (group.threadGone) return;
-    else if (group.key !== 'board') go.canvas(board.id);
-    else go.board(board.id);
+    const open = eventTarget(board, group.latest);
+    if (open) open();
+    else if (group.key === 'board') go.board(board.id);
   };
 
   const label = groups.length === 0 ? 'Inbox: nothing new' : `Inbox: ${groups.length} new${forYou ? `, ${forYou} need you` : ''}`;

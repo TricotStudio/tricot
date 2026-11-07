@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import type { Approval } from '../src/core/approvals';
 import { watchBoard } from '../src/cli/switcher/live';
-import { agentWords, columns, isLight, renderStrip, type AgentNow, type BoardLive, type StripEntry } from '../src/cli/switcher/strip';
+import { agentWords, columns, isLight, renderStrip, rgbOf, type AgentNow, type BoardLive, type StripEntry } from '../src/cli/switcher/strip';
 import type { AgentStep } from '../src/server/steps';
 import { waitFor } from './switcher/harness';
 
@@ -107,12 +107,45 @@ describe('the strip', () => {
     assert.deepEqual(strip.ranges.map((r) => r.index), [0, 1, 2, 3]);
   });
 
+  // T22: what each agent was started on, after its name, while there is room.
+  it('says what an agent was started on after its name, and drops it first as the window narrows', () => {
+    const ruled: StripEntry[] = [
+      { name: 'Tricot', words: '', tone: 'normal', ended: false, number: '' },
+      { name: 'Claude', words: 'Running npm test', tone: 'normal', ended: false, number: '1', runsOn: 'Opus high' },
+      { name: 'Codex', words: 'idle', tone: 'quiet', ended: false, number: '2' },
+    ];
+    const keys = 'Ctrl+\\ next · Ctrl+\\ 0–2 pick · Ctrl+\\ q quit';
+    const labels = ' ● Tricot   ○ 1 Claude · Opus high · Running npm test   ○ 2 Codex · idle ';
+    const wide = renderStrip(ruled, 0, labels.length + keys.length + 2, keys);
+    assert.equal(wide.plain, `${labels} ${keys} `);
+    assert.equal(wide.plain.slice(wide.ranges[1].from - 1, wide.ranges[1].to - 1).trim(), '○ 1 Claude · Opus high · Running npm test', 'a click on it still picks Claude');
+    // One column less, and it is the first to go: before the keys, and before any agent's words.
+    const words = ' ● Tricot   ○ 1 Claude · Running npm test   ○ 2 Codex · idle ';
+    const narrower = renderStrip(ruled, 0, labels.length + keys.length + 1, keys).plain;
+    assert.match(narrower, new RegExp(`^${words.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&')} +Ctrl\\+\\\\ next .* q quit $`));
+    assert.equal(renderStrip(ruled, 0, words.length, keys).plain.trimEnd(), words.trimEnd(), 'the words stay once the keys have gone');
+    // Narrower still, as before: the words of the one showing, then names alone, then cut.
+    assert.equal(renderStrip(ruled, 1, 56, keys).plain.trimEnd(), ' ○ Tricot   ● 1 Claude · Running npm test   ○ 2 Codex');
+    assert.equal(renderStrip(ruled, 1, 40, keys).plain.trimEnd(), ' ○ Tricot   ● 1 Claude   ○ 2 Codex');
+    // Nothing set, nothing said.
+    assert.match(renderStrip([{ ...ruled[1], runsOn: undefined }], 0, 80, 'keys').plain, /^ ● 1 Claude · Running npm test +keys $/);
+  });
+
   it("takes the terminal's background into account", () => {
     assert.equal(isLight('rgb:ffff/ffff/ffff'), true);
     assert.equal(isLight('rgb:1e1e/1e1e/1e1e'), false);
     assert.equal(isLight('#fdf6e3'), true);
     assert.equal(isLight(undefined), false);
     assert.notEqual(renderStrip(entries, 0, 100, hint, true).line, renderStrip(entries, 0, 100, hint, false).line);
+  });
+
+  it("reads the terminal's background as red, green and blue, for the chat's tints", () => {
+    assert.deepEqual(rgbOf('rgb:1e1e/1e1e/1e1e'), [30, 30, 30]);
+    assert.deepEqual(rgbOf('rgb:ff/80/00'), [255, 128, 0]);
+    assert.deepEqual(rgbOf('rgba:ffff/ffff/ffff/ffff'), [255, 255, 255]);
+    assert.deepEqual(rgbOf('#fdf6e3'), [253, 246, 227]);
+    assert.equal(rgbOf('not a colour'), undefined);
+    assert.equal(rgbOf(undefined), undefined);
   });
 });
 

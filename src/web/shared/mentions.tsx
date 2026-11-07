@@ -13,8 +13,12 @@ import {
   type UIEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import type { AgentRules } from '../../core/agentRules';
+import { tagText } from '../../core/agentTags';
+import type { AgentBrowserHalf } from '../../core/agents/agent';
+import { agentKindOf } from '../../core/agents/registry';
 import { samePerson } from '../../core/format';
-import { asksYou, boardAgents, boardPeople, findMentions, leadingMentions, rehypeMentions } from '../../core/mentions';
+import { asksYou, boardAgents, boardPeople, findMentions, MENTION_TYPING, nameFits, rehypeMentions, SKILL_TYPING, withMention, withSkill } from '../../core/mentions';
 import { TASK_STATUS_WORDS } from '../../core/pins';
 import { pickableCards, pickCards, readCardQuery, type PickableCard } from '../../core/refPicker';
 import { refLabel } from '../../core/refs';
@@ -22,7 +26,8 @@ import { readSkillRequest, rehypeSkill, type AgentSkills, type SkillList } from 
 import type { Options } from 'react-markdown';
 import type { Board, Comment, TaskStatus } from '../../core/types';
 import { api, type AgentPresence, type LiveBoard } from './api';
-import { ActorBadge, Md } from './components';
+import { ActorBadge, Icon, Md } from './components';
+import { cellChoices, cellLabel, cellListName, cellsOf, cellWords, stepCell, takesTag, writtenTag, type CellChoice, type TagCell } from './mentionTags';
 import { useRefs } from './refs';
 import './mentions.css';
 import './skills.css';
@@ -79,11 +84,14 @@ export function RosterProvider({ board, me, children }: { board: LiveBoard; me: 
 
 // ---- comments that mention someone ---------------------------------------------
 
-// A comment's text, its mentions drawn as chips, and the skill it asks an agent to run.
+// A comment's text, its mentions drawn as chips (an agent's with the tag
+// written on it, "@Claude:opus:high"), and the skill it asks an agent to run.
 export function CommentText({ comment }: { comment: Pick<Comment, 'body' | 'mentions' | 'skill'> }) {
+  const { people, me } = useRoster();
   const names = comment.mentions ?? [];
+  const agents = names.filter((name) => !samePerson(name, me) && !people.some((p) => samePerson(p, name)));
   const plugins: NonNullable<Options['rehypePlugins']> = [];
-  if (names.length) plugins.push([rehypeMentions, { names }]);
+  if (names.length) plugins.push([rehypeMentions, { names, agents }]);
   if (comment.skill) plugins.push([rehypeSkill, { name: comment.skill.name }]);
   return <Md rehypePlugins={plugins.length ? plugins : undefined}>{comment.body}</Md>;
 }
@@ -110,11 +118,8 @@ interface Option {
   kind: 'agent' | 'person';
   name: string;
   state?: string;
+  agent?: AgentBrowserHalf; // which agent it is, when Tricot knows: what its row offers for one message
 }
-
-// The @word being typed just before the caret: where its @ is, and what
-// follows it. A space can be part of it, for names like "Claude Code".
-const TYPING = /(?:^|[^\p{L}\p{N}_.@/-])@([\p{L}\p{N}_.\- ]{0,30})$/u;
 
 type Field = HTMLTextAreaElement | HTMLInputElement;
 
@@ -151,12 +156,11 @@ function caretAt(field: Field, position: number): { left: number; top: number; h
 }
 
 const MENU_WIDTH = 280;
+// With agents listed: room for the model and thinking on each one's row.
+const AGENTS_MENU_WIDTH = 380;
+const TAG_FOOT_HEIGHT = 36; // its foot, one line (tagFoot)
 const SKILL_MENU_WIDTH = 400;
 const SKILL_MENU_HEIGHT = 320;
-
-// The /word being typed just before the caret, at the start of a word (so not
-// in a path or an address): where its / is, and what follows it.
-const SLASH = /(?:^|\s)\/([\w.:-]{0,60})$/;
 
 // One skill in the "/" list, under the agent that has it.
 interface SkillOption {
@@ -181,6 +185,20 @@ const CARD_MENU_HEIGHT = 320; // about eight rows, then it scrolls
 type Choice = Option | SkillOption | CardOption;
 type Typing = { trigger: '@' | '/' | '#'; at: number; query: string };
 
+// The model and thinking set for one message on an agent's row (`row`, by its
+// name), and where the person is in them: the cell the arrows are in, if any,
+// and whether its list is open (the mouse's way in). Only one row has them.
+interface RowTag {
+  row?: string;
+  cell: TagCell | null;
+  open?: boolean;
+  model?: string;
+  effort?: string;
+}
+
+// The tag as it stands for `name`'s row: its own, or a fresh one.
+const onRow = (tag: RowTag, name: string): RowTag => (tag.row === name ? tag : { row: name, cell: null });
+
 // What an agent in the "/" list is doing, or what happens when it isn't here.
 function skillAgentNote(agent: AgentSkills): string {
   return agent.present ? agent.state : `runs next time ${agent.name} connects`;
@@ -197,6 +215,8 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
   const field = useRef<Field | null>(null);
   const [typing, setTyping] = useState<Typing | null>(null);
   const [agents, setAgents] = useState<AgentSkills[]>([]);
+  const [rules, setRules] = useState<AgentRules>({});
+  const [tag, setTag] = useState<RowTag>({ cell: null });
   const [active, setActive] = useState(0);
   const dismissed = useRef<number | null>(null); // the @ or / Escape closed the menu on
   const [place, setPlace] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
@@ -210,9 +230,9 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
     if (!el || el.selectionStart !== el.selectionEnd || document.activeElement !== el) return setTyping(null);
     const caret = el.selectionStart ?? 0;
     const before = el.value.slice(0, caret);
-    const mention = before.match(TYPING);
+    const mention = before.match(MENTION_TYPING);
     const hash = !mention && onBoard ? readCardQuery(before) : null;
-    const slash = !mention && !hash && skills ? before.match(SLASH) : null;
+    const slash = !mention && !hash && skills ? before.match(SKILL_TYPING) : null;
     const found: Typing | null = mention
       ? { trigger: '@', at: caret - mention[1].length - 1, query: mention[1] }
       : hash
@@ -225,19 +245,28 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
     setTyping((current) => (current?.trigger === found.trigger && current.at === found.at && current.query === found.query ? current : found));
   }, [skills, onBoard]);
 
-  // Each time a "/" starts: who has which skills, and who is here, as it is now.
+  // Each time a "/" or an "@" starts: who has which skills, who is here, and
+  // which agent each is, as it is now; for an "@", each agent's rule too,
+  // which its row shows faintly.
   const slashing = typing?.trigger === '/';
+  const mentioning = typing?.trigger === '@';
   useEffect(() => {
-    if (!slashing) return;
+    if (!slashing && !mentioning) return;
     let live = true;
     api.agents(roster.boardId || undefined).then(
       (list) => live && setAgents(list),
       () => {},
     );
+    if (mentioning) {
+      api.agentRules().then(
+        (read) => live && setRules(read.rules),
+        () => {},
+      );
+    }
     return () => {
       live = false;
     };
-  }, [slashing, roster.boardId]);
+  }, [slashing, mentioning, roster.boardId]);
 
   const cards = useMemo(() => (refs ? pickableCards(refs.tasks.values(), refs.decisions.values()) : []), [refs]);
   const hashing = typing?.trigger === '#';
@@ -263,65 +292,86 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
           })),
       );
     }
-    const fits = (name: string) => name.toLowerCase().startsWith(query) || name.toLowerCase().split(/\s+/).some((w) => w.startsWith(query));
+    const kindOf = (name: string) => agentKindOf({ name, tool: agents.find((a) => samePerson(a.name, name))?.tool });
     return [
-      ...roster.agents.filter((a) => fits(a.name)).map((a): Option => ({ kind: 'agent', name: a.name, state: a.state })),
-      ...roster.people.filter(fits).map((name): Option => ({ kind: 'person', name })),
+      ...roster.agents.filter((a) => nameFits(a.name, query)).map((a): Option => ({ kind: 'agent', name: a.name, state: a.state, agent: kindOf(a.name) })),
+      ...roster.people.filter((name) => nameFits(name, query)).map((name): Option => ({ kind: 'person', name })),
     ].slice(0, 8);
   }, [typing, roster, agents, cards]);
   const open = Boolean(typing) && options.length > 0;
   const current = Math.min(active, Math.max(options.length - 1, 0));
-  // Each letter typed starts the list over at its best fit (T6 before T60).
-  useEffect(() => setActive(0), [typing?.trigger, typing?.at, typing?.query]);
+  // Each letter typed starts the list over at its best fit (T6 before T60),
+  // and a row's model and thinking over.
+  useEffect(() => {
+    setActive(0);
+    setTag({ cell: null });
+  }, [typing?.trigger, typing?.at, typing?.query]);
+  const activeOption = open ? options[current] : undefined;
+  const tagging = activeOption?.kind === 'agent' && takesTag(activeOption.agent) ? activeOption : undefined;
+  const ruleOf = (agent: AgentBrowserHalf) => rules[agent.id] ?? {};
+  // What is set on an agent's row: its model and thinking, if it is the row that has them.
+  const valuesOn = (name: string) => (tag.row === name ? { model: tag.model, effort: tag.effort } : {});
+  // The cell the person is in on the active row, and the one whose list is open.
+  const inCell = tagging && tag.row === tagging.name ? tag.cell : null;
+  const listed = inCell && tag.open ? inCell : null;
+
+  // Another row active, out of the cells and their lists. The arrows let go
+  // of the tag as they move, as they always have; the mouse passing over
+  // another row leaves it on its own, so a pick isn't lost on the way to a
+  // click, and an open list holds the row until it closes.
+  const activate = (index: number, letGo: boolean) => {
+    if (index === current) return;
+    setActive(index);
+    setTag((now) => (letGo ? { cell: null } : { ...now, cell: null, open: false }));
+  };
+  const hover = (index: number) => () => {
+    if (!tag.open) activate(index, false);
+  };
+  const listsAgents = !slashing && !hashing && options.some((o) => o.kind === 'agent');
+  const listsTaggable = listsAgents && options.some((o) => o.kind === 'agent' && takesTag(o.agent));
+  const menuWidth = slashing ? SKILL_MENU_WIDTH : hashing ? CARD_MENU_WIDTH : listsAgents ? AGENTS_MENU_WIDTH : MENU_WIDTH;
 
   useLayoutEffect(() => {
     if (!open || !typing || !field.current) return setPlace(null);
     // Under the field, starting at the @ as far as the field leaves room, so
     // it keeps clear of what's beside the field (a Comment button).
-    const width = slashing ? SKILL_MENU_WIDTH : hashing ? CARD_MENU_WIDTH : MENU_WIDTH;
     const box = field.current.getBoundingClientRect();
     const caret = caretAt(field.current, typing.at);
-    const within = Math.max(box.left, Math.min(caret.left - 6, box.right - width));
-    const left = Math.max(8, Math.min(within, window.innerWidth - width - 8));
+    const within = Math.max(box.left, Math.min(caret.left - 6, box.right - menuWidth));
+    const left = Math.max(8, Math.min(within, window.innerWidth - menuWidth - 8));
     const below = box.bottom + 4;
-    const height = slashing ? SKILL_MENU_HEIGHT : hashing ? Math.min(CARD_MENU_HEIGHT, 64 + options.length * 32) : 40 + options.length * 34;
+    const height = slashing ? SKILL_MENU_HEIGHT : hashing ? Math.min(CARD_MENU_HEIGHT, 64 + options.length * 32) : 40 + options.length * 34 + (listsTaggable ? TAG_FOOT_HEIGHT : 0);
     // Above the field when there's no room under it, as on the chat bar.
     setPlace(below + height < window.innerHeight ? { left, top: below } : { left, bottom: window.innerHeight - box.top + 4 });
-  }, [open, typing, options.length, slashing, hashing]);
+  }, [open, typing, options.length, slashing, hashing, listsTaggable, menuWidth]);
 
   // The arrows move through a long list: keep the row they stop on in view.
   useLayoutEffect(() => {
     if (open) menu.current?.querySelector('.is-active')?.scrollIntoView({ block: 'nearest' });
   }, [open, current, place]);
 
-  // Everyone a mention can name here, for the leading ones a skill replaces.
-  const names = useMemo(
-    () => [...roster.agents.map((a) => a.name), ...agents.map((a) => a.name), ...roster.people, ...(roster.me ? [roster.me] : [])],
-    [roster, agents],
-  );
+  // Everyone a mention can name here, for the leading ones a skill replaces;
+  // and the agents among them, whose mentions take a tag (core/agentTags.ts).
+  const agentNames = useMemo(() => [...roster.agents.map((a) => a.name), ...agents.map((a) => a.name)], [roster, agents]);
+  const names = useMemo(() => [...agentNames, ...roster.people, ...(roster.me ? [roster.me] : [])], [agentNames, roster]);
 
   const choose = (option: Choice) => {
     const el = field.current;
     if (!el || !typing) return;
-    const end = typing.at + 1 + typing.query.length;
     let next: string;
     let caret: number;
     if (option.kind === 'skill') {
-      // A message that starts with a skill asks that agent to run it, so it goes
-      // to the front, after the mentions that would only say who it's for.
-      const before = value.slice(0, typing.at).replace(/[ \t]+$/, '');
-      const after = value.slice(end).replace(/^[ \t]+/, '');
-      const { rest } = leadingMentions(before && after ? `${before} ${after}` : before + after, names);
-      const head = `@${option.agent} /${option.call} `;
-      next = head + rest;
-      caret = head.length;
-    } else {
-      // A card is written as the board names it (T6, #6), a person or agent as @Name.
-      const after = value.slice(end);
-      const name = option.kind === 'card' ? refLabel(option.card) : `@${option.name}`;
-      const inserted = `${name}${after.startsWith(' ') ? '' : ' '}`;
+      ({ text: next, caret } = withSkill(value, typing, option.agent, option.call, names));
+    } else if (option.kind === 'card') {
+      // A card is written as the board names it (T6, #6).
+      const after = value.slice(typing.at + 1 + typing.query.length);
+      const inserted = `${refLabel(option.card)}${after.startsWith(' ') ? '' : ' '}`;
       next = value.slice(0, typing.at) + inserted + after;
       caret = typing.at + inserted.length + (after.startsWith(' ') ? 1 : 0);
+    } else {
+      // An agent's row writes its tag, when its model or thinking is set: "@Claude:opus:high".
+      const tagged = option.kind === 'agent' && takesTag(option.agent) ? tagText(valuesOn(option.name)) : '';
+      ({ text: next, caret } = withMention(value, typing, option.name, tagged));
     }
     onValue(next);
     setTyping(null);
@@ -331,13 +381,50 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
     });
   };
 
+  const keyOf = (cell: TagCell) => (cell === 'model' ? 'model' : 'effort');
+
+  // A step in a cell of the active agent's row: up (-1) or down (1).
+  const step = (cell: TagCell, by: 1 | -1) => {
+    if (!tagging?.agent) return;
+    const { name, agent } = tagging;
+    setTag((now) => {
+      const mine = onRow(now, name);
+      return { ...mine, cell, [keyOf(cell)]: stepCell(agent, cell, ruleOf(agent), mine[keyOf(cell)], by) };
+    });
+  };
+
+  // A click on a cell opens its list, or closes it when it is open; a click
+  // on a line of the list sets that value on the row and closes it. Neither
+  // closes the @ list or takes the caret from the field.
+  const toggleList = (option: Option, index: number, cell: TagCell) => {
+    if (index !== current) setActive(index);
+    setTag((now) => (now.open && now.cell === cell && now.row === option.name ? { ...now, cell: null, open: false } : { ...onRow(now, option.name), cell, open: true }));
+  };
+  const pick = (name: string, cell: TagCell, chosen: string | undefined) => setTag((now) => ({ ...onRow(now, name), cell: null, open: false, [keyOf(cell)]: chosen }));
+  const closeList = () => setTag((now) => ({ ...now, cell: null, open: false }));
+
   // Arrows pick, Enter or Tab takes, Escape closes the menu (not what it's in).
+  // On an agent that can do one message on another model, → goes into its
+  // model and thinking, where ↑ and ↓ change them and ← comes back out; with
+  // a cell's list open, they do the same, and Escape closes the list first.
   const onKey = (e: KeyboardEvent<Field>): boolean => {
     if (!open || e.metaKey || e.ctrlKey || e.altKey) return false;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      setActive((current + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
+    const cells = tagging?.agent ? cellsOf(tagging.agent) : [];
+    const at = inCell ? cells.indexOf(inCell) : -1;
+    if (e.key === 'ArrowRight' && tagging && cells.length) {
+      setTag((now) => ({ ...onRow(now, tagging.name), cell: cells[Math.min(at + 1, cells.length - 1)], open: false }));
+    } else if (e.key === 'ArrowLeft' && inCell) {
+      setTag((now) => ({ ...now, cell: at > 0 ? cells[at - 1] : null, open: false }));
+    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && inCell) {
+      step(inCell, e.key === 'ArrowDown' ? 1 : -1);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      activate((current + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length, true);
     } else if (e.key === 'Enter' || e.key === 'Tab') {
       choose(options[current]);
+    } else if (e.key === 'Escape' && listed) {
+      closeList(); // the list, its pick kept
+    } else if (e.key === 'Escape' && inCell) {
+      setTag({ cell: null }); // out of the cells, the tag let go
     } else if (e.key === 'Escape') {
       dismissed.current = typing!.at;
       setTyping(null);
@@ -347,20 +434,120 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
     return true;
   };
 
+  // An agent's model and thinking for one message: chips, in ink once set on
+  // its row, else at its rule, faint. A click opens the cell's list.
+  const tagCells = (option: Option, index: number) => {
+    const agent = option.agent!;
+    const rule = ruleOf(agent);
+    const values = valuesOn(option.name);
+    const here = index === current;
+    return (
+      <span className="mention-tag-cells">
+        {cellsOf(agent).map((cell) => {
+          const value = values[keyOf(cell)];
+          const { words, set } = cellWords(agent, cell, rule, value);
+          const expanded = here && listed === cell;
+          return (
+            <button
+              key={cell}
+              type="button"
+              tabIndex={-1} // the caret stays in the field: the keys reach the cells from there
+              id={`mention-${index}-${cell}`}
+              className={`mention-tag-cell${set ? ' is-set' : ''}${here && inCell === cell && !expanded ? ' is-focus' : ''}`}
+              aria-label={cellLabel(agent, cell, rule, value)}
+              aria-haspopup="listbox"
+              aria-expanded={expanded}
+              onClick={(e) => {
+                e.stopPropagation(); // its list, not a pick of the row
+                toggleList(option, index, cell);
+              }}
+            >
+              <span className="mention-tag-words">{words}</span>
+              <svg className="assignee-caret" viewBox="0 0 16 16" aria-hidden>
+                <path d="m4.5 6.5 3.5 3.5 3.5-3.5" />
+              </svg>
+            </button>
+          );
+        })}
+      </span>
+    );
+  };
+
+  // The open cell's list, beside the @ list (TagList).
+  const tagList = () => {
+    if (!listed || !tagging?.agent) return null;
+    const { name, agent } = tagging;
+    return (
+      <TagList
+        anchor={`mention-${current}-${listed}`}
+        name={cellListName(listed)}
+        choices={cellChoices(agent, listed, ruleOf(agent))}
+        value={valuesOn(name)[keyOf(listed)]}
+        onPick={(chosen) => pick(name, listed, chosen)}
+      />
+    );
+  };
+
   const row = (option: Option, index: number) => (
     <div
       key={`${option.kind}:${option.name}`}
       id={`mention-${index}`}
       role="option"
       aria-selected={index === current}
-      className={`mention-option${index === current ? ' is-active' : ''}`}
-      onMouseEnter={() => setActive(index)}
+      className={`mention-option${index === current ? ' is-active' : ''}${option.kind === 'agent' && listsAgents ? ' has-tag' : ''}`}
+      onMouseEnter={hover(index)}
       onClick={() => choose(option)}
     >
       <ActorBadge actor={{ kind: option.kind === 'agent' ? 'agent' : 'human', name: option.name }} title={option.name} />
       {option.state && <span className="mention-state">{option.state}</span>}
+      {option.kind === 'agent' && (takesTag(option.agent) ? tagCells(option, index) : <span className="mention-tag-note">its own model</span>)}
     </div>
   );
+
+  // Under the list, while it has an agent that takes a tag: what Enter does
+  // on the active row (once its model or thinking is set, the tag it writes)
+  // and what the keys do. One line whatever it says, so the rows don't move
+  // under the mouse when it changes. Read out as it changes.
+  const tagFoot = () => {
+    if (!listsTaggable) return null;
+    if (!tagging?.agent) {
+      return (
+        <div className="mention-tag-foot" aria-live="polite">
+          <span>
+            <kbd>↵</kbd>mention
+          </span>
+        </div>
+      );
+    }
+    const ruled = Boolean(ruleOf(tagging.agent).model || ruleOf(tagging.agent).effort);
+    const values = valuesOn(tagging.name);
+    const set = Boolean(values.model || values.effort);
+    const keys = Boolean(inCell && !listed); // the arrows are in a cell
+    return (
+      <div className="mention-tag-foot" aria-live="polite">
+        {keys && (
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd>change
+          </span>
+        )}
+        {keys || set ? (
+          <span>
+            <kbd>↵</kbd>writes <code>{writtenTag(tagging.name, values)}</code>
+          </span>
+        ) : (
+          <>
+            <span>
+              <kbd>↵</kbd>mention{ruled ? ', on its rule' : ''}
+            </span>
+            <span>
+              <kbd>→</kbd>model and thinking
+            </span>
+          </>
+        )}
+      </div>
+    );
+  };
   const skillRow = (option: SkillOption, index: number) => {
     const agent = agents.find((a) => a.name === option.agent)!;
     const first = index === 0 || (options[index - 1] as SkillOption).agent !== option.agent;
@@ -419,54 +606,71 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
   const decisionOptions = cardOptions.filter((o) => o.card.kind === 'decision');
   const agentOptions = mentionable.filter((o) => o.kind === 'agent');
   const personOptions = mentionable.filter((o) => o.kind === 'person');
-  const popup =
-    open && place
-      ? createPortal(
-          <div
-            ref={menu}
-            className={`mention-menu${slashing ? ' skill-menu' : hashing ? ' hash-menu' : ''}`}
-            role="listbox"
-            aria-label={slashing ? 'Call a skill' : hashing ? 'Link a task or decision' : 'Mention someone'}
-            style={{
-              left: place.left,
-              top: place.top,
-              bottom: place.bottom,
-              width: slashing ? SKILL_MENU_WIDTH : hashing ? CARD_MENU_WIDTH : MENU_WIDTH,
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault(); // keeps the caret in the field
-              e.stopPropagation();
-            }}
-          >
-            {slashing ? (
-              <>
-                {options.map((o, i) => skillRow(o as SkillOption, i))}
-                <div className="skill-foot">A message that starts with a skill asks that agent to run it.</div>
-              </>
-            ) : hashing ? (
-              <>
-                {taskOptions.length > 0 && <div className="mention-menu-head">Tasks</div>}
-                {taskOptions.map((o, i) => cardRow(o, i))}
-                {decisionOptions.length > 0 && <div className="mention-menu-head">Decisions</div>}
-                {decisionOptions.map((o, i) => cardRow(o, taskOptions.length + i))}
-              </>
-            ) : (
-              <>
-                {agentOptions.length > 0 && <div className="mention-menu-head">Agents on this board</div>}
-                {agentOptions.map((o, i) => row(o, i))}
-                {personOptions.length > 0 && <div className="mention-menu-head">People</div>}
-                {personOptions.map((o, i) => row(o, agentOptions.length + i))}
-              </>
-            )}
-          </div>,
-          document.body,
-        )
-      : null;
+  const list =
+    open && place ? (
+      <div
+        ref={menu}
+        className={`mention-menu${slashing ? ' skill-menu' : hashing ? ' hash-menu' : ''}`}
+        role="listbox"
+        aria-label={slashing ? 'Call a skill' : hashing ? 'Link a task or decision' : 'Mention someone'}
+        style={{
+          left: place.left,
+          top: place.top,
+          bottom: place.bottom,
+          width: menuWidth,
+        }}
+        onMouseDown={(e) => {
+          e.preventDefault(); // keeps the caret in the field
+          e.stopPropagation();
+        }}
+        onClickCapture={(e) => {
+          // With a cell's list open, a click elsewhere in the @ list only
+          // closes it; one on a cell of its row opens that cell's instead.
+          if (!tag.open) return;
+          const cell = (e.target as Element).closest('.mention-tag-cell');
+          if (cell && cell.id.startsWith(`mention-${current}-`)) return;
+          e.stopPropagation();
+          closeList();
+        }}
+      >
+        {slashing ? (
+          <>
+            {options.map((o, i) => skillRow(o as SkillOption, i))}
+            <div className="skill-foot">A message that starts with a skill asks that agent to run it.</div>
+          </>
+        ) : hashing ? (
+          <>
+            {taskOptions.length > 0 && <div className="mention-menu-head">Tasks</div>}
+            {taskOptions.map((o, i) => cardRow(o, i))}
+            {decisionOptions.length > 0 && <div className="mention-menu-head">Decisions</div>}
+            {decisionOptions.map((o, i) => cardRow(o, taskOptions.length + i))}
+          </>
+        ) : (
+          <>
+            {agentOptions.length > 0 && <div className="mention-menu-head">Agents on this board</div>}
+            {agentOptions.map((o, i) => row(o, i))}
+            {personOptions.length > 0 && <div className="mention-menu-head">People</div>}
+            {personOptions.map((o, i) => row(o, agentOptions.length + i))}
+            {tagFoot()}
+          </>
+        )}
+      </div>
+    ) : null;
+  // The @ list, and beside it the open cell's list.
+  const popup = list
+    ? createPortal(
+        <>
+          {list}
+          {tagList()}
+        </>,
+        document.body,
+      )
+    : null;
 
   // What to mark in the field: the names it mentions, the skill it starts
   // with, and the @word or #word being typed.
   const marks = useMemo(() => {
-    const found: [number, number][] = findMentions(value, names).map((m) => [m.start, m.end]);
+    const found: [number, number][] = findMentions(value, names, agentNames).map((m) => [m.start, m.end]);
     if (skills && agents.length) {
       const lists = agents.map((a): SkillList => ({ agent: a.name, skills: a.skills, reportedAt: a.reportedAt ?? '' }));
       const request = readSkillRequest(value, lists, names);
@@ -474,10 +678,67 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
     }
     if (open && typing && typing.trigger !== '/' && !found.some(([start]) => start === typing.at)) found.push([typing.at, typing.at + 1 + typing.query.length]);
     return found.sort((a, b) => a[0] - b[0]);
-  }, [value, names, agents, skills, open, typing]);
+  }, [value, names, agentNames, agents, skills, open, typing]);
 
-  const aria = { 'aria-autocomplete': 'list' as const, 'aria-expanded': open, 'aria-activedescendant': open ? `mention-${current}` : undefined };
+  // The row the keys are on, or with a cell's list open, its line that is set.
+  const chosenLine = listed && tagging?.agent ? cellChoices(tagging.agent, listed, ruleOf(tagging.agent)).findIndex((c) => c.value === valuesOn(tagging.name)[keyOf(listed)]) : -1;
+  const activeId = chosenLine >= 0 ? `mention-${current}-${listed}-${chosenLine}` : `mention-${current}`;
+  const aria = { 'aria-autocomplete': 'list' as const, 'aria-expanded': open, 'aria-activedescendant': open ? activeId : undefined };
   return { field, read, onKey, menu: popup, marks, close: () => setTyping(null), aria };
+}
+
+// A cell's list (T29): a small menu in the assignee menu's look, under the
+// cell (over it when there's no room), its right edge at the cell's. Each
+// line is a value, the one set ticked, the rule's marked default. It is
+// drawn beside the @ list rather than in it, and is part of it all the
+// same: a press on it keeps the caret in the field, and a panel that closes
+// on a click outside it leaves the .mention-menu be (useDismiss).
+function TagList({ anchor, name, choices, value, onPick }: { anchor: string; name: string; choices: CellChoice[]; value: string | undefined; onPick: (value: string | undefined) => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  useLayoutEffect(() => {
+    const cell = document.getElementById(anchor)?.getBoundingClientRect();
+    const list = root.current;
+    if (!cell || !list) return;
+    const left = Math.max(8, Math.min(cell.right - list.offsetWidth, window.innerWidth - list.offsetWidth - 8));
+    const below = cell.bottom + 4;
+    setPlace(below + list.offsetHeight < window.innerHeight - 8 ? { left, top: below } : { left, bottom: window.innerHeight - cell.top + 4 });
+  }, [anchor]);
+  return (
+    <div
+      ref={root}
+      className="mention-menu mention-tag-list"
+      role="listbox"
+      aria-label={name}
+      style={{ left: place?.left ?? -9999, top: place?.top, bottom: place?.bottom, visibility: place ? undefined : 'hidden' }}
+      onMouseDown={(e) => {
+        e.preventDefault(); // keeps the caret in the field
+        e.stopPropagation();
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="mention-menu-head" aria-hidden>
+        {name}
+      </div>
+      {choices.map((choice, i) => {
+        const chosen = choice.value === value;
+        return (
+          <div
+            key={choice.value ?? ''}
+            id={`${anchor}-${i}`}
+            role="option"
+            aria-selected={chosen}
+            className={`mention-tag-choice${chosen ? ' is-chosen' : ''}`}
+            onClick={() => onPick(choice.value)}
+          >
+            <span className="mention-tag-choice-words">{choice.words}</span>
+            {choice.note && <span className="mention-tag-choice-note">{choice.note}</span>}
+            <span className="mention-tag-check">{chosen && <Icon name="check" />}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // Behind a field, the same text, invisible but for its mentions, which show

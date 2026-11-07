@@ -1,7 +1,8 @@
 // What the canvas takes in from outside: files, links and text dropped on it,
-// and a screenshot, a web address or text pasted on the page. Each kind of
-// block says what it makes of them (`files` and `clips` in blocks/kind.ts);
-// this decides when they are the canvas's to take at all.
+// and a screenshot, a web address or text pasted on the page, or blocks copied
+// from a canvas (copy.ts), which the server copies. Each kind of block says
+// what it makes of the rest (`files` and `clips` in blocks/kind.ts); this
+// decides when they are the canvas's to take at all.
 //
 // A drop or paste into a field stays the field's, a drag that started on the
 // canvas (words moved inside a note) makes no block, and a read-only canvas
@@ -11,7 +12,7 @@ import { Fragment, useEffect, useRef, type DragEvent, type ReactNode, type RefOb
 import type { ReactFlowInstance } from '@xyflow/react';
 import type { AddContext, DropHooks } from './blocks/kind';
 import { menuKinds, webKinds } from './blocks/registry';
-import { clipKind, clipOf, dragsLinks, dragsText, dragTypes, typing } from './clip';
+import { blocksClipOf, clipKind, clipOf, dragsLinks, dragsText, dragTypes, typing, type BlocksClip } from './clip';
 
 interface Intake {
   wrapper: RefObject<HTMLElement | null>;
@@ -20,6 +21,8 @@ interface Intake {
   readOnly: boolean;
   clips: boolean; // links and text may be taken too: not while a block's full view covers the canvas
   openForm(type: string, initial: string): void; // Add's form for a kind, filled in
+  // Pastes blocks copied from a canvas. False when what was copied is gone (said to the person): its words are pasted instead.
+  pasteBlocks(clip: BlocksClip): Promise<boolean>;
 }
 
 // Whether a drag began on the canvas, from its start to its end. A browser
@@ -45,19 +48,31 @@ function useDragFromCanvas(wrapper: RefObject<HTMLElement | null>) {
   return began;
 }
 
-export function useIntake({ wrapper, flow, context, readOnly, clips, openForm }: Intake) {
+export function useIntake({ wrapper, flow, context, readOnly, clips, openForm, pasteBlocks }: Intake) {
   const fromCanvas = useDragFromCanvas(wrapper);
   const drops: DropHooks[] = webKinds().flatMap((kind) => [
     ...(kind.files?.useDrop ? [kind.files.useDrop(!readOnly)] : []),
     ...(kind.clips?.useDrop ? [kind.clips.useDrop(!readOnly && clips)] : []),
   ]);
 
-  // A screenshot pasted anywhere on the page, a web address (it opens Add →
-  // Link with it filled in), or other text, which is a note.
+  // Blocks copied from a canvas, a screenshot pasted anywhere on the page, a
+  // web address (it opens Add → Link with it filled in), or other text, which
+  // is a note.
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       if (readOnly || typing(event.target)) return;
       const data = event.clipboardData;
+      const copied = data && blocksClipOf(data);
+      if (copied) {
+        if (!clips) return;
+        event.preventDefault();
+        const clip = clipOf(data);
+        const kind = clipKind(webKinds(), clip);
+        void pasteBlocks(copied).then((pasted) => {
+          if (!pasted && kind) void kind.clips!.add(clip, context);
+        });
+        return;
+      }
       const files = [...(data?.files ?? [])];
       const pasted = webKinds().find((kind) => kind.files?.paste && files.some(kind.files.accepts));
       if (pasted) {

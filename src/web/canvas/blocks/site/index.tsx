@@ -198,6 +198,7 @@ function SiteOverlay(props: Parameters<typeof SiteView>[0]) {
 
 export const site: WebBlockKind<SiteBlock> = {
   type: 'site',
+  copyText: (block) => block.url ?? block.folder,
   Body: () => null, // drawn whole by its card
   Card: (props: CardProps<SiteBlock>) => (
     <SiteBoundary>

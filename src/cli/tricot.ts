@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { openUrl } from '../platform/openUrl';
 import { interruptSelf, stopSignals } from '../platform/stop';
 import { runCaptured } from './connectAgent';
-import { runCli } from './main';
+import { yesNoAsker } from './confirm';
+import { runCli, runUntilCtrlC, type CliContext } from './main';
 import { runSwitcher, switcherProblem } from './switcher/run';
 import { runInTerminal, terminalKeys } from './terminal';
 
@@ -16,36 +17,35 @@ const entry = fileURLToPath(import.meta.url);
 // package folder is two levels up.
 const root = path.resolve(path.dirname(entry), '../..');
 
-// A yes/no question, in a terminal only: piped, the command can't be answered.
-// A bare Enter is `fallback` ([Y/n] asks with yes), else no.
-async function ask(question: string, fallback = false): Promise<boolean> {
-  const { createInterface } = await import('node:readline/promises');
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = (await rl.question(question)).trim();
-    return answer === '' ? fallback : /^y(es)?$/i.test(answer);
-  } finally {
-    rl.close();
-  }
-}
+// The keys of this terminal, when it is one both ways: the board picker, the
+// Yes / No questions and the agents run together draw on it as they go.
+const keys = process.stdin.isTTY && process.stdout.isTTY ? terminalKeys() : undefined;
 
-const { exitCode, server } = await runCli(process.argv.slice(2), {
+const out = (line: string) => console.log(line);
+
+const context: CliContext = {
   env: process.env,
   root,
   entry,
-  out: (line) => console.log(line),
+  out,
   err: (line) => console.error(line),
   open: (url) => openUrl(url, process.env, (unopened) => console.log(`Open ${unopened} in your browser.`)),
   cwd: process.cwd(),
   launch: runInTerminal,
   exec: runCaptured,
-  ...(process.stdin.isTTY && { ask }),
+  // A yes/no question is the Yes / No pair on a terminal, and a line (with [y/N]
+  // after it) where stdin is a terminal and stdout is piped: piped in, the
+  // command can't be answered.
+  ...(process.stdin.isTTY && { ask: yesNoAsker(keys) }),
   // The board picker draws as it goes, so it needs a terminal to draw on too,
   // as do several agents run in it together (tricot claude codex).
-  ...(process.stdin.isTTY && process.stdout.isTTY && { keys: terminalKeys(), host: { problem: () => switcherProblem(), run: runSwitcher } }),
-  // Ctrl+C read as a key, while the board's terminal asks y/N: it stops Tricot all the same.
+  ...(keys && { keys, host: { problem: () => switcherProblem(), run: runSwitcher } }),
+  // Ctrl+C read as a key, while the board's terminal asks Yes or No: it stops Tricot all the same.
   interrupt: () => interruptSelf(),
-});
+};
+
+// Ctrl+C at a yes/no question stops the command quietly (confirm.ts, main.ts).
+const { exitCode, server } = await runUntilCtrlC(() => runCli(process.argv.slice(2), context), out);
 
 if (server) {
   const shutdown = async () => {

@@ -311,6 +311,7 @@ describe('Reactions over MCP and REST', () => {
     await callText('Claude', 'get_board', { board_id: boardId });
     await callText('Codex', 'get_board', { board_id: boardId });
     const task = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Emoji reactions' })).json;
+    store.updateTask(task.id, { status: 'todo' }, { kind: 'human', name: 'Wassim' });
     return { boardId, task, cursor: store.getBoard(boardId).seq };
   }
 

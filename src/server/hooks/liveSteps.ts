@@ -83,8 +83,8 @@ const shown = (file: string, target: HookTarget) => displayPath(file, target, 'u
 // Which of its settings, in words: what the switch says it is on in.
 function scopeWords(file: string): string {
   const base = path.basename(file);
-  if (base === 'settings.json') return 'user settings';
-  if (base === 'hooks.json') return 'user hooks';
+  if (base === 'settings.json' || base === 'config.yaml') return 'user settings';
+  if (base === 'hooks.json' || path.basename(path.dirname(file)) === 'hooks') return 'user hooks'; // Codex's file, or one in a hooks folder (Grok Build's)
   if (path.basename(path.dirname(file)) === 'plugins') return 'user plugins';
   return 'user extensions';
 }

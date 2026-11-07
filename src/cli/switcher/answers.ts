@@ -14,6 +14,9 @@
 // this terminal starts is given them. The host key is kept alive with a
 // heartbeat, taken again when the board forgot it (a restart), and both are
 // let go as the host ends.
+//
+// What a person does in a thread from the Tricot tab (threadsSend.ts) goes the
+// same way, as `act`: key, signature once a seat, the person's name in the body.
 import type { ApprovalReply } from '../../core/approvals';
 import { SEAT_GONE, SEAT_NEEDED, type AdmissionView, type SeatView } from '../../core/seats';
 import { HOST_KEY_HEADER } from '../../server/access';
@@ -27,7 +30,13 @@ export type AnswerOutcome =
   // `needsSeat`: this terminal must be let in first
   | { ok: false; error: string; gone?: boolean; needsSeat?: boolean };
 
+// What the board replied to a person's change made from here, or why it didn't.
+export type ActOutcome = { ok: true; reply: unknown } | Extract<AnswerOutcome, { ok: false }>;
+
 export interface Answers {
+  // A change the person makes on the board, a message in a thread: sent as an
+  // answer is, as the person (the body names them), with the board's reply back.
+  act(route: string, body: Record<string, unknown>): Promise<ActOutcome>;
   answer(id: string, reply: ApprovalReply): Promise<AnswerOutcome>;
   // A browser or terminal asking to act for the person, allowed or denied
   // from here. Letting the very first browser in, this terminal is let in with it.
@@ -153,6 +162,7 @@ export function holdAnswers(options: AnswersOptions): Answers {
   void register();
 
   const UNREACHABLE = "Tricot's board can't be reached to answer from here. Answer on the board, or try again in a moment.";
+  const UNREACHABLE_FOR_MESSAGE = "Tricot's board can't be reached from here: try again in a moment.";
 
   // A refusal that says this terminal must be let in, or was removed.
   const refusedSeat = (status: number, json: { code?: string; error?: string }): AnswerOutcome | undefined => {
@@ -163,28 +173,28 @@ export function holdAnswers(options: AnswersOptions): Answers {
 
   const actor = async () => (typeof options.actor === 'function' ? await options.actor() : options.actor);
 
-  const send = async (route: string, body: unknown, retry: boolean, heard?: (json: Record<string, unknown>) => void): Promise<AnswerOutcome> => {
+  const send = async (route: string, body: unknown, retry: boolean, heard?: (json: Record<string, unknown>) => void, what: 'answer' | 'message' = 'answer'): Promise<AnswerOutcome> => {
     const hostKey = key ?? (await register());
-    if (!hostKey) return { ok: false, error: UNREACHABLE };
+    if (!hostKey) return { ok: false, error: what === 'answer' ? UNREACHABLE : UNREACHABLE_FOR_MESSAGE };
     let outcome;
     try {
       outcome = await post(route, body, hostKey, seat.seated);
     } catch (error) {
-      return { ok: false, error: `The board didn't take the answer: ${error instanceof Error ? error.message : error}` };
+      return { ok: false, error: `The board didn't take the ${what}: ${error instanceof Error ? error.message : error}` };
     }
     const { status, json } = outcome;
-    if (status === 200) {
+    if (status === 200 || status === 201) {
       heard?.(json as Record<string, unknown>);
       return { ok: true };
     }
     const needs = refusedSeat(status, json);
     if (needs) return needs;
-    const refused: AnswerOutcome = { ok: false, error: json.error ?? `The board refused the answer (HTTP ${status}).`, ...(status === 404 && { gone: true }) };
+    const refused: AnswerOutcome = { ok: false, error: json.error ?? `The board refused the ${what} (HTTP ${status}).`, ...(status === 404 && { gone: true }) };
     // The host key lapsed (Tricot restarted, or this terminal went quiet): take another, once.
     if (status === 403 && retry && !seat.seated) {
       if (key === hostKey) key = undefined;
       if (!(key ?? (await register()))) return refused;
-      return send(route, body, false, heard);
+      return send(route, body, false, heard, what);
     }
     return refused;
   };
@@ -205,6 +215,11 @@ export function holdAnswers(options: AnswersOptions): Answers {
   };
 
   return {
+    act: async (route, body) => {
+      let reply: unknown;
+      const outcome = await send(route, { actor: await actor(), ...body }, true, (json) => (reply = json), 'message');
+      return outcome.ok ? { ok: true, reply } : outcome;
+    },
     answer: async (id, reply) => send(`/api/approvals/${encodeURIComponent(id)}/answer`, { actor: await actor(), ...reply }, true),
     // Not a seat yet, it sends its own key too: letting the very first browser
     // in, the board lets this terminal in with it.

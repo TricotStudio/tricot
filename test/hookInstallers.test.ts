@@ -11,6 +11,9 @@ import { claude } from '../src/server/hooks/claude';
 import { codex, CODEX_TRUST, CODEX_USAGE } from '../src/server/hooks/codex';
 import { APPROVAL_STATUS, APPROVAL_TIMEOUT_S } from '../src/server/hooks/commandHooks';
 import { gemini, GEMINI_WAITS } from '../src/server/hooks/gemini';
+import { goose, GOOSE_WAITS } from '../src/server/hooks/goose';
+import { grok, GROK_WAITS } from '../src/server/hooks/grok';
+import { hermes, HERMES_APPROVAL, HERMES_BEGIN, HERMES_END, HERMES_OWN_LINES, HERMES_WAITS } from '../src/server/hooks/hermes';
 import { writeFileAtomic } from '../src/server/hooks/installer';
 import { omp } from '../src/server/hooks/omp';
 import { opencode } from '../src/server/hooks/opencode';
@@ -76,25 +79,32 @@ describe('the hook installer registry', () => {
         ['omp', 'OMP', 'OMP'],
         ['gemini', 'Gemini CLI', 'Gemini'],
         ['opencode', 'OpenCode', 'OpenCode'],
+        ['goose', 'Goose', 'Goose'],
+        ['hermes', 'Hermes Agent', 'Hermes'],
+        ['grok', 'Grok Build', 'Grok'],
       ],
     );
     assert.equal(findHookInstaller('codex'), codex);
     assert.equal(findHookInstaller('gemini'), gemini);
     assert.equal(findHookInstaller('opencode'), opencode);
+    assert.equal(findHookInstaller('goose'), goose);
+    assert.equal(findHookInstaller('hermes'), hermes);
+    assert.equal(findHookInstaller('grok'), grok);
     assert.equal(findHookInstaller('cursor'), undefined);
     assert.deepEqual(claude.scopes, ['user', 'project']);
-    for (const other of [codex, pi, omp, gemini, opencode]) assert.deepEqual(other.scopes, ['user']);
+    for (const other of [codex, pi, omp, gemini, opencode, goose, hermes, grok]) assert.deepEqual(other.scopes, ['user']);
   });
 
   it("finds an agent by its folder or its command on PATH, without running it", () => {
     const target = freshHome();
     assert.deepEqual(
       hookInstallers().map((i) => i.detect(target).found),
-      [false, false, false, false, false, false],
+      [false, false, false, false, false, false, false, false, false],
     );
     mkdirSync(path.join(target.home, '.codex'));
     mkdirSync(path.join(target.home, '.omp'));
     mkdirSync(path.join(target.home, '.gemini'));
+    mkdirSync(path.join(target.home, '.grok'));
     const bin = path.join(target.home, 'bin');
     const program = (name: string) => path.join(bin, name);
     write(program('pi'), '#!/bin/sh\nexit 1\n');
@@ -109,8 +119,39 @@ describe('the hook installer registry', () => {
     if (!WINDOWS) assert.deepEqual(claude.detect(withPath), { found: false });
     assert.deepEqual(gemini.detect(withPath), { found: true, folder: path.join(target.home, '.gemini') });
     assert.deepEqual(opencode.detect(withPath), { found: true, command: program('opencode') });
+    assert.deepEqual(grok.detect(withPath), { found: true, folder: path.join(target.home, '.grok') });
     mkdirSync(path.join(target.home, '.config/opencode'), { recursive: true });
     assert.deepEqual(opencode.detect(target), { found: true, folder: path.join(target.home, '.config/opencode') });
+  });
+
+  it("finds Goose by its own folder, not the plugin Tricot adds, wherever its settings are kept, and Hermes by its folder or command", () => {
+    const target = freshHome();
+    assert.equal(goose.detect(target).found, false);
+    mkdirSync(path.join(target.home, '.agents/plugins/tricot-steps'), { recursive: true });
+    assert.equal(goose.detect(target).found, false, "Tricot's own plugin folder is not Goose");
+    mkdirSync(path.join(target.home, '.config/goose'), { recursive: true });
+    assert.deepEqual(goose.detect(target), { found: true, folder: path.join(target.home, '.config/goose') });
+
+    const moved = freshHome();
+    const xdg = path.join(moved.home, 'xdg');
+    mkdirSync(path.join(xdg, 'goose'), { recursive: true });
+    assert.equal(goose.detect(moved).found, false);
+    assert.deepEqual(goose.detect({ ...moved, env: { XDG_CONFIG_HOME: xdg } }), { found: true, folder: path.join(xdg, 'goose') });
+    const appData = path.join(moved.home, 'AppData');
+    mkdirSync(path.join(appData, 'Block/goose/config'), { recursive: true });
+    assert.equal(goose.detect({ ...moved, env: { APPDATA: appData } }).found, true, "Windows keeps it under %APPDATA%\\Block\\goose\\config");
+    const root = path.join(moved.home, 'goose-root');
+    mkdirSync(path.join(root, 'config'), { recursive: true });
+    assert.equal(goose.detect({ ...moved, env: { GOOSE_PATH_ROOT: root } }).found, true, '$GOOSE_PATH_ROOT moves all of it');
+
+    const here = freshHome();
+    assert.equal(hermes.detect(here).found, false);
+    mkdirSync(path.join(here.home, '.hermes'));
+    assert.deepEqual(hermes.detect(here), { found: true, folder: path.join(here.home, '.hermes') });
+    const elsewhere = freshHome();
+    const profile = path.join(elsewhere.home, 'profile');
+    mkdirSync(profile);
+    assert.deepEqual(hermes.detect({ ...elsewhere, env: { HERMES_HOME: profile } }), { found: true, folder: profile });
   });
 });
 
@@ -609,6 +650,128 @@ describe('Gemini CLI steps (~/.gemini/settings.json)', () => {
   });
 });
 
+describe('Grok Build steps (~/.grok/hooks/tricot-steps.json)', () => {
+  const files = (folder: string) => ({
+    hooks: path.join(folder, 'hooks/tricot-steps.json'),
+    script: path.join(folder, 'hooks/tricot-steps.mjs'),
+    describe: path.join(folder, 'hooks/tricot-describe.mjs'),
+  });
+  // A hook file of the person's own beside it: Grok loads every *.json in the folder.
+  const theirsGrok = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'bin/safety-check.sh', timeout: 10 }] }] } };
+
+  it('shows its hook file, and that Grok Build waits for it, and writes nothing', () => {
+    const target = freshHome();
+    const f = files(path.join(target.home, '.grok'));
+    const preview = grok.preview(target, setup);
+    assert.deepEqual(preview.notes, [GROK_WAITS]);
+    assert.ok(preview.text.includes('add to ~/.grok/hooks/tricot-steps.json'), preview.text);
+    assert.deepEqual(
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does]),
+      [
+        ['.grok/hooks/tricot-steps.mjs', 'write'],
+        ['.grok/hooks/tricot-describe.mjs', 'write'],
+        ['.grok/hooks/tricot-steps.json', 'add'],
+      ],
+    );
+    const hooks = JSON.parse(preview.changes[2].lines!).hooks;
+    assert.deepEqual(Object.keys(hooks), ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStop']);
+    assert.equal(hooks.PreToolUse[0].matcher, undefined, 'every tool');
+    assert.equal(hooks.PostToolUse[0].matcher, 'run_terminal_command|spawn_subagent');
+    assert.equal(hooks.PostToolUseFailure[0].matcher, 'run_terminal_command|spawn_subagent');
+    assert.equal(hooks.Notification[0].matcher, 'permission_prompt');
+    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${asWritten(f.script)}" --name Grok --url ${TRICOT_URL}`, timeout: 5 });
+    assert.equal(existsSync(path.join(target.home, '.grok')), false);
+    assert.equal(grok.status(target).state, 'off');
+  });
+
+  it("sets up its own hook file beside the person's, once, runs as Grok sends its events, and takes it out again", async () => {
+    const target = freshHome();
+    const f = files(path.join(target.home, '.grok'));
+    const theirFile = path.join(path.dirname(f.hooks), 'safety.json');
+    write(theirFile, JSON.stringify(theirsGrok, null, 2));
+    const done = grok.install(target, { ...setup, name: 'Grok Builder' });
+    assert.equal(done.changed, true);
+    assert.deepEqual(done.files, [f.script, f.describe, f.hooks]);
+    assert.match(done.message, /Grok Build picks it up in its next session/);
+    assert.deepEqual(json(theirFile), theirsGrok, 'their file is not touched');
+    assert.equal(json(f.hooks).hooks.PreToolUse[0].hooks[0].command, `node "${asWritten(f.script)}" --name 'Grok Builder' --url ${TRICOT_URL}`);
+    assert.deepEqual(grok.status(target), { state: 'on', where: [f.hooks, f.script, f.describe], sendsAs: 'Grok Builder' });
+
+    // Grok Build's own events (its hooks guide, "Writing Hook Scripts": camelCase fields, and snake_case ones beside them), through the copied script.
+    const grokEvent = (name: string, snake: string, more: Record<string, unknown>) => ({
+      hookEventName: snake,
+      hook_event_name: name,
+      sessionId: 'k1',
+      session_id: 'k1',
+      cwd: '/w',
+      workspaceRoot: '/w',
+      timestamp: '2026-11-05T12:00:00Z',
+      ...more,
+    });
+    const tool = (name: string, input: Record<string, unknown>, more: Record<string, unknown> = {}) => ({
+      toolName: name,
+      tool_name: name,
+      toolInput: input,
+      tool_input: input,
+      toolUseId: 'call_1',
+      tool_use_id: 'call_1',
+      toolInputTruncated: false,
+      ...more,
+    });
+    const step = async (event: Record<string, unknown>) => {
+      const ran = await runScript(f.script, event);
+      assert.equal(ran.code, 0);
+      assert.doesNotMatch(ran.stdout, /SECRET/);
+      return ran.stdout ? JSON.parse(ran.stdout) : undefined;
+    };
+    assert.equal((await step(grokEvent('PreToolUse', 'pre_tool_use', tool('read_file', { target_file: '/w/src/a.ts' })))).text, `Reading ${fromProject('src/a.ts')}`);
+    const test = tool('run_terminal_command', { command: 'npm test -- --token SECRET', description: 'SECRET' });
+    const started = await step(grokEvent('PreToolUse', 'pre_tool_use', test));
+    assert.deepEqual([started.text, started.running, started.session, started.tool], ['Running npm test', true, 'k1', 'call_1']);
+    const ended = await step(grokEvent('PostToolUse', 'post_tool_use', { ...test, toolResult: { type: 'Bash', output_for_prompt: 'SECRET' }, tool_response: { type: 'SECRET' }, durationMs: 4200, duration_ms: 4200 }));
+    assert.deepEqual([ended.text, ended.ended, ended.tool, ended.ms], ['Ran npm test', true, 'call_1', 4200], 'its end pairs with its start');
+    const failed = await step(grokEvent('PostToolUseFailure', 'post_tool_use_failure', { ...test, error: 'SECRET' }));
+    assert.equal(failed.text, 'npm test failed');
+    const claim = await step(grokEvent('PreToolUse', 'pre_tool_use', tool('tricot__claim_task', { task_id: 't_1', note: 'SECRET' })));
+    assert.deepEqual([claim.text, claim.task], ['Claiming the task', 't_1']);
+    assert.equal((await step(grokEvent('Notification', 'notification', { notificationType: 'permission_prompt', message: 'SECRET' }))).text, 'Waiting for your permission in the terminal');
+    assert.equal((await step(grokEvent('Stop', 'stop', { reason: 'end_turn', stopHookActive: false, lastAssistantMessage: 'SECRET' }))).text, 'Finished its turn');
+    assert.equal(await step(grokEvent('SessionStart', 'session_start', { source: 'startup' })), undefined);
+
+    const before = mtimes([f.script, f.describe, f.hooks]);
+    assert.equal(grok.install(target, { ...setup, name: 'Grok Builder' }).changed, false);
+    assert.deepEqual(mtimes([f.script, f.describe, f.hooks]), before, 'nothing written again');
+    assert.deepEqual(grok.install(target, setup).files, [f.hooks], 'a new name changes only the hook file');
+    assert.equal(json(f.hooks).hooks.PreToolUse.length, 1, 'replaced, not added twice');
+
+    const removed = grok.uninstall(target);
+    assert.equal(removed.changed, true);
+    assert.deepEqual(json(f.hooks), {}, 'a file with no hooks, which Grok reads as none');
+    assert.deepEqual(json(theirFile), theirsGrok, 'their file is not touched');
+    assert.equal(existsSync(f.script) || existsSync(f.describe), false);
+    assert.equal(grok.status(target).state, 'off');
+    assert.equal(grok.uninstall(target).changed, false);
+  });
+
+  it('leaves a hook file of its name it cannot read alone, and says so', () => {
+    const target = freshHome();
+    const f = files(path.join(target.home, '.grok'));
+    write(f.hooks, 'not json {{{');
+    assert.throws(() => grok.install(target, setup), /isn't valid JSON .*so it was left as it is/);
+    assert.equal(readFileSync(f.hooks, 'utf8'), 'not json {{{');
+    assert.equal(existsSync(f.script), false);
+  });
+
+  it('uses GROK_HOME when it is set, and only the user scope', () => {
+    const target = freshHome();
+    const grokHome = path.join(target.home, 'grok-home');
+    grok.install({ ...target, env: { GROK_HOME: grokHome } }, setup);
+    assert.ok(existsSync(path.join(grokHome, 'hooks/tricot-steps.json')));
+    assert.equal(existsSync(path.join(target.home, '.grok')), false);
+    assert.throws(() => grok.preview({ ...target, project: target.home }, setup, 'project'), /user scope, not project/);
+  });
+});
+
 describe('OpenCode steps (~/.config/opencode/plugins/tricot-steps.js)', () => {
   const files = (config: string) => ({
     plugin: path.join(config, 'plugins/tricot-steps.js'),
@@ -680,6 +843,327 @@ describe('OpenCode steps (~/.config/opencode/plugins/tricot-steps.js)', () => {
 
 // From the security audit (#77): the files Tricot writes keep their mode, and
 // it never writes through a link, nor replaces one.
+describe('Goose steps (a plugin in ~/.agents/plugins/tricot-steps)', () => {
+  const files = (home: string) => {
+    const plugin = path.join(home, '.agents/plugins/tricot-steps');
+    return { plugin, hooks: path.join(plugin, 'hooks/hooks.json'), script: path.join(plugin, 'hooks/tricot-steps.mjs'), describe: path.join(plugin, 'hooks/tricot-describe.mjs') };
+  };
+
+  it('shows its hooks, and that Goose waits for them, and writes nothing', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    const preview = goose.preview(target, setup);
+    assert.ok(preview.notes.includes(GOOSE_WAITS), preview.notes.join('\n'));
+    assert.ok(preview.text.includes('add to ~/.agents/plugins/tricot-steps/hooks/hooks.json'), preview.text);
+    assert.deepEqual(
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does]),
+      [
+        ['.agents/plugins/tricot-steps/hooks/tricot-steps.mjs', 'write'],
+        ['.agents/plugins/tricot-steps/hooks/tricot-describe.mjs', 'write'],
+        ['.agents/plugins/tricot-steps/hooks/hooks.json', 'add'],
+      ],
+    );
+    const hooks = JSON.parse(preview.changes[2].lines!).hooks;
+    assert.deepEqual(Object.keys(hooks), ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop']);
+    assert.equal(hooks.PreToolUse[0].matcher, undefined, 'every tool');
+    assert.equal(hooks.PostToolUse[0].matcher, '^(shell|delegate)$');
+    assert.equal(hooks.PostToolUseFailure[0].matcher, '^(shell|delegate)$');
+    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${asWritten(f.script)}" --name Goose --url ${TRICOT_URL}`, timeout: 5 });
+    assert.equal(existsSync(path.join(target.home, '.agents')), false);
+    assert.equal(goose.status(target).state, 'off');
+  });
+
+  it("writes the plugin, once, runs Goose's own events through its script, and takes it out", async () => {
+    const target = freshHome();
+    const f = files(target.home);
+    const done = goose.install(target, { ...setup, name: 'Goose Builder' });
+    assert.equal(done.changed, true);
+    assert.deepEqual(done.files, [f.script, f.describe, f.hooks]);
+    assert.match(done.message, /Goose picks it up in its next session/);
+    assert.equal(json(f.hooks).hooks.Stop[0].hooks[0].command, `node "${asWritten(f.script)}" --name 'Goose Builder' --url ${TRICOT_URL}`);
+    assert.deepEqual(goose.status(target), { state: 'on', where: [f.hooks, f.script, f.describe], sendsAs: 'Goose Builder' });
+    assert.equal(existsSync(path.join(f.plugin, 'plugin.json')), false, 'no manifest: Goose names a plugin that only has hooks after its folder');
+
+    // Goose's own events, through the copied script, as the steps Claude Code's would give.
+    const event = { session_id: 'gs1', working_dir: '/w' };
+    const step = async (more: Record<string, unknown>) => {
+      const ran = await runScript(f.script, { ...event, ...more });
+      assert.equal(ran.code, 0);
+      assert.doesNotMatch(ran.stdout, /SECRET/);
+      return ran.stdout ? JSON.parse(ran.stdout) : undefined;
+    };
+    const test = { tool_name: 'shell', tool_input: { command: 'npm test -- --token SECRET', timeout_secs: 5 }, tool_call_id: 'call-1' };
+    const started = await step({ event: 'PreToolUse', ...test });
+    assert.deepEqual([started.text, started.running, started.tool, started.session], ['Running npm test', true, 'call-1', 'gs1']);
+    const ended = await step({ event: 'PostToolUse', ...test });
+    assert.deepEqual([ended.text, ended.ended, ended.tool], ['Ran npm test', true, 'call-1']);
+    assert.equal((await step({ event: 'PostToolUseFailure', ...test })).text, 'npm test failed');
+    assert.equal((await step({ event: 'PreToolUse', tool_name: 'edit', tool_input: { path: '/w/src/a.ts', before: 'SECRET', after: 'SECRET' } })).text, `Editing ${fromProject('src/a.ts')}`);
+    const claim = await step({ event: 'PreToolUse', tool_name: 'tricot__claim_task', tool_input: { task_id: 't_1', note: 'SECRET' } });
+    assert.deepEqual([claim.text, claim.task], ['Claiming the task', 't_1']);
+    assert.equal((await step({ event: 'Stop', last_assistant_message: 'SECRET' })).text, 'Finished its turn');
+    assert.equal(await step({ event: 'SessionStart' }), undefined);
+
+    const before = mtimes([f.script, f.describe, f.hooks]);
+    assert.equal(goose.install(target, { ...setup, name: 'Goose Builder' }).changed, false);
+    assert.deepEqual(mtimes([f.script, f.describe, f.hooks]), before, 'nothing written again');
+    assert.deepEqual(goose.install(target, setup).files, [f.hooks], 'a new name changes only the hooks');
+    assert.equal(json(f.hooks).hooks.PreToolUse.length, 1, 'replaced, not added twice');
+
+    const removed = goose.uninstall(target);
+    assert.equal(removed.changed, true);
+    assert.deepEqual(json(f.hooks), {}, 'its hooks out, nothing else in the file');
+    assert.equal(existsSync(f.script) || existsSync(f.describe), false);
+    assert.equal(goose.status(target).state, 'off');
+    assert.equal(goose.uninstall(target).changed, false);
+  });
+
+  it("keeps hooks of someone else's in the same plugin file, as they were", () => {
+    const target = freshHome();
+    const f = files(target.home);
+    const mine = { hooks: { PreToolUse: [{ matcher: '^shell$', hooks: [{ type: 'command', command: './lint.sh' }] }] } };
+    write(f.hooks, JSON.stringify(mine));
+    goose.install(target, setup);
+    assert.deepEqual(json(f.hooks).hooks.PreToolUse[0], mine.hooks.PreToolUse[0]);
+    assert.equal(json(f.hooks).hooks.PreToolUse.length, 2);
+    goose.uninstall(target);
+    assert.deepEqual(json(f.hooks), mine);
+  });
+
+  it('leaves a hooks file it cannot read alone, and says so', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.hooks, '{ not json');
+    assert.throws(() => goose.install(target, setup), /hooks\.json isn't valid JSON .*so it was left as it is/);
+    assert.equal(readFileSync(f.hooks, 'utf8'), '{ not json');
+  });
+
+  it('puts the plugin under $GOOSE_PATH_ROOT when that is set, and only the user scope', () => {
+    const target = freshHome();
+    const root = path.join(target.home, 'goose-root');
+    goose.install({ ...target, env: { GOOSE_PATH_ROOT: root } }, setup);
+    assert.ok(existsSync(path.join(root, '.agents/plugins/tricot-steps/hooks/hooks.json')));
+    assert.equal(existsSync(path.join(target.home, '.agents')), false);
+    assert.throws(() => goose.preview({ ...target, project: target.home }, setup, 'project'), /user scope, not project/);
+  });
+});
+
+describe('Hermes steps (shell hooks in ~/.hermes/config.yaml)', () => {
+  const files = (home: string) => ({
+    folder: path.join(home, '.hermes'),
+    config: path.join(home, '.hermes/config.yaml'),
+    script: path.join(home, '.hermes/agent-hooks/tricot-steps.mjs'),
+    describe: path.join(home, '.hermes/agent-hooks/tricot-describe.mjs'),
+    allowlist: path.join(home, '.hermes/shell-hooks-allowlist.json'),
+  });
+  const theirsHermes = '# my Hermes\nmodel:\n  default: anthropic/claude-sonnet-4.6   # the usual\nmcp_servers:\n  github:\n    url: "https://example.com/mcp"\n';
+  const block = (f: ReturnType<typeof files>, name = 'Hermes') => {
+    const command = JSON.stringify(`node "${asWritten(f.script)}" --name ${name} --url ${TRICOT_URL}`);
+    return [
+      HERMES_BEGIN,
+      'hooks:',
+      '  pre_tool_call:',
+      `    - command: ${command}`,
+      '      timeout: 5',
+      '  post_tool_call:',
+      '    - matcher: "terminal|delegate_task"',
+      `      command: ${command}`,
+      '      timeout: 5',
+      '  post_llm_call:',
+      `    - command: ${command}`,
+      '      timeout: 5',
+      '  pre_approval_request:',
+      `    - command: ${command}`,
+      '      timeout: 5',
+      HERMES_END,
+    ].join('\n');
+  };
+
+  it("won't make config.yaml: Hermes makes it, with its defaults, the first time it runs", () => {
+    const target = freshHome();
+    const f = files(target.home);
+    mkdirSync(f.folder);
+    assert.throws(() => hermes.preview(target, setup), /config\.yaml isn't there yet .*so it was left as it is/);
+    assert.throws(() => hermes.install(target, setup), UnreadableSettings);
+    assert.equal(existsSync(f.config), false);
+    assert.equal(existsSync(f.script), false, 'nothing else written either');
+    assert.equal(hermes.status(target).state, 'off');
+  });
+
+  it('shows its hooks as the lines it would add to config.yaml, what to know, and writes nothing', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.config, theirsHermes);
+    const preview = hermes.preview(target, setup);
+    assert.deepEqual(preview.notes, [HERMES_OWN_LINES, HERMES_APPROVAL, HERMES_WAITS]);
+    assert.deepEqual(
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does]),
+      [
+        ['.hermes/agent-hooks/tricot-steps.mjs', 'write'],
+        ['.hermes/agent-hooks/tricot-describe.mjs', 'write'],
+        ['.hermes/config.yaml', 'add'],
+      ],
+    );
+    assert.equal(preview.changes[2].lines, block(f));
+    assert.ok(preview.text.includes('add to ~/.hermes/config.yaml'), preview.text);
+    assert.equal(readFileSync(f.config, 'utf8'), theirsHermes);
+    assert.equal(existsSync(f.script), false);
+    assert.equal(hermes.status(target).state, 'off');
+  });
+
+  it("adds its section after the person's own lines, once, runs Hermes's own events through its script, and takes it out", async () => {
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.config, theirsHermes);
+    const done = hermes.install(target, { ...setup, name: 'Hermes Builder' });
+    assert.equal(done.changed, true);
+    assert.deepEqual(done.files, [f.script, f.describe, f.config]);
+    assert.match(done.message, /^Set up Hermes Agent's steps in .*Hermes asks you to approve it the first time/);
+    assert.equal(readFileSync(f.config, 'utf8'), `${theirsHermes}\n${block(f, "'Hermes Builder'")}\n`, "theirs first, comments and all, then a blank line and Tricot's lines");
+    assert.deepEqual(hermes.status(target), { state: 'on', where: [f.config, f.script, f.describe], sendsAs: 'Hermes Builder', trust: 'Needs your OK in Hermes the first time it runs' });
+
+    // Hermes's own events, through the copied script, as the steps Claude Code's would give.
+    const event = { session_id: 'h1', cwd: '/w', profile: 'default' };
+    const step = async (more: Record<string, unknown>) => {
+      const ran = await runScript(f.script, { ...event, ...more });
+      assert.equal(ran.code, 0);
+      assert.doesNotMatch(ran.stdout, /SECRET/);
+      return ran.stdout ? JSON.parse(ran.stdout) : undefined;
+    };
+    const test = { tool_name: 'terminal', tool_input: { command: 'npm test -- --token SECRET' } };
+    const started = await step({ hook_event_name: 'pre_tool_call', ...test, extra: { tool_call_id: 'tc1', task_id: 'SECRET' } });
+    assert.deepEqual([started.text, started.running, started.tool, started.session], ['Running npm test', true, 'tc1', 'h1']);
+    const ended = await step({ hook_event_name: 'post_tool_call', ...test, extra: { tool_call_id: 'tc1', status: 'ok', duration_ms: 1500, result: 'SECRET' } });
+    assert.deepEqual([ended.text, ended.ended, ended.tool, ended.ms], ['Ran npm test', true, 'tc1', 1500]);
+    assert.equal((await step({ hook_event_name: 'post_tool_call', ...test, extra: { status: 'error', error_message: 'SECRET' } })).text, 'npm test failed');
+    assert.equal((await step({ hook_event_name: 'pre_tool_call', tool_name: 'patch', tool_input: { path: '/w/src/a.ts', old_string: 'SECRET' }, extra: {} })).text, `Editing ${fromProject('src/a.ts')}`);
+    const claim = await step({ hook_event_name: 'pre_tool_call', tool_name: 'mcp__tricot__claim_task', tool_input: { task_id: 't_1', note: 'SECRET' }, extra: {} });
+    assert.deepEqual([claim.text, claim.task], ['Claiming the task', 't_1']);
+    assert.equal((await step({ hook_event_name: 'pre_approval_request', extra: { command: 'SECRET' } })).text, 'Waiting for your permission in the terminal');
+    assert.equal((await step({ hook_event_name: 'post_llm_call', extra: { assistant_response: 'SECRET' } })).text, 'Finished its turn');
+    assert.equal(await step({ hook_event_name: 'on_session_start', extra: {} }), undefined);
+
+    const before = mtimes([f.script, f.describe, f.config]);
+    assert.equal(hermes.install(target, { ...setup, name: 'Hermes Builder' }).changed, false);
+    assert.deepEqual(mtimes([f.script, f.describe, f.config]), before, 'nothing written again');
+    assert.deepEqual(hermes.install(target, setup).files, [f.config], 'a new name changes only the config');
+    assert.equal(readFileSync(f.config, 'utf8'), `${theirsHermes}\n${block(f)}\n`, 'replaced, not added twice');
+
+    const removed = hermes.uninstall(target);
+    assert.equal(removed.changed, true);
+    assert.equal(readFileSync(f.config, 'utf8'), theirsHermes, 'every other line exactly as it was');
+    assert.equal(existsSync(f.script) || existsSync(f.describe), false);
+    assert.equal(hermes.status(target).state, 'off');
+    assert.equal(hermes.uninstall(target).changed, false);
+  });
+
+  it('keeps a file with Windows line ends, or no last line end, tidy', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    const windows = 'model: x\r\nmcp_servers: {}\r\n';
+    write(f.config, windows);
+    hermes.install(target, setup);
+    const text = readFileSync(f.config, 'utf8');
+    assert.ok(text.startsWith(`${windows}\r\n${HERMES_BEGIN}\r\n`), JSON.stringify(text));
+    assert.ok(!/[^\r]\n/.test(text), 'every line end the file had');
+    hermes.uninstall(target);
+    assert.equal(readFileSync(f.config, 'utf8'), windows);
+    write(f.config, 'model: x');
+    hermes.install(target, setup);
+    assert.ok(readFileSync(f.config, 'utf8').startsWith('model: x\n\n# >>>'));
+    hermes.uninstall(target);
+    assert.equal(readFileSync(f.config, 'utf8'), 'model: x\n', 'the last line end it needed stays');
+  });
+
+  it("stops at a hooks section of the person's own, however it is written, and leaves the file as it is", () => {
+    for (const own of ['hooks:\n  pre_tool_call:\n    - command: ./mine.sh\n', 'hooks: {}\n', '"hooks":\n  outbound: []\n']) {
+      const target = freshHome();
+      const f = files(target.home);
+      write(f.config, `model: x\n${own}`);
+      assert.throws(() => hermes.preview(target, setup), /config\.yaml has a hooks: section of its own \(line 2\).*so it was left as it is/, own);
+      assert.throws(() => hermes.install(target, setup), UnreadableSettings);
+      assert.equal(readFileSync(f.config, 'utf8'), `model: x\n${own}`);
+      assert.equal(existsSync(f.script), false, 'nothing else written either');
+    }
+    // A commented-out one, or one nested under another key, is not a section of its own.
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.config, '# hooks:\nplugins:\n  hooks:\n    x: 1\n');
+    assert.equal(hermes.install(target, setup).changed, true);
+  });
+
+  it('says so when its lines are opened but not closed, and changes nothing', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    const broken = `model: x\n${HERMES_BEGIN}\nhooks: {}\n`;
+    write(f.config, broken);
+    assert.throws(() => hermes.install(target, setup), /without its closing one/);
+    assert.throws(() => hermes.uninstall(target), /without its closing one/);
+    assert.equal(hermes.status(target).state, 'partly');
+    assert.match(hermes.status(target).problem!, /without its closing one/);
+    assert.equal(readFileSync(f.config, 'utf8'), broken);
+  });
+
+  it('says whether Hermes has been told yes to each of its hooks, from its allowlist', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.config, theirsHermes);
+    hermes.install(target, setup);
+    const command = `node "${asWritten(f.script)}" --name Hermes --url ${TRICOT_URL}`;
+    const approvals = (events: string[]) => JSON.stringify({ approvals: events.map((event) => ({ event, command })) });
+    write(f.allowlist, approvals(['pre_tool_call', 'post_tool_call']));
+    assert.equal(hermes.status(target).trust, 'Needs your OK in Hermes the first time it runs', 'two of four');
+    write(f.allowlist, approvals(['pre_tool_call', 'post_tool_call', 'post_llm_call', 'pre_approval_request']));
+    assert.equal(hermes.status(target).trust, undefined);
+    write(f.allowlist, 'not json');
+    assert.equal(hermes.status(target).trust, 'Needs your OK in Hermes the first time it runs');
+  });
+
+  it('is partly there when a script or an event is gone, and takes out what is left', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.config, theirsHermes);
+    hermes.install(target, setup);
+    rmSync(f.describe);
+    assert.equal(hermes.status(target).state, 'partly');
+    assert.deepEqual(hermes.status(target).missing, ['~/.hermes/agent-hooks/tricot-describe.mjs']);
+    write(f.config, readFileSync(f.config, 'utf8').replace('  post_llm_call:\n    - command', '  post_llm_call_gone:\n    - command'));
+    assert.ok(hermes.status(target).missing!.includes('the post_llm_call hook in ~/.hermes/config.yaml'));
+    hermes.uninstall(target);
+    assert.equal(readFileSync(f.config, 'utf8'), theirsHermes);
+    assert.equal(hermes.status(target).state, 'off');
+  });
+
+  it('uses $HERMES_HOME when it is set, and only the user scope', () => {
+    const target = freshHome();
+    const profile = path.join(target.home, 'profile');
+    write(path.join(profile, 'config.yaml'), theirsHermes);
+    hermes.install({ ...target, env: { HERMES_HOME: profile } }, setup);
+    assert.ok(existsSync(path.join(profile, 'agent-hooks/tricot-steps.mjs')));
+    assert.ok(readFileSync(path.join(profile, 'config.yaml'), 'utf8').includes(HERMES_BEGIN));
+    assert.equal(existsSync(path.join(target.home, '.hermes')), false);
+    assert.throws(() => hermes.preview({ ...target, project: target.home }, setup, 'project'), /user scope, not project/);
+  });
+
+  it('shows what taking it out would do, line by line', () => {
+    const target = freshHome();
+    const f = files(target.home);
+    write(f.config, theirsHermes);
+    assert.equal(hermes.previewUninstall(target).unchanged, true);
+    hermes.install(target, setup);
+    const preview = hermes.previewUninstall(target);
+    assert.deepEqual(
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does]),
+      [
+        ['.hermes/config.yaml', 'remove'],
+        ['.hermes/agent-hooks/tricot-steps.mjs', 'delete'],
+        ['.hermes/agent-hooks/tricot-describe.mjs', 'delete'],
+      ],
+    );
+    assert.equal(preview.changes[0].lines, block(f));
+  });
+});
+
 describe('the files Tricot writes', { skip: WINDOWS && 'checks POSIX file modes and symlinks' }, () => {
   const modeOf = (file: string) => (statSync(file).mode & 0o777).toString(8);
   const settingsOf = (installer: HookInstaller, home: string) =>
@@ -871,6 +1355,42 @@ describe('the files Tricot writes', { skip: WINDOWS && 'checks POSIX file modes 
     const target = freshHome();
     opencode.install(target, setup);
     for (const file of opencode.status(target).where) assert.equal(modeOf(file), '600', file);
+  });
+
+  it("keeps Hermes's config.yaml at the mode it had, and refuses it, or a script, as a link", () => {
+    const target = freshHome();
+    const config = path.join(target.home, '.hermes/config.yaml');
+    write(config, 'model: x\n');
+    chmodSync(config, 0o600);
+    hermes.install(target, setup);
+    assert.equal(modeOf(config), '600', 'after install');
+    hermes.uninstall(target);
+    assert.equal(modeOf(config), '600', 'after uninstall');
+
+    const dotfiles = path.join(target.home, 'dotfiles/config.yaml');
+    write(dotfiles, 'model: x\n');
+    rmSync(config);
+    symlinkSync(dotfiles, config);
+    assert.throws(() => hermes.preview(target, setup), /config\.yaml is a link \(to .*\).*doesn't write through links/);
+    assert.throws(() => hermes.install(target, setup), UnreadableSettings);
+    assert.equal(readFileSync(dotfiles, 'utf8'), 'model: x\n');
+    assert.ok(lstatSync(config).isSymbolicLink(), 'the link is left as it is');
+
+    const other = freshHome();
+    const zshrc = path.join(other.home, '.zshrc');
+    write(zshrc, 'mine');
+    write(path.join(other.home, '.hermes/config.yaml'), 'model: x\n');
+    mkdirSync(path.join(other.home, '.hermes/agent-hooks'));
+    symlinkSync(zshrc, path.join(other.home, '.hermes/agent-hooks/tricot-steps.mjs'));
+    assert.throws(() => hermes.install(other, setup), /tricot-steps\.mjs is a link/);
+    assert.equal(readFileSync(zshrc, 'utf8'), 'mine');
+    assert.equal(readFileSync(path.join(other.home, '.hermes/config.yaml'), 'utf8'), 'model: x\n');
+  });
+
+  it("makes Goose's plugin files the person's alone (600)", () => {
+    const target = freshHome();
+    goose.install(target, setup);
+    for (const file of goose.status(target).where) assert.equal(modeOf(file), '600', file);
   });
 
   it('never writes through a link, even one put where its temporary file goes', () => {

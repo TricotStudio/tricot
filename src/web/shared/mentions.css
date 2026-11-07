@@ -71,6 +71,156 @@
   color: var(--faint);
 }
 
+/* ---- an agent's model and thinking for one message (T23, T29) ----------------- */
+
+/* On an agent's row, what it does is said beside its state, and the cells
+   (or "its own model") take the row's end. */
+.mention-option.has-tag .mention-state {
+  margin-left: 0;
+  padding-left: 0;
+}
+.mention-tag-cells {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Each cell is a chip in the rule chip's shape (agents.css), its caret
+   saying it opens a list: faint at the agent's rule, in ink once set. */
+.mention-tag-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 112px;
+  height: 24px;
+  padding: 0 5px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--faint);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.mention-tag-cell:hover,
+.mention-tag-cell[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.mention-tag-cell.is-set {
+  color: var(--text);
+  font-weight: 500;
+}
+.mention-tag-cell.is-focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.mention-tag-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mention-tag-cell:is(:hover, [aria-expanded='true']) .assignee-caret {
+  stroke: var(--muted);
+}
+/* A cell's list: its values, the one set ticked, the rule's marked default. */
+.mention-menu.mention-tag-list {
+  width: max-content;
+  min-width: 184px;
+  padding: 4px;
+}
+.mention-tag-list .mention-menu-head {
+  padding: 4px 8px 3px;
+}
+.mention-tag-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 6px 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.mention-tag-choice:hover {
+  background: var(--surface-2);
+}
+.mention-tag-choice.is-chosen {
+  font-weight: 500;
+}
+.mention-tag-choice-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--faint);
+}
+.mention-tag-check {
+  flex: none;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--text);
+}
+.mention-tag-choice-note + .mention-tag-check {
+  margin-left: 0;
+}
+.mention-tag-check .icon {
+  width: 14px;
+  height: 14px;
+}
+.mention-tag-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+/* One line whatever it says (a long tag is cut), so the rows above keep
+   their place under the mouse as it changes. */
+.mention-tag-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  padding: 7px 8px 3px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.mention-tag-foot > span {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+}
+.mention-tag-foot > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+}
+.mention-tag-foot kbd {
+  font-family: var(--font);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  margin-right: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.mention-tag-foot code {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--exploring-ink);
+  background: var(--exploring-bg);
+}
+
 /* ---- the "#" list: the board's tasks, then its decisions ------------------ */
 
 /* About eight rows, then it scrolls under its group headings. */

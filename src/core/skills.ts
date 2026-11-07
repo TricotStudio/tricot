@@ -15,6 +15,7 @@
 // own wins for that agent, and the Tricot one is called "/tricot:name".
 
 import type { Element, ElementContent, Root } from 'hast';
+import type { AgentRule } from './agentRules';
 import { clip, samePerson } from './format';
 import { leadingMentions } from './mentions';
 import { LIMITS } from './schemas/limits';
@@ -110,7 +111,9 @@ const TOKEN = new RegExp(`^/(${SKILL_NAME.source.slice(1, -1)})(?=\\s|$)`);
 // would ask them all). `names` are the people and agents a mention can name
 // here; `lists` what each can be asked (withTricot).
 export function readSkillRequest(text: string, lists: SkillList[], names: string[]): SkillMatch | undefined {
-  const { names: opening, rest } = leadingMentions(text, [...names, ...lists.map((l) => l.agent)]);
+  // An agent's mention may carry a tag ("@Claude:opus /review", agentTags.ts), which says who it's for too.
+  const agents = lists.map((l) => l.agent);
+  const { names: opening, rest } = leadingMentions(text, [...names, ...agents], agents);
   const token = TOKEN.exec(rest);
   if (!token) return undefined;
   const named = opening.filter((n) => lists.some((l) => samePerson(l.agent, n)));
@@ -159,6 +162,8 @@ export interface AgentSeen {
   lastSeen: string;
   state: 'listening' | 'working' | 'away';
   board?: { id: string; title: string };
+  tool?: string; // which agent it is, the registry's id, from its MCP client
+  runsOn?: AgentRule; // what Tricot's terminal started it on (core/agentRules.ts); none when unknown
 }
 
 export interface AgentSkills {
@@ -171,6 +176,8 @@ export interface AgentSkills {
   // Listening or working now: a request reaches it at once. Otherwise it
   // "runs next time <agent> connects".
   present: boolean;
+  tool?: string; // which agent it is (the registry's id), when its session said
+  runsOn?: AgentRule; // the model and thinking level Tricot started it on, when it did
 }
 
 const STATE_ORDER: Record<SkillAgentState, number> = { listening: 0, working: 1, idle: 2, absent: 3 };
@@ -192,6 +199,8 @@ export function agentsWithSkills(lists: SkillList[], seen: AgentSeen[], tricot: 
       ...(here ? { lastSeen: here.lastSeen } : {}),
       ...(here?.board ? { board: here.board } : {}),
       present: state === 'listening' || state === 'working',
+      ...(here?.tool && { tool: here.tool }),
+      ...(here?.runsOn && { runsOn: here.runsOn }),
     };
   });
   return agents.sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.name.localeCompare(b.name));

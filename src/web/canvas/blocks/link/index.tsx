@@ -324,6 +324,7 @@ function LinkOverlay({ block, name, pinId, onClose }: OverlayProps<LinkBlock>) {
 
 export const link: WebBlockKind<LinkBlock> = {
   type: 'link',
+  copyText: (block) => block.url,
   Body: () => null, // drawn whole by its card
   Card: ({ block, editing, setEditing, badges }: CardProps<LinkBlock>) => (
     <LinkCard block={block} editing={editing} setEditing={setEditing} badges={badges} />

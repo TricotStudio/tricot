@@ -124,7 +124,10 @@ export interface CommandHookSpec {
   // Its folder for a scope (~/.claude, <project>/.claude, ~/.codex): the
   // settings file is in it and the script goes in its hooks/.
   folder(target: HookTarget, scope: HookScope): string;
-  settings: string; // the hooks file in that folder: settings.json, hooks.json
+  settings: string; // the hooks file in that folder: settings.json, hooks.json (a path, for one in a folder of its own)
+  // The agent's own folder, whose being there says it is on this machine, when
+  // `folder` is one of Tricot's (Goose's plugin).
+  detects?(target: HookTarget): string;
   // The command the hooks run, given the script's path.
   run(script: string, setup: HookSetup & { name: string }, scope: HookScope): string;
   // Tricot's entries, per event, running that command.
@@ -263,7 +266,7 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
     ...(spec.approvals && { approvals: true }),
 
     detect(target) {
-      const folder = spec.folder(target, 'user');
+      const folder = spec.detects?.(target) ?? spec.folder(target, 'user');
       const command = which(spec.command, target.env);
       const there = isFolder(folder);
       return { found: there || Boolean(command), ...(there && { folder }), ...(command && { command }) };

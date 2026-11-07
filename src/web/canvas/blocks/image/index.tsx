@@ -212,6 +212,7 @@ async function addImages(files: File[], context: AddContext, at?: Point) {
 
 export const image: WebBlockKind<ImageBlock> = {
   type: 'image',
+  copyText: (block) => block.caption,
   Body: ImageBody,
   Tools: ImageTools,
   still: true,

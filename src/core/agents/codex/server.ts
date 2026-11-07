@@ -14,6 +14,9 @@ export const server: AgentServerHalf = {
   // (codex-rs/codex-mcp/src/rmcp_client.rs, DEFAULT_TOOL_TIMEOUT).
   mcpClient: { clientName: 'codex-mcp-client', callLimitSeconds: 300 },
   session: codexSession,
+  // `--model`, and the reasoning effort as an override of its config key, a
+  // TOML string (codex --help: -c parses the value as TOML).
+  ruleFlags: ({ model, effort }) => [...(model ? ['--model', model] : []), ...(effort ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`] : [])],
   // Codex takes hooks from its settings alone, so its come from live steps, once.
   sessionHooks({ target }) {
     return {

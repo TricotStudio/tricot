@@ -363,10 +363,34 @@ describe('tricot command', () => {
       assert.doesNotMatch(said(), /token|Bearer/i);
     });
 
+    it("prints Goose's and Hermes's YAML entries with the token read from the environment, never written into them", async () => {
+      const { server } = await run('--no-open', '--host', '0.0.0.0');
+      const token = server!.token!;
+      out.length = 0;
+      await run('connect', '--print', 'goose');
+      assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
+      assert.match(said(), /^ {4}env_keys:\n {6}- TRICOT_TOKEN\n {4}headers:\n {6}Authorization: "Bearer \$\{TRICOT_TOKEN\}"$/m);
+      assert.equal(said().split(token).length, 2, 'the token only in the export line');
+
+      out.length = 0;
+      await run('connect', '--print', 'hermes');
+      assert.match(said(), new RegExp(`export TRICOT_TOKEN=${token}`));
+      assert.match(said(), /^ {4}headers:\n {6}Authorization: "Bearer \$\{TRICOT_TOKEN\}"$/m);
+      assert.match(said(), /The connection fails, and says so, while TRICOT_TOKEN is not set where Hermes reads it/);
+      assert.equal(said().split(token).length, 2, 'the token only in the export line');
+    });
+
     it('prints the Gemini CLI command, for every session, named and quoted', async () => {
       assert.equal((await run('connect', '--print', 'gemini')).exitCode, 0);
       assert.match(said(), new RegExp(`^  gemini mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Gemini"$`, 'm'));
       assert.match(said(), /--trust/);
+      assert.doesNotMatch(said(), /token|Bearer/i);
+    });
+
+    it('prints the Grok Build command, for every session, named and quoted', async () => {
+      assert.equal((await run('connect', '--print', 'grok')).exitCode, 0);
+      assert.match(said(), new RegExp(`^  grok mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Grok"$`, 'm'));
+      assert.match(said(), /--scope project/);
       assert.doesNotMatch(said(), /token|Bearer/i);
     });
 
@@ -381,10 +405,43 @@ describe('tricot command', () => {
       assert.doesNotMatch(said(), /token|Bearer/i);
     });
 
+    it("prints Goose's config.yaml entry, named, with what to do for one session and why Tricot runs nothing", async () => {
+      assert.equal((await run('connect', '--print', 'goose', '--name', 'Goose two', '--board', 'plan')).exitCode, 0);
+      assert.match(said(), /Add this under "extensions" in ~\/\.config\/goose\/config\.yaml .*%APPDATA%\\Block\\goose\\config\\config\.yaml/);
+      const entry = [
+        'extensions:',
+        '  tricot:',
+        '    name: tricot',
+        '    type: streamable_http',
+        `    uri: "http://127.0.0.1:${port}/mcp?agent=Goose%20two"`,
+        '    enabled: true',
+        '    timeout: 300',
+      ].join('\n');
+      assert.ok(said().includes(`\n${entry}\n`), said());
+      assert.match(said(), new RegExp(`^For one session, writing nothing, Goose takes the address as it is: goose session --with-streamable-http-extension "http://127.0.0.1:${port}/mcp\\?agent=Goose%20two"$`, 'm'));
+      assert.match(said(), /Use the Tricot board plan/);
+    });
+
+    it("prints Hermes's config.yaml entry, named, and says why it has no command", async () => {
+      assert.equal((await run('connect', '--print', 'hermes', '--name', 'Hermes two')).exitCode, 0);
+      assert.match(said(), /Add this under "mcp_servers" in ~\/\.hermes\/config\.yaml/);
+      const entry = ['mcp_servers:', '  tricot:', `    url: "http://127.0.0.1:${port}/mcp?agent=Hermes%20two"`, '    timeout: 300'].join('\n');
+      assert.ok(said().includes(`\n${entry}\n`), said());
+      assert.match(said(), /`hermes mcp add` connects and then asks questions/);
+      assert.match(said(), /\/reload-mcp/);
+    });
+
+    it('lists Goose and Hermes among the agents to connect, as files to edit', async () => {
+      await run('connect', '--print');
+      assert.match(said(), /Goose: tricot connect goose/);
+      assert.match(said(), /Hermes Agent: tricot connect hermes/);
+    });
+
     it('lists Gemini CLI and OpenCode among the agents to connect', async () => {
       await run('connect', '--print');
       assert.match(said(), new RegExp(`gemini mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Gemini"`));
       assert.match(said(), /OpenCode: tricot connect opencode/);
+      assert.match(said(), new RegExp(`grok mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Grok"`));
     });
 
     it('lists Pi and OMP among the agents to connect', async () => {

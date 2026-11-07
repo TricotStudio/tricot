@@ -1,15 +1,23 @@
 // What the person types, sorted between Tricot and the agent that shows
 // (host.ts acts on it). Everything goes to the agent, byte for byte, except:
 //
-//   the switch key (Ctrl+\)                       next tab, at once
+//   the switch key (Ctrl+\)                       next tab, at once, round the
+//                                                 strip from the last to the first
 //   … then, within a second:  0     the Tricot tab (T192), when there is one
 //                             1–9   that agent
 //                             q     quit: every agent is closed
 //                             [     back, and scroll that agent's history
-//                             the switch key again   back, and send it the key
+//                             the switch key again   the next tab again, and the
+//                                   second starts over: pressed several times,
+//                                   it goes round
 //   Ctrl+Z                    nothing: an agent stopped here couldn't be brought back
-//   a click on the strip      that agent (when the agent showing has the mouse on)
+//   a click on the strip      that tab, from any tab (T30): the terminal reports
+//                             the mouse in every one (modes.ts)
+//   the wheel                 where the agent showing didn't ask for the mouse: the
+//                             host scrolls (its history, the chat, or ↑ ↓ for an
+//                             agent drawing its own screen)
 //
+// The switch key is Tricot's alone: it never reaches an agent, in any form.
 // Each of these keys counts in whichever form the real terminal sends it
 // (keyboard.ts): as its byte, in the kitty keyboard protocol's form once the
 // agent showing has asked for that (Ctrl+\ as CSI 92;5u), or in
@@ -18,12 +26,24 @@
 // release, or a modifier pressed alone, leaves the second key to come.
 // Pasted text (between the bracketed-paste marks) goes to the agent whole,
 // switch key and all. A mark or a key split between two reads is waited for
-// briefly.
+// briefly, and so is an Esc that ends a read: it may begin an arrow or
+// Alt+key whose rest comes in the next. Esc pressed alone goes on, once, when
+// the wait is over.
 // In the Tricot tab, what would go to an agent goes to the tab (tabKeys.ts
 // reads it), the same way.
 // In the scroll view, the arrows, Page Up and Down, Home and End and the
 // wheel scroll; q or Esc goes back to the agent.
+//
+// The mouse: a press on the strip is Tricot's, and so are its drag and its
+// release, wherever they land; the left button picks the tab under it.
+// Above the strip, the agent showing gets what it asked for and nothing more,
+// in the encoding it asked for (mouse.ts), and the wheel it didn't ask for
+// goes to the host; the rest goes nowhere. A drag the agent began that ends
+// on the strip reaches it at its last row, as a terminal keeps a drag that
+// leaves its window at the edge. In the scroll view, no report reaches the
+// agent, and the wheel scrolls.
 import { isModifierKey, legacyOf, readKey, type KeyEvent } from './keyboard';
+import { encodeMouse, forTracking, isLeftPress, isPress, isWheel, NO_MOUSE, readMouse, wheelDown, wheelUp, type MouseReport, type MouseWanted } from './mouse';
 
 export interface SwitchKey {
   byte: number; // 0x1c
@@ -36,12 +56,12 @@ export const SWITCH_KEY: SwitchKey = { byte: 0x1c, label: 'Ctrl+\\' };
 
 export type HostAction =
   | { kind: 'send'; data: Buffer } // to the agent showing, or the Tricot tab
-  | { kind: 'next' }
+  | { kind: 'next'; again: boolean } // again: the switch key came within the second of the one before
   | { kind: 'pick'; index: number } // an agent, from 0; -1 the Tricot tab
-  | { kind: 'literal'; data: Buffer } // the switch key twice: the second, as it came
   | { kind: 'quit' }
   | { kind: 'scroll-view' }
   | { kind: 'click'; column: number } // on the strip, from 1
+  | { kind: 'wheel'; up: boolean } // a turn of it, not for the agent showing
   | { kind: 'suspend' } // Ctrl+Z
   | { kind: 'scroll'; lines: number } // up when positive
   | { kind: 'scroll-page'; pages: number }
@@ -53,6 +73,7 @@ export interface RouterOptions {
   tricotTab?: boolean; // there is a Tricot tab: the switch key then 0 picks it
   stripRow(): number; // the strip's row, from 1
   scrolling(): boolean;
+  mouse?(): MouseWanted; // how the agent showing asked for the mouse: none in the Tricot tab, or without one
   emit(action: HostAction): void;
   now?(): number;
   armMs?: number; // how long a second key may follow the switch key
@@ -67,9 +88,11 @@ export const ARM_MS = 1_000;
 const HOLD_MS = 30;
 
 // The start of something the router must see whole, cut off at the end of a
-// read: a paste mark, a mouse report, a key in the protocols' forms.
+// read: a paste mark, a mouse report, a key in the protocols' forms, an arrow
+// or Alt+key. An Esc alone counts, as it may begin any of them (the paste
+// mark's test takes it).
 const cutShort = (rest: string): boolean =>
-  rest.length >= 2 && rest.length < 40 && (PASTE_START.startsWith(rest) || /^\x1b\[<[\d;]*$/.test(rest) || /^\x1b\[M[\s\S]{0,2}$/.test(rest) || /^\x1b\[[\d;:]*$/.test(rest));
+  rest.length < 40 && (PASTE_START.startsWith(rest) || /^\x1b\[<[\d;]*$/.test(rest) || /^\x1b\[M[\s\S]{0,2}$/.test(rest) || /^\x1b\[[\d;:]*$/.test(rest));
 
 const SCROLL_KEYS: [string, HostAction][] = [
   [`${ESC}[5~`, { kind: 'scroll-page', pages: 1 }],
@@ -98,6 +121,8 @@ export class InputRouter {
   private armedUntil = 0;
   private inPaste = false;
   private readonly held = new Set<number>(); // keys whose press was taken here: their repeats and release are too
+  private pressed = 0; // the mouse button last pressed, for a release in the first encoding, which doesn't say
+  private mouseHeld: 'strip' | 'above' | undefined; // where the button held down was pressed
   private readonly now: () => number;
 
   constructor(private readonly options: RouterOptions) {
@@ -172,18 +197,10 @@ export class InputRouter {
         i += PASTE_START.length;
         continue;
       }
-      const sgr = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/.exec(rest);
-      if (sgr) {
-        this.mouse(Number(sgr[1]), Number(sgr[2]), Number(sgr[3]), sgr[4] === 'M', sgr[0], act, (raw) => (out += raw));
-        i += sgr[0].length;
-        continue;
-      }
-      if (rest.startsWith(`${ESC}[M`) && rest.length >= 6) {
-        // The legacy report: three bytes, each 32 more than its number; 3 is a release.
-        const raw = rest.slice(0, 6);
-        const button = raw.charCodeAt(3) - 32;
-        this.mouse(button, raw.charCodeAt(4) - 32, raw.charCodeAt(5) - 32, (button & 3) !== 3, raw, act, (r) => (out += r));
-        i += 6;
+      const report = readMouse(rest, this.pressed);
+      if (report) {
+        this.mouse(report.report, act, (bytes) => (out += bytes));
+        i += report.raw.length;
         continue;
       }
       const c = s.charCodeAt(i);
@@ -208,7 +225,7 @@ export class InputRouter {
         continue;
       }
       if (c === key) {
-        this.switchKey(s[i], act);
+        this.switchKey(act);
         i++;
         continue;
       }
@@ -230,16 +247,12 @@ export class InputRouter {
     flush();
   }
 
-  // The switch key: the next tab at once, a second key then picks; twice, the
-  // key itself goes to the agent, as it came.
-  private switchKey(raw: string, act: (action: HostAction) => void): void {
-    if (this.armed) {
-      this.armedUntil = 0;
-      act({ kind: 'literal', data: Buffer.from(raw, 'latin1') });
-      return;
-    }
+  // The switch key: the next tab at once, a second key then picks; pressed
+  // again within the second, it goes on to the next tab and the second starts over.
+  private switchKey(act: (action: HostAction) => void): void {
+    const again = this.armed;
     this.armedUntil = this.now() + (this.options.armMs ?? ARM_MS);
-    act({ kind: 'next' });
+    act({ kind: 'next', again });
   }
 
   // The key after the switch key, as what it types: whether it was one that acts.
@@ -274,7 +287,7 @@ export class InputRouter {
       return;
     }
     if (switchKey) {
-      this.switchKey(e.raw, act);
+      this.switchKey(act);
       return;
     }
     if (e.event === 'release' || isModifierKey(e)) return pass(e.raw);
@@ -290,17 +303,33 @@ export class InputRouter {
     pass(e.raw);
   }
 
-  // A mouse report: on the strip, a press of the left button picks an agent
-  // and nothing reaches the agent; in the scroll view, the wheel scrolls.
-  private mouse(button: number, column: number, row: number, press: boolean, raw: string, act: (action: HostAction) => void, pass: (raw: string) => void): void {
-    if (row === this.options.stripRow()) {
-      if (press && (button & ~(4 | 8 | 16)) === 0) act({ kind: 'click', column });
+  // A mouse report (the header says where each goes); `pass` sends bytes on to the agent.
+  private mouse(report: MouseReport, act: (action: HostAction) => void, pass: (bytes: string) => void): void {
+    const strip = this.options.stripRow();
+    const press = isPress(report);
+    if (press) this.pressed = report.code;
+    if (this.mouseHeld === 'strip' && !press && !isWheel(report)) {
+      if (report.release) this.mouseHeld = undefined;
       return;
     }
-    if (this.options.scrolling()) {
-      if (button & 64) act({ kind: 'scroll', lines: button & 1 ? -3 : 3 });
-      return;
+    let r = report;
+    if (r.row >= strip) {
+      if (press) {
+        this.mouseHeld = 'strip';
+        if (isLeftPress(r)) act({ kind: 'click', column: r.column });
+        return;
+      }
+      if (this.mouseHeld !== 'above' || isWheel(r)) return;
+      r = { ...r, row: strip - 1 };
     }
-    pass(raw);
+    if (press) this.mouseHeld = 'above';
+    else if (r.release) this.mouseHeld = undefined;
+    const wheel = wheelUp(r) || wheelDown(r) ? { kind: 'wheel' as const, up: wheelUp(r) } : undefined;
+    const wanted = this.options.scrolling() ? NO_MOUSE : (this.options.mouse?.() ?? NO_MOUSE);
+    const kept = forTracking(r, wanted.tracking);
+    if (kept) {
+      const bytes = encodeMouse(kept, wanted.encoding);
+      if (bytes) pass(bytes);
+    } else if (wheel) act(wheel);
   }
 }

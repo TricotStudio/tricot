@@ -435,6 +435,8 @@ describe('POST /api/agents/:name/steps', () => {
     ({ server, base } = await listen(createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' })));
     boardId = store.createBoard({ title: 'Hooks' }, sam).id;
     [{ id: taskId }, { id: otherTaskId }] = store.planTasks(boardId, [{ title: 'Show steps' }, { title: 'Other' }], sam);
+    store.updateTask(taskId, { status: 'todo' }, sam);
+    store.updateTask(otherTaskId, { status: 'todo' }, sam);
     client = new Client({ name: 'test-client', version: '1.0.0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp?agent=Claude`)));
     await client.callTool({ name: 'get_task', arguments: { task_id: taskId } });
@@ -597,6 +599,7 @@ describe("a comment's step ends as the comment lands (MCP and the steps route)",
     ({ server, base } = await listen(createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' })));
     boardId = store.createBoard({ title: 'Answers' }, sam).id;
     [{ id: taskId }] = store.planTasks(boardId, [{ title: 'Retry failed payments' }], sam);
+    store.updateTask(taskId, { status: 'todo' }, sam);
     client = new Client({ name: 'test-client', version: '1.0.0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp?agent=Claude`)));
     await client.callTool({ name: 'get_task', arguments: { task_id: taskId } });

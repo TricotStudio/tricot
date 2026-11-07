@@ -54,12 +54,18 @@ describe('Live steps, for the person', () => {
         ['omp', false, 'off', 'Not installed on this machine'],
         ['gemini', false, 'off', 'Not installed on this machine'],
         ['opencode', false, 'off', 'Not installed on this machine'],
+        ['goose', false, 'off', 'Not installed on this machine'],
+        ['hermes', false, 'off', 'Not installed on this machine'],
+        ['grok', false, 'off', 'Not installed on this machine'],
       ],
     );
+    assert.equal(byId(agents, 'grok').where, '~/.grok/hooks/tricot-steps.json');
     assert.equal(byId(agents, 'claude').where, '~/.claude/settings.json');
     assert.equal(byId(agents, 'pi').where, '~/.pi/agent/extensions/tricot-steps/');
     assert.equal(byId(agents, 'gemini').where, '~/.gemini/settings.json');
     assert.equal(byId(agents, 'opencode').where, '~/.config/opencode/plugins/tricot-steps.js');
+    assert.equal(byId(agents, 'goose').where, '~/.agents/plugins/tricot-steps/hooks/hooks.json');
+    assert.equal(byId(agents, 'hermes').where, '~/.hermes/config.yaml');
 
     applyLiveSteps(ctx, planLiveSteps(ctx, 'claude', 'on'));
     applyLiveSteps(ctx, planLiveSteps(ctx, 'codex', 'on'));
@@ -83,6 +89,8 @@ describe('Live steps, for the person', () => {
     assert.equal(found('Claudette'), undefined);
     assert.equal(found('Gemini'), 'gemini');
     assert.equal(found('OpenCode'), 'opencode');
+    assert.equal(found('Goose'), 'goose');
+    assert.equal(found('Hermes'), 'hermes');
     assert.equal(found('Cursor'), undefined);
   });
 
@@ -107,6 +115,58 @@ describe('Live steps, for the person', () => {
     agents = liveStepsAgents(ctx);
     assert.deepEqual([byId(agents, 'gemini').state, byId(agents, 'opencode').state], ['off', 'off']);
     assert.equal(existsSync(path.join(ctx.home, '.config/opencode/tricot-steps')), false);
+  });
+
+  it('turns Goose and Hermes on and off like the others, each in its own words', () => {
+    const ctx = homeWith('.config/goose', '.hermes');
+    const config = path.join(ctx.home, '.hermes/config.yaml');
+    writeFileSync(config, '# mine\nmodel: x\n');
+    let agents = liveStepsAgents(ctx);
+    assert.deepEqual([byId(agents, 'goose').found, byId(agents, 'hermes').found], [true, true]);
+    const goose = planLiveSteps(ctx, 'goose', 'on');
+    assert.equal(goose.sendsAs, 'Goose');
+    assert.equal(compactFiles(goose.files), '~/.agents/plugins/tricot-steps/hooks/{tricot-steps.mjs, tricot-describe.mjs, hooks.json}');
+    assert.match(goose.notes[0], /Goose waits for each hook/);
+    const hermes = planLiveSteps(ctx, 'hermes', 'on');
+    assert.equal(hermes.sendsAs, 'Hermes');
+    assert.equal(compactFiles(hermes.files), '~/.hermes/agent-hooks/{tricot-steps.mjs, tricot-describe.mjs}, ~/.hermes/config.yaml');
+    assert.match(hermes.notes.join('\n'), /asks you to approve each hook the first time/);
+    assert.match(hermes.text, /add to ~\/\.hermes\/config\.yaml .*\n# >>> Tricot live steps/);
+    assert.match(applyLiveSteps(ctx, goose).summary, /Goose picks it up in its next session/);
+    assert.match(applyLiveSteps(ctx, hermes).summary, /Hermes asks you to approve it the first time/);
+    agents = liveStepsAgents(ctx);
+    assert.equal(liveStepsLabel(byId(agents, 'goose')), 'On · Goose, user hooks');
+    assert.equal(liveStepsLabel(byId(agents, 'hermes')), 'On · Hermes Agent, user settings');
+    assert.equal(byId(agents, 'goose').trust, undefined, 'its plugins need no OK');
+    assert.equal(byId(agents, 'hermes').trust, 'Needs your OK in Hermes the first time it runs');
+    assert.equal(planLiveSteps(ctx, 'hermes', 'off').files[0].does, 'remove');
+    for (const id of ['goose', 'hermes']) applyLiveSteps(ctx, planLiveSteps(ctx, id, 'off'));
+    agents = liveStepsAgents(ctx);
+    assert.deepEqual([byId(agents, 'goose').state, byId(agents, 'hermes').state], ['off', 'off']);
+    assert.equal(readFileSync(config, 'utf8'), '# mine\nmodel: x\n', 'every line of config.yaml as it was');
+  });
+
+  it('refuses to turn Hermes on in a config.yaml with a hooks section of its own, and says so', () => {
+    const ctx = homeWith('.hermes');
+    writeFileSync(path.join(ctx.home, '.hermes/config.yaml'), 'hooks:\n  outbound: []\n');
+    assert.throws(() => planLiveSteps(ctx, 'hermes', 'on'), /has a hooks: section of its own/);
+    assert.equal(byId(liveStepsAgents(ctx), 'hermes').state, 'off');
+  });
+
+  it('turns Grok Build on and off in a hook file of its own, in its own words', () => {
+    const ctx = homeWith('.grok');
+    let agents = liveStepsAgents(ctx);
+    assert.equal(byId(agents, 'grok').found, true);
+    const grok = planLiveSteps(ctx, 'grok', 'on');
+    assert.equal(grok.sendsAs, 'Grok');
+    assert.equal(compactFiles(grok.files), '~/.grok/hooks/{tricot-steps.mjs, tricot-describe.mjs, tricot-steps.json}');
+    assert.match(grok.notes[0], /waits for each hook/);
+    assert.match(applyLiveSteps(ctx, grok).summary, /Grok Build picks it up in its next session/);
+    agents = liveStepsAgents(ctx);
+    assert.equal(liveStepsLabel(byId(agents, 'grok')), 'On · Grok Build, user hooks');
+    assert.equal(byId(agents, 'grok').trust, undefined, 'its user hooks need no trust');
+    applyLiveSteps(ctx, planLiveSteps(ctx, 'grok', 'off'));
+    assert.equal(byId(liveStepsAgents(ctx), 'grok').state, 'off');
   });
 
   it('shows the exact files and lines before writing, and writes what was shown', () => {
@@ -271,6 +331,9 @@ describe('The live steps routes', () => {
         ['omp', false, 'off'],
         ['gemini', false, 'off'],
         ['opencode', false, 'off'],
+        ['goose', false, 'off'],
+        ['hermes', false, 'off'],
+        ['grok', false, 'off'],
       ],
     );
   });

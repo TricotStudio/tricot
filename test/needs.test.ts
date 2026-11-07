@@ -281,7 +281,7 @@ describe('What needs you across boards', () => {
   it('flags replies you have not seen, a first look among them', () => {
     const b = store.createBoard({ title: 'Roadmap' }, sam).id;
     store.presentAgents = () => ['Claude'];
-    const [card] = store.planTasks(b, [{ title: 'Redesign the homepage' }], sam);
+    const [card] = store.planTasks(b, [{ title: 'Redesign the homepage', assignee: 'Claude' }], sam);
     const before = store.getBoard(b).seq;
     store.takeFirstLook(card.id, claude);
     store.addTaskComment(card.id, 'Feasible: one endpoint and a new Home. Mock on the canvas.', claude);
@@ -444,7 +444,8 @@ describe('GET /api/needs', () => {
 
   it('reads what the person has seen, and refuses what it cannot read', async () => {
     const board = store.createBoard({ title: 'Seen' }, sam);
-    const [task] = store.planTasks(board.id, [{ title: 'Card' }], sam);
+    store.presentAgents = () => ['Claude'];
+    const [task] = store.planTasks(board.id, [{ title: 'Card', assignee: 'Claude' }], sam);
     const before = store.getBoard(board.id).seq;
     store.addTaskComment(task.id, 'Looks feasible.', claude);
     const unseen = await get(`name=Sam&seen=${encodeURIComponent(JSON.stringify({ [boardKey(board)]: before }))}`);

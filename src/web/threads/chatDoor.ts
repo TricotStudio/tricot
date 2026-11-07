@@ -1,4 +1,4 @@
-import type { Thread, ThreadDoor } from '../../core/types';
+import type { ThreadDoor } from '../../core/types';
 import type { BoardViewName } from '../shared/pages';
 
 // What the chat bar says and does on each tab (chatBar.tsx, threads.tsx):
@@ -23,25 +23,6 @@ export const BAR_PLACEHOLDERS: Record<ThreadDoor, string> = {
   threads: 'What do you want to work through?',
 };
 
-// The agent a reply in a thread goes to, to name it in the bar: the one its
-// lens routes to, else the latest agent who wrote in it, else the one agent
-// listening. None when that isn't one agent.
-export function replyingTo(thread: Pick<Thread, 'lens' | 'messages'>, listening: string[]): string | undefined {
-  if (thread.lens?.agent) return thread.lens.agent;
-  const latest = thread.messages.findLast((m) => m.author.kind === 'agent');
-  if (latest) return latest.author.name;
-  return listening.length === 1 ? listening[0] : undefined;
-}
-
-export function replyPlaceholder(thread: Pick<Thread, 'lens' | 'messages'>, listening: string[]): string {
-  const agent = replyingTo(thread, listening);
-  return agent ? `Reply to ${agent}…` : 'Reply…';
-}
-
-// Who the bar says is listening: the agents on the board now, by name, or
-// how many when there are more than two.
-export function listeningLabel(names: string[]): string | undefined {
-  if (names.length === 0) return undefined;
-  if (names.length > 2) return `${names.length} agents`;
-  return names.join(' and ');
-}
+// What the bar says about who is listening and who a reply goes to is the
+// terminal's too, so it is core/delivery.ts's.
+export { listeningLabel, replyingTo, replyPlaceholder } from '../../core/delivery';

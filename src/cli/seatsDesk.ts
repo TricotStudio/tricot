@@ -4,13 +4,14 @@
 // - The terminal where `tricot` runs the board in the foreground registers
 //   with it as a Tricot terminal, as `tricot update` does, and asks when a
 //   browser wants to act for the person: "A browser wants to act for you
-//   (Chrome on macOS, code 4271). Allow? [y/N]", one key, y allowing it, n or
-//   Enter denying it (serverTerminal). It answers the very first browser,
+//   (Chrome on macOS, code 4271). Allow?", with Yes and No beside it and No
+//   marked: y allows it, n or Enter denies it, and ←→ move the mark first
+//   (serverTerminal, confirm.ts). It answers the very first browser,
 //   and, having let that one in, is let in with it until it exits; later ones
 //   once it is a seat. It reads keys only while it asks, and Ctrl+C still
 //   stops Tricot.
 // - `tricot access`, for a board running in the background or elsewhere:
-//   the person's browsers and terminals, and those waiting, each asked y/N
+//   the person's browsers and terminals, and those waiting, each asked Yes or No
 //   (accessCommand). It answers the first browser as the terminal above does;
 //   later ones only once it is let in from a browser already in.
 // - `tricot access revoke`, while Tricot is stopped: every browser and
@@ -23,38 +24,22 @@ import { admissionWords, type AdmissionView } from '../core/seats';
 import { authHeaders, HOST_KEY_HEADER } from '../server/access';
 import { pidAlive, readLock, findRunning } from '../platform/lock';
 import { Seats, seatsFile } from '../server/seats';
-import type { Key, TerminalKeys } from './boardPicker';
+import type { TerminalKeys } from './boardPicker';
 import { personOn } from './chooseBoard';
+import { confirm, type Confirmed } from './confirm';
 import { holdAnswers, type Answers } from './switcher/answers';
 import { ago } from './switcher/tabView';
 
 // ---- one question, one key ------------------------------------------------------------
 
-export type Answered = 'yes' | 'no' | 'left' | 'interrupt';
+export type Answered = Confirmed;
 
-// Asks, and reads one key while it waits, in raw mode: y is yes, n or Enter
-// no, Ctrl+C stops Tricot (raw mode doesn't turn it into a signal); `left`
-// when what it asked about went away meanwhile. The key is echoed.
+// Asks as the Yes / No pair (confirm.ts), No marked, and reads keys only while
+// it waits, in raw mode: y is yes, n or Enter no, ←→ and Enter choose; Ctrl+C
+// stops Tricot (raw mode doesn't turn it into a signal); `left` when what it
+// asked about went away meanwhile. The answer stays on the line.
 export function askKey(keys: TerminalKeys, question: string, cancelled?: AbortSignal): Promise<Answered> {
-  return new Promise((resolve) => {
-    keys.write(question);
-    let done = false;
-    const finish = (answer: Answered, echo: string) => {
-      if (done) return;
-      done = true;
-      stop();
-      keys.write(`${echo}\n`);
-      resolve(answer);
-    };
-    const stop = keys.listen((key: Key) => {
-      if (key.ctrl && key.name === 'c') return finish('interrupt', '');
-      const typed = (key.sequence ?? '').toLowerCase();
-      if (typed === 'y') return finish('yes', 'y');
-      if (typed === 'n' || key.name === 'return' || key.name === 'enter') return finish('no', 'n');
-    });
-    if (cancelled?.aborted) finish('left', '(answered elsewhere)');
-    cancelled?.addEventListener('abort', () => finish('left', '(answered elsewhere)'), { once: true });
-  });
+  return confirm(keys, question, false, cancelled);
 }
 
 // ---- the admissions waiting, as they change -------------------------------------------
@@ -179,7 +164,7 @@ export function serverTerminal(options: ServerTerminalOptions): { stop(): Promis
     asked.add(admission.id);
     const abort = new AbortController();
     current = { id: admission.id, abort };
-    const answer = await askKey(options.keys, `${admissionWords(admission)}. Allow? [y/N] `, abort.signal);
+    const answer = await askKey(options.keys, `${admissionWords(admission)}. Allow?`, abort.signal);
     current = undefined;
     if (answer === 'interrupt') {
       options.interrupt?.();
@@ -231,13 +216,13 @@ export interface AccessCommandEnv {
   now?: () => number;
 }
 
-// y or n, with one key where there is a terminal to read keys in, else a line.
+// The Yes / No pair where there is a terminal to read keys in, else a line.
 async function yesNo(env: AccessCommandEnv, question: string): Promise<boolean | undefined> {
   if (env.keys) {
     const answer = await askKey(env.keys, question);
     return answer === 'yes' ? true : answer === 'interrupt' ? undefined : false;
   }
-  if (env.ask) return env.ask(question.trimEnd(), false);
+  if (env.ask) return env.ask(question, false);
   return undefined;
 }
 
@@ -287,7 +272,7 @@ export async function accessCommand(env: AccessCommandEnv, arg?: string): Promis
       return { exitCode: 0 };
     }
     for (const admission of waiting.list) {
-      const allow = await yesNo(env, `${admissionWords(admission)}. Allow? [y/N] `);
+      const allow = await yesNo(env, `${admissionWords(admission)}. Allow?`);
       if (allow === undefined) {
         env.err('tricot access asks before letting anything in: run it in a terminal.');
         return { exitCode: 1 };
@@ -314,7 +299,7 @@ async function revoke(env: AccessCommandEnv): Promise<{ exitCode: number }> {
     env.out(`No browser or terminal is let in on ${env.dataDir}: there is nothing to revoke.`);
     return { exitCode: 0 };
   }
-  const yes = await yesNo(env, "Remove every browser and terminal you've let in? [y/N] ");
+  const yes = await yesNo(env, "Remove every browser and terminal you've let in?");
   if (yes === undefined) {
     env.err('tricot access revoke asks first: run it in a terminal.');
     return { exitCode: 1 };

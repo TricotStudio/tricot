@@ -38,7 +38,7 @@ describe('how long one wait lasts, by the agent registry', () => {
   it('waits 15 minutes for a client that lets a call run, and ends inside the limit of one that cuts it sooner', () => {
     assert.equal(MAX_WAIT_SECONDS, 15 * 60);
     const waits = Object.fromEntries(agentKinds().map((kind) => [kind.id, longestWait(kind.mcpClient.clientName)]));
-    assert.deepEqual(waits, { claude: 900, codex: 270, pi: 900, omp: 270, gemini: 570, opencode: 270 });
+    assert.deepEqual(waits, { claude: 900, codex: 270, pi: 900, omp: 270, gemini: 570, opencode: 270, goose: 270, hermes: 270, grok: 900 });
     for (const kind of agentKinds()) {
       const limit = kind.mcpClient.callLimitSeconds;
       const expected = limit === undefined ? MAX_WAIT_SECONDS : Math.min(MAX_WAIT_SECONDS, limit - CLIENT_LIMIT_MARGIN_SECONDS);
@@ -176,6 +176,7 @@ describe('long waits over MCP', () => {
   async function board(title: string) {
     const boardId = (await post('/boards', { title })).id as string;
     const task = await post(`/boards/${boardId}/tasks`, { title: 'Ship it' });
+    await post(`/tasks/${task.id}`, { status: 'todo' });
     return { boardId, taskId: task.id as string };
   }
 

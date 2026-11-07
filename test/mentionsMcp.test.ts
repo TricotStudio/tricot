@@ -129,7 +129,7 @@ describe('Addressing one agent, over MCP and REST', () => {
     assert.ok(forCodex.includes(`Wassim (human) ${asked}`), forCodex);
     assert.equal(forCodex.split(asked).length, 2, 'said once: what waits on it below leaves out what the update above gave');
     const forClaude = await callText('Claude', 'get_updates', { board_id: boardId, since });
-    assert.match(forClaude, new RegExp(`- \\(\\d+\\) Wassim \\(human\\) asked Codex on T1 \\[task id: ${task.id}\\]\\. Not for you; carry on\\.`));
+    assert.ok(!forClaude.includes(task.id), 'the unrequested agent receives no backlog content');
     assert.doesNotMatch(forClaude, /asked you/);
     // Codex has it whole already: get_board, and a wait from the same cursor, name it without saying it again.
     const named = `asked you on T1 [task id: ${task.id}] (you've seen it). Reply with comment(task_id: ${task.id}).`;

@@ -16,6 +16,7 @@ import { builtPagePolicy, devPagePolicy } from './headers';
 import { Leases } from './leases';
 import { acquireLock, publishLock, releaseLock } from '../platform/lock';
 import { osHome } from '../platform/paths';
+import { AgentRulesStore } from './agentRules';
 import { Seats } from './seats';
 import { SiteServer } from './sites/siteServer';
 import { startFolder } from './startFolder';
@@ -119,8 +120,10 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     const updates = new Updates({ check: false, ...options.updates, current: options.version ?? '0.0.0', place: { port, host, dataDir, flags: options.updates?.flags, ...(options.stopWhenUnused && { stopWhenUnused: true }) } }, failed);
     // The browsers and terminals the person let in (seats.ts), kept in the data folder.
     const seats = new Seats({ dataDir });
+    // The model and thinking level each agent starts on (agentRules.ts), kept in the data folder too.
+    const agentRules = new AgentRulesStore({ dataDir });
     const leases = new Leases({ stopWhenUnused: options.stopWhenUnused, goneMs: options.leaseGoneMs });
-    const app = createApp(store, { host, mcpUrl, connectors, version: options.version, source: options.source, token, liveSteps, pagePolicy, folder, updates, sites, seats, leases });
+    const app = createApp(store, { host, mcpUrl, connectors, version: options.version, source: options.source, token, liveSteps, pagePolicy, folder, updates, sites, seats, leases, agentRules });
     const httpServer = createServer(app);
     if (options.setupWeb) {
       await options.setupWeb(app, httpServer);

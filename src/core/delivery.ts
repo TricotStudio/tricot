@@ -228,6 +228,29 @@ export function notListeningHere(onBoard: string[], connected: string[]): string
   return `${onBoard[0] ?? connected[0]} isn't listening here`;
 }
 
+// Who the bar says is listening: the agents on the board now, by name, or
+// how many when there are more than two.
+export function listeningLabel(names: string[]): string | undefined {
+  if (names.length === 0) return undefined;
+  if (names.length > 2) return `${names.length} agents`;
+  return names.join(' and ');
+}
+
+// The agent a reply in a thread goes to, to name it in the bar: the one its
+// lens routes to, else the latest agent who wrote in it, else the one agent
+// listening. None when that isn't one agent.
+export function replyingTo(thread: Pick<Thread, 'lens' | 'messages'>, listening: string[]): string | undefined {
+  if (thread.lens?.agent) return thread.lens.agent;
+  const latest = thread.messages.findLast((m) => m.author.kind === 'agent');
+  if (latest) return latest.author.name;
+  return listening.length === 1 ? listening[0] : undefined;
+}
+
+export function replyPlaceholder(thread: Pick<Thread, 'lens' | 'messages'>, listening: string[]): string {
+  const agent = replyingTo(thread, listening);
+  return agent ? `Reply to ${agent}…` : 'Reply…';
+}
+
 // "Claude isn't listening yet.": yet, on a board it hasn't been on.
 export function wakeLead(agent: string, delivery: Pick<Delivery, 'state'>): string {
   return `${agent} isn't listening${delivery.state === 'nobody' ? ' yet' : ''}.`;

@@ -22,6 +22,10 @@
 // Tricot has built yet, so `tricot gemini` says how to connect it, as `tricot
 // connect gemini` does, and starts nothing.
 //
+// It starts the agent on the model and thinking level set in its panel on
+// the board, the same on every board, and --model and --effort after its
+// name stand in for them for this run (agentRules.ts, core/agentRules.ts).
+//
 // main.ts hands it what it shares with `tricot` (AgentEnv), so the board is
 // started, opened and asked about the same way.
 //
@@ -31,6 +35,7 @@
 // terminal, no way to give each agent a terminal of its own), one agent runs
 // on its own, as below; several are refused there.
 import path from 'node:path';
+import type { AgentRule } from '../core/agentRules';
 import type { AgentKind } from '../core/agents/agent';
 import { agentsInCliOrder, installHints } from '../core/agents/registry';
 import { agentUrl } from '../core/connect';
@@ -38,6 +43,7 @@ import { firstMessage, type SessionLaunch } from '../core/sessions';
 import type { ServerLock } from '../platform/lock';
 import { isWindows } from '../platform/os';
 import { which } from '../platform/which';
+import { readRules, ruleForRun, startedOn, startsOnLine, UNREAD_RULES } from './agentRules';
 import { sweepFolders } from './agentSessions/folder';
 import { chooseBoard } from './chooseBoard';
 import { liveStepsContext, rememberedAnswer } from './hooks';
@@ -79,12 +85,14 @@ export const AGENTS: Record<string, AgentKind> = Object.fromEntries(agentsInCliO
 
 export const isAgentCommand = (word: string): boolean => Object.hasOwn(AGENTS, word);
 
-export async function agentCommand(a: AgentEnv, id: string | string[], passthrough: string[]): Promise<CliResult> {
+// `chosen`: the --model and --effort given after each agent's name, by id
+// (agentRules.ts), over the rule set in its panel for this run.
+export async function agentCommand(a: AgentEnv, id: string | string[], passthrough: string[], chosen: Record<string, AgentRule> = {}): Promise<CliResult> {
   if (Array.isArray(id) && id.length === 1) id = id[0];
   const { ctx, values } = a;
   sweepFolders(); // those an earlier Tricot left behind when it was killed before it could remove them
-  if (Array.isArray(id)) return severalAgents(a, id, passthrough);
-  if (stripRuns(a, id)) return severalAgents(a, [id], passthrough);
+  if (Array.isArray(id)) return severalAgents(a, id, passthrough, chosen);
+  if (stripRuns(a, id)) return severalAgents(a, [id], passthrough, chosen);
   const agent = AGENTS[id];
   if (!agent.session) return cantStartYet(a, id, agent);
   const command = which(agent.command, ctx.env);
@@ -129,10 +137,18 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   const hooks = sessionHooks(a, id, lock, who);
   if (hooks.said) ctx.out(hooks.said);
 
+  // The model and thinking level it starts on: the one set in its panel, and what the command line gave.
+  const read = await readRules(lock.url, a.dataDir);
+  if ('problem' in read) ctx.out(UNREAD_RULES(read.problem));
+  const rule = ruleForRun(agent, 'rules' in read ? read.rules[id] : undefined, chosen[id], ctx.out);
+  const startsOn = startsOnLine(agent, rule);
+  if (startsOn) ctx.out(startsOn);
+
   const message = firstMessage(board.id);
   let launch: SessionLaunch;
   try {
-    launch = agent.session({ url: agentUrl(lock.mcpUrl, who), token: access.token, message, passthrough, env: ctx.env, ...(hooks.settings && { settings: hooks.settings }) });
+    const on = startedOn(agent, rule, agentUrl(lock.mcpUrl, who), passthrough);
+    launch = agent.session({ url: on.url, token: access.token, message, passthrough: on.passthrough, env: ctx.env, ...(hooks.settings && { settings: hooks.settings }) });
   } catch (error) {
     ctx.err(`${agent.name} didn't start: ${error instanceof Error ? error.message : error}`);
     return { exitCode: 1 };

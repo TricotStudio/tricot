@@ -196,7 +196,7 @@ const kill = (pid: number) => {
 // each pseudo-terminal hung up, and a few seconds later, what is still there
 // killed. `agents`: more agents' pids, started further down (by a tricot CLI).
 export async function leftAfterReaping(agents: number[] = []): Promise<string[]> {
-  const pids = new Set([...hosts.keys()].flatMap((host) => host.view().agents.map((a) => a.pid)).concat([...ptys].map((pty) => pty.pid), agents).filter(Boolean));
+  const pids = new Set([...hosts.keys()].flatMap((host) => [...host.view().agents, ...host.view().stopped].map((a) => a.pid)).concat([...ptys].map((pty) => pty.pid), agents).filter(Boolean));
   const open = () => [...hosts].filter(([, state]) => !state.closed).map(([host]) => host);
   await waitFor(() => !open().length && !leftRunning(pids).length, 3_000, 100);
   const left = [

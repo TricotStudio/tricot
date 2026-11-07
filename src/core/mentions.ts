@@ -10,9 +10,13 @@
 // agent reads the same, within the loop guard (agentTalk.ts). A mentioned
 // person is told: on a decision it is also an ask (asks on decisions);
 // elsewhere it is news in their Needs you until they've seen it
-// (attention.ts, needs.ts).
+// (attention.ts, needs.ts). A mention of an agent may carry a tag, asking
+// that one message's work of another model and thinking level
+// (`@Claude:opus:high`, agentTags.ts): it is still a mention of Claude.
 
 import type { Element, ElementContent, Root, RootContent } from 'hast';
+import { perMessageAsk, tagAt, tagOn, tagTyped, type AgentTag } from './agentTags';
+import type { AgentBrowserHalf } from './agents/agent';
 import { heldWords } from './agentTalk';
 import { answerContext, decisionDiscussion, pinDiscussion, quote, taskDiscussion, type Discussion, type Shown } from './answering';
 import { clip, listNames, peopleOn, samePerson } from './format';
@@ -23,7 +27,8 @@ import type { Actor, Board, BoardEvent, Comment, Decision, Pin, Reaction, SkillR
 export interface Mention {
   name: string; // as the board spells it
   start: number; // where the @ is
-  end: number; // just after the name
+  end: number; // just after the name, or after its tag
+  tag?: AgentTag; // `@Claude:opus:high`, for a name among the agents given
 }
 
 // The board's agents, by name: those present now first, in the order given,
@@ -51,8 +56,11 @@ const BEFORE = /[\p{L}\p{N}_.@/-]/u;
 const AFTER = /[\p{L}\p{N}_]/u;
 
 // The @mentions in a text of the names given, in order. A longer name wins
-// where two fit ("@Claude Code" over "@Claude"); case doesn't matter.
-export function findMentions(text: string, names: string[]): Mention[] {
+// where two fit ("@Claude Code" over "@Claude"); case doesn't matter. A
+// mention of one of `agents` (those among the names) takes in the tag
+// written after it (agentTags.ts); without them, none is read, and a tag
+// reads as text after the name.
+export function findMentions(text: string, names: string[], agents: readonly string[] = []): Mention[] {
   const known = [...new Set(names.map((n) => n.trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
   if (known.length === 0) return [];
   const found: Mention[] = [];
@@ -61,10 +69,17 @@ export function findMentions(text: string, names: string[]): Mention[] {
     const rest = text.slice(at + 1).toLowerCase();
     const name = known.find((n) => rest.startsWith(n.toLowerCase()) && !AFTER.test(text[at + 1 + n.length] ?? ''));
     if (!name) continue;
-    found.push({ name, start: at, end: at + 1 + name.length });
-    at += name.length;
+    const nameEnd = at + 1 + name.length;
+    const tagged = agents.some((a) => samePerson(a, name)) ? tagAt(text, nameEnd) : undefined;
+    found.push({ name, start: at, end: tagged?.end ?? nameEnd, ...(tagged && { tag: tagged.tag }) });
+    at = (tagged?.end ?? nameEnd) - 1;
   }
   return found;
+}
+
+// The tag a text gives this agent: the first written on a mention of it.
+export function tagFor(text: string, names: string[], agents: readonly string[], agent: string): AgentTag | undefined {
+  return findMentions(text, names, agents).find((m) => m.tag && samePerson(m.name, agent))?.tag;
 }
 
 // Who a text mentions, once each, in the order they first appear.
@@ -76,11 +91,12 @@ export function resolveMentions(text: string, names: string[]): string[] {
 
 // A text without the mentions it opens with, which only say who it's for:
 // "@Codex can you review it?" reads "can you review it?". Unknown names, and
-// mentions later on, stay. Text that is all mentions stays as it is.
-export function withoutLeadingMentions(text: string, names: string[]): string {
+// mentions later on, stay. Text that is all mentions stays as it is. A tag
+// on a mention of one of `agents` goes with it ("@Claude:opus:high fix it").
+export function withoutLeadingMentions(text: string, names: string[], agents: readonly string[] = []): string {
   let rest = text.trimStart();
   for (;;) {
-    const [first] = findMentions(rest, names);
+    const [first] = findMentions(rest, names, agents);
     if (!first || first.start !== 0) break;
     rest = rest.slice(first.end).replace(/^[\s,:;-]+/, '');
   }
@@ -88,17 +104,95 @@ export function withoutLeadingMentions(text: string, names: string[]): string {
 }
 
 // The names a text opens with, and the text after them (a suffix of it):
-// "@Codex @Sam /review the diff" opens with Codex and Sam.
-export function leadingMentions(text: string, names: string[]): { names: string[]; rest: string } {
+// "@Codex @Sam /review the diff" opens with Codex and Sam, as
+// "@Claude:opus /review" does with Claude when it is among `agents`.
+export function leadingMentions(text: string, names: string[], agents: readonly string[] = []): { names: string[]; rest: string } {
   const opening: string[] = [];
   let rest = text.trimStart();
   for (;;) {
-    const [first] = findMentions(rest, names);
+    const [first] = findMentions(rest, names, agents);
     if (!first || first.start !== 0) break;
     opening.push(first.name);
     rest = rest.slice(first.end).replace(/^[\s,:;-]+/, '');
   }
   return { names: opening, rest };
+}
+
+// ---- typing @ and / ------------------------------------------------------------------
+
+// What is being typed before a field's caret: an @word, or a /word.
+export interface Typing {
+  trigger: '@' | '/';
+  at: number; // where the @ or / is
+  query: string; // what follows it
+}
+
+// The @word being typed just before the caret: where its @ is, and what
+// follows it. A space can be part of it, for names like "Claude Code".
+export const MENTION_TYPING = /(?:^|[^\p{L}\p{N}_.@/-])@([\p{L}\p{N}_.\- ]{0,30})$/u;
+
+// The /word being typed just before the caret, at the start of a word (so not
+// in a path or an address): where its / is, and what follows it.
+export const SKILL_TYPING = /(?:^|\s)\/([\w.:-]{0,60})$/;
+
+// The @ or / being typed at the end of `before`, if either; `skills`: whether a / counts.
+export function readTyping(before: string, skills: boolean): Typing | null {
+  const mention = before.match(MENTION_TYPING);
+  if (mention) return { trigger: '@', at: before.length - mention[1].length - 1, query: mention[1] };
+  const slash = skills ? before.match(SKILL_TYPING) : null;
+  return slash ? { trigger: '/', at: before.length - slash[1].length - 1, query: slash[1] } : null;
+}
+
+// Whether a name fits what is typed after an @: it starts so, or a word of it does.
+export function nameFits(name: string, query: string): boolean {
+  const lower = name.toLowerCase();
+  const typed = query.toLowerCase();
+  return lower.startsWith(typed) || lower.split(/\s+/).some((w) => w.startsWith(typed));
+}
+
+// What is being typed before a field's caret as a tag on a mention of one of
+// `agents` (agentTags.ts): its model after "@Claude:", or after a second
+// colon its thinking level. `at` is where that part starts, `query` what is
+// typed of it.
+export interface TagTyping {
+  agent: string; // as the board spells it
+  part: 'model' | 'level';
+  at: number;
+  query: string;
+  model?: string; // with the level: the model written before it, if any
+}
+
+export function readTagTyping(before: string, agents: readonly string[]): TagTyping | undefined {
+  const at = before.lastIndexOf('@');
+  if (at < 0 || (at > 0 && BEFORE.test(before[at - 1]))) return undefined;
+  const rest = before.slice(at + 1);
+  const agent = [...agents].sort((a, b) => b.length - a.length).find((name) => rest.toLowerCase().startsWith(`${name.toLowerCase()}:`));
+  if (!agent) return undefined;
+  const from = at + 1 + agent.length + 1;
+  const typed = tagTyped(before.slice(from));
+  if (!typed) return undefined;
+  if (typed.part === 'model') return { agent, part: 'model', at: from, query: typed.query };
+  return { agent, part: 'level', at: from + typed.model.length + 1, query: typed.query, ...(typed.model && { model: typed.model }) };
+}
+
+// `value` with the @word being typed written as @Name, with its tag when
+// one is given (":opus:high"), a space after it, and where the caret goes.
+export function withMention(value: string, typing: Pick<Typing, 'at' | 'query'>, name: string, tag = ''): { text: string; caret: number } {
+  const after = value.slice(typing.at + 1 + typing.query.length);
+  const inserted = `@${name}${tag}${after.startsWith(' ') ? '' : ' '}`;
+  return { text: value.slice(0, typing.at) + inserted + after, caret: typing.at + inserted.length + (after.startsWith(' ') ? 1 : 0) };
+}
+
+// `value` with the /word being typed written as a request to that agent: a
+// message that starts with a skill asks that agent to run it, so it goes to
+// the front, after the mentions that would only say who it's for (`names`:
+// everyone a mention can name here).
+export function withSkill(value: string, typing: Pick<Typing, 'at' | 'query'>, agent: string, call: string, names: string[]): { text: string; caret: number } {
+  const before = value.slice(0, typing.at).replace(/[ \t]+$/, '');
+  const after = value.slice(typing.at + 1 + typing.query.length).replace(/^[ \t]+/, '');
+  const { rest } = leadingMentions(before && after ? `${before} ${after}` : before + after, names);
+  const head = `@${agent} /${call} `;
+  return { text: head + rest, caret: head.length };
 }
 
 // A question typed with who it's for, as the Decisions tab's chat bar posts it
@@ -183,10 +277,27 @@ function who(actor: Actor): string {
   return `${actor.name} (${actor.kind})`;
 }
 
+// A message asking an agent, as the agent reading it is told (agentTags.ts):
+// its text after the words naming it, and what a tag asks of it, said after
+// the message (" Sam asks you to do this on opus at high thinking: hand the
+// work to a subagent …"). Without a tag for it, or with one it can't honour,
+// it asks nothing more and the text reads as it always has, the tag in it
+// as written: the agent does the work as it would, and the person was told
+// so before sending. `kind`: which agent the reader is (its MCP client).
+export function asHeard(board: Pick<Board, 'activity'>, said: { author: Actor; text: string; mentions?: string[] }, viewer: string | undefined, kind: AgentBrowserHalf | undefined): { text: string; ask: string } {
+  const mentions = said.mentions ?? [];
+  const agents = agentsIn(board, mentions);
+  const tag = viewer && kind ? tagFor(said.text, mentions, agents, viewer) : undefined;
+  const read = tag && tagOn(kind, viewer!, tag);
+  if (!read || !('on' in read)) return { text: withoutLeadingMentions(said.text, mentions), ask: '' };
+  return { text: withoutLeadingMentions(said.text, mentions, agents), ask: ` ${said.author.name} ${perMessageAsk(read.on)}` };
+}
+
 // A comment asking an agent, after the words naming it: whole, or for one its
-// session has read, that it has (answering.ts).
-function heard(comment: Comment, shown: Shown | undefined): string {
-  return quote(withoutLeadingMentions(comment.body, comment.mentions ?? []), comment.id, shown);
+// session has read, that it has (answering.ts); and what a tag asks of it.
+function heard(board: Board, comment: Comment, viewer: string | undefined, shown: Shown | undefined, kind: AgentBrowserHalf | undefined): { quoted: string; ask: string } {
+  const { text, ask } = asHeard(board, { author: comment.author, text: comment.body, mentions: comment.mentions }, viewer, kind);
+  return { quoted: quote(text, comment.id, shown), ask };
 }
 
 // A skill request, as the agent it asks reads it: "asks you to run
@@ -277,14 +388,16 @@ export const onThread = (board: Board, pin: Pin): Where => ({
 // Requests to edit a doc or change a website are named on their own (partAsks), as are
 // requests on the board context (requestsDigest). With the agent's session
 // (`shown`), one it has read says so instead of saying it again, and one an
-// update above gave is left out.
-export function mentionsDigest(board: Board, viewer: string | undefined, shown?: Shown): string | undefined {
+// update above gave is left out. `kind`: which agent it is, for what a tag
+// asks of it (taggedAsk).
+export function mentionsDigest(board: Board, viewer: string | undefined, shown?: Shown, kind?: AgentBrowserHalf): string | undefined {
   if (!viewer) return undefined;
   const lines = mentionsWaitingOn(board, viewer).flatMap(({ comment, where }) => {
     if (shown?.inThisResult(comment.id)) return [];
+    const { quoted, ask } = heard(board, comment, viewer, shown, kind);
     const line = asksYouToRun(comment.skill, viewer)
-      ? `${comment.author.name} ${asksToRun(comment.skill, viewer, `on ${where.on} ${where.id}`, where.reply, where.read)}`
-      : `${comment.author.name} asked you on ${where.on} ${where.id}${heard(comment, shown)}. Reply with ${where.reply}.`;
+      ? `${comment.author.name} ${asksToRun(comment.skill, viewer, `on ${where.on} ${where.id}`, where.reply, where.read)}${ask}`
+      : `${comment.author.name} asked you on ${where.on} ${where.id}${quoted}.${ask} Reply with ${where.reply}.`;
     return [[line, ...answerContext(where.discussion, comment, viewer, shown)].join('\n')];
   });
   return lines.length ? lines.join('\n') : undefined;
@@ -310,8 +423,9 @@ export function mentionsWaitingOn(board: Board, viewer: string): { comment: Comm
 // A comment or request event that @-mentions agents, as the agent reading its
 // updates sees it: asked of it, or for another agent. None for one that
 // mentions no agent, which reads as it always has. A comment asking it comes
-// whole, with what its session (`shown`) needs to answer it (answering.ts).
-export function mentionEventLine(event: BoardEvent, board: Board, viewer: string | undefined, shown?: Shown): string | undefined {
+// whole, with what its session (`shown`) needs to answer it (answering.ts),
+// and what a tag asks of it (`kind`: which agent it is, taggedAsk).
+export function mentionEventLine(event: BoardEvent, board: Board, viewer: string | undefined, shown?: Shown, kind?: AgentBrowserHalf): string | undefined {
   if (event.type !== 'comment_added' && event.type !== 'request_asked') return undefined;
   const address = addressedTo(agentsIn(board, event.mentions), viewer);
   if (address.to === 'anyone') return undefined;
@@ -320,8 +434,9 @@ export function mentionEventLine(event: BoardEvent, board: Board, viewer: string
     const request = board.requests?.find((r) => r.id === event.itemId);
     const id = `[request id: ${event.itemId}]`;
     if (address.to === 'others') return `${lead} asked ${listNames(address.agents)} on the board context ${id}. Not for you; carry on.`;
-    const text = request ? `: "${clip(withoutLeadingMentions(request.text, request.mentions ?? []), 300)}"` : '';
-    return `${lead} asked you on the board context ${id}${text}. Take it with take_request.`;
+    const read = request && asHeard(board, { author: event.actor, text: request.text, mentions: request.mentions }, viewer, kind);
+    const text = read ? `: "${clip(read.text, 300)}"` : '';
+    return `${lead} asked you on the board context ${id}${text}.${read?.ask ?? ''} Take it with take_request.`;
   }
   const found = commentOf(event, board);
   if (!found) return undefined;
@@ -331,9 +446,10 @@ export function mentionEventLine(event: BoardEvent, board: Board, viewer: string
   const doing = comment.ask ? (askingWords(comment.askPart)?.doing ?? 'Reply') : 'Reply';
   // A comment on a part of the card's canvas is answered on that part, where the person asked.
   const reply = comment.pin ? `comment(pin_id: ${comment.pin.id})` : where.reply;
+  const { quoted, ask } = heard(board, comment, viewer, shown, kind);
   const line = asksYouToRun(comment.skill, viewer)
-    ? `${lead} ${asksToRun(comment.skill, viewer, `on ${where.on} ${where.id}`, reply, where.read)}`
-    : `${lead} asked you on ${where.on} ${where.id}${heard(comment, shown)}. ${doing} with ${reply}.`;
+    ? `${lead} ${asksToRun(comment.skill, viewer, `on ${where.on} ${where.id}`, reply, where.read)}${ask}`
+    : `${lead} asked you on ${where.on} ${where.id}${quoted}.${ask} ${doing} with ${reply}.`;
   return [line, ...answerContext(where.discussion, comment, viewer, shown)].join('\n');
 }
 
@@ -371,8 +487,9 @@ const SKIP = new Set(['code', 'pre', 'kbd', 'samp', 'a']);
 
 // A rehype plugin that marks a comment's mentions in its rendered Markdown as
 // <span class="mention" data-mention="Codex">@Codex</span>, for the UI to
-// draw as chips. Only the names given are marked: the comment's mentions.
-export function rehypeMentions({ names }: { names: string[] }) {
+// draw as chips. Only the names given are marked: the comment's mentions. A
+// tag on a mention of one of `agents` is in its chip: "@Claude:opus:high".
+export function rehypeMentions({ names, agents = [] }: { names: string[]; agents?: readonly string[] }) {
   return (tree: Root) => {
     if (names.length === 0) return;
     const walk = (parent: Root | Element) => {
@@ -381,7 +498,7 @@ export function rehypeMentions({ names }: { names: string[] }) {
         if (child.type !== 'text') return [child];
         const pieces: ElementContent[] = [];
         let at = 0;
-        for (const mention of findMentions(child.value, names)) {
+        for (const mention of findMentions(child.value, names, agents)) {
           if (mention.start > at) pieces.push({ type: 'text', value: child.value.slice(at, mention.start) });
           pieces.push({
             type: 'element',

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { keepPrivate } from '../../platform/private';
 import { moveChecklistRows } from './checklistNotes';
 import { addMissingFields } from './shapeDefaults';
-import { inTransaction, openPrivate, type Database } from './sqlite';
+import { inTransaction, openPrivate, SYNCHRONOUS, type Database } from './sqlite';
 
 // The database's shape is versioned with SQLite's own `user_version`. A
 // migration moves it from version N to N + 1 (the list's index + 1) in one
@@ -246,7 +246,7 @@ export function openDatabase(file: string, migrations: Migration[] = MIGRATIONS)
     const found = userVersion(db);
     if (found > migrations.length) throw new NewerDataError(file, found, migrations.length);
     db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA synchronous = FULL');
+    db.exec(`PRAGMA synchronous = ${SYNCHRONOUS}`);
     db.exec('PRAGMA busy_timeout = 5000');
     const pending = migrations.slice(found);
     const backup = pending.length && found > 0 ? backUp(db, file, found) : undefined;

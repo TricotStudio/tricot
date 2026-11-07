@@ -4,10 +4,12 @@
 // the others only show how to connect the agent. Which are which, and the words of each
 // one's help, come from the registry, not from a list here.
 import path from 'node:path';
+import { levelList } from '../core/agentRules';
 import { listNames } from '../core/format';
 import { authHeaders, isLoopbackHost, readToken } from '../server/access';
 import { findRunning, pidAlive } from '../platform/lock';
 import { agentCommand, AGENTS, isAgentCommand, type AgentEnv, type RunningLock } from './agentCommand';
+import { chosenOnCommandLine } from './agentRules';
 import { startDetached } from './boardCommands';
 import { hooksEnv, openBoard, sleep, tokenFor, type Env } from './commandEnv';
 import type { CliCommand, Help, Words } from './commands';
@@ -15,14 +17,20 @@ import { connect } from './connectCommand';
 import { askOnFirstRun } from './hooks';
 import { holdLease, type Lease } from './lease';
 import type { CliResult } from './main';
-import { BOARD, DATA, NAME, NO_ASK, NO_OPEN, NO_UPDATE_CHECK, PORT, VERBOSE, said, type Option } from './options';
+import { BOARD, DATA, EFFORT, MODEL, NAME, NO_ASK, NO_OPEN, NO_UPDATE_CHECK, PORT, VERBOSE, said, type Option } from './options';
 
 // A `tricot claude` command: it holds a lease with the board for as long as
 // it runs, and lets go of it however it ends (agentCommand.ts, server/leases.ts).
-async function runAgentCommand(env: Env, id: string | string[], passthrough: string[]): Promise<CliResult> {
+async function runAgentCommand(env: Env, id: string | string[], passthrough: string[], placed: Words['placed']): Promise<CliResult> {
+  // --model and --effort after each agent's name, checked before anything starts.
+  const picked = chosenOnCommandLine(Array.isArray(id) ? id : [id], AGENTS, placed);
+  if ('problem' in picked) {
+    env.ctx.err(`${picked.problem} Nothing was started.`);
+    return { exitCode: 1 };
+  }
   const a = agentEnv(env);
   try {
-    return await agentCommand(a, id, passthrough);
+    return await agentCommand(a, id, passthrough, picked.chosen);
   } finally {
     await a.parting();
   }
@@ -104,14 +112,14 @@ const connectFirst = () => Object.keys(AGENTS).filter((id) => !AGENTS[id].sessio
 
 // `tricot claude codex`: several agents together; one agent and anything else is refused,
 // as words for the agent belong after --.
-function runAgents(env: Env, { positionals, passthrough }: Words): Promise<CliResult> {
+function runAgents(env: Env, { positionals, passthrough, placed }: Words): Promise<CliResult> {
   const [command, arg] = positionals;
-  if (arg !== undefined && positionals.every(isAgentCommand)) return runAgentCommand(env, positionals, passthrough);
+  if (arg !== undefined && positionals.every(isAgentCommand)) return runAgentCommand(env, positionals, passthrough, placed);
   if (arg !== undefined) {
     env.ctx.err(`To give ${command} words of its own, put them after --: tricot ${command} -- ${positionals.slice(1).join(' ')}`);
     return Promise.resolve({ exitCode: 1 });
   }
-  return runAgentCommand(env, command, passthrough);
+  return runAgentCommand(env, command, passthrough, placed);
 }
 
 // One text for every agent command. Which of them start the agent, and which only
@@ -139,20 +147,36 @@ function agentHelp(id: string): { help: Help; options: Option[] } {
     'A board this command starts stops when the last agent command using it quits (a browser tab does not count), and by itself shortly after one is killed. A board that was already running, from tricot, tricot start or --background, keeps running when the agent quits: tricot stop ends it.',
   ];
   if (also) {
-    about.push(`Several agents on one board, in this terminal: one shows at a time, a strip at the bottom lists them all, and Ctrl+\\ switches (then a number picks one, q quits). Any of ${listNames(starts)}.`);
+    about.push(`Several agents on one board, in this terminal: one shows at a time, a strip at the bottom lists them all, and Ctrl+\\ shows the next one (pressed again it goes on, or a number picks one, q quits). Any of ${listNames(starts)}.`);
+  }
+  const takes = agent.startsOn;
+  if (takes) {
+    const effort = takes.levels?.length ? ' and thinking level' : '';
+    const example = also ? ` With several, each takes those after its name: tricot ${id} --model ${takes.models[0]?.id ?? '<name>'} ${also} --model ${AGENTS[also].startsOn?.models[0]?.id ?? '<name>'}.` : '';
+    about.push(
+      `${agent.name} starts on the model${effort} set in its panel on the board, the same on every board (Default passes nothing, so its own settings apply). --model${effort ? ' and --effort stand in for them' : ' stands in for it'} for this run.${example}`,
+    );
   }
   if (shown.length) {
     about.push(`${listNames(shown)} can't take the board for one session yet: tricot ${shown[0]} only shows how to connect ${shown.length === 1 ? 'it' : 'them'}, as tricot connect ${shown[0]} --print does, and starts nothing.`);
   }
+  const suggested = takes?.models.map((model) => model.id) ?? [];
+  const ruleOptions = takes
+    ? [
+        said(MODEL, `The model ${agent.name} starts on, this run${suggested.length ? ` (${suggested.join(', ')}, or any it takes)` : ''}`),
+        ...(takes.levels?.length ? [said(EFFORT, `Its thinking level, this run: ${levelList(agent)}`)] : []),
+      ]
+    : [];
   return {
     help: {
       title: `tricot ${id}: start the board and ${agent.name} together, in this terminal`,
-      usage: [`tricot ${id} [options] [-- <words for ${agent.name}>]`, ...(also ? [`tricot ${id} ${also} [options]`] : [])],
+      usage: [`tricot ${id} [options] [-- <words for ${agent.name}>]`, ...(also ? [`tricot ${id} [--model <name>] ${also} [--model <name>] [options]`] : [])],
       about,
     },
     options: [
       said(BOARD, 'Give this board to the agent, instead of asking which'),
       said(NAME, "The agent's name on the board (one agent: with several, each has its own)"),
+      ...ruleOptions,
       NO_ASK,
       VERBOSE,
       NO_OPEN,

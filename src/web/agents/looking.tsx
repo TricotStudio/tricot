@@ -88,8 +88,10 @@ export function TakingALook({ kind, id, task, band = false }: { kind: 'task' | '
   );
 }
 
-// A backlog card's first look while it's to come, in a quiet line: "Waiting
-// for an agent's first look", or "Claude is taking the first look". While the
+// A backlog card's first look while it's to come, in a quiet line: "Assign or
+// @-mention an agent for a first look" until a person assigns one or someone
+// mentions one, then "Waiting for Codex's first look", or "Claude is taking
+// the first look". While the
 // taker's calls are about the card, its "taking a look" pill says so already.
 // A card an agent opened needs none, and says who opened it: "Opened by Claude".
 export function FirstLookCue({ board, task }: { board: Board; task: Task }) {

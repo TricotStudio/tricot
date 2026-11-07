@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { currentOs, isWindows } from '../src/platform/os';
 import { dataDirIn, defaultDataPath, home, osHome, tmpDir } from '../src/platform/paths';
 import { stopProcess } from '../src/platform/stop';
-import { which } from '../src/platform/which';
+import { which, whichAll } from '../src/platform/which';
 import { lockFile } from '../src/platform/lock';
 import { removeScratch, WINDOWS } from './platform';
 
@@ -56,6 +56,28 @@ describe('The platform layer', () => {
     if (!WINDOWS) assert.equal(which('wagent', env, 'linux'), undefined, 'and only there');
     assert.equal(which('agent', {}), undefined, 'no PATH, no program');
     assert.equal(which('nothing-like-it', env), undefined);
+  });
+
+  it('finds every file the PATH has for a program, the one that runs first, each folder once', () => {
+    const [first, second] = ['first', 'second'].map((name) => path.join(scratch, name));
+    mkdirSync(first, { recursive: true });
+    mkdirSync(second, { recursive: true });
+    const files = [path.join(first, 'agent'), path.join(second, 'agent')];
+    for (const file of files) {
+      writeFileSync(file, '#!/bin/sh\n');
+      chmodSync(file, 0o755);
+    }
+    const env = { PATH: [first, '/no/such/folder', second, first].join(path.delimiter) };
+    assert.deepEqual(whichAll('agent', env, 'linux'), files);
+    assert.equal(which('agent', env, 'linux'), files[0], 'which is the first of them');
+    assert.deepEqual(whichAll('nothing-like-it', env), []);
+    const shims = path.join(scratch, 'shims');
+    mkdirSync(shims, { recursive: true });
+    for (const name of ['wagent.cmd', 'wagent.bat']) {
+      writeFileSync(path.join(shims, name), '@echo off\n');
+      chmodSync(path.join(shims, name), 0o755);
+    }
+    assert.deepEqual(whichAll('wagent', { Path: shims }, 'win32'), [path.join(shims, 'wagent.cmd')], 'one for a folder, the extension tried first');
   });
 
   it('stops a process, and its whole group when asked', { skip: WINDOWS && 'Windows has no process groups' }, async () => {

@@ -9,16 +9,20 @@
 // card for a minute, so people see it taking a look.
 // An agent is also noted as connected, whatever board, as its MCP session
 // starts and with each call: one that hasn't touched a board yet still shows
-// on Home (its first run). Like the rest, it lives in memory only, so after a
-// restart an agent shows again with its next call.
+// on Home (its first run). With its latest session go which agent it is and
+// what Tricot's terminal started it on (its panel says them, T22). Like the
+// rest, it lives in memory only, so after a restart an agent shows again with
+// its next call, and its session's details as its client connects again.
 
 import { EventEmitter } from 'node:events';
+import type { AgentRule } from '../core/agentRules';
 
 const PRESENT_MS = 5 * 60_000;
 const WORKING_MS = 2 * 60_000;
 const LISTEN_GRACE_MS = 15_000; // agents re-call wait_for_updates back to back
 const SWEEP_MS = 15_000;
 export const FOCUS_MS = 60_000; // how long a card shows an agent after its last call about it
+const MAX_SESSIONS = 200; // the agents whose latest session's details are kept
 
 export type AgentState = 'listening' | 'working' | 'away';
 const STATE_RANK: Record<AgentState, number> = { listening: 0, working: 1, away: 2 };
@@ -27,6 +31,15 @@ const STATE_RANK: Record<AgentState, number> = { listening: 0, working: 1, away:
 export interface AgentFocus {
   kind: 'task' | 'decision';
   id: string;
+}
+
+// What an agent's latest MCP session says of it: which agent it is (the
+// registry's id, from its client's name), and the model and thinking level
+// Tricot's terminal started it on ({} for its own settings). Each is none
+// when that isn't known: an agent connected by hand says nothing of what it runs on.
+export interface AgentSession {
+  tool?: string;
+  runsOn?: AgentRule;
 }
 
 export interface AgentPresence {
@@ -51,6 +64,7 @@ export class Presence {
   private readonly viewers = new EventEmitter();
   private boards = new Map<string, Map<string, Entry>>();
   private connected = new Map<string, { name: string; lastSeen: number }>(); // by name, lower-cased
+  private sessions = new Map<string, AgentSession>(); // its latest session's details, by name, lower-cased
   private shown = new Map<string, string>(); // board id -> last presence viewers were told about
   private timer: NodeJS.Timeout;
 
@@ -84,6 +98,20 @@ export class Presence {
   // Its MCP session started, or it made a call, on a board or none.
   connect(name: string): void {
     this.connected.set(name.toLowerCase(), { name, lastSeen: this.now() });
+  }
+
+  // Its MCP session started: what it says of the agent, in place of what
+  // an earlier one said.
+  started(name: string, session: AgentSession): void {
+    const key = name.toLowerCase();
+    this.sessions.delete(key); // re-inserted last: the map runs oldest to newest
+    this.sessions.set(key, structuredClone(session));
+    while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value!);
+  }
+
+  sessionOf(name: string): AgentSession | undefined {
+    const session = this.sessions.get(name.toLowerCase());
+    return session && structuredClone(session);
   }
 
   startWaiting(boardId: string, name: string): void {

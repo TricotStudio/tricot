@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { startHost, TRICOT_TAB, type Host, type HostedAgent } from '../src/cli/switcher/host';
+import { MAX_AGENTS, startHost, TRICOT_TAB, type Host, type HostedAgent, type HostOutcome, type TricotSetup } from '../src/cli/switcher/host';
 import { SWITCH_KEY } from '../src/cli/switcher/keys';
 import type { LiveFeed } from '../src/cli/switcher/live';
 import type { BoardLive } from '../src/cli/switcher/strip';
+import type { ThreadsAccess } from '../src/cli/switcher/threadsTab';
+import { emptyCanvas } from '../src/core/canvas';
+import type { Actor, Board } from '../src/core/types';
 import { alive, claudeLike, codexLike, COLOURS, fakeTerminal, keyAs, leftAfterReaping, node, sameScreen, sleep, tracked, waitFor, type FakeTerminal } from './switcher/harness';
 import { WINDOWS } from './platform';
 
@@ -32,9 +35,9 @@ interface Running {
   matches(): Promise<Awaited<ReturnType<typeof sameScreen>>>;
 }
 
-async function hosted(agents: HostedAgent[], test: (run: Running) => Promise<void>, options: { live?: LiveFeed; cols?: number; rows?: number; kitty?: boolean } = {}): Promise<void> {
+async function hosted(agents: HostedAgent[], test: (run: Running) => Promise<void>, options: { live?: LiveFeed; tricot?: TricotSetup; cols?: number; rows?: number; kitty?: boolean } = {}): Promise<HostOutcome> {
   const fake = fakeTerminal(options.cols ?? 100, options.rows ?? 30, COLOURS, { kitty: options.kitty });
-  const host = tracked(startHost({ agents, terminal: fake.terminal, key: KEY, closeMs: 1_500, ...(options.live && { live: options.live }) }));
+  const host = tracked(startHost({ agents, terminal: fake.terminal, key: KEY, closeMs: 1_500, ...(options.live && { live: options.live }), ...(options.tricot && { tricot: options.tricot }) }));
   const run: Running = {
     host,
     fake,
@@ -62,6 +65,7 @@ async function hosted(agents: HostedAgent[], test: (run: Running) => Promise<voi
     host.quit();
     await host.done;
   }
+  return host.done;
 }
 
 describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
@@ -97,7 +101,7 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
     });
   });
 
-  it('sends keys, Ctrl+C and pastes to the agent showing alone, the switch key twice as itself, and keeps Ctrl+Z from both', async () => {
+  it('sends keys, Ctrl+C and pastes to the agent showing alone, never the switch key, and keeps Ctrl+Z from both', async () => {
     await hosted([CLAUDE, CODEX], async ({ host, fake, shows, agentShows }) => {
       assert.ok(await shows('last key: none yet'));
       fake.type('hello');
@@ -114,24 +118,14 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
       assert.ok(!/key (68|03|1a)/.test(codex), 'Codex got none of it');
 
       fake.type('\x1c\x1c');
-      assert.ok(await agentShows(0, 'last key: Ctrl+\\ (1c)'), 'twice: Claude gets Ctrl+\\ itself');
-      assert.equal(host.view().visible, 0, 'and still shows');
+      await waitFor(() => host.view().visible === 0);
+      await sleep(400);
+      assert.ok(!host.view().agents.some((a) => a.screen.lines().join('\n').includes('(1c)')), 'twice goes on round to Claude again, and no agent gets Ctrl+\\');
       await sleep(1_100);
       fake.type('\x1c2');
       await waitFor(() => host.view().visible === 1);
       fake.type('X');
       assert.ok(await agentShows(1, 'events:'), 'typing now reaches Codex');
-    });
-  });
-
-  it('switches on a click on the strip, when the agent showing has the mouse on', async () => {
-    await hosted([CLAUDE, CODEX], async ({ host, fake, shows, strip }) => {
-      assert.ok(await shows('Claude (stand-in)'));
-      await waitFor(() => fake.observer.screen.inputModes.mouse !== 'none');
-      const line = await strip();
-      const x = line.indexOf('2 Codex') + 2;
-      fake.type(`\x1b[<0;${x};30M\x1b[<0;${x};30m`);
-      assert.ok(await waitFor(() => host.view().visible === 1));
     });
   });
 
@@ -185,6 +179,7 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
       assert.deepEqual(outcome, { exits: [0, 3], agents: [{ name: 'Claude' }, { name: 'Codex' }], quit: false });
       await fake.observer.settled();
       assert.equal(fake.observer.screen.altScreen, false, 'the terminal is back as it was');
+      assert.equal(fake.observer.screen.inputModes.mouse, 'none', 'its mouse too');
       assert.equal(fake.raw, false);
     } finally {
       host.quit();
@@ -258,6 +253,41 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
     }
   });
 
+  it('goes on to the next tab at every press, round from the last to the first, over an agent that ended, and the arrows after it go to the agent', async () => {
+    const GEMINI = agent('Gemini', claudeLike);
+    const CODEX3 = agent('Codex', codexLike);
+    await hosted([CLAUDE, GEMINI, CODEX3], async ({ host, fake, shows, agentShows }) => {
+      const at = (index: number) => waitFor(() => host.view().visible === index);
+      assert.ok(await shows('Claude (stand-in)'));
+      for (const next of [1, 2, 0, 1]) {
+        fake.type('\x1c');
+        assert.ok(await at(next), `a press goes to ${next + 1}`);
+      }
+      await sleep(1_100);
+      fake.type('\x1c\x1c');
+      assert.ok(await at(0), 'two presses, from Gemini: Codex, then Claude');
+      fake.type('[');
+      assert.ok(await shows('Gemini draws its own screen: scroll inside it.'), '[ after a run goes back to where it began, Gemini');
+      assert.equal(host.view().visible, 1);
+      await sleep(1_100);
+      fake.type('\x1b[D');
+      assert.ok(await agentShows(1, '[D'), 'an arrow with no press before it is the agent’s');
+      fake.type('\x1c\x1b[C');
+      assert.ok(await at(2), 'the press went to Codex');
+      await sleep(300);
+      assert.equal(host.view().visible, 2, 'and the arrow after it did not move on');
+      await sleep(1_100);
+      fake.type('\x1c');
+      assert.ok(await at(0));
+      await sleep(1_100);
+      fake.type('X');
+      assert.ok(await at(1), 'Claude ended, and Gemini shows');
+      await sleep(1_100);
+      fake.type('\x1c\x1c\x1c');
+      assert.ok(await at(2), 'three presses from Gemini over Claude, which ended: Codex, Gemini, Codex');
+    }, { cols: 140 });
+  });
+
   it("scrolls back through an agent's history in the scroll view, and says so of one that draws its own screen", async () => {
     const lines: HostedAgent = { name: 'Lines', command: node, args: ['-e', "for (let i = 1; i <= 100; i++) console.log('line ' + i); setInterval(() => {}, 1000)"], env, cwd: process.cwd() };
     await hosted([lines, CODEX], async ({ host, fake, shows }) => {
@@ -307,6 +337,90 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
         assert.ok(await waitFor(async () => !/waiting for your OK/.test(await strip())));
       },
       { live: feed, cols: 140 },
+    );
+  });
+
+  it('takes an agent stopped from the Tricot tab out of the strip and the list at once, closes up the numbers, and keeps one that ended on its own', async () => {
+    const tricot: TricotSetup = { url: 'http://127.0.0.1:9', open: () => {} };
+    const PI = agent('Pi', codexLike, '--name=Pi (stand-in)', '--exit=3');
+    const outcome = await hosted(
+      [CLAUDE, agent('Codex', codexLike), PI],
+      async ({ host, fake, shows, strip }) => {
+        const at = (tab: number) => waitFor(() => host.view().visible === tab);
+        const tab = async () => (await fake.observer.settled(), fake.observer.text());
+        assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · \w+ {3}○ 2 Codex · \w+ {3}○ 3 Pi · \w+ .*Ctrl\+\\ next · Ctrl\+\\ 0–3 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+        await waitFor(() => host.view().agents.every((a) => a.screen.lines().join('').includes('stand-in')));
+        await sleep(300);
+
+        // ---- Pi ends on its own (exit 3): it stays, with its place, its number and its exit code
+        fake.type('\x1c3');
+        assert.ok(await at(2));
+        fake.type('X');
+        assert.ok(await waitFor(() => host.view().agents[2]?.state === 'ended'), 'Pi ended');
+        assert.ok(await at(TRICOT_TAB), 'the next tab shows: the Tricot tab');
+        assert.ok(await waitFor(async () => / ✕ 3 Pi · ended \(3\) /.test(await strip())), await strip());
+        assert.deepEqual(host.view().agents.map((a) => a.name), ['Claude', 'Codex', 'Pi']);
+        assert.ok(await waitFor(async () => /^ {3}3 Pi +Ended \(3\)$/m.test(await tab())), await tab());
+
+        // ---- x, 2, y stops Codex: gone from the strip and the list at once, and Pi moves up to 2
+        const codex = host.view().agents[1].pid;
+        fake.type('x2y');
+        assert.deepEqual(host.view().agents.map((a) => a.name), ['Claude', 'Pi'], 'at once, before it has even closed');
+        assert.deepEqual(host.view().stopped, [{ name: 'Codex', pid: codex }]);
+        assert.ok(await shows(' Stopped Codex.'), await tab());
+        assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · \w+ {3}✕ 2 Pi · ended \(3\) .*Ctrl\+\\ next · Ctrl\+\\ 0–2 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+        assert.doesNotMatch(await strip(), /Codex/);
+        assert.match(await tab(), /^ {3}1 Claude +\S.*\n {3}2 Pi +Ended \(3\)$/m, 'the list, closed up');
+        assert.doesNotMatch(await tab(), /^ {3}\d Codex/m);
+        assert.ok(await waitFor(() => !alive(codex), 4_000), 'and it was closed');
+
+        // ---- the digits pick what the strip shows: 2 is Pi, 3 is no one
+        await sleep(1_100);
+        fake.type('\x1c2');
+        assert.ok(await at(1));
+        assert.equal(host.view().agents[1].name, 'Pi');
+        await sleep(1_100);
+        fake.type('\x1c3');
+        assert.ok(await waitFor(async () => /There's no agent 3\. $/.test(await strip())), await strip());
+
+        // ---- and the switch key goes round what shows, over Pi, which ended: the Tricot tab, Claude, the Tricot tab
+        await sleep(1_100);
+        fake.type('\x1c0');
+        assert.ok(await at(TRICOT_TAB));
+        for (const next of [0, TRICOT_TAB]) {
+          await sleep(1_100);
+          fake.type('\x1c');
+          assert.ok(await at(next), `a press goes to ${next === TRICOT_TAB ? 'the Tricot tab' : 'Claude'}`);
+        }
+      },
+      { tricot, cols: 130 },
+    );
+    assert.deepEqual(outcome, { exits: [undefined, undefined, 3], agents: [{ name: 'Claude' }, { name: 'Codex' }, { name: 'Pi' }], quit: true }, 'Claude closed at the quit, Codex stopped, Pi ended with 3: in the order started');
+  });
+
+  it(`frees the place of an agent stopped from the Tricot tab among the ${MAX_AGENTS} a terminal holds`, async () => {
+    const idle = (name: string): HostedAgent => ({ name, command: node, args: ['-e', 'setInterval(() => {}, 1000)'], env, cwd: process.cwd() });
+    const names = ['Claude', 'Codex', 'Pi', 'OMP', 'OpenCode', 'Gemini', 'Goose', 'Hermes', 'Grok'];
+    assert.equal(names.length, MAX_AGENTS);
+    const tricot: TricotSetup = { url: 'http://127.0.0.1:9', open: () => {}, choices: () => [{ id: 'amp', name: 'Amp' }], make: () => idle('Amp') };
+    await hosted(
+      names.map(idle),
+      async ({ host, fake, shows, strip }) => {
+        const tab = async () => (await fake.observer.settled(), fake.observer.text());
+        assert.ok(await waitFor(() => host.view().agents.every((a) => a.pid > 0)));
+        fake.type('a1');
+        assert.ok(await shows(` ${MAX_AGENTS} agents is as many as Ctrl+\\ and a digit can pick.`), await tab());
+        assert.equal(host.view().agents.length, MAX_AGENTS, 'none added');
+
+        fake.type('x5y'); // OpenCode
+        assert.ok(await shows(' Stopped OpenCode.'), await tab());
+        assert.deepEqual(host.view().agents.map((a) => a.name), names.filter((n) => n !== 'OpenCode'));
+        fake.type('a1');
+        assert.ok(await waitFor(() => host.view().visible === MAX_AGENTS - 1), 'Amp is added, in the place OpenCode freed, and shows');
+        assert.deepEqual(host.view().agents.map((a) => a.name), [...names.filter((n) => n !== 'OpenCode'), 'Amp']);
+        assert.ok(await waitFor(async () => / ● 9 Amp/.test(await strip())), await strip());
+      },
+      { tricot, cols: 200 },
     );
   });
 });
@@ -419,5 +533,217 @@ describe('the keyboard protocols, for the agent showing', { timeout: 60_000, ski
       assert.equal(written.split('\x1b[?u').length - 1, 1, 'Tricot asked once');
       assert.doesNotMatch(written, /\x1b\[[<=>]\d*(;\d+)?u|\x1b\[>4/, 'and wrote nothing of either protocol');
     });
+  });
+});
+
+// T30 (#9): the terminal reports the mouse in every tab, so a click on the
+// strip always switches. An agent gets what it asked of the mouse and
+// nothing more, in its own encoding; the wheel it didn't ask for scrolls its
+// history, or becomes ↑ ↓ for one drawing its own screen. A stop, and
+// leaving, put the terminal's mouse back as it was.
+describe('the mouse, in every tab', { timeout: 60_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
+  // An agent that sets the private modes it is given (1049 its own screen, 1
+  // the application cursor keys, 1000 and on the mouse), and shows what it gets, in hex.
+  const SHOWS_INPUT =
+    "process.stdin.setRawMode(true); for (const m of process.argv[1].split(',').filter((m) => /^\\d+$/.test(m))) process.stdout.write('\\x1b[?' + m + 'h'); process.stdout.write('ready\\r\\n'); process.stdin.on('data', (d) => process.stdout.write('got ' + d.toString('hex') + '\\r\\n')); setInterval(() => {}, 1000);";
+  const asks = (name: string, modes: string): HostedAgent => ({ name, command: node, args: ['-e', SHOWS_INPUT, modes], env, cwd: process.cwd() });
+  const hex = (text: string) => Buffer.from(text, 'latin1').toString('hex');
+  const got = (host: Host, index: number) =>
+    host
+      .view()
+      .agents[index].screen.lines()
+      .filter((l) => l.startsWith('got '))
+      .map((l) => l.slice(4).trim())
+      .join('');
+  const ready = (host: Host, ...indexes: number[]) => waitFor(() => indexes.every((index) => host.view().agents[index].screen.lines().join('\n').includes('ready')));
+  const mouseOf = async (fake: FakeTerminal) => {
+    await fake.observer.settled();
+    const modes = fake.observer.screen.inputModes;
+    return `${modes.mouse} ${modes.mouseEncoding}`;
+  };
+  const click = async (fake: FakeTerminal, label: string) => {
+    await fake.observer.settled();
+    const x = fake.observer.strip().indexOf(label) + 2;
+    assert.ok(x > 1, fake.observer.strip());
+    fake.type(`\x1b[<0;${x};30M\x1b[<0;${x};30m`);
+  };
+  const tricot: TricotSetup = { url: 'http://127.0.0.1:9', open: () => {} };
+
+  it('switches on a click on the strip from the Tricot tab, from an agent without the mouse and from one with it, and none of it reaches an agent', async () => {
+    const fake = fakeTerminal(100, 30);
+    const host = tracked(startHost({ agents: [asks('Plain', 'plain'), CLAUDE], terminal: fake.terminal, key: KEY, closeMs: 1_500, tricot }));
+    try {
+      await host.started;
+      assert.equal(host.view().visible, TRICOT_TAB);
+      assert.ok(await waitFor(async () => (await mouseOf(fake)) === 'vt200 sgr'), 'the Tricot tab has the terminal report presses and releases');
+      assert.ok(await ready(host, 0));
+      await click(fake, '1 Plain');
+      assert.ok(await waitFor(() => host.view().visible === 0), 'from the Tricot tab');
+      assert.equal(await mouseOf(fake), 'vt200 sgr', 'and so does an agent that asked for no mouse');
+      await click(fake, '2 Claude');
+      assert.ok(await waitFor(() => host.view().visible === 1), 'from an agent without the mouse');
+      assert.ok(await waitFor(async () => (await mouseOf(fake)) === 'drag sgr'), 'Claude, with the drags it asked for');
+      await click(fake, 'Tricot');
+      assert.ok(await waitFor(() => host.view().visible === TRICOT_TAB), 'from an agent with the mouse');
+      await sleep(200);
+      assert.equal(got(host, 0), '', 'Plain got none of it');
+      assert.doesNotMatch(host.view().agents[1].screen.lines().join('\n'), /last key: mouse/, 'nor did Claude');
+    } finally {
+      host.quit();
+      await host.done;
+    }
+  });
+
+  it('gives an agent what it asked of the mouse and nothing more, in the encoding it asked for, the wheel included', async () => {
+    await hosted([asks('First', '1049,1000'), asks('Urxvt', '1002,1015')], async ({ host, fake }) => {
+      assert.ok(await ready(host, 0, 1));
+      assert.ok(await waitFor(async () => (await mouseOf(fake)) === 'vt200 sgr'), 'the terminal reports in SGR, whatever the agent reads');
+      // A press, a drag, a move, the release and a turn of the wheel down.
+      fake.type('\x1b[<0;5;3M\x1b[<32;6;3M\x1b[<35;7;3M\x1b[<0;6;3m\x1b[<65;5;3M');
+      assert.ok(await waitFor(() => got(host, 0) === hex('\x1b[M %#\x1b[M#&#\x1b[Ma%#')), `presses, releases and the wheel, in the first encoding: ${got(host, 0)}`);
+      fake.type('\x1c');
+      assert.ok(await waitFor(async () => host.view().visible === 1 && (await mouseOf(fake)) === 'drag sgr'));
+      fake.type('\x1b[<0;5;3M\x1b[<32;6;3M\x1b[<35;7;3M\x1b[<0;6;3m');
+      assert.ok(await waitFor(() => got(host, 1) === hex('\x1b[32;5;3M\x1b[64;6;3M\x1b[35;6;3M')), `the drag too, in URXVT's: ${got(host, 1)}`);
+    });
+  });
+
+  it('scrolls the history of an agent without the mouse with the wheel, leaving at the bottom, and gives one drawing its own screen ↑ ↓ as its cursor keys are set', async () => {
+    const lines: HostedAgent = { name: 'Lines', command: node, args: ['-e', "for (let i = 1; i <= 100; i++) console.log('line ' + i); setInterval(() => {}, 1000)"], env, cwd: process.cwd() };
+    await hosted(
+      [lines, asks('Own', '1049'), asks('Keys', '1049,1')],
+      async ({ host, fake, shows }) => {
+        const top = async () => (await fake.observer.settled(), fake.observer.screen.text(0));
+        const up = '\x1b[<64;5;3M';
+        const down = '\x1b[<65;5;3M';
+        assert.ok(await shows('line 100'));
+        assert.equal(await top(), 'line 73');
+        fake.type(down);
+        await sleep(100);
+        assert.equal(host.view().scrolling, false, 'at the bottom, a turn down does nothing');
+        fake.type(up);
+        assert.ok(await waitFor(() => host.view().scrolling), 'a turn up opens the scroll view');
+        assert.ok(await waitFor(async () => (await top()) === 'line 70'), await top());
+        fake.type(up + up);
+        assert.ok(await waitFor(async () => (await top()) === 'line 64'), await top());
+        fake.type(down + down);
+        assert.ok(await waitFor(async () => (await top()) === 'line 70'), await top());
+        assert.equal(host.view().scrolling, true);
+        fake.type(down);
+        assert.ok(await waitFor(() => !host.view().scrolling), 'a turn down to the bottom leaves it');
+        assert.ok(await waitFor(async () => (await top()) === 'line 73'), await top());
+
+        assert.ok(await ready(host, 1, 2));
+        fake.type('\x1c');
+        assert.ok(await waitFor(() => host.view().visible === 1));
+        fake.type(up + down);
+        assert.ok(await waitFor(() => got(host, 1) === hex('\x1b[A\x1b[B')), got(host, 1));
+        assert.equal(host.view().scrolling, false);
+        fake.type('\x1c');
+        assert.ok(await waitFor(() => host.view().visible === 2));
+        fake.type(up);
+        assert.ok(await waitFor(() => got(host, 2) === hex('\x1bOA')), `the application cursor keys' ↑: ${got(host, 2)}`);
+      },
+      { cols: 140 },
+    );
+  });
+
+  it("puts the terminal's mouse back as it was for a stop, sets it again as it continues, and puts it back as it leaves", async () => {
+    const fake = fakeTerminal(100, 30);
+    const host = tracked(startHost({ agents: [asks('Plain', 'plain')], terminal: fake.terminal, key: KEY, closeMs: 1_500, tricot }));
+    const asItWas = { bracketedPaste: false, focus: false, mouse: 'none', mouseEncoding: 'default', cursorKeys: false, keypad: false, cursorStyle: 0, keyboard: 0, otherKeys: 0 };
+    try {
+      await host.started;
+      assert.ok(await waitFor(async () => (await mouseOf(fake)) === 'vt200 sgr'));
+      host.suspend();
+      await fake.observer.settled();
+      assert.deepEqual(fake.observer.screen.inputModes, asItWas, 'stopped');
+      assert.equal(fake.observer.screen.altScreen, false);
+      assert.equal(fake.raw, false);
+      host.redraw();
+      assert.ok(await waitFor(async () => (await mouseOf(fake)) === 'vt200 sgr'), 'continued');
+      assert.equal(fake.observer.screen.altScreen, true);
+      assert.equal(fake.raw, true);
+      assert.ok(await waitFor(async () => (await fake.observer.settled(), fake.observer.strip().includes('1 Plain'))), 'drawn again');
+      host.quit();
+      await host.done;
+      await fake.observer.settled();
+      assert.deepEqual(fake.observer.screen.inputModes, asItWas, 'and as it left');
+    } finally {
+      host.quit();
+      await host.done;
+    }
+  });
+});
+
+// The host's tick, each second, for the times the strip and the tabs say:
+// the Tricot tab's chat is drawn again for it only when a time it shows
+// would change (T27). No agent here: the chat alone, on a stand-in board.
+describe('the Tricot tab’s chat, on the host’s tick', { timeout: 30_000 }, () => {
+  it('is drawn again each second only when a time it shows would change', async () => {
+    let clock = Date.parse('2026-11-07T16:30:00Z');
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const at = new Date(clock - 10_000).toISOString();
+    const thread = { id: 't', title: 'Picker spacing', startedBy: sam, startedAt: at, updatedAt: at, messages: [{ id: 'm1', author: sam, body: 'Tighter: 8 px between rows.', at }] };
+    const board = { id: 'roadmap-1', title: 'Roadmap', threads: [thread], decisions: [], tasks: [], canvas: emptyCanvas(), activity: { actors: [{ actor: sam, at }], done: {}, reviewSentAt: {} } } as unknown as Board;
+    const live: BoardLive = { board: 'roadmap-1', steps: [], approvals: [], presence: [], chatVer: 1 };
+    const feed: LiveFeed = { now: () => live, onChange: () => () => {}, reconnect: () => {}, stop: () => {} };
+    let drawn = 0; // each drawing of the chat asks who the person is
+    const threads: ThreadsAccess = {
+      get me() {
+        drawn++;
+        return 'Wassim';
+      },
+      read: async () => ({ ok: true, board }),
+      skills: async () => [],
+      send: {} as ThreadsAccess['send'],
+    };
+    const fake = fakeTerminal(100, 20);
+    const host = tracked(startHost({ agents: [], terminal: fake.terminal, key: KEY, live: feed, now: () => clock, tricot: { url: 'http://127.0.0.1:9', threads, open: () => {} } }));
+    const text = async () => (await fake.observer.settled(), fake.observer.text());
+    try {
+      await host.started;
+      assert.ok(await waitFor(async () => (await text()).includes('Sam · in Picker spacing · just now')), await text());
+      await sleep(100);
+      const before = drawn;
+      await sleep(1_300);
+      assert.equal(drawn, before, 'a tick that changes no time it shows draws nothing');
+      clock += 2 * 60_000;
+      assert.ok(await waitFor(async () => (await text()).includes('Sam · in Picker spacing · 2 min ago'), 2_000), await text());
+      assert.ok(drawn > before, 'the tick drew it again');
+    } finally {
+      host.quit();
+      await host.done;
+    }
+  });
+});
+
+// T30: the terminal reports the mouse in the Tricot tab too, and the wheel scrolls its chat.
+describe('the Tricot tab’s chat, with the mouse', { timeout: 30_000 }, () => {
+  it('scrolls with the wheel, and the terminal reports clicks for the strip', async () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const messages = Array.from({ length: 30 }, (_, i) => ({ id: `m${i + 1}`, author: sam, body: `Message ${i + 1}`, at }));
+    const thread = { id: 't', title: 'Picker spacing', startedBy: sam, startedAt: at, updatedAt: at, messages };
+    const board = { id: 'roadmap-1', title: 'Roadmap', threads: [thread], decisions: [], tasks: [], canvas: emptyCanvas(), activity: { actors: [{ actor: sam, at }], done: {}, reviewSentAt: {} } } as unknown as Board;
+    const live: BoardLive = { board: 'roadmap-1', steps: [], approvals: [], presence: [], chatVer: 1 };
+    const feed: LiveFeed = { now: () => live, onChange: () => () => {}, reconnect: () => {}, stop: () => {} };
+    const threads: ThreadsAccess = { me: 'Wassim', read: async () => ({ ok: true, board }), skills: async () => [], send: {} as ThreadsAccess['send'] };
+    const fake = fakeTerminal(100, 20);
+    const host = tracked(startHost({ agents: [], terminal: fake.terminal, key: KEY, live: feed, tricot: { url: 'http://127.0.0.1:9', threads, open: () => {} } }));
+    const text = async () => (await fake.observer.settled(), fake.observer.text());
+    try {
+      await host.started;
+      assert.ok(await waitFor(async () => (await text()).includes('Message 30')), await text());
+      const modes = fake.observer.screen.inputModes;
+      assert.deepEqual([modes.mouse, modes.mouseEncoding], ['vt200', 'sgr']);
+      fake.type('\x1b[<64;5;3M'.repeat(4));
+      assert.ok(await waitFor(async () => !(await text()).includes('Message 30') && (await text()).includes('Message 24')), await text());
+      fake.type('\x1b[<65;5;3M'.repeat(4));
+      assert.ok(await waitFor(async () => (await text()).includes('Message 30')), 'and down again to the latest');
+    } finally {
+      host.quit();
+      await host.done;
+    }
   });
 });

@@ -127,7 +127,7 @@ export async function askOnFirstRun(h: HooksEnv): Promise<void> {
   const asking = plans.filter((plan) => liveStepsInstaller(plan.agent).approvals).map((plan) => plan.name);
   if (asking.length) out(approvalsSaid(asking));
   out("Turn them off any time with `tricot steps off`, or with the Live steps switch in an agent's panel.");
-  const yes = await ctx.ask("Show your agents' steps live on your boards? [Y/n] ", true);
+  const yes = await ctx.ask("Show your agents' steps live on your boards?", true);
   remember(h.dataDir, yes ? 'yes' : 'no', 'asked');
   if (!yes) {
     out('Nothing was changed. Turn them on later with: tricot steps on');
@@ -274,7 +274,7 @@ async function change(h: HooksEnv, action: LiveStepsAction): Promise<CliResult> 
       err('Run this in a terminal to answer yes or no, or add --yes; nothing was changed.');
       return { exitCode: 1 };
     }
-    if (!(await ctx.ask(`Turn ${action} live steps for ${names}? [y/N] `, false))) {
+    if (!(await ctx.ask(`Turn ${action} live steps for ${names}?`, false))) {
       out('Nothing was changed.');
       return { exitCode: 0 };
     }
@@ -351,7 +351,7 @@ async function changeProject(h: HooksEnv, action: LiveStepsAction): Promise<CliR
       ctx.err('\nRun this in a terminal to answer yes or no, or add --yes; nothing was changed.');
       return { exitCode: 1 };
     }
-    if (!(await ctx.ask('Add it? [y/N] '))) {
+    if (!(await ctx.ask('Add it?'))) {
       out('Nothing was changed.');
       return { exitCode: 0 };
     }

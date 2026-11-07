@@ -13,6 +13,7 @@ import type { EventQuery } from './store/eventTables';
 import { FirstLooks } from './store/firstLooks';
 import type { BlockPatch, CanvasRef, DecisionPatch, LensInput, Located, Move, NewBlock, NewCriterion, NewDecision, NewFinding, NewGroup, NewTask, PinPart, PinTarget, ResolveInput, TaskPatch, WaitOptions } from './store/inputs';
 import { Pairings } from './store/pairing';
+import { Pasting, type Paste, type Pasted } from './store/pasting';
 import { People } from './store/people';
 import { Pins } from './store/pins';
 import { Reactions, type Reacted, type ReactionInput, type ReactionPlace } from './store/reactions';
@@ -40,6 +41,7 @@ export type {
   NewAffect, NewBlock, NewCriterion, NewDecision, NewFinding, NewGroup, NewOption, NewTask, OptionChange, PinPart, PinTarget,
   ResolveInput, TaskPatch, WaitOptions,
 } from './store/inputs';
+export type { Paste, Pasted } from './store/pasting';
 export { checkImage, sniffImage } from './blocks/image/check';
 export { inBlock, inBlockAsync } from './store/blockContent';
 export { label, taskLabel } from './store/labels';
@@ -56,6 +58,7 @@ export class Store {
   private readonly criteria: Criteria;
   private readonly canvases: Canvases;
   private readonly blocks: Blocks;
+  private readonly pasting: Pasting;
   private readonly decisions: Decisions;
   private readonly firstLooks: FirstLooks;
   private readonly tasks: Tasks;
@@ -80,6 +83,7 @@ export class Store {
     this.criteria = new Criteria(this.repo);
     this.canvases = new Canvases(this.repo);
     this.blocks = new Blocks(this.repo, this.assets, this.canvases);
+    this.pasting = new Pasting(this.repo, this.blocks, this.canvases);
     this.decisions = new Decisions(this.repo, this.blocks, this.criteria, this.people);
     this.firstLooks = new FirstLooks(this.repo);
     this.tasks = new Tasks(this.repo, this.people, this.firstLooks);
@@ -205,7 +209,7 @@ export class Store {
   // A 👍, 👎 or 👀 on a comment or thread message, or taking one back (core/reactions.ts).
   react(place: ReactionPlace, input: ReactionInput, actor: Actor): Reacted { return this.reactions.react(place, input, actor); }
   // An agent's 👀 on what people wrote that its get_board or updates (`events`) put in front of it.
-  seeComments(boardId: string, viewer: Actor, events?: BoardEvent[]): number { return this.reactions.seeComments(boardId, viewer, events); }
+  seeComments(boardId: string, viewer: Actor, events?: BoardEvent[], accept?: Parameters<Reactions['seeComments']>[3]): number { return this.reactions.seeComments(boardId, viewer, events, accept); }
   requestPlan(decisionId: string, note: string | undefined, actor: Actor): Decision { return this.decisions.requestPlan(decisionId, note, actor); }
   takeFirstLook(taskId: string, actor: Actor): Task { return this.firstLooks.takeFirstLook(taskId, actor); }
   keepFirstLook(taskId: string, actor: Actor): void { return this.firstLooks.keepFirstLook(taskId, actor); }
@@ -230,6 +234,8 @@ export class Store {
   getCanvas(ref: CanvasRef): Located { return this.canvases.getCanvas(ref); }
   canvasOf(itemId: string): Located { return this.canvases.canvasOf(itemId); }
   addBlock(ref: CanvasRef, input: NewBlock, actor: Actor): Block { return this.blocks.addBlock(ref, input, actor); }
+  // Copies of blocks (and groups, with the links between them) from one canvas onto another, or the same one.
+  pasteBlocks(ref: CanvasRef, input: Paste, actor: Actor): Pasted { return this.pasting.paste(ref, input, actor); }
   deriveBlock(blockId: string, actor: Actor): { block: Block; left: string[] } { return this.blocks.deriveBlock(blockId, actor); }
   updateBlock(blockId: string, patch: BlockPatch, actor: Actor, expectedRev?: number): Block { return this.blocks.updateBlock(blockId, patch, actor, expectedRev); }
   restoreBlock(blockId: string, rev: number, actor: Actor, expectedRev?: number): Block { return this.blocks.restoreBlock(blockId, rev, actor, expectedRev); }

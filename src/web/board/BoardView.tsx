@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { byUrgency, needsFrom } from '../../core/needs';
-import { isThreadEvent } from '../../core/threads';
 import { boardKey, type Board, type BoardEvent } from '../../core/types';
 import type { LiveBoard } from '../shared/api';
-import { Inbox, NeedsYou, useAway, useDismissed, useNotifications, useReplyBadge, type Away } from '../inbox';
+import { eventTarget, Inbox, NeedsYou, useAway, useDismissed, useNotifications, useReplyBadge, type Away } from '../inbox';
 import { CardView, DecisionsView } from '../decisions';
 import { RestoreButton, useBoard, useHistory } from '../live';
 import { AgentsProvider, ConnectAgent, StepsProvider, type StepsStore } from '../agents';
@@ -12,14 +11,14 @@ import { CanvasView, SyncControl } from '../canvas';
 import { ActorBadge, Icon, Popover, timeAgo } from '../shared/components';
 import { forgetBoard } from './deleteBoard';
 import { ArchivedBar, BoardTopBar } from './heading';
-import { ReadOnlyContext, useStoredFlag, useTick } from '../shared/hooks';
+import { ReadOnlyContext, useSidePanel, useStoredFlag, useTick } from '../shared/hooks';
 import { go, linkTo, onBoard, type BoardViewName } from '../shared/pages';
 import { noteOpened } from './recentBoards';
 import { RefsProvider, RefText } from '../shared/refs';
 import { useTitlePart } from '../shared/tabTitle';
 import { Search } from './search';
 import { TasksView, TaskView } from '../tasks';
-import { openThread, ThreadDock, useJustMade, useThreadsSeen } from '../threads';
+import { ThreadDock, useJustMade, useThreadsSeen } from '../threads';
 
 // What changes the Tasks tab, for its dot.
 const TASK_CHANGES = new Set<BoardEvent['type']>(['task_planned', 'task_updated', 'tasks_stale', 'task_dropped', 'task_brought_back', 'card_deleted']);
@@ -45,26 +44,28 @@ function useChangedIds(board: Board | null): Set<string> {
   return changed;
 }
 
-// Where an event in the log leads, as in the inbox: the task it is about, else
-// its decision, else its thread, else the board context for a change there. A
-// card deleted since leads nowhere.
-function eventTarget(board: Board, event: BoardEvent): (() => void) | undefined {
-  if (event.taskId && board.tasks.some((t) => t.id === event.taskId)) return () => go.task(board.id, event.taskId!);
-  if (event.decisionId && board.decisions.some((d) => d.id === event.decisionId)) return () => go.decision(board.id, event.decisionId!);
-  if (event.taskId || event.decisionId) return undefined;
-  if (isThreadEvent(event)) return board.threads?.some((t) => t.id === event.itemId) ? () => openThread(event.itemId!) : undefined; // a deleted one leads nowhere
-  if (event.itemId) return () => go.canvas(board.id);
-  return undefined;
-}
-
 // The board's activity, newest first: a page of the log read from the server,
 // with older ones when asked for, and what the viewer hasn't seen marked.
+// Docked beside the board, it closes as the docked conversation does
+// (useSidePanel): on Escape, or on a plain click on empty space outside it.
+// `toggle` is its button, Activity or Hide activity, which just toggles it.
 const ACTIVITY_PAGE = 150;
 
-function ActivityPanel({ board, name, away }: { board: LiveBoard; name: string; away: Away }) {
+function ActivityPanel(props: { board: LiveBoard; name: string; away: Away; onClose: () => void; toggle: RefObject<HTMLButtonElement | null> }) {
+  const { board, name, away, onClose, toggle } = props;
   const activity = useHistory(boardKey(board), board.seq, {}, ACTIVITY_PAGE);
+  const root = useRef<HTMLElement>(null);
+  // Closed by Escape from inside it, the focus goes back to its button.
+  const close = useCallback(
+    (escape: boolean) => {
+      if (escape && root.current?.contains(document.activeElement)) toggle.current?.focus();
+      onClose();
+    },
+    [onClose, toggle],
+  );
+  useSidePanel(true, close, root, toggle);
   return (
-    <aside className="activity">
+    <aside className="activity" ref={root} aria-label="Activity">
       <h2 className="section-title">Activity</h2>
       <ol className="activity-list">
         {activity.events.map((event, i, shown) => {
@@ -160,6 +161,9 @@ export function BoardView({ boardId, view, decisionId, taskId, name }: Props) {
     if (taskId) seeMade(taskId, false);
   }, [decisionId, taskId, markSeen, seeMade]);
   const [showActivity, setShowActivity] = useStoredFlag('tricot:activity', () => window.innerWidth >= 1680);
+  const activityButton = useRef<HTMLButtonElement>(null);
+  // Closed from the panel (Escape, or a click away), it's remembered as Hide activity is.
+  const hideActivity = useCallback(() => setShowActivity(false), [setShowActivity]);
   // Dropped tasks stay out of the lanes until asked for (tasks.tsx).
   const [showDropped, setShowDropped] = useStoredFlag('tricot:show-dropped', () => false);
   useTick(30_000);
@@ -306,7 +310,7 @@ export function BoardView({ boardId, view, decisionId, taskId, name }: Props) {
               </button>
             )}
             {/* What's new has one count, the bell's: the log only says it has some. */}
-            <button className="btn btn-quiet btn-small activity-toggle" onClick={() => setShowActivity(!showActivity)}>
+            <button className="btn btn-quiet btn-small activity-toggle" ref={activityButton} aria-expanded={showActivity} onClick={() => setShowActivity(!showActivity)}>
               {showActivity ? 'Hide activity' : 'Activity'}
               {!showActivity && away.events.length > 0 && <span className="new-dot" aria-label="Has changes" />}
             </button>
@@ -336,9 +340,7 @@ export function BoardView({ boardId, view, decisionId, taskId, name }: Props) {
               opened is docked beside it, holding the bar (threads.tsx). */}
           <ThreadDock board={board} name={name} view={view} onSeeItem={markSeen} />
 
-          {showActivity && (
-            <ActivityPanel board={board} name={name} away={away} />
-          )}
+          {showActivity && <ActivityPanel board={board} name={name} away={away} onClose={hideActivity} toggle={activityButton} />}
         </div>
 
       </div>

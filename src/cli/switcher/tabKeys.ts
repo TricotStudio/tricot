@@ -1,9 +1,12 @@
 // What is typed in the Tricot tab (T192), as keys: the router (keys.ts) has
 // kept the switch key and its second key, and hands the tab the rest, byte
-// for byte, as it would hand an agent. This reads those bytes as the tab's
+// for byte, as it would hand an agent, with a key split between two reads
+// waited for and handed on whole (an arrow whose Esc came alone included, so
+// an Esc alone here is Esc pressed alone). This reads those bytes as the tab's
 // keys: letters and other text (UTF-8, a character cut between two reads
-// waited for), Enter, Esc, Backspace, the arrows, Ctrl+U and Ctrl+C, and a
-// paste whole. Anything else is a key the tab has no use for.
+// waited for), Enter, Esc, Tab and Shift+Tab, Backspace, the four arrows, Home and End, Page Up and
+// Page Down, Ctrl+U, Ctrl+L and Ctrl+C, and a paste whole. Anything else is a key the
+// tab has no use for.
 //
 // The tab asks for no keyboard protocol, but a key may still come in one's
 // form (keyboard.ts), typed as the terminal was being set back from an
@@ -16,7 +19,7 @@ import { legacyOf, readKey } from './keyboard';
 export type TabKey =
   | { kind: 'text'; text: string } // printable: what is typed
   | { kind: 'paste'; text: string }
-  | { kind: 'enter' | 'escape' | 'backspace' | 'up' | 'down' | 'clear' | 'interrupt' | 'other' };
+  | { kind: 'enter' | 'escape' | 'tab' | 'backtab' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'home' | 'end' | 'pageup' | 'pagedown' | 'clear' | 'lens' | 'interrupt' | 'other' };
 
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
@@ -26,14 +29,31 @@ const SEQUENCES: [string, TabKey][] = [
   ['\x1bOA', { kind: 'up' }],
   ['\x1b[B', { kind: 'down' }],
   ['\x1bOB', { kind: 'down' }],
+  ['\x1b[C', { kind: 'right' }],
+  ['\x1bOC', { kind: 'right' }],
+  ['\x1b[D', { kind: 'left' }],
+  ['\x1bOD', { kind: 'left' }],
+  ['\x1b[H', { kind: 'home' }],
+  ['\x1bOH', { kind: 'home' }],
+  ['\x1b[1~', { kind: 'home' }],
+  ['\x1b[7~', { kind: 'home' }],
+  ['\x1b[F', { kind: 'end' }],
+  ['\x1bOF', { kind: 'end' }],
+  ['\x1b[4~', { kind: 'end' }],
+  ['\x1b[8~', { kind: 'end' }],
+  ['\x1b[5~', { kind: 'pageup' }],
+  ['\x1b[6~', { kind: 'pagedown' }],
+  ['\x1b[Z', { kind: 'backtab' }], // Shift+Tab
 ];
 
 const CONTROLS: Record<number, TabKey> = {
   0x0d: { kind: 'enter' },
   0x0a: { kind: 'enter' },
+  0x09: { kind: 'tab' },
   0x7f: { kind: 'backspace' },
   0x08: { kind: 'backspace' },
   0x15: { kind: 'clear' }, // Ctrl+U
+  0x0c: { kind: 'lens' }, // Ctrl+L
   0x03: { kind: 'interrupt' }, // Ctrl+C
 };
 
@@ -100,7 +120,7 @@ export class TabKeyReader {
           keys.push(known[1]);
           s = s.slice(known[0].length);
         } else if (s.length === 1) {
-          keys.push({ kind: 'escape' });
+          keys.push({ kind: 'escape' }); // alone: the router waited, and nothing came after it
           s = '';
         } else if (s.charCodeAt(1) < 0x20 || s.charCodeAt(1) === 0x7f) {
           keys.push({ kind: 'escape' }); // Esc, then a control key read with it

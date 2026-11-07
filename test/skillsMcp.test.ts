@@ -152,19 +152,19 @@ describe('Skills called with "/", over MCP and REST', () => {
       forClaude,
     );
     const forCodex = await callText('Codex', 'get_updates', { board_id: boardId, since });
-    assert.match(forCodex, new RegExp(`Wassim \\(human\\) asked Claude on T1 \\[task id: ${task.id}\\]\\. Not for you; carry on\\.`));
+    assert.ok(!forCodex.includes(task.id), 'the unrequested agent receives no backlog content');
     assert.doesNotMatch(forCodex, /asks you/);
 
     assert.match(await callText('Claude', 'get_task', { task_id: task.id }), /Wassim \(human\) at \S+ \[comment id: \w+\] \(asks you to run \/avoid-ai-writing\): \/avoid-ai-writing tighten the intro/);
     assert.match(await callText('Claude', 'get_board', { board_id: boardId }), /Wassim asks you to run \/avoid-ai-writing on T1 .*: "tighten the intro, keep it under 80 words"/);
-    assert.match(await callText('Codex', 'get_task', { task_id: task.id }), /\(for Claude: not for you\)/);
+    assert.equal((await call('Codex', 'get_task', { task_id: task.id })).isError, true);
 
     await callText('Claude', 'comment', { task_id: task.id, body: 'Tightened it: 62 words now.' });
     await callText('Claude', 'comment', { task_id: task.id, body: 'And one more thing.' });
     const comments = (await get(`/boards/${boardId}`)).tasks[0].comments;
     assert.equal(comments[1].via, 'avoid-ai-writing');
     assert.equal(comments[2].via, undefined, 'only the reply that answers it');
-    const seen = await callText('Codex', 'get_task', { task_id: task.id });
+    const seen = await callText('Claude', 'get_task', { task_id: task.id });
     assert.match(seen, /Claude \(agent\) at \S+ \[comment id: \w+\] \(via \/avoid-ai-writing\): Tightened it: 62 words now\./);
     assert.ok(!(await callText('Claude', 'get_board', { board_id: boardId })).includes('asks you to run'), 'answered');
   });
@@ -196,7 +196,8 @@ describe('Skills called with "/", over MCP and REST', () => {
       const made = await comment(body);
       assert.equal(made.skill, undefined, body);
     }
-    // An agent's text is never a request to another agent.
+    // A person asks Claude to reply; its own text is never a skill request.
+    await comment('@Claude please reply.');
     const fromAgent = await callText('Claude', 'comment', { task_id: task.id, body: '@Codex /review the diff' });
     assert.match(fromAgent, /Commented on T1/);
     const stored = (await get(`/boards/${boardId}`)).tasks[0].comments.at(-1);

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { CommandToRun } from '../src/cli/connectAgent';
 import { runCli, type CliContext } from '../src/cli/main';
-import { claudeCommand, codexLines, exportToken, geminiLines, opencode2Lines, piLines, setEnvironment, shellChain, shellCommand, shellFor, shellQuote } from '../src/core/connect';
+import { claudeCommand, codexLines, exportToken, geminiLines, grokLines, opencode2Lines, piLines, setEnvironment, shellChain, shellCommand, shellFor, shellQuote } from '../src/core/connect';
 import { agentKinds, findAgent, installHints, panelTexts } from '../src/core/agents/registry';
 import { howToUpdate, restartCommand } from '../src/install/handoff';
 import { shellPath } from '../src/server/hooks/installer';
@@ -53,6 +53,7 @@ describe('Commands shown for PowerShell', () => {
     assert.deepEqual(codexLines(codexUrl, TOKEN, 'powershell'), [`$env:TRICOT_TOKEN = '${TOKEN}'`, `codex mcp add tricot --url '${codexUrl}' --bearer-token-env-var TRICOT_TOKEN`]);
     assert.deepEqual(piLines(codexUrl, undefined, 'powershell'), [`pi mcp add tricot --url '${codexUrl}'`]);
     assert.deepEqual(geminiLines(codexUrl, TOKEN, 'powershell').at(-1), `gemini mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot '${codexUrl}'`);
+    assert.deepEqual(grokLines(codexUrl, TOKEN, 'powershell'), [`$env:TRICOT_TOKEN = '${TOKEN}'`, `grok mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot '${codexUrl}'`]);
     assert.deepEqual(opencode2Lines(codexUrl, TOKEN, 'powershell'), [`$env:TRICOT_TOKEN = '${TOKEN}'`, `opencode mcp add tricot --url '${codexUrl}' --global --header 'Authorization=Bearer {env:TRICOT_TOKEN}'`]);
   });
 
@@ -113,10 +114,17 @@ describe('Where an agent is installed from, on Windows', () => {
     assert.equal(first('codex', true), 'powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"');
     assert.equal(first('pi', true), 'powershell -c "irm https://pi.dev/install.ps1 | iex"');
     assert.equal(first('omp', true), 'irm https://omp.sh/install.ps1 | iex');
+    assert.equal(first('goose', true), 'Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aaif-goose/goose/main/download_cli.ps1" -OutFile "download_cli.ps1"; .\\download_cli.ps1');
+    assert.equal(first('goose', false), 'curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | bash');
+    assert.equal(first('hermes', true), 'iex (irm https://hermes-agent.nousresearch.com/install.ps1)');
+    assert.equal(first('hermes', false), 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash');
     assert.deepEqual(installHints(findAgent('opencode')!, true).commands, ['npm install -g opencode-ai', 'scoop install opencode', 'choco install opencode']);
     // Gemini CLI's docs name no Windows command beyond npm's: the same list shows.
     assert.equal(findAgent('gemini')!.install.windows, undefined);
     assert.deepEqual(installHints(findAgent('gemini')!, true).commands, findAgent('gemini')!.install.commands);
+    // Grok Build's install guide has its own PowerShell installer.
+    assert.equal(first('grok', true), 'irm https://x.ai/cli/install.ps1 | iex');
+    assert.equal(first('grok', false), 'curl -fsSL https://x.ai/cli/install.sh | bash');
     // Where Windows has its own list, it holds nothing made for macOS or Linux.
     for (const kind of agentKinds()) for (const command of kind.install.windows ?? []) assert.doesNotMatch(command, /\| *(ba)?sh\b|^brew /, `${kind.id}: a command for macOS or Linux on Windows`);
   });
@@ -166,6 +174,7 @@ describe('tricot connect, on Windows', () => {
     cwd: scratch,
     ...(platform && { platform }),
     exec: async (command) => {
+      if (command.args[1] === 'get') return { exitCode: 1, stdout: '', stderr: 'No MCP server named "tricot".' }; // the agent has none yet
       ran.push(command);
       return { exitCode: 0, stdout: '', stderr: '' };
     },
@@ -199,7 +208,7 @@ describe('tricot connect, on Windows', () => {
     const url = (name: string) => `http://127.0.0.1:${port}/mcp?agent=${name}`;
     assert.match(said(), new RegExp(`^  \\$env:TRICOT_TOKEN = '${TOKEN}'$`, 'm'));
     assert.match(said(), new RegExp(`^  codex mcp add tricot --url '${url('Codex').replace(/[?]/g, '\\?')}' --bearer-token-env-var TRICOT_TOKEN$`, 'm'));
-    assert.match(said(), /Codex, Pi and Gemini CLI read the token from TRICOT_TOKEN: run the \$env:TRICOT_TOKEN line in the PowerShell each runs from\./);
+    assert.match(said(), /Codex, Pi, Gemini CLI and Grok Build read the token from TRICOT_TOKEN: run the \$env:TRICOT_TOKEN line in the PowerShell each runs from\./);
     assert.doesNotMatch(said(), /export TRICOT_TOKEN/);
   });
 
@@ -207,7 +216,7 @@ describe('tricot connect, on Windows', () => {
     withToken();
     await runCli(['connect', '--host', '0.0.0.0'], ctx('darwin'));
     assert.match(said(), new RegExp(`^  export TRICOT_TOKEN=${TOKEN}$`, 'm'));
-    assert.match(said(), /Codex, Pi and Gemini CLI read the token from TRICOT_TOKEN: run the export in the shell each runs from\./);
+    assert.match(said(), /Codex, Pi, Gemini CLI and Grok Build read the token from TRICOT_TOKEN: run the export in the shell each runs from\./);
   });
 
   it("says what it would run for Codex with the token in PowerShell: set the variable, then the command, and runs it with the token in its environment", async () => {

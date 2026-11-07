@@ -109,6 +109,14 @@ export function threadTag(thread: Pick<Thread, 'door' | 'general'>): string | un
   return thread.door && thread.door !== 'threads' ? DOOR_NAMES[thread.door] : undefined;
 }
 
+// The tab a thread opens on where no conversation is docked (a card's own
+// view, Home, another board): the one it was started from, the General
+// thread's Board Context, else Decisions.
+export function threadView(thread: Pick<Thread, 'door' | 'general'>): 'decisions' | 'tasks' | 'canvas' {
+  if (thread.general) return 'canvas';
+  return thread.door === 'tasks' || thread.door === 'canvas' ? thread.door : 'decisions';
+}
+
 // Whether a thread is done with for now: nothing in it waits on anyone, it
 // made what it was for and has been quiet a day, or made nothing and has
 // been quiet a week.

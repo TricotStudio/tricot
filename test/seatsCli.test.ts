@@ -13,7 +13,7 @@ import { removeScratch } from './platform';
 
 // Letting browsers in from a plain terminal (cli/seatsDesk.ts, T187): the
 // terminal where `tricot` runs the board in the foreground asks "A browser
-// wants to act for you (…, code 4271). Allow? [y/N]" and reads one key;
+// wants to act for you (…, code 4271). Allow?", Yes and No beside it, and reads keys;
 // `tricot access` lists and asks for a board running elsewhere, and once the
 // first browser is in, answers only when let in itself; `tricot access revoke`
 // lets every browser and terminal go, only while Tricot is stopped; the names
@@ -36,9 +36,10 @@ interface StandInKeys extends TerminalKeys {
   listening: boolean;
   press(key: Key): void;
 }
-function standInKeys(): StandInKeys {
+function standInKeys(columns = 120): StandInKeys {
   let listener: ((key: Key) => void) | undefined;
   const keys: StandInKeys = {
+    columns,
     written: '',
     get listening() {
       return listener !== undefined;
@@ -58,6 +59,9 @@ function standInKeys(): StandInKeys {
   };
   return keys;
 }
+
+// The line last drawn on a stand-in terminal, as it shows.
+const screen = (keys: StandInKeys) => keys.written.split('\r\x1b[J').at(-1)!.replace(/\n\x1b\[\?25h$/, '');
 
 const until = async <T>(what: string, check: () => T | undefined | false | Promise<T | undefined | false>, ms = 10_000): Promise<T> => {
   const end = Date.now() + ms;
@@ -118,7 +122,7 @@ describe('Letting browsers in from a plain terminal', () => {
     };
     return self;
   };
-  const prompt = (keys: StandInKeys, code: string) => until(`the question for code ${code}`, () => keys.listening && keys.written.includes(`code ${code}). Allow? [y/N] `));
+  const prompt = (keys: StandInKeys, code: string) => until(`the question for code ${code}`, () => keys.listening && keys.written.includes(`code ${code}). Allow?`));
 
   beforeEach(async () => {
     dataDir = mkdtempSync(path.join(scratch, 'data-'));
@@ -140,10 +144,11 @@ describe('Letting browsers in from a plain terminal', () => {
     const chrome = browser();
     const asked = await chrome.ask();
     await prompt(keys, asked.code);
-    assert.ok(keys.written.endsWith(`A browser wants to act for you (Chrome on macOS, code ${asked.code}). Allow? [y/N] `), JSON.stringify(keys.written));
+    assert.equal(screen(keys), `A browser wants to act for you (Chrome on macOS, code ${asked.code}). Allow?   Yes  ❯ No  (←→ Enter, or y/n)`);
     keys.press({ name: 'y', sequence: 'y' });
     await until('Chrome let in', async () => (await chrome.state(asked.id)).state === 'admitted');
-    assert.ok(keys.written.endsWith('Allow? [y/N] y\n'), 'the key is echoed');
+    assert.equal(screen(keys), `A browser wants to act for you (Chrome on macOS, code ${asked.code}). Allow? Yes`, 'the answer stays on the line');
+    assert.ok(keys.written.endsWith('\n\x1b[?25h'), 'a new line, and the cursor back');
     const seats = await chrome.call<SeatView[]>('GET', '/api/seats');
     assert.deepEqual(
       seats.map((s) => [s.kind, s.label, s.admittedBy]),
@@ -158,6 +163,9 @@ describe('Letting browsers in from a plain terminal', () => {
     const safari = browser(SAFARI);
     const second = await safari.ask();
     await prompt(keys, second.code);
+    keys.press({ name: 'left' });
+    assert.match(screen(keys), /Allow\? ❯ Yes {4}No/, '←→ move the mark');
+    keys.press({ name: 'right' });
     keys.press({ name: 'n', sequence: 'n' });
     await until('Safari denied', async () => (await safari.state(second.id)).state === 'denied');
     const firefox = browser('Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0');
@@ -189,6 +197,20 @@ describe('Letting browsers in from a plain terminal', () => {
     assert.deepEqual((await chrome.call<SeatView[]>('GET', '/api/seats')).map((s) => s.label), ['Chrome on macOS'], 'the terminal let go of its seat as Tricot stopped');
   });
 
+  it('asks the whole question, code and all, on a narrow terminal: the pair goes on a line below it', async () => {
+    const keys = standInKeys(40);
+    await start(keys);
+    const chrome = browser();
+    const asked = await chrome.ask();
+    await prompt(keys, asked.code);
+    const lines = keys.written.split('\r\x1b[J')[0].replace('\x1b[?25l', '').split('\n');
+    assert.deepEqual(lines, ['A browser wants to act for you (Chrome', `on macOS, code ${asked.code}). Allow?`, '']);
+    assert.equal(screen(keys), '  Yes  ❯ No  (←→ Enter, or y/n)');
+    keys.press({ name: 'y', sequence: 'y' });
+    await until('Chrome let in', async () => (await chrome.state(asked.id)).state === 'admitted');
+    assert.equal(screen(keys), '  Yes');
+  });
+
   it('stops asking about one answered elsewhere', async () => {
     const keys = standInKeys();
     await start(keys);
@@ -202,7 +224,8 @@ describe('Letting browsers in from a plain terminal', () => {
     await prompt(keys, asked.code);
     await chrome.call('POST', `/api/seats/admissions/${asked.id}/answer`, { actor: 'Sam', allow: true });
     await until('the question let go', () => !keys.listening);
-    assert.ok(keys.written.endsWith('Allow? [y/N] (answered elsewhere)\n'));
+    assert.equal(screen(keys), `A browser wants to act for you (Safari on macOS, code ${asked.code}). Allow? (answered elsewhere)`);
+    assert.ok(keys.written.endsWith('\n\x1b[?25h'));
   });
 
   it('`tricot access` lets the first browser in, then, unseated, answers only once a browser lets it in', async () => {
@@ -279,7 +302,7 @@ describe('Letting browsers in from a plain terminal', () => {
     const no = standInKeys();
     const kept = runCli(['access', 'revoke'], ctx({ keys: no }));
     await until('the question', () => no.listening);
-    assert.equal(no.written, "Remove every browser and terminal you've let in? [y/N] ");
+    assert.equal(screen(no), "Remove every browser and terminal you've let in?   Yes  ❯ No  (←→ Enter, or y/n)");
     no.press({ name: 'return', sequence: '\r' });
     assert.equal((await kept).exitCode, 0);
     assert.ok(out.includes('Nothing was removed.'));

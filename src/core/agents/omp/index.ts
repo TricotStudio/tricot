@@ -1,6 +1,7 @@
 // OMP: has no command for joining a board, so it is an entry for its
 // mcp.json. What only the command and the server use of it is in server.ts.
 
+import { thinkingLevels } from '../../agentRules';
 import { OMP_FILE, OMP_WHY, ompConfig } from '../../connect';
 import type { AgentKind } from '../agent';
 import { server } from './server';
@@ -32,6 +33,17 @@ export const omp: AgentKind = {
     firstRunBlock: true,
   },
   usage: { shares: 'tokens', source: 'omp' },
+  // It matches a model loosely ("opus"), across its providers, and takes
+  // these --thinking levels (omp --help, OMP 18).
+  startsOn: {
+    models: [
+      { id: 'opus', label: 'Opus' },
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'haiku', label: 'Haiku' },
+      { id: 'fable', label: 'Fable' },
+    ],
+    levels: thinkingLevels('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'auto'),
+  },
 
   ...server,
 };

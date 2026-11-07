@@ -27,6 +27,9 @@ describe('tricot connect <agent>', () => {
   let ran: CommandToRun[];
   let answer: boolean;
   let result: CommandResult;
+  // What the agent says when asked what it has under the name tricot (`claude mcp get tricot`): none, to begin with.
+  let held: CommandResult;
+  let asking: CommandToRun[];
   let agentsHere: string[];
 
   const agentsOnPath = (names: string[]) => {
@@ -49,6 +52,10 @@ describe('tricot connect <agent>', () => {
     cwd: scratch,
     platform: 'linux', // the commands it prints as zsh and bash take them; windowsShell.test.ts has PowerShell's
     exec: async (command) => {
+      if (command.args[1] === 'get') {
+        asking.push(command);
+        return held;
+      }
       ran.push(command);
       return result;
     },
@@ -83,9 +90,11 @@ describe('tricot connect <agent>', () => {
     err = [];
     asked = [];
     ran = [];
+    asking = [];
     answer = true;
     result = { exitCode: 0, stdout: '', stderr: '' };
-    agentsHere = ['claude', 'codex', 'pi', 'gemini'];
+    held = { exitCode: 1, stdout: '', stderr: 'No MCP server named "tricot".' };
+    agentsHere = ['claude', 'codex', 'pi', 'gemini', 'grok'];
     agentsOnPath(agentsHere);
   });
   afterEach(() => removeScratch(scratch));
@@ -103,7 +112,7 @@ describe('tricot connect <agent>', () => {
       assert.deepEqual(ran[0].env, ctx().env);
       assert.match(said(), new RegExp(`^  claude mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"$`, 'm'));
       assert.match(said(), /adds a server named tricot to Claude Code's settings \(~\/\.claude\.json\), for every session/);
-      assert.deepEqual(asked, ["Run it, adding the board to Claude Code's settings? [y/N] "]);
+      assert.deepEqual(asked, ["Run it, adding the board to Claude Code's settings?"]);
       assert.match(said(), /Added HTTP MCP server tricot to user config/);
       assert.match(said(), /Connected: Claude Code now has the board/);
       assert.deepEqual(err, []);
@@ -139,25 +148,38 @@ describe('tricot connect <agent>', () => {
         ['codex', "Codex's settings"],
         ['pi', "Pi's settings"],
         ['gemini', "Gemini CLI's settings"],
+        ['grok', "Grok Build's settings"],
       ]) {
         asked.length = 0;
         await run('connect', agent);
-        assert.match(asked[0], new RegExp(`adding the board to ${settings}\\? \\[y/N\\] $`), agent);
+        assert.match(asked[0], new RegExp(`adding the board to ${settings}\\?$`), agent);
       }
     });
 
-    it('runs the commands as printed for Codex, Pi and Gemini CLI, named on the board', async () => {
+    it('runs the commands as printed for Codex, Pi, Gemini CLI and Grok Build, named on the board', async () => {
       await run('connect', 'codex');
       await run('connect', 'pi');
       await run('connect', 'gemini');
+      await run('connect', 'grok');
       assert.deepEqual(
         ran.map((c) => [path.basename(c.command), ...c.args]),
         [
           ['codex', 'mcp', 'add', 'tricot', '--url', url('Codex')],
           ['pi', 'mcp', 'add', 'tricot', '--url', url('Pi')],
           ['gemini', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', url('Gemini')],
+          ['grok', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', url('Grok')],
         ],
       );
+    });
+
+    it('says which settings Grok Build keeps the board in, and that the instructions can be printed alone', async () => {
+      await run('connect', 'grok');
+      assert.match(said(), /adds a server named tricot to Grok Build's settings \(~\/\.grok\/config\.toml\), for every session/);
+      assert.match(said(), /Connected: Grok Build now has the board, in every session/);
+      out.length = 0;
+      await run('connect', 'grok', '--print');
+      assert.match(said(), /^Run once; Grok Build then has the board in every session:$/m);
+      assert.match(said(), /^With --scope project instead it is kept to this project \(\.grok\/config\.toml\)\.$/m);
     });
   });
 
@@ -199,7 +221,7 @@ describe('tricot connect <agent>', () => {
 
   describe('with --print', () => {
     it('never runs anything, and asks nothing, even with --yes and a yes ready', async () => {
-      for (const agent of ['claude', 'codex', 'pi', 'gemini']) {
+      for (const agent of ['claude', 'codex', 'pi', 'gemini', 'grok']) {
         for (const flags of [['--print'], ['--print', '--yes']]) {
           const { exitCode } = await run('connect', agent, ...flags);
           assert.equal(exitCode, 0);
@@ -249,6 +271,163 @@ describe('tricot connect <agent>', () => {
     });
   });
 
+  describe('when the agent already has a server named tricot', () => {
+    const board = `http://127.0.0.1:4545/mcp?agent=Claude`;
+    const claudeHas = (address: string): CommandResult => ({
+      exitCode: 0,
+      stdout: `tricot:\n  Scope: Local config (private to you in this project)\n  Status: ✔ Connected\n  Type: http\n  URL: ${address}\n\nTo remove this server, run: claude mcp remove tricot -s local`,
+      stderr: '',
+    });
+
+    it('asks Claude Code, and Codex, what they have, with their own command and nothing else', async () => {
+      await run('connect', 'claude');
+      await run('connect', 'codex');
+      assert.deepEqual(asking.map((a) => [path.basename(a.command), ...a.args]), [
+        ['claude', 'mcp', 'get', 'tricot'],
+        ['codex', 'mcp', 'get', 'tricot'],
+      ]);
+      assert.equal(asking[0].timeoutMs, 10_000);
+    });
+
+    it('says it is already connected to this board, runs nothing and exits 0', async () => {
+      held = claudeHas(url('Claude'));
+      const { exitCode } = await run('connect', 'claude');
+      assert.equal(exitCode, 0);
+      assert.deepEqual(ran, []);
+      assert.deepEqual(asked, []);
+      assert.match(said(), /^Claude Code is already connected to this board\. Nothing to do\.$/m);
+      assert.deepEqual(err, []);
+    });
+
+    it('says so without a terminal and with --yes too: nothing needs asking', async () => {
+      held = claudeHas(url('Claude'));
+      assert.equal((await runWithoutTerminal('connect', 'claude')).exitCode, 0);
+      assert.equal((await run('connect', 'claude', '--yes')).exitCode, 0);
+      assert.deepEqual(ran, []);
+      assert.deepEqual(err, []);
+    });
+
+    it('takes the same address written another way as the same', async () => {
+      held = claudeHas(`http://127.0.0.1:${port}/other/../mcp?agent=Claude`);
+      await run('connect', 'claude');
+      assert.deepEqual(ran, []);
+      assert.match(said(), /already connected to this board/);
+    });
+
+    it('knows Codex has it from its url line', async () => {
+      held = { exitCode: 0, stdout: `tricot\n  enabled: true\n  transport: streamable_http\n  url: ${url('Codex')}\n  bearer_token_env_var: -\n`, stderr: '' };
+      const { exitCode } = await run('connect', 'codex');
+      assert.equal(exitCode, 0);
+      assert.deepEqual(ran, []);
+      assert.match(said(), /^Codex is already connected to this board\. Nothing to do\.$/m);
+    });
+
+    it('says what it found at another port, asks once, and replaces it: remove, then add', async () => {
+      held = claudeHas(board);
+      const { exitCode } = await run('connect', 'claude');
+      assert.equal(exitCode, 0);
+      assert.match(said(), /Claude Code already has a server named tricot, at http:\/\/127\.0\.0\.1:4545\/mcp\?agent=Claude, which is not this board's address\. Tricot would replace it, running:\n {2}claude mcp remove tricot\n {2}claude mcp add /);
+      assert.match(said(), /That replaces the server named tricot in Claude Code's settings \(~\/\.claude\.json\)/);
+      assert.deepEqual(asked, ["Replace it: take that server out, then add the board to Claude Code's settings?"]);
+      assert.deepEqual(ran[0].args, ['mcp', 'remove', 'tricot']);
+      assert.deepEqual(ran[1].args, ['mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', url('Claude')]);
+      assert.equal(ran.length, 2);
+      assert.match(said(), /Connected: Claude Code now has the board/);
+      assert.deepEqual(err, []);
+    });
+
+    it('treats another agent name on the same port as another address', async () => {
+      held = claudeHas(url('Planner'));
+      await run('connect', 'claude');
+      assert.equal(ran.length, 2);
+    });
+
+    it('replaces nothing after n', async () => {
+      held = claudeHas(board);
+      answer = false;
+      const { exitCode } = await run('connect', 'claude');
+      assert.equal(exitCode, 0);
+      assert.deepEqual(ran, []);
+      assert.equal(asked.length, 1);
+      assert.match(said(), /Nothing was changed\./);
+    });
+
+    it('goes on as before for an entry that holds no address, leaving the add to say what is in the way', async () => {
+      held = { exitCode: 0, stdout: 'tricot:\n  Type: stdio\n  Command: npx tricot-mcp\n', stderr: '' };
+      result = { exitCode: 1, stdout: '', stderr: 'MCP server tricot already exists in user config' };
+      const { exitCode } = await run('connect', 'claude');
+      assert.equal(exitCode, 1);
+      assert.deepEqual(ran.map((r) => r.args[1]), ['add']);
+      assert.match(complained(), /Claude Code already has a server named tricot\. To replace it, take that one out/);
+    });
+
+    it('does not replace with --yes, and says how to', async () => {
+      held = claudeHas(board);
+      const { exitCode } = await run('connect', 'claude', '--yes');
+      assert.equal(exitCode, 1);
+      assert.deepEqual(ran, []);
+      assert.match(complained(), /--yes never replaces one.*run claude mcp remove tricot, then the command above; nothing was changed\./);
+    });
+
+    it('does not replace without a terminal to ask in', async () => {
+      held = claudeHas(board);
+      const { exitCode } = await runWithoutTerminal('connect', 'claude');
+      assert.equal(exitCode, 1);
+      assert.deepEqual(ran, []);
+      assert.match(complained(), /Without a terminal to ask in, Tricot didn't replace it/);
+    });
+
+    it('stops with the old server still there when it cannot be taken out', async () => {
+      held = claudeHas(board);
+      result = { exitCode: 1, stdout: '', stderr: 'Failed to remove' };
+      const { exitCode } = await run('connect', 'claude');
+      assert.equal(exitCode, 1);
+      assert.equal(ran.length, 1, 'nothing was added');
+      assert.match(complained(), /Failed to remove/);
+      assert.match(complained(), /didn't take the old server out \(claude mcp remove tricot\), so Tricot added nothing and the old server is still there\./);
+    });
+
+    it('says the old server is gone when the add then fails', async () => {
+      held = claudeHas(board);
+      let calls = 0;
+      const { exitCode } = await runCli(['connect', 'claude'], {
+        ...ctx(),
+        exec: async (command) => (command.args[1] === 'get' ? held : ++calls === 1 ? { exitCode: 0, stdout: '', stderr: '' } : { exitCode: 2, stdout: '', stderr: 'boom' }),
+      });
+      assert.equal(exitCode, 1);
+      assert.match(complained(), /Claude Code didn't connect: its command ended with exit code 2\. The old server was already taken out\./);
+    });
+
+    it('goes on as before when the agent says it has none, cannot answer, or takes too long', async () => {
+      for (const answered of [held, { stdout: '', stderr: '', problem: 'spawn failed' }, { stdout: '', stderr: '', timedOut: true }] as CommandResult[]) {
+        held = answered;
+        ran = [];
+        const { exitCode } = await run('connect', 'claude');
+        assert.equal(exitCode, 0);
+        assert.equal(ran.length, 1);
+        assert.equal(ran[0].args[1], 'add');
+      }
+    });
+
+    it("keeps today's way for an agent with no command to read its servers", async () => {
+      held = { exitCode: 0, stdout: `tricot ${url('Pi')}`, stderr: '' };
+      await run('connect', 'pi');
+      await run('connect', 'gemini');
+      assert.deepEqual(asking, []);
+      assert.equal(ran.length, 2);
+    });
+
+    it('never shows the token, in what it found or anywhere', async () => {
+      withToken();
+      held = { exitCode: 0, stdout: `tricot\n  url: http://127.0.0.1:4545/mcp?agent=Codex&token=${TOKEN}\n`, stderr: '' };
+      const { exitCode } = await run('connect', 'codex', '--host', '0.0.0.0');
+      assert.equal(exitCode, 0);
+      assert.ok(!everything().includes(TOKEN), everything());
+      assert.match(said(), /token=<token>/);
+      assert.ok(!ran.some((r) => JSON.stringify(r.args).includes(TOKEN)), 'the token is no argument');
+    });
+  });
+
   describe('when the agent says no', () => {
     it("shows the agent's own output, and exits 1", async () => {
       result = { exitCode: 1, stdout: '', stderr: 'error: something went wrong\nsecond line' };
@@ -269,6 +448,10 @@ describe('tricot connect <agent>', () => {
       err.length = 0;
       assert.equal((await run('connect', 'gemini', '--yes')).exitCode, 1);
       assert.match(complained(), /^  gemini mcp remove --scope user tricot$/m);
+
+      err.length = 0;
+      assert.equal((await run('connect', 'grok', '--yes')).exitCode, 1);
+      assert.match(complained(), /^  grok mcp remove --scope user tricot$/m);
     });
 
     it('does not suggest replacing anything for another failure', async () => {
@@ -319,6 +502,18 @@ describe('tricot connect <agent>', () => {
       assert.equal(ran[0].env.TRICOT_TOKEN, TOKEN);
       assert.ok(!JSON.stringify(ran[0].args).includes(TOKEN));
       assert.ok(!everything().includes(TOKEN));
+    });
+
+    it('gives Grok Build the header that names the variable, and the token in the environment', async () => {
+      const { exitCode } = await run('connect', 'grok', '--yes', '--host', '0.0.0.0');
+      assert.equal(exitCode, 0);
+      assert.deepEqual(ran[0].args, [
+        'mcp', 'add', '--scope', 'user', '--transport', 'http', '--header', 'Authorization: Bearer ${TRICOT_TOKEN}', 'tricot', `http://127.0.0.1:${port}/mcp?agent=Grok`,
+      ]);
+      assert.equal(ran[0].env.TRICOT_TOKEN, TOKEN);
+      assert.ok(!JSON.stringify(ran[0].args).includes(TOKEN));
+      assert.ok(!everything().includes(TOKEN));
+      assert.match(said(), /reads the token from TRICOT_TOKEN: set it in the shell/);
     });
 
     it("keeps the token out of what the agent says back, should it repeat it", async () => {
@@ -375,11 +570,13 @@ describe('tricot connect <agent>', () => {
     });
   });
 
-  describe('OMP, OpenCode and any MCP client', () => {
+  describe('OMP, OpenCode, Goose, Hermes and any MCP client', () => {
     it('print as they did, say they cannot be run, and run nothing, even with --yes', async () => {
       for (const [agent, why] of [
         ['omp', "it's a file to edit"],
         ['opencode', "it's a file to edit"],
+        ['goose', "it's a file to edit"],
+        ['hermes', "it's a file to edit"],
         ['mcp-json', "it's an entry for your client's settings"],
       ]) {
         out.length = 0;
@@ -415,7 +612,7 @@ describe('tricot connect <agent>', () => {
       const { exitCode } = await run('connect');
       assert.equal(exitCode, 0);
       assert.match(said(), /^Connect an agent \(once\):$/m);
-      assert.match(said(), /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini\)\. Add --print to only see the command\./);
+      assert.match(said(), /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, grok\)\. Add --print to only see the command\./);
       assert.deepEqual(ran, []);
       assert.deepEqual(asked, []);
     });
@@ -432,10 +629,10 @@ describe('tricot connect <agent>', () => {
   describe('the help', () => {
     it('lists connect in the main help, and says its options in its own (cliHelp.test.ts has the rest)', async () => {
       await run('--help');
-      assert.match(said(), /tricot connect \[agent\]\s+Connect claude, codex, pi or gemini: shows its own command, asks,/);
+      assert.match(said(), /tricot connect \[agent\]\s+Connect claude, codex, pi, gemini or grok: shows its own command,\s+asks,/);
       out.length = 0;
       await run('connect', '--help');
-      assert.match(said().replace(/\s+/g, ' '), /Connect claude, codex, pi or gemini: shows its own command, asks, and runs it\. --print only shows it/);
+      assert.match(said().replace(/\s+/g, ' '), /Connect claude, codex, pi, gemini or grok: shows its own command, asks, and runs it\. --print only shows it/);
       assert.match(said(), /--print\s+Only show the command, run nothing/);
       assert.match(said(), /--yes\s+Don't ask \(it still shows what it changes\)/);
     });

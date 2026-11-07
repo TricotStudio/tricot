@@ -1,7 +1,9 @@
 // What needs you, and what is new since you looked: the inbox, the needs
-// list and bell, and a board's notifications. What the other features use of it.
+// list and bell, a board's notifications, and where an event leads (the
+// Activity log's too). What the other features use of it.
 export { forgetSeen, useAway, type Away } from './away';
 export { Inbox } from './inbox';
 export { NeedsBell, NeedsList, useDismissed, useNeeds } from './needs';
 export { NeedsYou } from './needsYou';
 export { useNotifications, useReplyBadge } from './notify';
+export { eventTarget } from './place';

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { runningWords, type AgentRule, type AgentRules } from '../../core/agentRules';
 import { samePerson } from '../../core/format';
 import type { AgentSkills, AgentTask, SkillEntry } from '../../core/skills';
 import { TASK_STATUS_WORDS } from '../../core/pins';
@@ -8,12 +9,14 @@ import { api } from '../shared/api';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
 import { linkTo } from '../shared/pages';
 import { AgentLiveSteps, useLiveSteps } from './liveSteps';
+import { kindOf, offersRule, RuleChip } from './rule';
 import { AgentUsageSection } from './usage';
 import './agents.css';
 
-// The agents Tricot knows, in the user menu, and an agent's own panel: its
-// live steps switch (liveSteps.tsx), its usage (usage.tsx), its skills (those
-// it reported and the Tricot skills that work with every agent, which people
+// The agents Tricot knows, in the user menu, and an agent's own panel: in
+// its head, what it starts on and runs on now (rule.tsx); its live steps
+// switch (liveSteps.tsx), its usage (usage.tsx), its skills (those it
+// reported and the Tricot skills that work with every agent, which people
 // add and edit here), what it is working on, and its activity.
 
 // The agents and what each can be asked to run, as the server has them.
@@ -31,6 +34,28 @@ function useAgents(): { agents: AgentSkills[] | null; reload: () => void } {
     };
   }, [count]);
   return { agents, reload: useCallback(() => setCount((n) => n + 1), []) };
+}
+
+// The model and thinking level each agent starts on, by agent id, and
+// setting one's (the person's alone: the server asks this browser to be one
+// they let in). None until read.
+function useAgentRules(): { rules: AgentRules | null; set: (id: string, rule: AgentRule) => Promise<void> } {
+  const [rules, setRules] = useState<AgentRules | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.agentRules().then(
+      (read) => live && setRules(read.rules),
+      () => live && setRules({}),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const set = useCallback(async (id: string, rule: AgentRule) => {
+    const changed = await api.setAgentRule(id, { model: rule.model ?? null, effort: rule.effort ?? null });
+    setRules(changed.rules);
+  }, []);
+  return { rules, set };
 }
 
 // Where an agent is, in a few words, and with `board` the board it is most on.
@@ -82,7 +107,14 @@ export function AgentPanel({ name, person, onClose }: { name: string; person: st
   const agent = agents?.find((a) => samePerson(a.name, name));
   const [tab, setTab] = useState<Tab>('skills');
   const panel = useRef<HTMLElement>(null);
+  const head = useRef<HTMLElement>(null);
   const liveSteps = useLiveSteps();
+  const { rules, set: setRule } = useAgentRules();
+  // The rule, for an agent Tricot starts that takes a model: the chip, and the line saying what it runs on now.
+  const kind = kindOf(agent ?? { name });
+  const ruled = offersRule(kind) && rules !== null ? kind : undefined;
+  const rule = (ruled && rules?.[ruled.id]) || {};
+  const running = ruled && runningWords(ruled, agent?.runsOn, rule);
 
   useEffect(() => {
     panel.current?.focus();
@@ -96,7 +128,7 @@ export function AgentPanel({ name, person, onClose }: { name: string; person: st
   return createPortal(
     <div className="agent-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <aside className="agent-panel" ref={panel} role="dialog" aria-modal="true" aria-label={`${name}, an agent`} tabIndex={-1}>
-        <header className="agent-head">
+        <header className="agent-head" ref={head}>
           <ActorBadge actor={{ kind: 'agent', name }} showName={false} />
           <div className="agent-head-text">
             <h2>{agent?.name ?? name}</h2>
@@ -104,7 +136,9 @@ export function AgentPanel({ name, person, onClose }: { name: string; person: st
               {agent && <span className={`user-agent-dot is-${agent.state}`} aria-hidden />}
               {agent ? agentStatus(agent, true) : 'Loading…'} · {reported}
             </p>
+            {running && <p className="agent-head-runs">{running}</p>}
           </div>
+          {ruled && <RuleChip kind={ruled} name={agent?.name ?? name} rule={rule} runsOn={agent?.runsOn} onSet={(next) => setRule(ruled.id, next)} under={head} />}
           <button type="button" className="btn btn-quiet btn-small agent-close" onClick={onClose} aria-label="Close">
             <Icon name="x" />
           </button>

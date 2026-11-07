@@ -88,6 +88,31 @@
   background: var(--border);
   margin: 4px;
 }
+/* "Hold Space to move", at the foot beside the zoom controls (panHint.tsx). It
+   never takes the pointer, so a drag under it still draws the box. */
+.canvas-hint {
+  margin: 0 0 15px 52px; /* clear of the zoom controls: their margin and width, and a gap */
+  padding: 3px 9px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  pointer-events: none;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.canvas-hint.is-lit {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+/* A touch screen has no Space, and a finger's drag draws the box. */
+@media (pointer: coarse) {
+  .canvas-hint {
+    display: none;
+  }
+}
 /* The board context's sync, top right, across from the add toolbar. */
 .sync {
   position: absolute;

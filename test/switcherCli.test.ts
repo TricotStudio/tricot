@@ -72,15 +72,21 @@ after(async () => {
 
 const tricot = (...args: string[]): Played => play(node, ['--import', 'tsx', path.join(repo, 'src/cli/tricot.ts'), ...args], { env: { ...process.env, ...env }, cwd: project, cols: 110, rows: 32 });
 const pidOf = (agent: string) => Number(readFileSync(path.join(pids, agent), 'utf8').trim());
+// The Tricot tab's header in a window this size: the wordmark, the board's title beside it.
+const WORDMARK = ' ▀█▀ █▀▄ █ █▀▀ █▀█ ▀█▀   Roadmap';
 
 describe('tricot claude codex, in a terminal', { timeout: 60_000, skip: WINDOWS && 'needs pseudo-terminals, which Windows has none of for Tricot' }, () => {
   it('runs both on the board, switches, says when one ends, and quits back to the terminal with its exit code', async () => {
     const t = tricot('claude', 'codex', '--board', board, '--no-open');
     const shows = (text: string, ms?: number) => waitFor(async () => (await t.observer.settled(), t.observer.text().includes(text)), ms ?? 15_000);
     try {
-      // The Tricot tab first (T192), then each agent in turn.
-      assert.ok(await shows(' Tricot · Roadmap'), t.observer.text());
+      // Chat first, below the wordmark; the former landing view is /status.
+      assert.ok(await shows(WORDMARK), t.observer.text());
+      assert.ok(await shows('What do you want to work through?'), t.observer.text());
+      t.send('/status\r');
       assert.ok(await shows(' Your agents'), t.observer.text());
+      t.send('\x1b');
+      assert.ok(await shows('New thread'), t.observer.text());
       assert.ok(await waitFor(async () => / ● Tricot {3}○ 1 Claude · .* ○ 2 Codex · /.test(t.observer.strip())), t.observer.strip());
       await sleep(400);
       t.send('\x1c');
@@ -131,7 +137,7 @@ describe('tricot claude codex, in a terminal', { timeout: 60_000, skip: WINDOWS 
   it('follows the window as it resizes, and quits with 0 when every agent was closed', async () => {
     const t = tricot('codex', 'claude', '--board', board, '--no-open');
     try {
-      assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes(' Tricot · Roadmap')), 15_000), t.observer.text());
+      assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes(WORDMARK)), 15_000), t.observer.text());
       await sleep(400);
       t.send('\x1c');
       assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes('>_ Codex (stand-in)  110x31')), 15_000), t.observer.text());
@@ -154,7 +160,7 @@ describe('tricot claude codex, in a terminal', { timeout: 60_000, skip: WINDOWS 
   it('shows one agent with the Tricot tab and the strip too, and gives --no-switcher the error of any unknown option', async () => {
     const t = tricot('claude', '--board', board, '--no-open');
     try {
-      assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes(' Tricot · Roadmap')), 15_000), t.observer.text());
+      assert.ok(await waitFor(async () => (await t.observer.settled(), t.observer.text().includes(WORDMARK)), 15_000), t.observer.text());
       assert.ok(await waitFor(async () => / ● Tricot {3}○ 1 Claude · /.test((await t.observer.settled(), t.observer.strip()))), t.observer.strip());
       await sleep(400);
       t.send('\x1c');

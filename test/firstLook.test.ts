@@ -7,6 +7,7 @@ import { needsInput } from '../src/core/attention';
 import { boardDigest, taskDetail } from '../src/core/digest';
 import {
   FIRST_LOOK_MS,
+  backlogAgents,
   firstLookCue,
   firstLookDue,
   firstLookLapsed,
@@ -45,6 +46,11 @@ describe('First looks', () => {
   });
 
   const add = (title: string, detail?: string) => store.planTasks(boardId, [{ title, detail }], wassim)[0];
+  const requested = (title: string, detail?: string) => {
+    const task = add(title, detail);
+    store.addTaskComment(task.id, '@Claude @Codex please give this a first look.', wassim);
+    return task;
+  };
   const board = () => store.getBoard(boardId);
   const refusal = (fn: () => unknown) => {
     try {
@@ -79,8 +85,88 @@ describe('First looks', () => {
     assert.equal(firstLooksDigest(reloaded.getBoard(boardId), 'Claude'), undefined);
   });
 
+  it('leaves an unaddressed backlog card quiet and refuses unsolicited first looks', () => {
+    const card = add('An idea for later');
+    for (const agent of [claude, codex]) {
+      assert.equal(firstLooksDigest(board(), agent.name, clock), undefined);
+      assert.match(refusal(() => store.takeFirstLook(card.id, agent)), /no requested agent/);
+      assert.doesNotMatch(boardDigest(board(), agent.name, clock), /take_first_look/);
+    }
+    assert.match(taskDetail(board(), card, 'Claude', clock), /No first look requested/);
+    store.addTaskComment(card.id, 'Looks feasible.', claude);
+    assert.equal(card.firstLook?.status, 'open', 'an unsolicited comment does not give a first look');
+    store.updateTask(card.id, { assignee: 'Claude' }, claude);
+    assert.equal(firstLooksDigest(board(), 'Claude', clock), undefined, 'an agent assignment alone does not invite it');
+    store.addTaskComment(card.id, '@Codex please look.', claude);
+    assert.match(firstLooksDigest(board(), 'Claude', clock)!, /only Codex can take it/, 'an agent assignment does not outrank a direct mention');
+    assert.match(refusal(() => store.takeFirstLook(card.id, claude)), /first look is for Codex/);
+    assert.match(firstLooksDigest(board(), 'Codex', clock)!, /and it's for you \(@-mentioned\)/);
+    store.takeFirstLook(card.id, codex);
+    const completed = store.getTask(card.id).task.firstLook;
+    assert.deepEqual(completed && 'by' in completed && completed.by, codex);
+  });
+
+  it('makes a held direct mention readable without asking for a first look through the loop guard', () => {
+    const card = add('A held handoff');
+    store.addTaskComment(card.id, '@Codex please check.', claude);
+    card.comments[0].held = 5;
+    assert.deepEqual(backlogAgents(board(), card), ['Codex']);
+    assert.equal(firstLooksDigest(board(), 'Codex', clock), undefined);
+    assert.match(refusal(() => store.takeFirstLook(card.id, codex)), /no requested agent/);
+  });
+
+  it("lets a mention added to an agent-opened card's text reveal it, without opening a first look", () => {
+    const [card] = store.planTasks(boardId, [{ title: 'Retry on 429' }], claude, { backlog: true });
+    store.updateTask(card.id, { detail: '@Codex could you check this?' }, wassim);
+    assert.equal(card.firstLook, undefined, 'a card an agent opens in the backlog needs no first look');
+    assert.deepEqual(backlogAgents(board(), card, 'Codex'), ['Codex']);
+    assert.equal(firstLooksDigest(board(), 'Codex', clock), undefined);
+  });
+
+  it('keeps an old unrequested first look quiet, without renewing or completing it', async () => {
+    const card = add('An older idea');
+    card.firstLook = { status: 'taken', openedAt: card.createdAt, by: claude, takenAt: card.createdAt };
+    await store.flush();
+    const reloaded = new Store(dir);
+    reloaded.load();
+    reloaded.now = () => clock;
+    const loaded = reloaded.getTask(card.id).task;
+    assert.equal(firstLooksDigest(reloaded.getBoard(boardId), 'Claude', clock), undefined);
+    assert.match(refusal(() => reloaded.takeFirstLook(card.id, claude)), /no requested agent/);
+    reloaded.keepFirstLook(card.id, claude);
+    assert.equal(loaded.firstLook && 'activeAt' in loaded.firstLook && loaded.firstLook.activeAt, false);
+    reloaded.addTaskComment(card.id, 'An unsolicited review.', claude);
+    assert.equal(loaded.firstLook?.status, 'taken');
+    await reloaded.flush();
+  });
+
+  it('needs a person to confirm an assignment whose source is unknown', () => {
+    const card = add('An older assignment');
+    card.assignee = 'Claude';
+    assert.equal(firstLooksDigest(board(), 'Claude', clock), undefined);
+    store.updateTask(card.id, { assignee: 'Claude' }, wassim);
+    assert.deepEqual(card.assignedBy, wassim);
+    assert.match(firstLooksDigest(board(), 'Claude', clock)!, /assigned to you/);
+    store.takeFirstLook(card.id, claude);
+  });
+
+  it('follows a person’s changed assignment and stops the previous taker from completing it', () => {
+    const card = add('Review the design', '@Claude please review.');
+    store.takeFirstLook(card.id, claude);
+    store.updateTask(card.id, { assignee: 'Codex' }, wassim);
+    assert.equal(firstLooksDigest(board(), 'Claude', clock), undefined);
+    store.addTaskComment(card.id, 'My review.', claude);
+    assert.equal(card.firstLook?.status, 'taken');
+    assert.match(firstLooksDigest(board(), 'Codex', clock)!, /assigned to you/);
+    store.takeFirstLook(card.id, codex);
+    store.addTaskComment(card.id, 'The requested review.', codex);
+    assert.equal(card.firstLook?.status, 'done');
+    const completed = store.getTask(card.id).task.firstLook;
+    assert.deepEqual(completed && 'by' in completed && completed.by, codex);
+  });
+
   it('lets exactly one agent take it; the other is told who has it', () => {
-    const card = add('Dark mode toggle');
+    const card = requested('Dark mode toggle');
     store.takeFirstLook(card.id, claude);
     assert.equal(card.firstLook?.status, 'taken');
     assert.deepEqual((card.firstLook as Extract<FirstLook, { status: 'taken' }>).by, claude);
@@ -108,7 +194,7 @@ describe('First looks', () => {
 
     // A person's comment mentioning an agent points it there too.
     const commented = add('Search filters');
-    assert.equal(takeFirstLookRefusal(board(), commented, claude), undefined);
+    assert.match(takeFirstLookRefusal(board(), commented, claude)!, /no requested agent/);
     store.addTaskComment(commented.id, '@Codex can you take this one?', wassim);
     assert.match(takeFirstLookRefusal(board(), commented, claude)!, /first look is for Codex/);
     store.takeFirstLook(commented.id, codex);
@@ -121,7 +207,7 @@ describe('First looks', () => {
   });
 
   it("is given by the taker's next comment, in one event that reaches the person", () => {
-    const card = add('Dark mode toggle');
+    const card = requested('Dark mode toggle');
     store.takeFirstLook(card.id, claude);
     store.addTaskComment(card.id, 'Feasible next to Settings.', codex); // not the taker's
     assert.equal(card.firstLook?.status, 'taken');
@@ -151,7 +237,7 @@ describe('First looks', () => {
   });
 
   it('goes back to open after ten minutes without a comment, and tells agents', () => {
-    const card = add('Dark mode toggle');
+    const card = requested('Dark mode toggle');
     store.takeFirstLook(card.id, claude);
     clock += 9 * MINUTE;
     assert.equal(store.lapseFirstLooks(), 0);
@@ -163,13 +249,13 @@ describe('First looks', () => {
     assert.equal(lapse.type, 'first_look_lapsed');
     assert.deepEqual(lapse.actor, claude);
     assert.equal(lapse.summary, `didn't comment on T1 "Dark mode toggle" within 10 minutes of taking its first look, so it's open again`);
-    assert.match(firstLooksDigest(board(), 'Codex', clock)!, /T1 \[task id: \w+\] "Dark mode toggle" needs a first look/);
+    assert.match(firstLooksDigest(board(), 'Codex', clock)!, /T1 \[task id: \w+\] "Dark mode toggle" needs a first look, and it's for you/);
     store.takeFirstLook(card.id, codex);
     assert.equal(store.lapseFirstLooks(), 0);
   });
 
   it("stays the taker's while its calls are about the card, and lapses lazily on take", () => {
-    const card = add('Dark mode toggle');
+    const card = requested('Dark mode toggle');
     store.takeFirstLook(card.id, claude);
     clock += 8 * MINUTE;
     store.keepFirstLook(card.id, claude);
@@ -197,11 +283,11 @@ describe('First looks', () => {
   });
 
   it('reads to agents as theirs to take, theirs to write, or for another agent', () => {
-    const card = add('Dark mode toggle');
-    const line = `T1 [task id: ${card.id}] "Dark mode toggle" needs a first look: take it with take_first_look, then comment on it with feasibility and approach (and a mock on its canvas for UI work). Don't claim it; it's in the backlog.`;
+    const card = requested('Dark mode toggle');
+    const line = `T1 [task id: ${card.id}] "Dark mode toggle" needs a first look, and it's for you (@-mentioned): take it with take_first_look, then comment on it with feasibility and approach (and a mock on its canvas for UI work). Don't claim it; it's in the backlog.`;
     assert.equal(firstLooksDigest(board(), 'Claude', clock), line);
     assert.ok(boardDigest(board(), 'Claude', clock).includes(`\n${line}\n`));
-    assert.match(boardDigest(board(), 'Claude', clock), /T1 \[id: \w+\] Dark mode toggle — backlog, not ready · standalone \(no decision, so no stale warnings\) · needs a first look \(take_first_look\)/);
+    assert.match(boardDigest(board(), 'Claude', clock), /T1 \[id: \w+\] Dark mode toggle — backlog, not ready · standalone \(no decision, so no stale warnings\) · 1 comments · needs a first look \(take_first_look\)/);
 
     store.takeFirstLook(card.id, claude);
     clock += 3 * MINUTE;
@@ -228,7 +314,8 @@ describe('First looks', () => {
 
   it("shows people a quiet line while it's to come", () => {
     const card = add('Dark mode toggle');
-    assert.deepEqual(firstLookCue(board(), card), { text: "Waiting for an agent's first look" });
+    assert.deepEqual(firstLookCue(board(), card), { text: "Assign or @-mention an agent for a first look" });
+    store.addTaskComment(card.id, "@Claude please take a look.", wassim);
     const forCodex = store.planTasks(boardId, [{ title: 'Review', assignee: 'Codex' }], wassim)[0];
     assert.deepEqual(firstLookCue(board(), forCodex), { text: "Waiting for Codex's first look" });
     store.takeFirstLook(card.id, claude);

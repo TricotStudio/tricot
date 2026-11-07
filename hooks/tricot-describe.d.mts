@@ -25,3 +25,18 @@ export function describe(event: unknown, options?: { narration?: boolean }): Hoo
 export const GEMINI_LONG_TOOLS: string[];
 export function isGeminiEvent(event: unknown): boolean;
 export function fromGemini(event: unknown): Record<string, unknown> | undefined;
+
+// Goose's and Hermes's hook events, read as Claude Code's
+// (https://goose-docs.ai/docs/guides/context-engineering/hooks,
+// https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks).
+export const GOOSE_LONG_TOOLS: string[];
+export function isGooseEvent(event: unknown): boolean;
+export function fromGoose(event: unknown): Record<string, unknown> | undefined;
+export const HERMES_LONG_TOOLS: string[];
+export function isHermesEvent(event: unknown): boolean;
+export function fromHermes(event: unknown): Record<string, unknown> | undefined;
+
+// Grok Build's hook events, read as Claude Code's (the hooks guide in github.com/xai-org/grok-build).
+export const GROK_LONG_TOOLS: string[];
+export function isGrokEvent(event: unknown): boolean;
+export function fromGrok(event: unknown): Record<string, unknown> | undefined;

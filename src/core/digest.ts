@@ -2,6 +2,7 @@
 // what it may build on, what is waiting on people, and where its cursor is.
 
 import { couldAffect, couldAffectLines } from './affects';
+import type { AgentBrowserHalf } from './agents/agent';
 import { answerContext, discussionAt, quote, type Shown } from './answering';
 import { boardAreas } from './areas';
 import { staleFromDeleted } from './cardLinks';
@@ -186,7 +187,8 @@ function hasClosed(board: Board): boolean {
 // `viewer` is the agent reading it: what's asked of it, and the tasks for it,
 // say so. `now` is when, for first looks running out of time. `shown` is what
 // the agent's session has read already, which it isn't told again (answering.ts).
-export function boardDigest(board: Board, viewer?: string, now = Date.now(), shown?: Shown): string {
+// `kind` is which agent it is, for what a tag asks of it (mentions.ts taggedAsk).
+export function boardDigest(board: Board, viewer?: string, now = Date.now(), shown?: Shown, kind?: AgentBrowserHalf): string {
   const lead = viewer ? delegateLine(board, viewer) : undefined;
   const lines = [...(lead ? [lead, ''] : []), `# ${board.title} [id: ${board.id}]`];
   if (board.archived) {
@@ -212,13 +214,13 @@ export function boardDigest(board: Board, viewer?: string, now = Date.now(), sho
   }
   const asks = partAsks(board, viewer);
   if (asks) lines.push(asks);
-  const mentioned = mentionsDigest(board, viewer, shown);
+  const mentioned = mentionsDigest(board, viewer, shown, kind);
   if (mentioned) lines.push(mentioned);
   const sync = syncDigest(board);
   if (sync) lines.push(sync);
-  const asked = requestsDigest(board, viewer);
+  const asked = requestsDigest(board, viewer, kind);
   if (asked) lines.push(asked);
-  const talk = threadsDigest(board, viewer, shown);
+  const talk = threadsDigest(board, viewer, shown, kind);
   if (talk) lines.push(talk);
   const looks = firstLooksDigest(board, viewer, now);
   if (looks) lines.push(looks);
@@ -821,14 +823,15 @@ function personLine(e: BoardEvent, board: Board, viewer: string | undefined, sho
 // thread message that @-mentions agents reads as asked of it, or as for them
 // (mentionEventLine, threadEventLine), and a person's reaction to its comment
 // as to "your comment" (reactionEventLine). A person's message for it comes
-// whole, with what its session (`shown`) needs to answer it.
-export function eventsDigest(events: BoardEvent[], cursor: number, about?: { board: Board; viewer?: string; shown?: Shown }, more = false): string {
+// whole, with what its session (`shown`) needs to answer it, and what a tag
+// asks of it (`kind`: which agent it is).
+export function eventsDigest(events: BoardEvent[], cursor: number, about?: { board: Board; viewer?: string; shown?: Shown; kind?: AgentBrowserHalf }, more = false): string {
   if (events.length === 0) return `No new activity. Cursor: ${cursor}`;
   const lines = events.map((e) => {
     const addressed =
       about &&
-      (mentionEventLine(e, about.board, about.viewer, about.shown) ??
-        threadEventLine(e, about.board, about.viewer, about.shown) ??
+      (mentionEventLine(e, about.board, about.viewer, about.shown, about.kind) ??
+        threadEventLine(e, about.board, about.viewer, about.shown, about.kind) ??
         reactionEventLine(e, about.board, about.viewer));
     if (addressed) return addressed;
     // A board context thread's comments are about its pin.

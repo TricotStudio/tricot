@@ -15,7 +15,7 @@ import { createApp } from '../src/server/app';
 import { AnswerHosts } from '../src/server/answerHosts';
 import type { AdmissionView } from '../src/core/seats';
 import { letIn, type TestSeat } from './seatHelper';
-import { claudeLike, codexLike, fakeTerminal, leftAfterReaping, node, repo, sleep, tracked, waitFor, type FakeTerminal } from './switcher/harness';
+import { alive, claudeLike, codexLike, fakeTerminal, leftAfterReaping, node, repo, sleep, tracked, waitFor, type FakeTerminal } from './switcher/harness';
 import { removeScratch, WINDOWS } from './platform';
 
 // The Tricot tab in the real host (T192), with stand-in agents in
@@ -25,7 +25,8 @@ import { removeScratch, WINDOWS } from './platform';
 // an agent's tab goes to that agent. A request for permission that comes in
 // while an agent shows says so in the strip, and is answered from the tab
 // (allow, deny with a reason) with this terminal's host key, which no agent
-// is ever given. Agents are added and stopped from it, and q quits.
+// is ever given. Agents are added and stopped from it (one stopped leaves the
+// strip and the list at once, T19), and q quits.
 // Each test closes its host however it ends, and nothing is left running
 // after them all: no agent, no pty helper.
 
@@ -149,7 +150,8 @@ describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'nee
       assert.ok(await shows(' Lately on the board'), 'the activity, from the stream');
       assert.ok(await shows('   Sam '), await screen());
       assert.equal(fake.observer.screen.inputModes.bracketedPaste, true, 'it reads a paste whole');
-      assert.equal(fake.observer.screen.inputModes.mouse, 'none');
+      const { mouse, mouseEncoding } = fake.observer.screen.inputModes;
+      assert.deepEqual([mouse, mouseEncoding], ['vt200', 'sgr'], 'and clicks, for the strip (T30)');
 
       // ---- what is typed in the tab stays in it
       fake.type('hello');
@@ -187,7 +189,7 @@ describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'nee
       // ---- let in, the request shows in full, and y allows it
       assert.ok(await shows('   Claude wants to run a command in tricot:'), await screen());
       assert.ok(await shows('     rm -rf dist && npm run build'));
-      assert.ok(await shows('   [y] allow   [n] deny'));
+      assert.ok(await shows('   Allow  ❯ Deny  (←→ Enter, or y/n)'));
       assert.ok(await waitFor(async () => !/0 to answer/.test(await strip())), 'here, the strip no longer says how to answer');
       fake.type('y');
       assert.deepEqual(await answerOf(first), { state: 'answered', answer: { behavior: 'allow', by: 'Wassim', from: 'terminal' } });
@@ -216,25 +218,33 @@ describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'nee
       fake.type('o');
       assert.ok(await shows(' Opened the board in your browser.'));
       fake.type('a');
-      assert.ok(await shows(' Add which agent?   Esc cancel'), await screen());
-      assert.ok(await shows('   1  OpenCode'), await screen());
-      fake.type('1');
+      assert.ok(await shows(' Add which agent?   ↑↓ move · Enter pick · Esc cancel'), await screen());
+      assert.ok(await shows(' ❯ 1  OpenCode'), await screen());
+      fake.type('\r');
       assert.ok(await waitFor(() => host.view().visible === 2 && host.view().agents.length === 3));
       assert.ok(await shows('>_ OpenCode (stand-in)'), await screen());
       assert.ok(await waitFor(async () => / ○ Tricot .* ● 3 OpenCode /.test(await strip())), await strip());
 
-      // ---- x stops Codex, after a y
+      // ---- x stops Codex, after a Yes
       await sleep(1_100);
       fake.type('\x1c0');
       assert.ok(await waitFor(() => host.view().visible === TRICOT_TAB));
       fake.type('x');
-      assert.ok(await shows(' Stop which agent?  1 Claude   2 Codex   3 OpenCode   Esc cancel'), await screen());
-      fake.type('2');
-      assert.ok(await shows(' Stop Codex?  y stop · any other key keeps it'));
-      fake.type('y');
-      assert.ok(await waitFor(() => host.view().agents[1].state === 'ended'), 'Codex ended');
-      assert.ok(await shows('   2 Codex      Stopped'), await screen());
-      assert.ok(await waitFor(async () => /✕ 2 Codex · stopped/.test(await strip())), await strip());
+      assert.ok(await shows(' Stop which agent?  ↑↓ move · Enter pick · Esc cancel'), await screen());
+      assert.ok(await shows(' ❯ 1  Claude'), await screen());
+      fake.type('\x1b[B');
+      assert.ok(await shows(' ❯ 2  Codex'), await screen());
+      fake.type('\r');
+      assert.ok(await shows(' Stop Codex?    Yes  ❯ No  (←→ Enter, or y/n)'));
+      const codexPid = host.view().agents[1].pid;
+      fake.type('\x1b[D\r'); // ←, then Enter: Yes
+      assert.ok(await shows(' Stopped Codex.'), await screen());
+      assert.deepEqual(host.view().agents.map((a) => a.name), ['Claude', 'OpenCode'], 'Codex left, and OpenCode moved up to 2');
+      assert.ok(await shows('   2 OpenCode   '), await screen());
+      assert.doesNotMatch(await screen(), /^ {3}\d Codex/m, 'gone from the list');
+      assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · .*○ 2 OpenCode · .*Ctrl\+\\ 0–2 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+      assert.doesNotMatch(await strip(), /Codex/, 'and from the strip');
+      assert.ok(await waitFor(() => !alive(codexPid), 4_000), 'Codex was closed');
 
       // ---- its key went nowhere an agent can see
       assert.equal(keys.length, 1, 'registered once');
@@ -256,6 +266,25 @@ describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'nee
     ]);
     assert.deepEqual(outcome.exits, [undefined, undefined, undefined], 'Codex was stopped, the others closed: none failed');
     assert.equal(hosts.size, 0, 'the board let go of its key');
+  });
+
+  it('goes round the tabs at every press of Ctrl+\\, the Tricot tab among them, and sends the key to none', async () => {
+    await hosted([claude(), codex()], async ({ host, fake, shows }) => {
+      const at = (tab: number) => waitFor(() => host.view().visible === tab);
+      assert.ok(await shows(' Tricot · Roadmap'));
+      for (const tab of [0, 1, TRICOT_TAB, 0]) {
+        fake.type('\x1c');
+        assert.ok(await at(tab), `a press goes to ${tab === TRICOT_TAB ? 'the Tricot tab' : `agent ${tab + 1}`}`);
+      }
+      await sleep(1_100);
+      fake.type('\x1c\x1c\x1c0');
+      assert.ok(await at(TRICOT_TAB), 'three presses round, then 0 picks the Tricot tab');
+      await sleep(1_100);
+      fake.type('\x1c\x1c');
+      assert.ok(await at(1));
+      await sleep(400);
+      assert.ok(!host.view().agents.some((a) => a.screen.lines().join('\n').includes('(1c)')), 'no agent got Ctrl+\\');
+    });
   });
 
   it('stays on the Tricot tab when every agent has ended, until q', async () => {

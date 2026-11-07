@@ -5,7 +5,8 @@ import type { AdmissionView } from '../src/core/seats';
 import type { BoardEvent } from '../src/core/types';
 import type { Answers, AnswerOutcome } from '../src/cli/switcher/answers';
 import { columns, type BoardLive } from '../src/cli/switcher/strip';
-import { TabKeyReader } from '../src/cli/switcher/tabKeys';
+import { InputRouter } from '../src/cli/switcher/keys';
+import { TabKeyReader, type TabKey } from '../src/cli/switcher/tabKeys';
 import { asSent, renderTab, type TabView } from '../src/cli/switcher/tabView';
 import { TricotTab, waitingFrom, type AddChoice, type TabAgent, type TabHost } from '../src/cli/switcher/tricotTab';
 
@@ -68,7 +69,7 @@ describe('the Tricot tab, drawn', () => {
       '   Claude wants to run a command in tricot:',
       '     rm -rf dist && npm run build',
       '     “Rebuild the web bundle after the CSS change”',
-      '   [y] allow   [s] allow for this session   [n] deny',
+      '   Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)',
       '',
       ' Lately on the board',
       '   Wassim approved T183 and asked for a commit                        2 min ago',
@@ -77,7 +78,7 @@ describe('the Tricot tab, drawn', () => {
       '',
       '',
     ]);
-    assert.equal(text.at(-1), ' o open the board · a add an agent · x stop one · q quit', 'the keys on the last row');
+    assert.equal(text.at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit', 'the keys on the last row');
     assert.ok(plain.every((line) => columns(line) <= 80), 'nothing wider than the window');
   });
 
@@ -86,8 +87,8 @@ describe('the Tricot tab, drawn', () => {
     const view = mockView({ approvals: [approval({ input: { command: many } })] });
     const small = renderTab(view, 60, 15).plain.map((l) => l.trimEnd());
     assert.equal(small.length, 15);
-    assert.equal(small.at(-1), ' o open the board · a add an agent · x stop one · q quit');
-    assert.ok(small.includes('   [y] allow   [s] allow for this session   [n] deny'), small.join('\n'));
+    assert.equal(small.at(-1), ' o open · t threads · a add · x stop · q quit', 'in fewer words, so none is cut');
+    assert.ok(small.includes('   Allow    Allow for this session  ❯ Deny'), small.join('\n'));
     shows(small, '     step 1');
     assert.ok(small.some((l) => /^ {5}… \d+ more lines$/.test(l)), 'says how many lines it left out');
     shows(small, '   2 Codex    Listening on the board');
@@ -100,8 +101,8 @@ describe('the Tricot tab, drawn', () => {
       ' Waiting for your OK',
       '   Claude wants to run a command in tri…',
       '     step 1  … 19 more lines',
-      '   [y] allow   [s] allow for this sessi…',
-      ' o open the board · a add an agent · x …',
+      '   Allow    Session  ❯ Deny',
+      ' o open · t threads · a add · x stop · q',
     ]);
 
     const big = renderTab(view, 120, 40).plain.map((l) => l.trimEnd());
@@ -131,7 +132,7 @@ describe('the Tricot tab, drawn', () => {
     assert.ok(plain.includes('   Claude wants to run a command in tricot'), 'the other, on one line');
     shows(plain, ' › Codex wants to run a command in app:');
     shows(plain, '     git push origin main');
-    assert.ok(plain.includes('   [y] allow   [n] deny   ↑↓ another'), 'no "for this session" where it is not offered');
+    assert.ok(plain.includes('   Allow  ❯ Deny  (←→ Enter, or y/n)   ↑↓ another'), 'no "for this session" where it is not offered');
   });
 
   it('asks for the reason on one line, with the cursor where it goes, its end showing when it is long', () => {
@@ -145,13 +146,13 @@ describe('the Tricot tab, drawn', () => {
     assert.match(long.plain.find((l) => l.startsWith('   › '))!, /^ {3}› …x+END$/);
   });
 
-  it('lists every agent to add, one to a row, with a few words on those that can not be started now', () => {
+  it('lists every agent to add, one to a row, one highlighted, with a few words on those that can not be started now', () => {
     const choices = [{ name: 'Claude Code' }, { name: 'Codex' }, { name: 'OpenCode', note: 'not installed' }, { name: 'Gemini CLI', note: 'connect it first' }, { name: 'Pi', note: 'connect it first' }, { name: 'OMP', note: 'connect it first' }];
-    const add = renderTab(mockView({ prompt: { kind: 'add', choices } }), 100, 23);
+    const add = renderTab(mockView({ prompt: { kind: 'add', choices, at: 1 } }), 100, 23);
     assert.deepEqual(add.plain.slice(-7).map((l) => l.trimEnd()), [
-      ' Add which agent?   Esc cancel',
+      ' Add which agent?   ↑↓ move · Enter pick · Esc cancel',
       '   1  Claude Code',
-      '   2  Codex',
+      ' ❯ 2  Codex',
       '   3  OpenCode     not installed',
       '   4  Gemini CLI   connect it first',
       '   5  Pi           connect it first',
@@ -159,8 +160,28 @@ describe('the Tricot tab, drawn', () => {
     ]);
     assert.equal(add.rows.length, 23, 'the rest of the tab gives way to the list');
     assert.ok(add.rows.at(-1)!.includes('\x1b[0;2mconnect it first'), 'the note is dimmed');
-    assert.deepEqual(renderTab(mockView({ prompt: { kind: 'add', choices } }), 40, 8).plain.map((l) => l.trimEnd()).slice(-3), ['   4  Gemini CLI   connect it first', '   5  Pi           connect it first', '   6  OMP          connect it first'], 'a short window keeps the last rows, the choices');
-    assert.equal(renderTab(mockView({ prompt: { kind: 'add', choices: [] } }), 100, 23).plain.at(-1)!.trimEnd(), ' Every agent is running. Esc back');
+    assert.ok(add.rows.at(-5)!.includes('\x1b[0;1m ❯ \x1b[0;1m2\x1b[0;1m  Codex'), 'the highlighted row is bold');
+    assert.ok(!add.rows.at(-6)!.includes('\x1b[0;1m  Claude'), 'the others are not');
+    const notInstalled = renderTab(mockView({ prompt: { kind: 'add', choices, at: 2 } }), 100, 23).plain.slice(-7).map((l) => l.trimEnd());
+    assert.equal(notInstalled[3], ' ❯ 3  OpenCode     not installed', 'a row that can not be started can be highlighted');
+    assert.equal(renderTab(mockView({ prompt: { kind: 'add', choices: [], at: 0 } }), 100, 23).plain.at(-1)!.trimEnd(), ' Every agent is running. Esc back');
+  });
+
+  it('keeps the list in a narrow or short window: the question first, the highlighted row in view', () => {
+    const choices = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map((name) => ({ name }));
+    const narrow = renderTab(mockView({ prompt: { kind: 'add', choices, at: 0 } }), 40, 23).plain.map((l) => l.trimEnd());
+    assert.equal(narrow.at(-7), ' Add which agent?   Esc cancel', 'only Esc where the keys do not fit');
+    const short = (at: number, rows: number) => renderTab(mockView({ prompt: { kind: 'add', choices, at } }), 60, rows).plain.map((l) => l.trimEnd());
+    assert.deepEqual(short(0, 4), [' Add which agent?   ↑↓ move · Enter pick · Esc cancel', ' ❯ 1  One', '   2  Two', '   3  Three']);
+    assert.deepEqual(short(5, 4), [' Add which agent?   ↑↓ move · Enter pick · Esc cancel', '   4  Four', '   5  Five', ' ❯ 6  Six']);
+    assert.deepEqual(short(2, 4).slice(1), ['   2  Two', ' ❯ 3  Three', '   4  Four'], 'scrolled to the middle');
+    assert.deepEqual(short(3, 1), [' Add which agent?   ↑↓ move · Enter pick · Esc cancel'], 'one row is the question');
+  });
+
+  it('shows a number only on the first nine rows of a long list', () => {
+    const choices = Array.from({ length: 11 }, (_, i) => ({ name: `Agent ${i + 1}` }));
+    const plain = renderTab(mockView({ prompt: { kind: 'add', choices, at: 10 } }), 80, 23).plain.map((l) => l.trimEnd());
+    assert.deepEqual(plain.slice(-3), ['   9  Agent 9', '      Agent 10', ' ❯    Agent 11']);
   });
 
   // The rows above the keys that a note takes, as drawn.
@@ -175,7 +196,7 @@ describe('the Tricot tab, drawn', () => {
     const text = "Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it for you yet: it adds a server only from a settings file.";
     const wide = noteRows(text, 80, 'Connect');
     assert.deepEqual(wide.rows, [" Connect Gemini CLI first, with: tricot connect gemini. Tricot can't start it", ' for you yet: it adds a server only from a settings file.']);
-    assert.equal(wide.keys, ' o open the board · a add an agent · x stop one · q quit', 'the keys stay on the last row');
+    assert.equal(wide.keys, ' o open the board · t threads · a add an agent · x stop one · q quit', 'the keys stay on the last row');
     const narrow = noteRows(text, 50, 'Connect');
     assert.deepEqual(narrow.rows, [' Connect Gemini CLI first, with: tricot connect', " gemini. Tricot can't start it for you yet: it", ' adds a server only from a settings file.'], 'the command is whole at 50 columns');
   });
@@ -195,27 +216,139 @@ describe('the Tricot tab, drawn', () => {
     assert.ok(noteRows(`See ${'x'.repeat(300)} now`, 50, 'See').rows[3].endsWith('…'));
   });
 
-  it('asks which agent to stop, and to confirm a stop', () => {
-    const stop = renderTab(mockView({ prompt: { kind: 'stop', choices: [{ number: 1, name: 'Claude' }, { number: 2, name: 'Codex' }] } }), 80, 23).plain;
-    assert.equal(stop.at(-1)!.trimEnd(), ' Stop which agent?  1 Claude   2 Codex   Esc cancel');
-    const sure = renderTab(mockView({ prompt: { kind: 'confirm-stop', name: 'Codex' } }), 100, 23).plain;
-    assert.equal(sure.at(-1)!.trimEnd(), ' Stop Codex?  y stop · any other key keeps it');
+  it('asks which agent to stop, one to a row and one highlighted, and to confirm a stop', () => {
+    const choices = [{ number: 1, name: 'Claude' }, { number: 2, name: 'Codex' }, { number: 3, name: 'OpenCode' }];
+    const stop = renderTab(mockView({ prompt: { kind: 'stop', choices, at: 0 } }), 80, 23).plain;
+    assert.deepEqual(stop.slice(-4).map((l) => l.trimEnd()), [' Stop which agent?  ↑↓ move · Enter pick · Esc cancel', ' ❯ 1  Claude', '   2  Codex', '   3  OpenCode']);
+    const second = renderTab(mockView({ prompt: { kind: 'stop', choices, at: 1 } }), 80, 23).plain;
+    assert.deepEqual(second.slice(-3).map((l) => l.trimEnd()), ['   1  Claude', ' ❯ 2  Codex', '   3  OpenCode']);
+    const tall = renderTab(mockView({ prompt: { kind: 'stop', choices, at: 2 } }), 80, 3).plain.map((l) => l.trimEnd());
+    assert.deepEqual(tall, [' Stop which agent?  ↑↓ move · Enter pick · Esc cancel', '   2  Codex', ' ❯ 3  OpenCode'], 'a short window keeps the question and the highlighted row');
+    assert.equal(renderTab(mockView({ prompt: { kind: 'stop', choices: [], at: 0 } }), 80, 23).plain.at(-1)!.trimEnd(), ' No agent is running. Esc back');
+  });
+
+  it("draws a request's answers as a row of choices, Deny highlighted to begin with, the session one only where it is offered", () => {
+    const row = (view: Partial<TabView>, cols = 80) => renderTab(mockView(view), cols, 23).plain.map((l) => l.trimEnd()).find((l) => /Allow {2}/.test(l) && !/Waiting/.test(l));
+    assert.equal(row({}), '   Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)');
+    assert.equal(row({ choice: 'allow' }), ' ❯ Allow    Allow for this session    Deny  (←→ Enter, or y/s/n)');
+    assert.equal(row({ choice: 'session' }), '   Allow  ❯ Allow for this session    Deny  (←→ Enter, or y/s/n)');
+    assert.equal(row({ approvals: [approval({ forSession: undefined })], choice: 'allow' }), ' ❯ Allow    Deny  (←→ Enter, or y/n)');
+    assert.equal(row({ approvals: [approval({ forSession: undefined })], choice: 'session' }), '   Allow  ❯ Deny  (←→ Enter, or y/n)', 'a choice the request does not offer is Deny');
+
+    // Where the row doesn't fit it gives up its hint, then the longer words, never a choice.
+    assert.equal(row({}, 50), '   Allow    Allow for this session  ❯ Deny');
+    assert.equal(row({}, 30), '   Allow    Session  ❯ Deny');
+
+    // The highlighted choice is bold and the hint dim: no colour, so no theme's.
+    const { rows } = renderTab(mockView({ choice: 'allow' }), 80, 23);
+    const painted = rows.find((l) => l.includes('Allow for this session'))!;
+    assert.match(painted, /\x1b\[0;1m❯ Allow/);
+    assert.match(painted, /\x1b\[0;2m\(←→ Enter, or y\/s\/n\)/);
+    assert.doesNotMatch(painted.replace(/\x1b\[0;[12]m|\x1b\[0m|\x1b\[K/g, ''), /\x1b/);
+  });
+
+  it('keeps every label where it is as the highlight moves: each choice has a two-column slot for the ❯', () => {
+    const at = (rows: string[], label: string) => rows.map((l) => l.indexOf(label));
+    const answers = (['allow', 'session', 'deny'] as const).map((choice) => renderTab(mockView({ choice }), 80, 23).plain.find((l) => l.includes('Allow for this session'))!);
+    for (const label of ['Allow ', 'Allow for this session', 'Deny']) assert.equal(new Set(at(answers, label)).size, 1, `${label} stays put`);
+    const stops = [false, true].map((yes) => renderTab(mockView({ prompt: { kind: 'confirm-stop', name: 'Codex', yes } }), 100, 23).plain.at(-1)!);
+    for (const label of ['Yes', 'No']) assert.equal(new Set(at(stops, label)).size, 1, `${label} stays put`);
+    const asking: AdmissionView = { id: 'ad1', code: '4271', kind: 'browser', label: 'Chrome on macOS', at: ago(2_000), expiresAt: ago(-178_000) };
+    const pairs = [false, true].map((allow) => renderTab(mockView({ admission: { ...asking, allow } }), 100, 23).plain.find((l) => l.includes('Yes'))!);
+    for (const label of ['Yes', 'No']) assert.equal(new Set(at(pairs, label)).size, 1, `${label} stays put`);
+  });
+
+  it('draws the arrows for another request after the choices, and drops the hint first', () => {
+    const second = approval({ id: 'a2', forSession: undefined });
+    const plain = (cols: number) => renderTab(mockView({ approvals: [approval(), second], selected: 0 }), cols, 23).plain.map((l) => l.trimEnd());
+    assert.ok(plain(80).includes('   Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)   ↑↓ another'));
+    assert.ok(plain(70).includes('   Allow    Allow for this session  ❯ Deny   ↑↓ another'), plain(70).join('\n'));
+  });
+
+  it('keeps the row a request that is sealed has: no choices, the one key that asks to be let in', () => {
+    const sealed: Approval = { id: 'a1', agent: 'Claude', harness: 'claude', tool: '', input: null, at: ago(5_000), sealed: true };
+    const plain = renderTab(mockView({ approvals: [sealed], choice: 'allow' }), 80, 23).plain.map((l) => l.trimEnd());
+    shows(plain, '   [y] let this terminal answer for you');
+    assert.ok(!plain.some((l) => l.includes('Deny')), plain.join('\n'));
+  });
+
+  it('asks to stop with Yes and No, the highlighted one with ❯ and bold, the hint dim', () => {
+    const last = (yes: boolean, cols = 100) => renderTab(mockView({ prompt: { kind: 'confirm-stop', name: 'Codex', yes } }), cols, 23).plain.map((l) => l.trimEnd()).slice(-2);
+    assert.equal(last(false)[1], ' Stop Codex?    Yes  ❯ No  (←→ Enter, or y/n)');
+    assert.equal(last(true)[1], ' Stop Codex?  ❯ Yes    No  (←→ Enter, or y/n)');
+    assert.equal(last(false, 30)[1], ' Stop Codex?    Yes  ❯ No', 'the hint goes first');
+    assert.deepEqual(last(false, 20), [' Stop Codex?', '   Yes  ❯ No'], 'then the pair goes under the question');
+    const painted = renderTab(mockView({ prompt: { kind: 'confirm-stop', name: 'Codex', yes: true } }), 100, 23).rows.at(-1)!;
+    assert.match(painted, /\x1b\[0;1m❯ Yes/);
+    assert.match(painted, /\x1b\[0;2m\(←→ Enter, or y\/n\)/);
+  });
+
+  it('asks whether to let a browser act for the person with Yes and No, the question never cut, at any width', () => {
+    const asking = (more: Partial<AdmissionView> = {}): AdmissionView => ({ id: 'ad1', code: '4271', kind: 'browser', label: 'Chrome on macOS', at: ago(2_000), expiresAt: ago(-178_000), ...more });
+    const wide = renderTab(mockView({ admission: asking() }), 100, 23).plain.map((l) => l.trimEnd());
+    assert.deepEqual(wide.slice(2, 5), [
+      ' A browser wants to act for you (Chrome on macOS, code 4271). Allow?',
+      "   Allow it only if the browser you're using shows 4271: it can then do all you do in Tricot.",
+      '   Yes  ❯ No  (←→ Enter, or y/n · Esc later)',
+    ]);
+    const yes = renderTab(mockView({ admission: { ...asking(), allow: true } }), 100, 23).plain;
+    shows(yes, ' ❯ Yes    No  (←→ Enter, or y/n · Esc later)');
+
+    // In a narrow window the question takes the rows it needs, the code whole, and the pair is on the row below.
+    const narrow = renderTab(mockView({ admission: asking() }), 40, 23).plain.map((l) => l.trimEnd());
+    assert.deepEqual(narrow.slice(2, 5), [' A browser wants to act for you (Chrome', ' on macOS, code 4271). Allow?', "   Allow it only if the browser you're …"]);
+    assert.ok(narrow.includes('   Yes  ❯ No  (Esc later)'), narrow.join('\n'));
+    assert.ok(narrow.every((l) => columns(l) <= 40));
+    const words = narrow.slice(2, 4).join(' ').replace(/\s+/g, ' ');
+    assert.ok(words.includes('(Chrome on macOS, code 4271). Allow?'), 'the code and the question, whole');
+
+    // A long label wraps over more rows: still whole, still before the pair.
+    const label = "Tricot's terminal (tricot update --channel next --yes)";
+    const long = renderTab(mockView({ admission: asking({ kind: 'terminal', label, code: '5310' }) }), 40, 30).plain.map((l) => l.trimEnd());
+    const pair = long.findIndex((l) => l.startsWith('   Yes  ❯ No'));
+    const asked = long.slice(2, long.findIndex((l) => l.startsWith('   Allow it only'))).join(' ').replace(/\s+/g, ' ').trim();
+    assert.equal(asked, `A terminal wants to act for you (${label}, code 5310). Allow?`);
+    assert.ok(pair > 0);
+    assert.equal(renderTab(mockView({ admission: { ...asking(), sending: true } }), 100, 23).plain.some((l) => l.includes('Yes')), false, 'answering: the pair gives way');
   });
 });
 
 describe("the Tricot tab's keys", () => {
-  it('reads letters, UTF-8 cut between reads, Enter, Esc, Backspace, the arrows, Ctrl+U and a paste whole', () => {
+  it('reads letters, UTF-8 cut between reads, Enter, Esc, Backspace, the arrows, Home and End, Page Up and Page Down, Ctrl+U, Ctrl+L and a paste whole', () => {
     const reader = new TabKeyReader();
     const keys = (s: string | Buffer) => reader.read(typeof s === 'string' ? Buffer.from(s, 'latin1') : s);
     assert.deepEqual(keys('y'), [{ kind: 'text', text: 'y' }]);
-    assert.deepEqual(keys('\r\x1b\x7f\x15\x03'), [{ kind: 'enter' }, { kind: 'escape' }, { kind: 'backspace' }, { kind: 'clear' }, { kind: 'interrupt' }]);
+    assert.deepEqual(keys('\r\x1b\x7f\x15\x0c\x03'), [{ kind: 'enter' }, { kind: 'escape' }, { kind: 'backspace' }, { kind: 'clear' }, { kind: 'lens' }, { kind: 'interrupt' }]);
     assert.deepEqual(keys('\x1b[A\x1bOB'), [{ kind: 'up' }, { kind: 'down' }]);
+    assert.deepEqual(keys('\x1b[C\x1bOC\x1b[D\x1bOD'), [{ kind: 'right' }, { kind: 'right' }, { kind: 'left' }, { kind: 'left' }]);
+    assert.deepEqual(keys('\x1b[H\x1bOH\x1b[1~\x1b[7~'), [{ kind: 'home' }, { kind: 'home' }, { kind: 'home' }, { kind: 'home' }]);
+    assert.deepEqual(keys('\x1b[F\x1bOF\x1b[4~\x1b[8~'), [{ kind: 'end' }, { kind: 'end' }, { kind: 'end' }, { kind: 'end' }]);
+    assert.deepEqual(keys('\x1b[15~\x1b[5~\x1b[6~'), [{ kind: 'other' }, { kind: 'pageup' }, { kind: 'pagedown' }], 'F5 is not Page Up');
+    assert.deepEqual(keys('\x1b[5;1:2~\x1b[5;1:3~\x1b[6;1:1~'), [{ kind: 'pageup' }, { kind: 'pagedown' }], 'Page Up and Page Down in the kitty protocol’s form');
+    assert.deepEqual(keys('\x1b[1;5H'), [{ kind: 'other' }], 'Ctrl+Home: a key it has no use for');
     assert.deepEqual(keys('\x1b[1;5C'), [{ kind: 'other' }], 'a key it has no use for');
     const e = Buffer.from('é', 'utf8');
     assert.deepEqual(keys(e.subarray(0, 1)), []);
     assert.deepEqual(keys(e.subarray(1)), [{ kind: 'text', text: 'é' }]);
     assert.deepEqual(keys('\x1b[200~two\r\nlines'), []);
     assert.deepEqual(keys('\x1b[201~n'), [{ kind: 'paste', text: 'two\r\nlines' }, { kind: 'text', text: 'n' }]);
+  });
+
+  // T24: the router hands the tab a key split between two reads whole, an
+  // arrow whose Esc came in a read of its own included.
+  it('reads ↓ as ↓ when its Esc and the rest come in two reads, and Esc alone as Esc once the router has waited', async () => {
+    const reader = new TabKeyReader();
+    const keys: TabKey[] = [];
+    const router = new InputRouter({ key: 0x1c, tricotTab: true, stripRow: () => 40, scrolling: () => false, emit: (a) => a.kind === 'send' && keys.push(...reader.read(a.data)), holdMs: 20 });
+    router.feed('\x1b[B');
+    router.feed('\x1b');
+    router.feed('[B');
+    assert.deepEqual(keys, [{ kind: 'down' }, { kind: 'down' }]);
+    router.feed('\x1b');
+    assert.equal(keys.length, 2, 'held');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(keys.slice(2), [{ kind: 'escape' }]);
+    router.dispose();
   });
 
   // T191: typed as the terminal is being set back from an agent's keyboard
@@ -227,7 +360,11 @@ describe("the Tricot tab's keys", () => {
     assert.deepEqual(keys(letters), [{ kind: 'text', text: 'ysnoaxq' }], 'each pressed and let go, with every key as CSI u');
     assert.deepEqual(keys('\x1b[13u\x1b[13;2u\x1b[27u\x1b[127u\x1b[127;1:3u'), [{ kind: 'enter' }, { kind: 'enter' }, { kind: 'escape' }, { kind: 'backspace' }]);
     assert.deepEqual(keys('\x1b[1;1:2A\x1b[1;1:3A\x1b[1;1:1B'), [{ kind: 'up' }, { kind: 'down' }], 'an arrow held down, let go, and another');
-    assert.deepEqual(keys('\x1b[99;5u\x1b[117;5u\x1b[27;5;99~'), [{ kind: 'interrupt' }, { kind: 'clear' }, { kind: 'interrupt' }]);
+    assert.deepEqual(keys('\x1b[1;1:2C\x1b[1;1:3C\x1b[1;1:1D\x1b[1;1:2D\x1b[1;1:3D'), [{ kind: 'right' }, { kind: 'left' }, { kind: 'left' }], 'an arrow held down, let go, and another');
+    assert.deepEqual(keys('\x1b[1;2C\x1b[1;3D'), [{ kind: 'other' }, { kind: 'other' }], 'with Shift or Alt: a key it has no use for');
+    assert.deepEqual(keys('y\x1b[Dn'), [{ kind: 'text', text: 'y' }, { kind: 'left' }, { kind: 'text', text: 'n' }], 'in order with what is typed');
+    assert.deepEqual(keys('\x1b[1;1:1H\x1b[1;1:2F\x1b[1;1:3H\x1b[1;1:1~\x1b[4;1:2~\x1b[4;1:3~'), [{ kind: 'home' }, { kind: 'end' }, { kind: 'home' }, { kind: 'end' }], 'Home and End, pressed, held down and let go');
+    assert.deepEqual(keys('\x1b[99;5u\x1b[117;5u\x1b[108;5u\x1b[27;5;99~'), [{ kind: 'interrupt' }, { kind: 'clear' }, { kind: 'lens' }, { kind: 'interrupt' }]);
     assert.deepEqual(keys('\x1b[57441;2u\x1b[121:89;2u\x1b[57441;1:3u'), [{ kind: 'text', text: 'Y' }], 'Shift alone is no key');
     assert.deepEqual(keys('y\x1b[110u!'), [{ kind: 'text', text: 'yn!' }], 'in order with what is typed plainly');
     assert.deepEqual(keys('\x1b[120;3u'), [{ kind: 'other' }], 'Alt+x: a key it has no use for');
@@ -273,7 +410,7 @@ interface Stand {
   settle(): Promise<void>;
 }
 
-function stand(more: { answers?: boolean; choices?: AddChoice[] } = {}): Stand {
+function stand(more: { answers?: boolean; choices?: AddChoice[]; add?: (id: string) => Promise<string | undefined> } = {}): Stand {
   const s = {
     agents: [
       { number: 1, name: 'Claude', state: 'running', lastOutput: NOW },
@@ -298,10 +435,14 @@ function stand(more: { answers?: boolean; choices?: AddChoice[] } = {}): Stand {
     open: () => void s.opened++,
     quit: () => void s.quits++,
     choices: () => more.choices ?? [{ id: 'opencode', name: 'OpenCode' }],
-    add: (id) => void s.added.push(id),
+    add: (id) => {
+      s.added.push(id);
+      return more.add?.(id);
+    },
     stop: (n) => void s.stopped.push(n),
   };
   const answers: Answers = {
+    act: async () => ({ ok: false, error: 'Not used here.' }),
     answer: async (id, reply) => {
       s.answered.push({ id, reply });
       return s.outcome;
@@ -409,7 +550,7 @@ describe('the Tricot tab, live and answering', () => {
     s.type('\x1b');
     assert.equal(s.tab.typing, false);
     assert.deepEqual(s.answered.length, 1, 'Esc sends nothing');
-    shows(s.screen(), '   [y] allow   [s] allow for this session   [n] deny');
+    shows(s.screen(), '   Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)');
     s.type('n\r');
     await s.settle();
     assert.deepEqual(s.answered[1], { id: 'a3', reply: { behavior: 'deny' } }, 'no reason: none sent');
@@ -464,6 +605,19 @@ describe('the Tricot tab, live and answering', () => {
     assert.ok(s.screen().some((l) => l.startsWith(' Answering from here needs the board')), 'as drawn');
   });
 
+  // T22: an agent added reads what it starts on from the board first, so
+  // whether it started is known a moment later.
+  it('says why an agent it adds did not start, once that is known', async () => {
+    let settle: (problem: string | undefined) => void = () => {};
+    const s = stand({ add: () => new Promise((resolve) => (settle = resolve)) });
+    s.type('a1');
+    assert.deepEqual(s.added, ['opencode']);
+    assert.ok(!s.screen().some((l) => l.includes("didn't start")), 'nothing to say yet');
+    settle("OpenCode didn't start: Tricot can't start OpenCode here.");
+    await s.settle();
+    shows(s.screen(), " OpenCode didn't start: Tricot can't start OpenCode here.");
+  });
+
   it('opens the board, adds an agent, stops one after a y, and quits', () => {
     const s = stand({
       choices: [
@@ -477,7 +631,7 @@ describe('the Tricot tab, live and answering', () => {
     shows(s.screen(), ' Opened the board in your browser.');
 
     s.type('a');
-    assert.deepEqual(s.screen().slice(-4).map((l) => l.trimEnd()), [' Add which agent?   Esc cancel', '   1  OpenCode', '   2  Gemini CLI  not installed', '   3  Pi          connect it first']);
+    assert.deepEqual(s.screen().slice(-4).map((l) => l.trimEnd()), [' Add which agent?   ↑↓ move · Enter pick · Esc cancel', ' ❯ 1  OpenCode', '   2  Gemini CLI  not installed', '   3  Pi          connect it first']);
     s.type('2');
     assert.deepEqual(s.added, []);
     shows(s.screen(), " Gemini CLI isn't installed here.");
@@ -490,7 +644,7 @@ describe('the Tricot tab, live and answering', () => {
     assert.deepEqual(s.added, ['opencode'], 'Esc: none');
 
     s.type('x');
-    assert.equal(s.screen().at(-1), ' Stop which agent?  1 Claude   2 Codex   Esc cancel');
+    assert.deepEqual(s.screen().slice(-3), [' Stop which agent?  ↑↓ move · Enter pick · Esc cancel', ' ❯ 1  Claude', '   2  Codex']);
     s.type('2');
     assert.match(s.screen().at(-1)!, /^ Stop Codex\? /);
     s.type('n');
@@ -498,10 +652,336 @@ describe('the Tricot tab, live and answering', () => {
     shows(s.screen(), ' Codex keeps running.');
     s.type('x2y');
     assert.deepEqual(s.stopped, [2]);
-    shows(s.screen(), ' Stopping Codex: it is hung up, as when its window closes.');
+    shows(s.screen(), ' Stopped Codex.');
 
     s.type('q');
     assert.equal(s.quits, 1);
+  });
+
+  const three: AddChoice[] = [
+    { id: 'opencode', name: 'OpenCode' },
+    { id: 'gemini', name: 'Gemini CLI', note: 'not installed', problem: "Gemini CLI isn't installed here." },
+    { id: 'pi', name: 'Pi' },
+  ];
+  // The row marked ❯ in the list drawn, or its text.
+  const marked = (s: Stand) => {
+    const rows = s.screen().filter((l) => l.startsWith(' ❯ '));
+    assert.equal(rows.length, 1, 'one row is highlighted');
+    return rows[0].slice(3).replace(/\s+/g, ' ').trim();
+  };
+
+  it('moves the highlight in the add list with the arrows and j k, wrapping both ways, and Home and End', () => {
+    const s = stand({ choices: three });
+    s.type('a');
+    assert.equal(marked(s), '1 OpenCode');
+    s.type('\x1b[B');
+    assert.equal(marked(s), '2 Gemini CLI not installed', 'a row with a problem can be highlighted');
+    s.type('\x1b[B\x1b[B');
+    assert.equal(marked(s), '1 OpenCode', 'down from the last goes to the first');
+    s.type('\x1b[A');
+    assert.equal(marked(s), '3 Pi', 'up from the first goes to the last');
+    s.type('\x1bOH');
+    assert.equal(marked(s), '1 OpenCode', 'Home');
+    s.type('\x1b[F');
+    assert.equal(marked(s), '3 Pi', 'End');
+    s.type('\x1b[1~');
+    assert.equal(marked(s), '1 OpenCode');
+    s.type('jj');
+    assert.equal(marked(s), '3 Pi');
+    s.type('k');
+    assert.equal(marked(s), '2 Gemini CLI not installed');
+    s.type('\x1b[1;1:2B\x1b[1;1:3B');
+    assert.equal(marked(s), '3 Pi', 'an arrow in the keyboard protocol’s form');
+    s.type('z\x1b[1;5C');
+    assert.equal(marked(s), '3 Pi', 'other keys do nothing, and the list stays');
+    assert.deepEqual(s.added, []);
+  });
+
+  it('starts the highlight on the first agent that can start now', () => {
+    const s = stand({ choices: [{ id: 'gemini', name: 'Gemini CLI', note: 'not installed', problem: 'No.' }, { id: 'pi', name: 'Pi', note: 'connect it first', problem: 'Connect it.' }, ...three.slice(2)] });
+    s.type('a');
+    assert.equal(marked(s), '3 Pi');
+    const none = stand({ choices: [{ id: 'gemini', name: 'Gemini CLI', note: 'not installed', problem: 'No.' }] });
+    none.type('a');
+    assert.equal(marked(none), '1 Gemini CLI not installed', 'with none that can, the first');
+  });
+
+  it('adds the agent Enter picks; a row with a problem says why, and starts nothing', () => {
+    const s = stand({ choices: three });
+    s.type('a\r');
+    assert.deepEqual(s.added, ['opencode'], 'the highlight starts on the first');
+    s.type('a\x1b[B\x1b[B\r');
+    assert.deepEqual(s.added, ['opencode', 'pi']);
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit', 'the list is gone');
+    s.type('a\x1b[B\r');
+    assert.deepEqual(s.added, ['opencode', 'pi'], 'not installed: nothing started');
+    shows(s.screen(), " Gemini CLI isn't installed here.");
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit');
+  });
+
+  it('keeps the numbers 1 to 9 as shortcuts, and Esc goes back, picking nothing', () => {
+    const s = stand({ choices: three });
+    s.type('a3');
+    assert.deepEqual(s.added, ['pi'], 'the digit picks its row, wherever the highlight is');
+    s.type('a\x1b[B1');
+    assert.deepEqual(s.added, ['pi', 'opencode']);
+    s.type('a5');
+    assert.deepEqual(s.added, ['pi', 'opencode'], 'a number past the list does nothing');
+    assert.equal(marked(s), '1 OpenCode', 'and the list stays');
+    s.type('\x1b');
+    assert.deepEqual(s.added, ['pi', 'opencode'], 'Esc: none');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit');
+    s.type('a\x03');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit', 'Ctrl+C goes back too');
+  });
+
+  it('reaches every row of a list of more than nine with the arrows, though only nine have a digit', () => {
+    const choices = Array.from({ length: 11 }, (_, i) => ({ id: `agent${i + 1}`, name: `Agent ${i + 1}` }));
+    const s = stand({ choices });
+    s.type('a\x1b[A');
+    assert.equal(marked(s), 'Agent 11');
+    s.type('\r');
+    assert.deepEqual(s.added, ['agent11']);
+    s.type('a\x1b[F\x1b[A\r');
+    assert.deepEqual(s.added, ['agent11', 'agent10']);
+    s.type('a9');
+    assert.deepEqual(s.added.at(-1), 'agent9');
+  });
+
+  it('goes back at once from an add list with nothing in it', () => {
+    const s = stand({ choices: [] });
+    s.type('a');
+    shows(s.screen(), ' Every agent is running. Esc back');
+    s.type('j');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit');
+    s.type('a1');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit', 'a digit too');
+  });
+
+  it('moves the highlight in the stop list, and Enter goes to the confirmation, which is as it was', () => {
+    const s = stand();
+    s.agents.push({ number: 3, name: 'OpenCode', state: 'running', lastOutput: NOW });
+    s.type('x');
+    assert.equal(marked(s), '1 Claude');
+    s.type('\x1b[A');
+    assert.equal(marked(s), '3 OpenCode', 'wraps up to the last');
+    s.type('j');
+    assert.equal(marked(s), '1 Claude', 'and down to the first');
+    s.type('\x1b[F');
+    assert.equal(marked(s), '3 OpenCode');
+    s.type('\x1b[H\x1b[B');
+    assert.equal(marked(s), '2 Codex');
+    s.type('\r');
+    assert.match(s.screen().at(-1)!, /^ Stop Codex\?    Yes  ❯ No/);
+    assert.deepEqual(s.stopped, [], 'asks first');
+    s.type('y');
+    assert.deepEqual(s.stopped, [2]);
+    s.type('x3');
+    assert.match(s.screen().at(-1)!, /^ Stop OpenCode\?/, 'the digit is still the agent’s number');
+    s.type('n');
+    s.type('x\x1b');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit', 'Esc: none');
+    assert.deepEqual(s.stopped, [2]);
+    s.type('x9');
+    assert.equal(marked(s), '1 Claude', 'a number of no agent does nothing');
+  });
+
+  it('lists only the agents that are running to stop, and leaves the list if the one picked has ended meanwhile', () => {
+    const s = stand();
+    s.agents[0].state = 'ended';
+    s.type('x');
+    assert.equal(marked(s), '2 Codex');
+    s.agents[1].state = 'ended';
+    s.type('\r');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit');
+    assert.deepEqual(s.stopped, []);
+    s.type('x');
+    shows(s.screen(), ' No agent is running. Esc back');
+  });
+
+  // The answer highlighted in a request's row, or in a Yes / No pair: the one with ❯ before it.
+  const leaning = (s: Stand) => {
+    const row = s.screen().find((l) => /^ (❯| ) Allow /.test(l) && l.includes('Deny'))!;
+    return /❯ (Allow for this session|Allow|Deny)/.exec(row)![1];
+  };
+  const pairOf = (s: Stand) => {
+    const row = s.screen().find((l) => /Yes {2,4}(❯ )?No/.test(l))!;
+    return /❯ (Yes|No)/.exec(row)![1];
+  };
+
+  it('moves along the answers with ← and →, wrapping, from Deny, and the row skips the session one where it is not offered', () => {
+    const s = stand();
+    s.tell({ approvals: [approval()] });
+    assert.equal(leaning(s), 'Deny', 'a stray Enter never allows');
+    s.type('\x1b[D');
+    assert.equal(leaning(s), 'Allow for this session');
+    s.type('\x1bOD');
+    assert.equal(leaning(s), 'Allow');
+    s.type('\x1b[D');
+    assert.equal(leaning(s), 'Deny', 'wraps round');
+    s.type('\x1b[C');
+    assert.equal(leaning(s), 'Allow', 'and the other way');
+    s.type('\x1b[1;1:2C\x1b[1;1:3C');
+    assert.equal(leaning(s), 'Allow for this session', 'an arrow in the keyboard protocol’s form');
+    s.type('\x1bOC');
+    assert.equal(leaning(s), 'Deny');
+    assert.deepEqual(s.answered, [], 'moving answers nothing');
+
+    s.tell({ approvals: [approval({ id: 'a2', forSession: undefined })] });
+    assert.equal(leaning(s), 'Deny');
+    s.type('\x1b[D');
+    assert.equal(leaning(s), 'Allow', 'no session choice to land on');
+    s.type('\x1b[D');
+    assert.equal(leaning(s), 'Deny');
+  });
+
+  it('answers with Enter as the highlight says: Deny first, so a bare Enter opens the reason, never allows', async () => {
+    const s = stand();
+    s.tell({ approvals: [approval()] });
+    s.type('\r');
+    assert.ok(s.tab.typing, 'Deny opens the reason line');
+    assert.deepEqual(s.answered, []);
+    shows(s.screen(), '   Tell Claude why (optional; it reads this). Enter deny · Esc back');
+    s.type('too risky\r');
+    await s.settle();
+    assert.deepEqual(s.answered, [{ id: 'a1', reply: { behavior: 'deny', reason: 'too risky' } }]);
+    shows(s.screen(), ' Denied: Claude reads your reason.');
+
+    s.tell({ approvals: [approval({ id: 'a2' })] });
+    s.type('\x1b[C\r'); // → Allow, Enter
+    await s.settle();
+    assert.deepEqual(s.answered[1], { id: 'a2', reply: { behavior: 'allow' } });
+    shows(s.screen(), ' Allowed: Claude goes ahead.');
+
+    s.tell({ approvals: [approval({ id: 'a3' })] });
+    s.type('\x1b[D\r'); // ← Allow for this session, Enter
+    await s.settle();
+    assert.deepEqual(s.answered[2], { id: 'a3', reply: { behavior: 'allow', session: true } });
+    shows(s.screen(), ' Allowed for this session: Claude goes ahead.');
+
+    s.tell({ approvals: [approval({ id: 'a4' })] });
+    s.type('\x1b[13u'); // Enter in the protocol's form
+    assert.ok(s.tab.typing);
+  });
+
+  it('keeps y, s and n answering at once, wherever the highlight is, and Enter with nothing waiting does nothing', async () => {
+    const s = stand();
+    s.type('\r\x1b[D\x1b[C');
+    assert.deepEqual(s.answered, []);
+    assert.equal(s.tab.typing, false);
+    s.tell({ approvals: [approval()] });
+    s.type('\x1b[C'); // highlight: Allow
+    s.type('n');
+    assert.ok(s.tab.typing, 'n denies, whatever is highlighted');
+    s.type('\x1b');
+    s.type('s');
+    await s.settle();
+    assert.deepEqual(s.answered, [{ id: 'a1', reply: { behavior: 'allow', session: true } }]);
+    s.tell({ approvals: [approval({ id: 'a2' })] });
+    s.type('\x1b[D\x1b[D'); // highlight: Allow
+    s.type('y');
+    await s.settle();
+    assert.deepEqual(s.answered[1], { id: 'a2', reply: { behavior: 'allow' } });
+  });
+
+  it('starts on Deny again when ↑ ↓ pick another request, and for each request that comes', () => {
+    const s = stand();
+    s.tell({ approvals: [approval(), approval({ id: 'a2', agent: 'Codex' })] });
+    s.type('\x1b[C');
+    assert.equal(leaning(s), 'Allow');
+    s.type('\x1b[B');
+    shows(s.screen(), ' › Codex wants to run a command in tricot:');
+    assert.equal(leaning(s), 'Deny');
+    s.type('\x1b[D');
+    s.type('\x1b[A');
+    assert.equal(leaning(s), 'Deny', 'back on the first, it is Deny again');
+    s.type('\x1b[C');
+    s.tell({ approvals: [approval({ id: 'a3' })] }); // the first is answered on the board: the next one shows
+    assert.equal(leaning(s), 'Deny', 'what was highlighted was for the other');
+  });
+
+  it('keeps the reason line as it was: ← and → do nothing there, and Esc goes back to the choices', () => {
+    const s = stand();
+    s.tell({ approvals: [approval()] });
+    s.type('n');
+    s.type('no\x1b[D\x1b[Cway');
+    shows(s.screen(), '   › noway');
+    s.type('\x1b');
+    assert.equal(leaning(s), 'Deny');
+    s.type('\x1b[C\x1b[C');
+    assert.equal(leaning(s), 'Allow for this session');
+  });
+
+  it('gives a sealed request no choices: ← → and Enter do nothing, and y still asks to be let in', async () => {
+    const s = stand();
+    s.seated = false;
+    s.tell({ approvals: [{ id: 'a1', agent: 'Claude', harness: 'claude', tool: '', input: null, at: ago(5_000), sealed: true }] });
+    s.type('\x1b[D\x1b[C\r');
+    assert.equal(s.seatAsks, 0);
+    assert.equal(s.tab.typing, false);
+    assert.deepEqual(s.answered, []);
+    s.type('y');
+    await s.settle();
+    assert.equal(s.seatAsks, 1);
+  });
+
+  it('asks to stop with No highlighted, ← → move, Enter answers it, y and n answer at once, Esc is No', () => {
+    const s = stand();
+    const ask = () => {
+      s.type('x2');
+      assert.equal(pairOf(s), 'No', 'starts on No');
+    };
+    ask();
+    s.type('\r');
+    assert.deepEqual(s.stopped, [], 'Enter on No keeps it');
+    shows(s.screen(), ' Codex keeps running.');
+    ask();
+    s.type('\x1b[D');
+    assert.equal(pairOf(s), 'Yes');
+    s.type('\x1b[C');
+    assert.equal(pairOf(s), 'No');
+    s.type('\x1bOD\r');
+    assert.deepEqual(s.stopped, [2], 'Enter on Yes stops it');
+    shows(s.screen(), ' Stopped Codex.');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit', 'the question is gone');
+    ask();
+    s.type('y');
+    assert.deepEqual(s.stopped, [2, 2], 'y at once, whatever is highlighted');
+    ask();
+    s.type('\x1b[D');
+    s.type('n');
+    assert.deepEqual(s.stopped, [2, 2], 'n at once');
+    shows(s.screen(), ' Codex keeps running.');
+    ask();
+    s.type('\x1b[D\x1b');
+    assert.deepEqual(s.stopped, [2, 2], 'Esc is No, even with Yes highlighted');
+    shows(s.screen(), ' Codex keeps running.');
+    ask();
+    s.type('\x03');
+    assert.deepEqual(s.stopped, [2, 2], 'Ctrl+C too');
+    assert.equal(s.screen().at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit');
+    s.type('x2\x1b[1;1:2D\x1b[1;1:3D\x1b[13u');
+    assert.deepEqual(s.stopped, [2, 2, 2], 'in the protocol’s form: ← and Enter');
+  });
+
+  it('ignores other keys at "Stop Codex?": a slip leaves the question as it was', () => {
+    const s = stand();
+    s.type('x2');
+    s.type('z\x1b[A\x1b[B\x1b[H\x7f q1 \x1b[1;5C');
+    assert.equal(pairOf(s), 'No');
+    assert.match(s.screen().at(-1)!, /^ Stop Codex\?    Yes {2}❯ No/, 'still asking');
+    assert.deepEqual(s.stopped, []);
+    assert.equal(s.quits, 0, 'q is not the tab’s while it asks');
+    s.type('Y');
+    assert.deepEqual(s.stopped, [2], 'a capital answers too');
+  });
+
+  it('keeps the approvals list moving with the arrows as before', () => {
+    const s = stand();
+    s.tell({ approvals: [approval({ id: 'a1', agent: 'Claude' }), approval({ id: 'a2', agent: 'Codex' })] });
+    shows(s.screen(), ' › Claude wants to run a command in tricot:');
+    s.type('\x1b[B');
+    shows(s.screen(), ' › Codex wants to run a command in tricot:');
   });
 });
 
@@ -511,19 +991,79 @@ describe('the Tricot tab, live and answering', () => {
 describe('the Tricot tab and seats', () => {
   const asking = (more: Partial<AdmissionView> = {}): AdmissionView => ({ id: 'ad1', code: '4271', kind: 'browser', label: 'Chrome on macOS', at: ago(2_000), expiresAt: ago(-178_000), ...more });
 
-  it('asks "A browser wants to act for you (Chrome on macOS, code 4271). Allow? [y/N]", y allowing it', async () => {
+  it('asks "A browser wants to act for you (Chrome on macOS, code 4271). Allow?" with Yes and No, y allowing it', async () => {
     const s = stand();
     s.tell({ admissions: [asking()], approvals: [approval()] });
     const screen = s.screen();
-    shows(screen, ' A browser wants to act for you (Chrome on macOS, code 4271). Allow? [y/N]');
+    shows(screen, ' A browser wants to act for you (Chrome on macOS, code 4271). Allow?');
     shows(screen, "   Allow it only if the browser you're using shows 4271: it can then do all you do in Tricot.");
-    shows(screen, '   [y] allow   [n] deny   Esc later');
+    shows(screen, '   Yes  ❯ No  (←→ Enter, or y/n · Esc later)');
     s.type('y');
     await s.settle();
     assert.deepEqual(s.admitted, [{ id: 'ad1', allow: true }]);
     assert.deepEqual(s.answered, [], 'y went to the browser asking, not to the request below it');
     shows(s.screen(), ' Chrome on macOS acts for you now.');
     assert.doesNotMatch(s.screen().join('\n'), /wants to act for you/, 'gone at once, as the stream catches up');
+  });
+
+  const pairRow = (s: Stand) => /❯ (Yes|No)/.exec(s.screen().find((l) => /Yes {2,4}(❯ )?No/.test(l))!)![1];
+
+  it('asks with No highlighted: ← → move, Enter answers it, y and n answer at once, Esc is later', async () => {
+    const s = stand();
+    s.tell({ admissions: [asking()], approvals: [approval()] });
+    assert.equal(pairRow(s), 'No');
+    s.type('\x1b[D');
+    assert.equal(pairRow(s), 'Yes');
+    s.type('\x1b[C');
+    assert.equal(pairRow(s), 'No');
+    s.type('\x1bOC');
+    assert.equal(pairRow(s), 'Yes', 'wraps round');
+    assert.deepEqual(s.admitted, [], 'moving answers nothing');
+    s.type('\r');
+    await s.settle();
+    assert.deepEqual(s.admitted, [{ id: 'ad1', allow: true }], 'Enter on Yes allows');
+    assert.deepEqual(s.answered, [], 'and the request below it is not answered');
+    assert.equal(s.tab.typing, false);
+
+    s.tell({ admissions: [asking({ id: 'ad2' })] });
+    assert.equal(pairRow(s), 'No', 'each one starts on No');
+    s.type('\r');
+    await s.settle();
+    assert.deepEqual(s.admitted[1], { id: 'ad2', allow: false }, 'a bare Enter denies, as it did');
+
+    s.tell({ admissions: [asking({ id: 'ad3' })] });
+    s.type('\x1b[D');
+    s.type('n');
+    await s.settle();
+    assert.deepEqual(s.admitted[2], { id: 'ad3', allow: false }, 'n at once, though Yes is highlighted');
+
+    s.tell({ admissions: [asking({ id: 'ad4' })] });
+    s.type('Y');
+    await s.settle();
+    assert.deepEqual(s.admitted[3], { id: 'ad4', allow: true }, 'y at once, though No is highlighted');
+
+    s.tell({ admissions: [asking({ id: 'ad5' })] });
+    s.type('\x1b[D\x1b');
+    assert.equal(s.admitted.length, 4, 'Esc answers nothing');
+    assert.doesNotMatch(s.screen().join('\n'), /wants to act for you/);
+    shows(s.screen(), ' Left for now: it waits on the board until it lapses.');
+  });
+
+  it('answers once while the answer is on its way, whatever is typed', async () => {
+    const s = stand();
+    s.tell({ admissions: [asking()] });
+    s.type('\x1b[D\r');
+    s.type('\r\x1b[C\ry');
+    await s.settle();
+    assert.deepEqual(s.admitted, [{ id: 'ad1', allow: true }]);
+  });
+
+  it('keeps the whole question and its pair in a narrow window', () => {
+    const s = stand();
+    s.tell({ admissions: [asking()] });
+    const screen = s.tab.render(40, 23).plain.map((l) => l.trimEnd());
+    assert.ok(screen.join('\n').includes('code 4271). Allow?'), screen.join('\n'));
+    assert.ok(screen.includes('   Yes  ❯ No  (Esc later)'), screen.join('\n'));
   });
 
   it('denies with n or Enter, leaves it with Esc, and says when it would be the first', async () => {
@@ -535,7 +1075,7 @@ describe('the Tricot tab and seats', () => {
     assert.deepEqual(s.admitted, [{ id: 'ad1', allow: false }]);
     shows(s.screen(), " Denied: Chrome on macOS doesn't act for you.");
     s.tell({ admissions: [asking({ id: 'ad2', code: '5310', kind: 'terminal', label: "Tricot's terminal (tricot update)" })] });
-    shows(s.screen(), " A terminal wants to act for you (Tricot's terminal (tricot update), code 5310). Allow? [y/N]");
+    shows(s.screen(), " A terminal wants to act for you (Tricot's terminal (tricot update), code 5310). Allow?");
     s.type('\x1b');
     assert.doesNotMatch(s.screen().join('\n'), /wants to act for you/);
     shows(s.screen(), ' Left for now: it waits on the board until it lapses.');
@@ -563,7 +1103,7 @@ describe('the Tricot tab and seats', () => {
     shows(s.screen(), ' This terminal answers for you now, until it closes.');
     // Let in, its stream comes again in full: the request with its keys.
     s.tell({ approvals: [approval()] });
-    shows(s.screen(), '   [y] allow   [s] allow for this session   [n] deny');
+    shows(s.screen(), '   Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)');
     s.type('y');
     await s.settle();
     assert.deepEqual(s.answered, [{ id: 'a1', reply: { behavior: 'allow' } }]);

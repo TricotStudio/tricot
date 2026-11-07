@@ -1,9 +1,16 @@
 // The real terminal's input settings follow the agent that shows: bracketed
-// paste, focus reports, the mouse and how it is reported, the cursor keys,
-// the keypad, the cursor's shape, and the keyboard protocols (keyboard.ts):
-// the kitty keyboard's flags, so Shift+Enter comes as itself (CSI 13;2u),
-// and xterm's modifyOtherKeys. Switching sets what differs, and leaving puts
-// each back as a terminal starts.
+// paste, focus reports, the cursor keys, the keypad, the cursor's shape, and
+// the keyboard protocols (keyboard.ts): the kitty keyboard's flags, so
+// Shift+Enter comes as itself (CSI 13;2u), and xterm's modifyOtherKeys.
+// Switching sets what differs, and leaving (as every agent ends, or the
+// person quits) or a stop (SIGTSTP) puts each back as a terminal starts.
+//
+// The mouse is the exception (T30): the terminal reports presses and
+// releases in every tab, in SGR, so a click on the strip always switches,
+// and drags or any motion as well while the agent showing asked for them
+// (terminalModes). What reaches the agent is what it asked for, in its own
+// encoding (mouse.ts, keys.ts). While the terminal reports the mouse, a
+// plain drag no longer selects text: Shift held does (Option in iTerm2).
 //
 // The kitty keyboard's flags are set only in a terminal that answered for
 // them (host.ts asks it once, at the start); elsewhere nothing about them is
@@ -27,6 +34,13 @@ export const PLAIN_MODES: InputModes = {
 const TRACKING: Record<Exclude<MouseTracking, 'none'>, number> = { x10: 9, vt200: 1000, drag: 1002, any: 1003 };
 const ENCODING: Record<Exclude<MouseEncoding, 'default'>, number> = { utf8: 1005, sgr: 1006, urxvt: 1015 };
 const MOUSE_OFF = '\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?9l\x1b[?1006l\x1b[?1015l\x1b[?1005l';
+
+// What the terminal is set to while `modes` are wanted of it: those, the
+// mouse reported at least on press and release, and always in SGR, which
+// says which button was let go and reaches every column.
+export function terminalModes(modes: InputModes): InputModes {
+  return { ...modes, mouse: modes.mouse === 'drag' || modes.mouse === 'any' ? modes.mouse : 'vt200', mouseEncoding: 'sgr' };
+}
 
 const dec = (code: number, on: boolean) => `\x1b[?${code}${on ? 'h' : 'l'}`;
 

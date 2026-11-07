@@ -132,8 +132,9 @@ describe('Tricot skills, over REST and MCP', () => {
     assert.ok((await callText('Claude', 'get_board', { board_id: boardId })).includes(`Wassim ${line}`));
     const full = await callText('Claude', 'get_task', { task_id: task.id });
     assert.match(full, /\(asks you to run the Tricot skill \/release-notes\): @Claude \/release-notes since v1.4, for customers\n {2}Instructions of the Tricot skill \/release-notes:\n {4}Read the commits since the last tag\.\n {4}Group them by area\.\n {4}Write them in plain language, no jargon\./);
-    const other = await callText('Codex', 'get_task', { task_id: task.id });
-    assert.match(other, /\(for Claude: not for you\)/);
+    const refused = await call('Codex', 'get_task', { task_id: task.id });
+    assert.equal(refused.isError, true);
+    const other = refused.content[0].text;
     assert.doesNotMatch(other, /Instructions of the Tricot skill/, "another agent's request doesn't carry theirs to it");
     assert.doesNotMatch(await callText('Codex', 'get_updates', { board_id: boardId, since }), /Its instructions/);
 

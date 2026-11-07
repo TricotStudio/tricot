@@ -227,15 +227,15 @@ describe("Agents' backlog cards, over MCP and REST", () => {
     const taskId = idOf(opened);
 
     const updates = await callText('Codex', 'get_updates', { board_id: boardId, since: 0 });
-    assert.match(updates, /Claude \(agent\) added T1 "Note: retry on 429" to the backlog/);
+    assert.ok(!updates.includes(taskId) && !updates.includes("Note: retry on 429"));
     assert.ok(!updates.includes('needs a first look'), updates);
-    assert.match(await callText('Codex', 'get_board', { board_id: boardId }), /opened by Claude, needs no first look/);
-    assert.match(await callText('Codex', 'get_task', { task_id: taskId }), /opened in the backlog by Claude \(agent\)/);
+    assert.ok(!(await callText('Codex', 'get_board', { board_id: boardId })).includes(taskId));
+    assert.equal((await call('Codex', 'get_task', { task_id: taskId })).isError, true);
     assert.equal((await call('Codex', 'take_first_look', { task_id: taskId })).isError, true);
 
     const claim = await call('Claude', 'claim_task', { task_id: taskId });
     assert.equal(claim.isError, true);
-    assert.match(claim.content[0].text, /^You opened T1 "Note: retry on 429" in the backlog/);
+    assert.match(claim.content[0].text, /not addressed to you/);
     assert.equal((await call('Claude', 'update_task', { task_id: taskId, status: 'todo' })).isError, true);
 
     // People see it as opened by Claude, and mark it ready.

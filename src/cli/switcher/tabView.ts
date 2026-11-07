@@ -2,7 +2,8 @@
 // what it is doing, the requests for permission waiting with their keys,
 // and the board's latest activity, in the rows above the strip.
 //
-//    Tricot · Tricot roadmap                         http://127.0.0.1:4545
+//    ▀█▀ █▀▄ █ █▀▀ █▀█ ▀█▀   Tricot roadmap
+//     █  █▀▄ █ █▄▄ █▄█  █    http://127.0.0.1:4545
 //
 //    Your agents
 //      1 Claude   Running npm test                          1 min 12 s
@@ -12,26 +13,74 @@
 //      Claude wants to run a command in tricot:
 //        rm -rf dist && npm run build
 //        "Rebuild the web bundle after the CSS change"
-//      [y] allow   [s] allow for this session   [n] deny
+//      Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)
 //
 //    Lately on the board
 //      Wassim approved T183 and asked for a commit           2 min ago
 //
-//    o open the board · a add an agent · x stop one · q quit
+//    o open the board · t threads · a add an agent · x stop one · q quit
 //
-// "a" lists every agent Tricot knows that isn't running, one to a row, a
-// number each, and a few words after one that can't be started now:
+// (In a window under 68 columns the keys are fewer words: o open · t threads · a add · x stop · q quit.)
 //
-//    Add which agent?   Esc cancel
+// A request's answers are a row of choices, one highlighted (❯ and bold):
+// the arrows move it, Enter answers with it, and the letters y, s and n
+// answer at once. It starts on Deny, so a stray Enter never allows a command.
+// Each choice has a slot of two columns before its words for the ❯, so the
+// words stay where they are as the highlight moves. "Allow for this session"
+// is there only where the request offers it. Where the row doesn't fit, it
+// drops its hint, then the arrows for another request, and then says
+// "Session" in place of "Allow for this session", before it cuts a choice. A request this terminal can't
+// read yet has no choices, only the one key that asks to be let in.
+//
+// The first two rows are the TRICOT wordmark (wordmark.ts draws it, knitted
+// up a stitch at a time as the switcher opens; tricotTab.ts says when), the
+// board's title bold beside its top row and Tricot's address dim beside its
+// bottom row, each cut to fit. The rest is drawn below them as usual, losing
+// its least important rows first. A window too narrow or short for it, or
+// with no room for both its rows, has the one-line header in its place:
+//
+//    Tricot · Tricot roadmap                         http://127.0.0.1:4545
+//
+// "t" swaps all of this for the chat with the board's threads in a panel
+// beside it, which chatView.ts and threadsView.ts draw (tricotTab.ts picks
+// which of the two to draw).
+//
+// "x" asks before it hangs one up, with the same pair every yes-or-no question
+// of the tab is (the highlighted one has ❯ before it and is bold):
+//
+//    Stop Codex?    Yes  ❯ No  (←→ Enter, or y/n)
+//
+// A browser or terminal asking to act for the person comes before all else,
+// its question whole (it carries the code the person checks against the
+// browser's, so it is wrapped, never cut), the pair on a row of its own below:
+//
+//    A browser wants to act for you (Chrome on macOS, code 4271). Allow?
+//    Allow it only if the browser you're using shows 4271: it can then do all you do in Tricot.
+//      Yes  ❯ No  (←→ Enter, or y/n · Esc later)
+//
+// "a" lists every agent Tricot knows that isn't running, one to a row, with
+// a few words after one that can't be started now. One row is highlighted
+// (❯ and bold): the arrows move it, Enter picks it, and the numbers 1 to 9
+// pick a row at once (a row past the ninth has no number). "x" lists the
+// agents that are running the same way, each with its number from "Your
+// agents":
+//
+//    Add which agent?   ↑↓ move · Enter pick · Esc cancel
 //      1  Claude Code
-//      2  Codex
+//     ❯ 2  Codex
 //      3  OpenCode    not installed
 //      4  Gemini CLI  connect it first
+//
+//    Stop which agent?  ↑↓ move · Enter pick · Esc cancel
+//     ❯ 1  Claude
+//      2  Codex
 //
 // Every size gets what fits: each row has a priority, and the rows kept are
 // the most important ones, in their order (a short window loses the blank
 // rows, then the activity, then all but the first lines of a long
 // command, which says how many more it has). The keys stay on the last row.
+// A list taller than the window keeps its question on top and scrolls, so
+// the highlighted row is always in view.
 //
 // What agents sent is shown as plain text, exactly: a control character is
 // shown as its picture (␛), never sent to the terminal.
@@ -42,9 +91,12 @@ import { columns, fit, type AgentDoing, type Tone } from './strip';
 
 export type TabPrompt =
   | { kind: 'keys' } // the tab's own keys
-  | { kind: 'add'; choices: { name: string; note?: string }[] }
-  | { kind: 'stop'; choices: { number: number; name: string }[] }
-  | { kind: 'confirm-stop'; name: string };
+  | { kind: 'add'; choices: { name: string; note?: string }[]; at: number } // `at`: the row highlighted, from 0
+  | { kind: 'stop'; choices: { number: number; name: string }[]; at: number }
+  | { kind: 'confirm-stop'; name: string; yes: boolean }; // `yes`: Yes is the one highlighted
+
+// The answers to a request: allow it once, for the session, or deny it.
+export type ApprovalChoice = 'allow' | 'session' | 'deny';
 
 export interface TabView {
   title?: string; // the board's
@@ -53,16 +105,18 @@ export interface TabView {
   agents: { number: number; name: string; doing: AgentDoing }[];
   approvals: Approval[]; // waiting, oldest first
   selected: number; // the one the keys answer
+  choice?: ApprovalChoice; // the one highlighted in its row of answers (deny: none)
   sending?: 'allow' | 'deny'; // its answer is on its way
   reason?: string; // denying it: the reason typed so far
   activity: BoardEvent[]; // newest first
   // A browser or terminal asking to act for the person, for this terminal to answer (T187).
-  admission?: AdmissionView & { sending?: boolean };
+  admission?: AdmissionView & { sending?: boolean; allow?: boolean }; // `allow`: Yes is the one highlighted
   // This terminal as one of the person's seats: let in, or the code it asks with.
   seat?: { seated: boolean; code?: string; asking?: boolean };
   prompt: TabPrompt;
   note?: { text: string; tone: Tone }; // what the last key did
   quitting?: boolean;
+  wordmark?: Part[][]; // its two rows, the title and address beside them, in place of the one-line header (wordmark.ts)
   now: number;
 }
 
@@ -74,14 +128,14 @@ export interface TabFrame {
 
 // Looks, as SGR parameters: the terminal's own colours, bold and dim, and
 // the strip's alert colour, light or dark.
-const BOLD = '1';
-const DIM = '2';
-const alertOf = (light: boolean) => (light ? '38;5;130' : '38;5;214');
+export const BOLD = '1';
+export const DIM = '2';
+export const alertOf = (light: boolean) => (light ? '38;5;130' : '38;5;214');
 
-type Part = [text: string, sgr?: string];
+export type Part = [text: string, sgr?: string];
 
 // One row: the parts, cut to the width, the rest erased.
-function paint(parts: Part[], width: number): { line: string; plain: string } {
+export function paint(parts: Part[], width: number): { line: string; plain: string } {
   let line = '';
   let plain = '';
   for (const [text, sgr] of parts) {
@@ -92,6 +146,16 @@ function paint(parts: Part[], width: number): { line: string; plain: string } {
     plain += shown;
   }
   return { line: columns(plain) < width ? `${line}\x1b[0m\x1b[K` : `${line}\x1b[0m`, plain };
+}
+
+// A row on a background (an SGR one, "48;5;235"), across `width` columns:
+// each part keeps its own looks on it, and spaces on it fill the rest, as
+// paint erases the rest of a row with the terminal's own background.
+export function onBand(parts: Part[], background: string, width: number): Part[] {
+  const cut = cutParts(parts, width);
+  const used = cut.reduce((sum, [text]) => sum + columns(text), 0);
+  const fill: Part[] = used < width ? [[' '.repeat(width - used), background]] : [];
+  return [...cut.map(([text, sgr]): Part => [text, sgr ? `${sgr};${background}` : background]), ...fill];
 }
 
 // Parts at the left and at the right of one row; the right ones go first
@@ -108,7 +172,7 @@ function spread(left: Part[], right: Part[], width: number, gap = 3): Part[] {
   return [...left, [' '.repeat(width - used(left) - rightWidth)], ...right];
 }
 
-function cutParts(parts: Part[], room: number): Part[] {
+export function cutParts(parts: Part[], room: number): Part[] {
   const out: Part[] = [];
   let left = room;
   for (const [text, sgr] of parts) {
@@ -121,7 +185,7 @@ function cutParts(parts: Part[], room: number): Part[] {
 }
 
 // Words from the board on one line: control characters out.
-const oneLine = (text: string) => text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').trim();
+export const oneLine = (text: string) => text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').trim();
 
 // What an agent sent, shown as itself: tabs as spaces, and each control
 // character (and a direction override, which could hide what follows) as a
@@ -158,6 +222,24 @@ export function wantsTo(approval: Approval): string {
 const waitingFor = (approval: Approval) => `${who(approval)} is waiting for your OK`;
 const who = (approval: Approval) => `${oneLine(approval.agent)}${approval.role ? ` (${oneLine(approval.role)} subagent)` : ''}`;
 
+// The columns between the wordmark and the title and address beside it.
+const BESIDE_GAP = 3;
+
+// The same board header above the status view and conversations.
+export function tabHeader(view: Pick<TabView, 'title' | 'url' | 'connected' | 'wordmark'>, cols: number, room: number): Part[][] {
+  const title = view.title ? oneLine(view.title) : undefined;
+  const address: Part = [view.connected ? view.url : `${view.url} · connecting…`, DIM];
+  if (view.wordmark && room >= view.wordmark.length) {
+    const width = Math.max(...view.wordmark.map(partsWidth));
+    const words: Part[][] = [title ? [[title, BOLD]] : [], [address]];
+    return view.wordmark.map((mark, i) => {
+      const beside = words[i] ?? [];
+      return beside.length ? [...mark, [' '.repeat(width - partsWidth(mark) + BESIDE_GAP)] as Part, ...cutParts(beside, cols - width - BESIDE_GAP - 1)] : mark;
+    });
+  }
+  return [spread([[' Tricot', BOLD], ...(title ? ([[' · '], [title, BOLD]] as Part[]) : [])], [address, [' ']], cols, 2)];
+}
+
 interface Row {
   parts: Part[];
   priority: number;
@@ -172,22 +254,26 @@ export function renderTab(view: TabView, cols: number, rows: number, light = fal
   const toneSgr = (tone: Tone) => (tone === 'alert' ? alert : tone === 'quiet' ? DIM : undefined);
   let cursorRow: { index: number; x: number } | undefined;
 
-  // ---- the board and where it runs
-  const title = view.title ? oneLine(view.title) : undefined;
-  add(100, spread([[' Tricot', BOLD], ...(title ? ([[' · '], [title, BOLD]] as Part[]) : [])], [[view.connected ? view.url : `${view.url} · connecting…`, DIM], [' ']], cols, 2));
+  // ---- the keys, and what the last one did: the last rows, always (the rest has the rows above them)
+  const footer: Part[][] = [];
+  if (view.note) for (const line of wrap(oneLine(view.note.text), Math.max(10, cols - 2), NOTE_ROWS)) footer.push([[` ${line}`, toneSgr(view.note.tone)]]);
+  footer.push(...promptRows(view, rows, cols));
+  const room = Math.max(0, rows - footer.length);
+
+  // ---- the board and where it runs: beside the wordmark, one to a row, where both its rows fit; else on one row
+  for (const [i, row] of tabHeader(view, cols, room).entries()) add(100 - i * 0.01, row);
   blank(70);
 
   // ---- a browser or terminal asking to act for the person: first, as it waits on a keypress
   const asking = view.admission;
   if (asking) {
-    // "… Allow? [y/N]" on one line where it fits; else the question goes with the keys.
-    const words = ` ${oneLine(admissionWords(asking))}.`;
-    const whole = columns(`${words} Allow? [y/N]`) <= cols;
-    add(99, [[whole ? `${words} Allow? [y/N]` : words, `${BOLD};${alert}`]]);
+    // The question whole, on as many rows as it takes: the code in it is what the person checks.
+    const question = `${oneLine(admissionWords(asking))}. Allow?`;
+    for (const line of wrap(question, Math.max(10, cols - 2), 20)) add(99, [[` ${line}`, `${BOLD};${alert}`]]);
     add(98, [[`   Allow it only if the ${asking.kind === 'terminal' ? 'terminal' : 'browser'} you're using shows ${asking.code}: it can then do all you do in Tricot.`, DIM]]);
     if (asking.first) add(97, [["   It would be the first: from then on, only what you've let in can let others in.", DIM]]);
-    const keys: Part[] = [['   '], ...(whole ? [] : ([['Allow? [y/N]', BOLD], ['   ']] as Part[])), ['[y]', BOLD], [' allow   '], ['[n]', BOLD], [' deny   '], ['Esc', BOLD], [' later']];
-    add(99, asking.sending ? [['   Answering…', DIM]] : keys);
+    const pair: Part[] = [[' '], ...yesNo(asking.allow === true)];
+    add(99, asking.sending ? [['   Answering…', DIM]] : fitOne(pair, [[['  '], ['(←→ Enter, or y/n · Esc later)', DIM]], [['  '], ['(Esc later)', DIM]]], cols));
     blank(46);
   }
 
@@ -244,11 +330,7 @@ export function renderTab(view: TabView, cols: number, rows: number, light = fal
       } else if (view.sending) {
         add(95, [[`   ${view.sending === 'allow' ? 'Allowing' : 'Denying'}…`, DIM]]);
       } else {
-        const keys: Part[] = [['   '], ['[y]', BOLD], [' allow   ']];
-        if (approval.forSession?.length) keys.push(['[s]', BOLD], [' allow for this session   ']);
-        keys.push(['[n]', BOLD], [' deny']);
-        if (several) keys.push(['   '], ['↑↓', BOLD], [' another']);
-        add(95, keys);
+        add(95, answerRow(approval, view.choice ?? 'deny', several, cols));
       }
     }
   }
@@ -264,13 +346,7 @@ export function renderTab(view: TabView, cols: number, rows: number, light = fal
     blank(44);
   }
 
-  // ---- the keys, and what the last one did: the last rows, always
-  const footer: Part[][] = [];
-  if (view.note) for (const line of wrap(oneLine(view.note.text), Math.max(10, cols - 2), NOTE_ROWS)) footer.push([[` ${line}`, toneSgr(view.note.tone)]]);
-  footer.push(...promptRows(view));
-
   // Keep the rows that matter most, in their order.
-  const room = Math.max(0, rows - footer.length);
   const order = body.map((row, index) => ({ row, index })).sort((a, b) => b.row.priority - a.row.priority || a.index - b.index);
   const kept = new Set(order.slice(0, room).map((o) => o.index));
   // Trailing blank rows are no use: the footer is apart from the rest anyway.
@@ -305,7 +381,7 @@ export function renderTab(view: TabView, cols: number, rows: number, light = fal
 }
 
 // The last `room` columns of a string.
-function tail(text: string, room: number): string {
+export function tail(text: string, room: number): string {
   const chars = [...text];
   let out = '';
   for (let i = chars.length - 1; i >= 0; i--) {
@@ -315,35 +391,94 @@ function tail(text: string, room: number): string {
   return out;
 }
 
-// The last rows: the keys, or the question one of them asks (the add list is
-// one row to an agent, the rest are one row).
-function promptRows(view: TabView): Part[][] {
+// The last rows: the keys, or the question one of them asks (the add and stop
+// lists are one row to an agent, the rest are one row), in `room` rows at most.
+function promptRows(view: TabView, room: number, cols: number): Part[][] {
   const key = (k: string, words: string): Part[] => [[k, BOLD], [` ${words}`]];
   const sep: Part = [' · '];
   if (view.quitting) return [[[' Closing the agents…', DIM]]];
   switch (view.prompt.kind) {
     case 'add': {
-      if (!view.prompt.choices.length) return [[[' Every agent is running. '], ['Esc', BOLD], [' back']]];
-      const width = Math.max(...view.prompt.choices.map((choice) => columns(oneLine(choice.name))));
-      const rows: Part[][] = [[[' Add which agent?   '], ['Esc', BOLD], [' cancel']]];
-      for (const [i, choice] of view.prompt.choices.entries()) {
+      const { choices, at } = view.prompt;
+      if (!choices.length) return [[[' Every agent is running. '], ['Esc', BOLD], [' back']]];
+      const width = Math.max(...choices.map((choice) => columns(oneLine(choice.name))));
+      const rows = choices.map((choice, i) => {
         const name = oneLine(choice.name);
-        rows.push([[`   ${i + 1}`, BOLD], [`  ${name}${' '.repeat(width - columns(name))}`], ...(choice.note ? ([['  '], [oneLine(choice.note), DIM]] as Part[]) : [])]);
-      }
-      return rows;
+        // Only the numbers 1 to 9 pick a row: a row past the ninth has none.
+        return listRow(i === at, i < 9 ? `${i + 1}` : ' ', `${name}${' '.repeat(width - columns(name))}`, choice.note ? ([['  '], [oneLine(choice.note), DIM]] as Part[]) : []);
+      });
+      return listRows(' Add which agent?   ', rows, at, room, cols);
     }
     case 'stop': {
-      if (!view.prompt.choices.length) return [[[' No agent is running. '], ['Esc', BOLD], [' back']]];
-      const parts: Part[] = [[' Stop which agent?  ']];
-      for (const choice of view.prompt.choices) parts.push([`${choice.number}`, BOLD], [` ${oneLine(choice.name)}   `]);
-      parts.push(['Esc', BOLD], [' cancel']);
-      return [parts];
+      const { choices, at } = view.prompt;
+      if (!choices.length) return [[[' No agent is running. '], ['Esc', BOLD], [' back']]];
+      const width = Math.max(...choices.map((choice) => `${choice.number}`.length));
+      const rows = choices.map((choice, i) => listRow(i === at, `${choice.number}`.padStart(width), oneLine(choice.name), []));
+      return listRows(' Stop which agent?  ', rows, at, room, cols);
     }
-    case 'confirm-stop':
-      return [[[` Stop ${oneLine(view.prompt.name)}?  `], ['y', BOLD], [' stop · any other key keeps it']]];
-    default:
-      return [[[' '], ...key('o', 'open the board'), sep, ...key('a', 'add an agent'), sep, ...key('x', 'stop one'), sep, ...key('q', 'quit')]];
+    case 'confirm-stop': {
+      const question: Part = [` Stop ${oneLine(view.prompt.name)}?`];
+      const pair = yesNo(view.prompt.yes);
+      const hint: Part[][] = [[['  '], ['(←→ Enter, or y/n)', DIM]]];
+      const one: Part[] = [question, ['  '], ...pair];
+      if (partsWidth(one) <= cols) return [fitOne(one, hint, cols)];
+      return [[question], fitOne([[' '], ...pair], hint, cols)];
+    }
+    default: {
+      // In words where they fit, and in fewer where they don't, so "q quit" stays in a narrow window.
+      const keys = (words: [string, string][]): Part[] => [[' '], ...words.flatMap(([k, what], i) => (i ? [sep, ...key(k, what)] : key(k, what)))];
+      const full = keys([['o', 'open the board'], ['t', 'threads'], ['a', 'add an agent'], ['x', 'stop one'], ['q', 'quit']]);
+      return [columns(full.map(([text]) => text).join('')) <= cols ? full : keys([['o', 'open'], ['t', 'threads'], ['a', 'add'], ['x', 'stop'], ['q', 'quit']])];
+    }
   }
+}
+
+const partsWidth = (parts: Part[]) => parts.reduce((sum, [text]) => sum + columns(text), 0);
+
+// The row with the first of these endings that fits the width, or as it is.
+function fitOne(row: Part[], endings: Part[][], cols: number): Part[] {
+  const ending = endings.find((e) => partsWidth([...row, ...e]) <= cols);
+  return ending ? [...row, ...ending] : row;
+}
+
+// One choice of a row, the highlighted one with ❯ before it and bold.
+const choicePart = (label: string, on: boolean): Part => [`${on ? '❯' : ' '} ${label}`, on ? BOLD : undefined];
+
+// "  Yes  ❯ No": the pair every yes-or-no question has.
+export const yesNo = (yes: boolean): Part[] => [choicePart('Yes', yes), ['  '], choicePart('No', !yes)];
+
+// The choices of a request the person can answer: their words, and the words
+// where the row is too narrow for them.
+const CHOICES: Record<ApprovalChoice, [string, string]> = { allow: ['Allow', 'Allow'], session: ['Allow for this session', 'Session'], deny: ['Deny', 'Deny'] };
+
+// What a request can be answered with, in the order they are drawn.
+export const choicesOf = (approval: Approval): ApprovalChoice[] => (approval.forSession?.length ? ['allow', 'session', 'deny'] : ['allow', 'deny']);
+
+// "Allow    Allow for this session  ❯ Deny  (←→ Enter, or y/s/n)   ↑↓ another".
+function answerRow(approval: Approval, choice: ApprovalChoice, several: boolean, cols: number): Part[] {
+  const offered = choicesOf(approval);
+  const on = offered.includes(choice) ? choice : 'deny';
+  const row = (short: 0 | 1): Part[] => [[' '], ...offered.flatMap((c, i): Part[] => [...(i ? ([['  ']] as Part[]) : []), choicePart(CHOICES[c][short], c === on)])];
+  const choices = partsWidth(row(0)) <= cols ? row(0) : row(1);
+  const another: Part[] = several ? [['   '], ['↑↓', BOLD], [' another']] : [];
+  const hint: Part[] = [['  '], [`(←→ Enter, or ${offered.includes('session') ? 'y/s/n' : 'y/n'})`, DIM]];
+  // Another request's arrows matter more than the hint: the hint goes where it leaves them room.
+  const withHint = partsWidth([...choices, ...hint, ...another]) <= cols ? [...choices, ...hint] : choices;
+  return partsWidth([...withHint, ...another]) <= cols ? [...withHint, ...another] : withHint;
+}
+
+// One row of a list: the highlighted one has ❯ before it and a bold name.
+const listRow = (on: boolean, number: string, name: string, after: Part[]): Part[] => [[` ${on ? '❯' : ' '} `, BOLD], [number, BOLD], [`  ${name}`, on ? BOLD : undefined], ...after];
+
+// A list's question with its keys (just Esc where the rest doesn't fit the
+// width), then its rows: all of them, or as many as `room` leaves after the
+// question, scrolled so the highlighted row is among them.
+function listRows(question: string, rows: Part[][], at: number, room: number, cols: number): Part[][] {
+  const words = columns(`${question}↑↓ move · Enter pick · Esc cancel`) <= cols;
+  const keys: Part[] = words ? [['↑↓', BOLD], [' move · '], ['Enter', BOLD], [' pick · '], ['Esc', BOLD], [' cancel']] : [['Esc', BOLD], [' cancel']];
+  const shown = Math.max(0, room - 1);
+  const first = rows.length <= shown ? 0 : Math.min(Math.max(0, at - Math.floor(shown / 2)), rows.length - shown);
+  return [[[question], ...keys], ...rows.slice(first, first + shown)];
 }
 
 // The note's rows: as many as it needs, to this many; what doesn't fit ends

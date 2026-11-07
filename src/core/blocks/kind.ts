@@ -223,6 +223,10 @@ export interface BlockKind<T extends KindTypes = any> {
   // A block's fields as a version had them.
   fromSnapshot(version: SnapshotOf<T>, block: BlockBase & { type: string }): T['fields'];
   restorePatch(version: SnapshotOf<T>): T['patch'];
+  // What a copy of a block (pasted on another canvas) keeps besides what a
+  // version of it holds: its fields that aren't content, such as how a link
+  // shows. What it leaves out stays behind: a connector's draft, pins, versions.
+  copy?(block: BlockOf<T>): Partial<T['fields']>;
 
   digest(block: BlockOf<T>, full: boolean): string; // what agents read of its content
   readonly inline?: true; // a digest short enough to sit on the block's own line
@@ -245,7 +249,7 @@ export interface BlockKind<T extends KindTypes = any> {
 // (what the browser needs to name, place and show a block) is in its index.ts.
 export type ServerHalf<T extends KindTypes = any> = Pick<
   BlockKind<T>,
-  'create' | 'patchFields' | 'change' | 'describe' | 'snapshot' | 'restorePatch' | 'digest' | 'inline' | 'searchText' | 'briefInFull' | 'assets' | 'forPeople' | 'agent' | 'people' | 'derive'
+  'create' | 'patchFields' | 'change' | 'describe' | 'snapshot' | 'restorePatch' | 'copy' | 'digest' | 'inline' | 'searchText' | 'briefInFull' | 'assets' | 'forPeople' | 'agent' | 'people' | 'derive'
 > & { anchor?: PinHooks<T>['anchor']; part?: PinHooks<T>['part'] };
 
 export type AnyKind = BlockKind<any>;

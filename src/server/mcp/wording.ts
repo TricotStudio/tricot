@@ -13,6 +13,9 @@ export function inThread(thread: Thread): string {
 // answers one and keeps listening, for the tools' descriptions.
 export const WHOLE =
   "A person's comment or message for you comes whole, with the card's title and status, the messages before it you haven't seen, and the call that answers it; one you've been given already is named, not repeated.";
+// A tag on a mention (core/agentTags.ts), for the guide: what its line says, and what to do.
+export const TAGGED =
+  'A person may tag you with a model and thinking level for one message ("@Claude:opus:high"). It is still a message for you, and its line adds "asks you to do this on opus at high thinking": hand that work to a subagent on that model and thinking level, and keep your own session as it is.';
 export const THEN_WAIT =
   'Answering while you listen? Pass then_wait (seconds, as for wait_for_updates): it posts first, then waits and brings back what happens next in the same result, and people see you listening throughout.';
 

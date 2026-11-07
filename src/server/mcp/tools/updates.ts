@@ -1,6 +1,5 @@
 import { tools } from '../../../core/schemas';
-import { UPDATES_PAGE } from '../session';
-import { WHOLE } from '../wording';
+import { TAGGED, WHOLE } from '../wording';
 import { defineTool, text, type Tool } from '../tool';
 import type { ToolContext } from './context';
 
@@ -13,14 +12,14 @@ export function updateTools({ store, getActor, session }: ToolContext): Tool[] {
         "Activity on a board since a cursor, from anyone but you: answers, requests, comments, thread messages, new questions, and what people asked of agents, each message for you whole. Returns the new cursor. Check it between steps: you can't be notified.",
       guide: {
         topic: 'conversation',
-        text: `Other tools' results also say when there's unread activity; act on it. ${WHOLE}`,
+        text: `Other tools' results also say when there's unread activity; act on it. ${WHOLE} ${TAGGED}`,
       },
       schema: tools.get_updates,
       readOnly: true,
       catchesUp: true,
       handler: async ({ board_id, since }) => {
         const board = store.getBoard(board_id);
-        return text(session.updates(board, store.eventsSince(board_id, since, getActor(), UPDATES_PAGE + 1)));
+        return text(session.updates(board, since));
       },
     }),
 

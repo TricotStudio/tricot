@@ -17,9 +17,11 @@ import {
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
   useReactFlow,
+  useKeyPress,
   useStore,
   type Connection,
   type EdgeChange,
@@ -36,12 +38,16 @@ import { PendingRequests } from './askAgents';
 import { FOCUS_PIN, showComments } from '../conversation';
 import { useFocusBlock } from './focus';
 import { useReadOnly } from '../shared/hooks';
+import type { BlocksClip } from './clip';
 import { SyncSelection } from './sync';
 import { useTheme } from '../themes';
 import { CanvasContext, type CanvasContextValue, type PinDraft } from './context';
 import type { AddContext } from './blocks/kind';
 import { menuKinds, webKindOf } from './blocks/registry';
+import { useBoxLeavesGroups } from './boxSelect';
+import { useCopyBlocks } from './copy';
 import { useIntake } from './intake';
+import { PanHint } from './panHint';
 import { BlockNode, FrameNode, LinkEdge, type CanvasNode, type LinkEdgeType } from './nodes';
 import { PinPrompt, PinThread, selectedWords } from './pins';
 import { useUndoDelete } from './undo';
@@ -112,7 +118,14 @@ const NOTHING_NEW: ReadonlySet<string> = new Set();
 // clear of the chat bar floating at its foot (chatBar.css).
 const FIT = { maxZoom: 1, padding: 0.15 };
 const FIT_UNDER_BAR = { maxZoom: 1, padding: { x: 0.15, top: 0.15, bottom: '120px' as const } };
-const MULTI_SELECT = ['Meta', 'Control', 'Shift']; // ⇧-click adds a block to the selection too; ⇧-drag draws a box
+const MULTI_SELECT = ['Meta', 'Control', 'Shift']; // ⇧-click adds a block to the selection too
+// A plain drag on the empty canvas draws a selection box (selectionOnDrag), and
+// any block the box touches is picked, not only one it covers. The canvas is
+// moved with Space held and a drag, the middle or right button's drag (buttons 1
+// and 2 of panOnDrag), or by scrolling (panOnScroll). ⇧-drag draws a box from
+// anywhere, over a block or a group too, where a plain drag moves the thing.
+const PAN_BUTTONS = [1, 2];
+const PAN_KEY = 'Space';
 const ignore = () => {};
 const PROMPT_WIDTH = 380;
 const PROMPT_HEIGHT = 230; // about; decides whether it fits under the part or goes above
@@ -369,17 +382,32 @@ function CanvasSurface(props: Props) {
   useEffect(() => {
     if (overlay && !canvas.blocks.some((b) => b.id === overlay.blockId)) setOverlay(null);
   }, [overlay, canvas]);
-  // Enter or Space on a focused block that has a way to open it (an image at full size).
-  const onCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
+  // Enter, or a tap of Space, on a focused block that has a way to open it (an
+  // image at full size). Space held down moves the canvas (with a drag or the
+  // wheel), so it opens the block on letting go, and not if it was held.
+  const spaceUsed = useRef(false);
+  const openFocused = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     if (!target.classList.contains('react-flow__node')) return;
     const block = canvas.blocks.find((b) => b.id === target.dataset.id);
     const activate = block && webKindOf(block.type).activate;
     if (!block || !activate) return;
     event.preventDefault();
-    activate(block, context);
+    if (event.key === 'Enter') activate(block, context);
+    else if (event.type === 'keyup' && !spaceUsed.current) activate(block, context);
   };
+  const onCanvasKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === ' ') spaceUsed.current = event.repeat;
+    if (event.key === 'Enter' || event.key === ' ') openFocused(event);
+  };
+  const onCanvasKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === ' ') openFocused(event);
+  };
+  const spaceMoved = () => {
+    spaceUsed.current = true;
+  };
+  const box = useBoxLeavesGroups(nodes);
+  const moving = useKeyPress(PAN_KEY); // Space held: a drag moves the canvas, even one that starts on a block or a group
 
   // Deletion is the server's call: removing a group keeps its blocks, and a
   // block's links go with it (and come back with it on Undo). Local state
@@ -453,6 +481,19 @@ function CanvasSurface(props: Props) {
     }
   };
 
+  // Blocks copied from a canvas are made again here, centred on the view; the
+  // server makes the copies. A refusal is shown as any other; one that says
+  // what was copied is gone (404) lets its words paste as a note instead.
+  const pasteBlocks = async ({ ids }: BlocksClip) => {
+    try {
+      await api.pasteBlocks(ref, name, { ids, at: viewportCentre() });
+      return true;
+    } catch (e) {
+      report(e);
+      return (e as RequestError).status !== 404;
+    }
+  };
+
   // What is dropped on the canvas or pasted on the page (intake.tsx).
   const { dropProps, overlays } = useIntake({
     wrapper,
@@ -461,7 +502,10 @@ function CanvasSurface(props: Props) {
     readOnly,
     clips: !overlay,
     openForm: (type, initial) => setForm({ type, initial }),
+    pasteBlocks,
   });
+  const selected = useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes]);
+  useCopyBlocks(canvas, selected, !overlay);
 
   // Selecting words in a note pins them. A double-click's
   // word selection is left alone: double-clicking edits.
@@ -633,9 +677,17 @@ function CanvasSurface(props: Props) {
         className={readOnly ? 'canvas is-read-only' : 'canvas'}
         {...dropProps}
         onKeyDown={onCanvasKeyDown}
+        onKeyUp={onCanvasKeyUp}
+        onPointerDownCapture={(event) => {
+          spaceMoved();
+          box.onPointerDownCapture(event);
+        }}
+        onPointerUpCapture={box.onPointerUpCapture}
+        onPointerCancelCapture={box.onPointerCancelCapture}
+        onWheelCapture={spaceMoved}
       >
         <ReactFlow<CanvasNode, LinkEdgeType>
-          nodes={nodes}
+          nodes={box.nodes}
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -651,15 +703,20 @@ function CanvasSurface(props: Props) {
           minZoom={0.15}
           maxZoom={4}
           panOnScroll
+          panOnDrag={PAN_BUTTONS}
+          panActivationKeyCode={PAN_KEY}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
           zoomOnDoubleClick={false}
           multiSelectionKeyCode={MULTI_SELECT}
-          nodesDraggable={!readOnly}
+          nodesDraggable={!readOnly && !moving}
           nodesConnectable={!readOnly}
           deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
           proOptions={proOptions}
         >
           <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
           <Controls showInteractive={false} fitViewOptions={onBoardContext ? FIT_UNDER_BAR : FIT} />
+          <PanHint />
           {!readOnly && (
             <Panel position="top-left" className="canvas-toolbar">
               <span className="toolbar-label">Add</span>

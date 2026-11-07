@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Tricot steps: shows what this agent is doing, one short line per step, on
 // the Tricot card it is working on ("Reading src/web/Home.tsx", "Running npm
-// test"). Claude Code, Codex and Gemini CLI run it on each hook event it is
-// set up for, with the event as JSON on stdin
+// test"). Claude Code, Codex, Gemini CLI, Goose and Hermes run it on each hook
+// event it is set up for, with the event as JSON on stdin
 // (https://code.claude.com/docs/en/hooks, https://learn.chatgpt.com/docs/hooks,
-// https://geminicli.com/docs/hooks/reference/); Tricot's hook installers
+// https://geminicli.com/docs/hooks/reference/,
+// https://goose-docs.ai/docs/guides/context-engineering/hooks,
+// https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks); Tricot's hook installers
 // (src/server/hooks/) set it up beside tricot-describe.mjs, which turns the
 // event into the step, and take it away again.
 //

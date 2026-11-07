@@ -27,6 +27,9 @@
 // Python one uses the standard library, for Linux, where IO::Pty is often
 // missing and python3 is usually there.
 
+// Perl's ${^CHILD_ERROR_NATIVE}, which a template literal can't hold as it is.
+const NATIVE_STATUS = '${^CHILD_ERROR_NATIVE}';
+
 export const PERL_HELPER = String.raw`
 use strict;
 use warnings;
@@ -116,7 +119,9 @@ while (1) {
     if (!defined $status) {
         my $k = waitpid($pid, WNOHANG | WUNTRACED);
         if ($k == $pid) {
-            if (WIFSTOPPED($?)) { kill 'CONT', -$pid; kill 'CONT', $pid }
+            # Perl makes $? up from how the agent exited or was killed, so it
+            # reads 0 for one that stopped: only the native status says so.
+            if (WIFSTOPPED(${NATIVE_STATUS})) { kill 'CONT', -$pid; kill 'CONT', $pid }
             else { $status = $? }
         }
     }

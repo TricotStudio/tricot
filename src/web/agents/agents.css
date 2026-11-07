@@ -144,11 +144,135 @@
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--muted);
+  text-wrap: pretty; /* beside the chip a line can wrap: never one word alone */
 }
 .agent-close {
   margin-left: auto;
   align-self: flex-start;
   padding: 4px 6px;
+}
+
+/* ---- what it starts on: the chip in the head, and its popover (rule.tsx) ---- */
+
+/* What it runs on now, under its name: quieter than where it is. */
+.agent-head p.agent-head-runs {
+  color: var(--faint);
+}
+/* The assignee chip's shape (mentions.css), a little larger in the head; dashed for its own settings, as "Any agent" is. */
+.assignee-chip.agent-rule-chip {
+  flex: none;
+  max-width: 156px; /* a long model's name is cut, whole in its title, so the name beside it keeps its room */
+  height: 26px;
+  margin-left: auto;
+  padding: 0 7px 0 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.agent-rule-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.assignee-chip.agent-rule-chip .assignee-caret {
+  flex: none;
+}
+.assignee-chip.agent-rule-chip:hover,
+.assignee-chip.agent-rule-chip[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+.assignee-chip.agent-rule-chip.is-any {
+  padding: 0 7px 0 10px;
+  font-weight: 400;
+}
+.agent-rule-chip + .agent-close {
+  margin-left: 0;
+}
+/* The assignee menu's look (mentions.css): its title, then Model and Thinking side by side. */
+.assignee-menu.agent-rule-menu {
+  gap: 2px;
+  padding: 6px;
+}
+.agent-rule-menu:focus {
+  outline: none;
+}
+.agent-rule-title {
+  padding: 5px 8px 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.agent-rule-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.agent-rule-columns.is-two {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.agent-rule-column {
+  display: grid;
+  gap: 1px;
+  align-content: start;
+  min-width: 0;
+}
+.assignee-option.agent-rule-option {
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+.assignee-option.agent-rule-option:hover,
+.assignee-option.agent-rule-option:focus-visible {
+  background: var(--surface-2);
+}
+.assignee-option.agent-rule-option:focus-visible {
+  outline-offset: -2px;
+}
+.assignee-option.agent-rule-option:disabled {
+  cursor: progress;
+}
+.agent-rule-option.is-chosen {
+  font-weight: 500;
+}
+.agent-rule-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-rule-check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--text);
+}
+/* A model of one's own, typed: the page's field, small, under the suggestions. */
+.agent-rule-own {
+  padding: 4px 2px 2px;
+}
+.agent-rule-own input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.agent-rule-error {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--danger);
+}
+.agent-rule-foot {
+  margin-top: 4px;
+  padding: 8px 8px 3px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--faint);
+}
+.agent-rule-foot strong {
+  font-weight: 500;
+  color: var(--muted);
 }
 .agent-tabs {
   display: flex;

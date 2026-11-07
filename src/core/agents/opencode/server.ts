@@ -15,6 +15,8 @@ export const server: AgentServerHalf = {
   // longer one would be cut where they are kept.
   mcpClient: { clientName: 'opencode', callLimitSeconds: OMP_TIMEOUT_MS / 1000 },
   session: opencodeSession,
+  // `-m, --model provider/model` (opencode.ai/docs/cli).
+  ruleFlags: ({ model }) => (model ? ['--model', model] : []),
   show({ out, url, token, shell }) {
     if (token) out(`In the ${shellNoun(shell)} OpenCode runs from, so it can read the token:\n  ${exportToken(token, shell)}\n`);
     out(`Add this to ${OPENCODE_FILE} (merge it into "mcp" if the file exists), or to opencode.json in a project:`);

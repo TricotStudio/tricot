@@ -79,7 +79,7 @@ export class Reactions {
   // in front of it (seenBy), once each: the chip shows up live, and nothing is
   // logged, so no other agent wakes and nobody's activity grows. Returns how
   // many. A board deleted meanwhile, or archived, is left as it is.
-  seeComments(boardId: string, viewer: Actor, events: BoardEvent[] = []): number {
+  seeComments(boardId: string, viewer: Actor, events: BoardEvent[] = [], accept?: (item: Reactable) => boolean): number {
     if (viewer.kind !== 'agent') return 0;
     const board = this.repo.findBoard(boardId);
     if (!board || board.archived) return 0;
@@ -88,6 +88,7 @@ export class Reactions {
     const taskIds = new Set<string>();
     let seen = 0;
     for (const { item, decisionId, taskId } of seenBy(board, viewer.name, events)) {
+      if (accept && !accept(item)) continue;
       if (sameActor(item.author, viewer) || reactedBy(item, viewer.name)) continue;
       setReaction(item, '👀', viewer, true, now);
       if (decisionId) decisionIds.add(decisionId);

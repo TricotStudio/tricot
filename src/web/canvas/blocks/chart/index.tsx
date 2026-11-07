@@ -3,6 +3,7 @@
 // and open it full screen to pair with an agent on them (chartView.tsx).
 
 import type { Block } from '../../../../core/types';
+import { tabular } from '../../clip';
 import { useCanvas } from '../../context';
 import type { ToolsProps, WebBlockKind } from '../kind';
 import { ChartBody, ChartHead, SAMPLE_CHART, showChartData } from './chart';
@@ -22,6 +23,7 @@ function ChartTools({ block, viewing }: ToolsProps<ChartBlock>) {
 
 export const chart: WebBlockKind<ChartBlock> = {
   type: 'chart',
+  copyText: (block) => tabular(block.columns, block.rows),
   Body: ChartBody,
   Head: ({ block, frozen }) => <ChartHead block={block} frozen={frozen} />,
   Tools: ChartTools,

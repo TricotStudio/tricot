@@ -39,6 +39,8 @@ export const server: AgentServerHalf = {
         : 'Approvals come to the board, through the hook in your Claude Code settings.';
     return { ...(settings && { settings }), said };
   },
+  // `--model` takes an alias or a full name, `--effort` a level (claude --help).
+  ruleFlags: ({ model, effort }) => [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])],
   // It draws its whole window, on the emulator Tricot keeps each screen in.
   hostEnv: { CLAUDE_CODE_NO_FLICKER: '1' },
   show(view) {

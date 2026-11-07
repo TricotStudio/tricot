@@ -6,10 +6,14 @@
 // loaded from outside this repository.
 
 import { agentUrl, type Shell } from '../connect';
+import { samePerson } from '../format';
 import type { AgentKind } from './agent';
 import { claude } from './claude';
 import { codex } from './codex';
 import { gemini } from './gemini';
+import { goose } from './goose';
+import { grok } from './grok';
+import { hermes } from './hermes';
 import { omp } from './omp';
 import { opencode } from './opencode';
 import { pi } from './pi';
@@ -17,7 +21,7 @@ import { pi } from './pi';
 // Their order is the Connect panel's, and the live-steps installers'. It is a
 // function so the agents are read once they have all loaded, however the
 // modules happen to be imported.
-const registered = (): readonly AgentKind[] => [claude, codex, pi, omp, gemini, opencode];
+const registered = (): readonly AgentKind[] => [claude, codex, pi, omp, gemini, opencode, goose, hermes, grok];
 
 let all: readonly AgentKind[] | undefined;
 
@@ -32,6 +36,13 @@ export function findAgent(id: string): AgentKind | undefined {
 // The agent whose MCP client calls itself this when it connects (clientInfo.name).
 export const agentOfMcpClient = (clientName: string | undefined): AgentKind | undefined =>
   clientName === undefined ? undefined : agentKinds().find((kind) => kind.mcpClient.clientName.toLowerCase() === clientName.toLowerCase());
+
+// Which agent one on a board is: as its session said (its MCP client's
+// registry id, `tool`), else the one whose name on the board it has. None for
+// a client Tricot doesn't know.
+export function agentKindOf(agent: { name: string; tool?: string }): AgentKind | undefined {
+  return (agent.tool ? findAgent(agent.tool) : undefined) ?? agentKinds().find((kind) => samePerson(kind.boardName, agent.name));
+}
 
 // The agent whose harness posts its usage as this source.
 export const agentOfSource = (source: string): AgentKind | undefined => agentKinds().find((kind) => kind.usage.source === source);

@@ -3,7 +3,7 @@ import type { CommonPatch, InputsOf, PatchesOf } from '../blocks/kind';
 import type { RegisteredKinds } from '../blocks/registry';
 import type { DiffSide } from '../blocks/diff/diff';
 import type * as schemas from '../schemas/shared';
-import type { Actor, Board, Canvas, Decision, SceneView, Task } from '../types';
+import type { Actor, Board, BoardEvent, Canvas, Decision, SceneView, Task } from '../types';
 
 // What the Store takes, where a shell sends the same thing: the schemas' own
 // types (core/schemas/shared.ts), so a field is written once.
@@ -120,6 +120,7 @@ export interface Located {
 }
 
 export interface WaitOptions {
+  accept?: (event: BoardEvent) => boolean; // a caller's view: excluded events do not wake it
   timeoutMs: number;
   signal?: AbortSignal;
   exclude?: Actor;

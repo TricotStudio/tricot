@@ -547,6 +547,7 @@ describe("the Usage section's words (core/usage.ts)", () => {
     assert.equal(tokensLine({ input: 840_000, output: 30_000, cacheRead: 310_000, cacheWrite: 0, reasoning: 0, total: 870_000 }), '870k tokens · 840k in, 30k out, 310k from cache');
     assert.deepEqual([0, 30_000, 45 * 60_000, 130 * 60_000, 120 * 60_000].map(workingText), ['none', 'under a minute', '45m', '2h 10m', '2h']);
     assert.equal(notSharedLine('gemini', 'Gemini CLI'), 'Gemini keeps its quota to itself: see /stats in Gemini.');
+    assert.equal(notSharedLine('grok', 'Grok Build'), 'Grok keeps its usage allowance to itself: see /usage in Grok.');
     assert.equal(notSharedLine('pi', 'Pi'), 'Pi shares tokens and cost, not plan limits.');
     assert.equal(notSharedLine('claude', 'Claude Code'), undefined);
   });

@@ -12,6 +12,7 @@ import type { Block } from '../../../core/types';
 import { defineTool, text, type Tool } from '../tool';
 import { inThread } from '../wording';
 import type { ToolContext } from './context';
+import { agentBoard } from '../backlog';
 
 function canvasRef(args: { board_id?: string; decision_id?: string; task_id?: string }): CanvasRef {
   const ref = { boardId: args.board_id, decisionId: args.decision_id, taskId: args.task_id };
@@ -64,7 +65,10 @@ export function canvasTools({ store, getActor, blocks: { io, fill, fillChange, r
       schema: tools.get_canvas,
       readOnly: true,
       handler: async (args) => {
-        const { board, decision, task, canvas } = store.getCanvas(canvasRef(args));
+        const located = store.getCanvas(canvasRef(args));
+        const board = agentBoard(located.board, getActor().name);
+        const { decision, task } = located;
+        const canvas = task ? board.tasks.find((item) => item.id === task.id)!.canvas : decision ? board.decisions.find((item) => item.id === decision.id)!.canvas : board.canvas;
         const deleted = deletedLately(board.deleted, { decisionId: decision?.id, taskId: task?.id });
         const content: ({ type: 'text'; text: string } | ReturnType<typeof imageContent>)[] = [
           { type: 'text', text: [canvasDigest(board, canvas, decision, task), deleted].filter(Boolean).join('\n\n') },
@@ -96,7 +100,9 @@ export function canvasTools({ store, getActor, blocks: { io, fill, fillChange, r
       schema: tools.get_block,
       readOnly: true,
       handler: async ({ block_id }) => {
-        const { board, canvas } = store.canvasOf(block_id);
+        const located = store.canvasOf(block_id);
+        const board = agentBoard(located.board, getActor().name);
+        const canvas = located.task ? board.tasks.find((item) => item.id === located.task!.id)!.canvas : located.decision ? board.decisions.find((item) => item.id === located.decision!.id)!.canvas : board.canvas;
         const block = canvas.blocks.find((b) => b.id === block_id);
         if (!block) throw new BoardError(`"${block_id}" is not a block.`);
         const header = `${blockLabel(block)} [id: ${block.id}] · rev ${block.rev}`;

@@ -91,6 +91,8 @@ export const server: ServerHalf<LinkTypes> = {
   describe: (before, after) => (before.url !== after.url ? [`changed the address to ${clip(after.url, 120)}`] : []),
   snapshot: (block) => ({ url: block.url }),
   restorePatch: (version) => ({ url: version.url }),
+  // A link copies as the same address, shown as it is: a draft of the document it points to stays with the original.
+  copy: (block) => (block.open ? { open: true } : {}),
 
   // What the address was recognised as, and whether people see it open: (Google Docs, open in place)
   digest(block) {

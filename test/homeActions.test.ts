@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { boardEdit, boardsSignal, goalItem, headerActions, stillHeld } from '../src/web/live/boardChanges';
-import { plainPress } from '../src/web/threads/dockStays';
+import { plainPress } from '../src/web/shared/dismissClick';
 import { afterPress, menuStep } from '../src/web/shared/hooks';
 
 const board = { title: 'Checkout redesign', goal: 'Get more buyers to pay' };
@@ -76,10 +76,10 @@ describe('Moving through a menu from the keyboard', () => {
   });
 });
 
-// The docked conversation closes on a dismiss click outside it (threads.tsx,
-// dockStays.ts): a plain one, and once the press is over, so the click lands
-// where it was aimed.
-describe('Clicking away from the docked conversation', () => {
+// The docked conversation and Activity close on a dismiss click outside them
+// (shared/dismissClick.ts): a plain one, and once the press is over, so the
+// click lands where it was aimed.
+describe('Clicking away from a panel beside the board', () => {
   const press = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
 
   it('counts a plain press with the main button as a click away', () => {

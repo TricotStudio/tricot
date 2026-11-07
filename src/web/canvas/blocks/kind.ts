@@ -127,6 +127,8 @@ export interface WebBlockKind<B extends Block = any> {
   readonly Tools?: ComponentType<ToolsProps<B>>; // in the block's toolbar when it is selected
   readonly ownPins?: true; // its body draws its own pins, so the strip under it isn't added
   readonly still?: true; // its body doesn't scroll, so the wheel and a pinch pan and zoom the canvas
+  // The words of a block that go on the clipboard with it, for pasting in another app; none when it has no words.
+  copyText?(block: B): string | undefined;
   readonly menu?: AddEntry;
   readonly files?: FileHandling;
   readonly clips?: ClipHandling;

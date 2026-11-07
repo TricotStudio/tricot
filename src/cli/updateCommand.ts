@@ -14,6 +14,7 @@ import { askedWhom, checkOff, fetchLatest, neverChecks, releaseFileFor, releases
 import { shellQuote } from '../core/connect';
 import { sleep, type Env } from './commandEnv';
 import type { CliContext, CliResult } from './main';
+import { findInstalls, olderThanBoard } from './otherInstalls';
 import { shellOf } from './shell';
 import { asThisTerminal } from './terminalKey';
 
@@ -70,6 +71,10 @@ export async function update(env: Env): Promise<CliResult> {
   const { ctx, dataDir } = env;
   const running = await findRunning(dataDir);
   const current = running?.version ?? env.version;
+  // The command typed is older than the board it found: another install comes first on the PATH.
+  if (running?.version && isNewer(running.version, env.version)) {
+    for (const line of olderThanBoard(await findInstalls(ctx, env.version), env.version, running.version)) ctx.out(line);
+  }
   const where = whereToAsk(env);
   let found: Found;
   try {

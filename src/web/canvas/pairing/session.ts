@@ -1,7 +1,7 @@
 // A piece's pairing, from its full view (core/pairing.ts): the mode the view
 // is in, Browse (or Read) or Pair; the agent to pair with, picked from the
-// board's agents (the last one this browser paired with, else the first
-// listening); the session the server keeps while pairing (server/pairing.ts),
+// board's agents (offer.ts: the one the piece names, else the most reachable);
+// the session the server keeps while pairing (server/pairing.ts),
 // started as Pair is picked, kept alive while the page is there, and ended
 // on leaving it; and what the session asked, read from the board.
 
@@ -13,18 +13,13 @@ import type { Block } from '../../../core/types';
 import { api, type RequestError } from '../../shared/api';
 import { useAgents } from '../../agents';
 import { useCanvas } from '../context';
+import { offeredAgent, pieceAgents, type AgentChoice } from './offer';
+
+export type { AgentChoice } from './offer';
 
 const LAST_AGENT = 'tricot:pair-agent'; // the agent this browser last paired with
 
 export type PairMode = 'browse' | 'pair';
-
-// An agent people can pair with: the board's, and where it is now ('unseen':
-// it has worked on the board, but isn't on it now).
-export interface AgentChoice {
-  name: string;
-  state: 'listening' | 'working' | 'away' | 'unseen';
-  lastSeen?: string;
-}
 
 export interface Pairing {
   mode: PairMode;
@@ -54,18 +49,8 @@ function keepAgent(name: string): void {
   try {
     localStorage.setItem(LAST_AGENT, name);
   } catch {
-    // Storage unavailable: the first listening agent is offered next time.
+    // Storage unavailable: no tie is broken by it next time.
   }
-}
-
-const RANK: Record<AgentChoice['state'], number> = { listening: 0, working: 1, away: 2, unseen: 3 };
-
-// The agent offered: the one picked, if still on the board, else the most
-// reachable (listening, then working), else the first.
-export function offeredAgent(agents: AgentChoice[], picked: string | null): string | null {
-  const kept = picked && agents.find((a) => samePerson(a.name, picked));
-  if (kept) return kept.name;
-  return [...agents].sort((a, b) => RANK[a.state] - RANK[b.state])[0]?.name ?? null;
 }
 
 // `readOnly`: the view shows what can't be paired on (an earlier version).
@@ -75,7 +60,8 @@ export function usePairing(block: Block, name: string, part: string, options: { 
   const readOnly = canvas.readOnly || Boolean(options.readOnly);
   const presence = useAgents();
   const [mode, setMode] = useState<PairMode>('browse');
-  const [picked, setPicked] = useState<string | null>(lastAgent);
+  const [picked, setPicked] = useState<string | null>(null); // picked in this view, or paired with there
+  const [last] = useState(lastAgent);
   const [session, setSession] = useState<PairingSession | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const current = useRef<PairingSession | null>(null);
@@ -92,7 +78,9 @@ export function usePairing(block: Block, name: string, part: string, options: { 
       return here ? { name: here.name, state: here.state, lastSeen: here.lastSeen } : { name: agentName, state: 'unseen' as const };
     });
   }, [board, presence]);
-  const agent = offeredAgent(agents, picked);
+  const threads = board.threads;
+  const named = useMemo(() => pieceAgents(block, { task, threads }), [block, task, threads]);
+  const agent = offeredAgent({ agents, picked, named, last });
 
   const leave = useCallback(
     async (said: (summary?: string) => string | null) => {

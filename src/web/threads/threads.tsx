@@ -15,8 +15,8 @@ import { lookAtBoard } from './justMade';
 import { BAR_PLACEHOLDERS, doorOfView, replyPlaceholder, viewOfDoor } from './chatDoor';
 import { agentLineAt, LoopLine, MessageFoot, newestMine, onItsWay, outbox, Reactions, SaidTo, settledKeys, useMentionable, useOutgoing, withOutgoing, type Outgoing } from '../conversation';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
-import { CLOSED, dismissClick, dockOnArrival, interactiveAt, selectedText, type DockState, type Left, type Press } from './dockStays';
-import { afterPress, otherPanelOpen, useDismiss, useReadOnly } from '../shared/hooks';
+import { CLOSED, dockOnArrival, type DockState, type Left } from './dockStays';
+import { escapeCloses, followPress, useBeside, useDismiss, useReadOnly } from '../shared/hooks';
 import { dropFlag, flagged, flags, go, type BoardViewName } from '../shared/pages';
 import { LensLine, LensPicker } from './lenses';
 import { useAgents } from '../agents';
@@ -50,21 +50,22 @@ function draftMessage(o: Outgoing, name: string, names: string[]): ThreadMessage
 // On another project it stays open, on that project's threads list (or the
 // thread it had open there). It closes on its close button, on Escape, or on
 // a dismiss click, a plain click on empty space that does nothing else
-// (dockStays.ts), which puts the bar back at the bottom. The
+// (shared/dismissClick.ts), which puts the bar back at the bottom. The
 // bar's threads button, and the panel's "← Threads", open the list of every
 // thread (threadsList.tsx), waiting on you first. A person deletes a thread
 // from its row; a toast offers to undo it, as on a canvas (canvas/undo.tsx).
 // Agents answer over MCP (core/threads.ts); replies arrive with the board.
 
-// Asks the dock to open on a thread, e.g. from the inbox, the activity log or
-// a card made from it. On a card's own view there is no dock to hear it, so
-// the board's tab opens (`from`), and its dock opens on the thread there.
+// Asks the dock to open on a thread, e.g. from the inbox, the activity log, a
+// notification or a card made from it. Where no dock of its board is there to
+// hear it (a card's own view, Home, another board), the board's tab opens
+// (`from`), and its dock opens on the thread there.
 const OPEN_THREAD = 'tricot:open-thread';
-let docks = 0;
+const docks: string[] = []; // the boards whose docks are on screen
 let asked: { id: string; thread?: Thread } | null = null;
 
 export function openThread(threadId: string, thread?: Thread, from?: { boardId: string; view: BoardViewName }): void {
-  if (docks > 0 || !from) {
+  if (!from || docks.includes(from.boardId)) {
     window.dispatchEvent(new CustomEvent<{ id: string; thread?: Thread }>(OPEN_THREAD, { detail: { id: threadId, thread } }));
     return;
   }
@@ -205,7 +206,8 @@ export function ThreadDock({ board, name, view, onSeeItem }: Props) {
   // The inbox, the activity log or a card asks for a thread: this dock opens
   // on it, and one asked for from a card's view before this dock was here.
   useEffect(() => {
-    docks += 1;
+    const here = board.id;
+    docks.push(here);
     if (asked) {
       showThread(asked.id, asked.thread);
       asked = null;
@@ -216,10 +218,10 @@ export function ThreadDock({ board, name, view, onSeeItem }: Props) {
     };
     window.addEventListener(OPEN_THREAD, onOpen);
     return () => {
-      docks -= 1;
+      docks.splice(docks.indexOf(here), 1);
       window.removeEventListener(OPEN_THREAD, onOpen);
     };
-  }, [showThread]);
+  }, [showThread, board.id]);
 
   const thread = page === 'thread' ? (threads.find((t) => t.id === selected) ?? (started?.id === selected ? started : undefined)) : undefined;
   // Docked: a thread, or New thread. One deleted (or not found) while open
@@ -233,55 +235,44 @@ export function ThreadDock({ board, name, view, onSeeItem }: Props) {
 
   const close = useCallback(() => dock(false, () => set({ open: false })), [set, dock]);
   // It stays open while the person uses the board. Besides its close button,
-  // Escape closes it, and so does a dismiss click (dockStays.ts): a plain
-  // click on empty space outside it that does nothing else, such as the
-  // page's background, an empty part of a list or the empty canvas. A press
-  // on something that does something (a card, a link or T6 chip, a tab, a
-  // button, a field, a canvas block or link) goes through and leaves it open;
-  // so do a drag, a selection, the canvas panning, and a right-click or a
-  // modified click. Something over it takes Escape and a press first, and
-  // closes alone: the threads list, a menu, a dialog, or a popover, such as
-  // the Connect panel from "Connect one". A dismiss click is known once the
-  // press is over (afterPress), and then the panel goes: the click has done
-  // what it would have, on the board as it was. The focus stays where the
-  // click put it; the bar keeps what's typed and its caret.
+  // Escape closes it, and so does a dismiss click (shared/dismissClick.ts),
+  // as Activity's (useSidePanel): a plain click on empty space outside it
+  // that does nothing else, such as the page's background, an empty part of
+  // a list or the empty canvas. A press on something that does something (a
+  // card, a link or T6 chip, a tab, a button, a field, a canvas block or
+  // link) goes through and leaves it open; so do a drag, a selection, the
+  // canvas panning, and a right-click or a modified click. Something over it
+  // takes Escape and a press first, and closes alone: the threads list, a
+  // menu, a dialog, or a popover, such as the Connect panel from "Connect
+  // one". Activity, beside it, isn't over it: with both open, Escape closes
+  // the one opened last. A dismiss click is known once the press is over
+  // (followPress), and then the panel goes: the click has done what it
+  // would have, on the board as it was. The focus stays where the click put
+  // it; the bar keeps what's typed and its caret.
   const panel = useRef<HTMLElement>(null);
   const dismiss = useCallback(
     (escape: boolean, event: MouseEvent | KeyboardEvent) => {
-      const over = Boolean(document.querySelector('[aria-modal="true"]')) || otherPanelOpen(panel);
       if (escape) {
-        if (!event.defaultPrevented && !over) close();
+        if (escapeCloses(panel, event as KeyboardEvent)) close();
         return;
       }
-      const down = event as MouseEvent;
-      const target = down.target as Element;
-      const pressed: Press = {
-        button: down.button,
-        metaKey: down.metaKey,
-        ctrlKey: down.ctrlKey,
-        shiftKey: down.shiftKey,
-        altKey: down.altKey,
-        interactive: interactiveAt(target, { x: down.clientX, y: down.clientY }),
-        taken: over || Boolean(target.closest?.('.popover[open]')),
-      };
-      if (!dismissClick(pressed)) return;
       const caret = caretNow(); // before the press moves the focus
-      const selection = selectedText();
-      leaving.current = true;
-      press.current?.();
-      press.current = afterPress((end) => {
+      const follow = followPress(event as MouseEvent, (dismissed) => {
         press.current = null;
-        const moved = end.type === 'mouseup' ? Math.hypot(end.clientX - down.clientX, end.clientY - down.clientY) : Infinity;
-        const selected = selectedText();
-        if (isDocked.current && dismissClick(pressed, { moved, selected: selected !== '' && selected !== selection })) {
+        if (dismissed && isDocked.current) {
           if (caret) carets.current.set(fieldKey.current, caret);
           dock(false, () => set({ open: false }), false);
         } else leaving.current = false;
       });
+      if (!follow) return;
+      leaving.current = true;
+      press.current?.();
+      press.current = follow;
     },
     [close, caretNow, dock, set],
   );
-  useDismiss(docked && !listOpen, dismiss, panel);
+  useBeside(docked, panel);
+  useDismiss(docked && !listOpen, dismiss, panel, undefined, true);
   if (!docked) leaving.current = false;
   // Leaving the board's tabs, for a card's view, Home or another project: a
   // dismiss click under way closes it, as it would have, and the next

@@ -15,6 +15,8 @@ export const server: AgentServerHalf = {
   // one would be cut where they are kept.
   mcpClient: { clientName: 'omp-coding-agent', callLimitSeconds: OMP_TIMEOUT_MS / 1000 },
   session: ompSession,
+  // As its help writes them, the value after = in the same word.
+  ruleFlags: ({ model, effort }) => [...(model ? [`--model=${model}`] : []), ...(effort ? [`--thinking=${effort}`] : [])],
   show({ out, url, token, shell }) {
     if (token) out(`In the ${shellNoun(shell)} OMP runs from, so it can read the token:\n  ${exportToken(token, shell)}\n`);
     out(`Add this to ${OMP_FILE} (merge it into "mcpServers" if the file exists), or to .omp/mcp.json for one project:`);

@@ -13,6 +13,8 @@ export const server: AgentServerHalf = {
   // A call gives up after its server's timeout, 10 minutes unless set,
   // whatever progress comes (Gemini CLI's MCP_DEFAULT_TIMEOUT_MSEC).
   mcpClient: { clientName: 'gemini-cli-mcp-client', callLimitSeconds: 600 },
+  // For when Tricot can start it: `-m, --model` (gemini --help).
+  ruleFlags: ({ model }) => (model ? ['--model', model] : []),
   show({ out, url, token, shell }) {
     out('Run once; Gemini CLI then has the board in every session:');
     for (const line of geminiLines(url, token, shell)) out(`  ${line}`);

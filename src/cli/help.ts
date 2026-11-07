@@ -123,10 +123,12 @@ export function closestCommand(word: string): string | undefined {
 
 // What a word that isn't a command says: the new name when it was renamed, else the closest
 // command if one is near, else where to see them all.
-export function unknownCommand(word: string): string {
+// `elsewhere`: the sentence about another `tricot` on the PATH, when it is another version than this one
+// (otherInstalls.ts), for a command this one lacks and that one may have.
+export function unknownCommand(word: string, elsewhere?: string): string {
   const said = `Unknown command "${word}".`;
   const renamed = COMMANDS.find((command) => command.formerly?.includes(word));
-  if (renamed) return `${said} Did you mean "${renamed.name}"? (${word} was renamed)`;
   const near = closestCommand(word);
-  return near ? `${said} Did you mean "${near}"?` : `${said} Run tricot --help to see the commands.`;
+  const advice = renamed ? `Did you mean "${renamed.name}"? (${word} was renamed)` : near ? `Did you mean "${near}"?` : 'Run tricot --help to see the commands.';
+  return [said, advice, elsewhere].filter(Boolean).join(' ');
 }

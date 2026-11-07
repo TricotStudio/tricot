@@ -36,6 +36,10 @@ export const opencode: AgentKind = {
     ],
   },
   usage: { shares: 'tokens', source: 'opencode' },
+  // A model as provider/model, typed (opencode.ai/docs/cli: --model); no
+  // thinking level from its command line. Not installed where this was
+  // written, so taken from its docs.
+  startsOn: { models: [] },
 
   ...server,
 };

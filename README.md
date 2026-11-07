@@ -55,11 +55,11 @@ tricot claude      # or: tricot codex, tricot opencode, tricot pi, tricot omp
 
 It asks which board to work on (`--board <id>` skips the question), opens it, and starts the agent in this terminal with the board for this session only, so the agent's own settings stay as they are. Anything after `--` goes to the agent, and when the agent quits the board stops with it, unless another agent still needs it. A board you started with `tricot` or `tricot start` keeps running; `tricot stop` ends any board.
 
-Even one agent runs beside Tricot's own tab, with a strip at the bottom that says what it is doing: the tab shows first, with your agents, the requests for permission to answer with a key, and the board's latest activity. Name several (`tricot claude codex`) and they share this terminal, one tab showing at a time, and Ctrl+\ switches ([more](docs/cli.md#several-agents-in-one-terminal)). Without a terminal, and on Windows, one agent runs on its own, without the tab or the strip.
+Even one agent runs beside Tricot's own tab, with a strip at the bottom that says what it is doing: the tab opens on chat, with /threads to browse conversations and /status for your agents, requests for permission and the board's latest activity. Name several (`tricot claude codex`) and they share this terminal, one tab showing at a time, and Ctrl+\ switches ([more](docs/cli.md#several-agents-in-one-terminal)). Without a terminal, and on Windows, one agent runs on its own, without the tab or the strip.
 
 ## Connect an agent
 
-Tricot works with any agent that speaks MCP. `tricot connect claude` (or `codex`, `pi`, `gemini`) shows the agent's own command, asks, and runs it; `--print` only shows it. Or run the line for yours yourself, once, then start a new session:
+Tricot works with any agent that speaks MCP. `tricot connect claude` (or `codex`, `pi`, `gemini`, `grok`) shows the agent's own command, asks, and runs it; `--print` only shows it. Or run the line for yours yourself, once, then start a new session:
 
 ```sh
 # Claude Code
@@ -73,9 +73,12 @@ gemini mcp add --scope user --transport http tricot "http://127.0.0.1:4545/mcp?a
 
 # Pi
 pi mcp add tricot --url "http://127.0.0.1:4545/mcp?agent=Pi"
+
+# Grok Build
+grok mcp add --scope user --transport http tricot "http://127.0.0.1:4545/mcp?agent=Grok"
 ```
 
-OMP and OpenCode take it in their settings file. For OMP, in `~/.omp/agent/mcp.json`:
+OMP, OpenCode, Goose and Hermes Agent take it in their settings file. For OMP, in `~/.omp/agent/mcp.json`:
 
 ```json
 { "mcpServers": { "tricot": { "type": "http", "url": "http://127.0.0.1:4545/mcp?agent=OMP", "timeout": 300000 } } }
@@ -85,6 +88,27 @@ For OpenCode, in `~/.config/opencode/opencode.json`:
 
 ```json
 { "mcp": { "tricot": { "type": "remote", "url": "http://127.0.0.1:4545/mcp?agent=OpenCode", "timeout": 300000 } } }
+```
+
+For Goose, under `extensions` in `~/.config/goose/config.yaml` (on Windows, `%APPDATA%\Block\goose\config\config.yaml`):
+
+```yaml
+extensions:
+  tricot:
+    name: tricot
+    type: streamable_http
+    uri: "http://127.0.0.1:4545/mcp?agent=Goose"
+    enabled: true
+    timeout: 300
+```
+
+For Hermes Agent, under `mcp_servers` in `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  tricot:
+    url: "http://127.0.0.1:4545/mcp?agent=Hermes"
+    timeout: 300
 ```
 
 Any other MCP client connects to `http://127.0.0.1:4545/mcp` over Streamable HTTP; `tricot connect mcp-json` prints a config entry for it. `tricot connect <agent> --print` prints any of these again, and the Connect panel in Tricot shows them too.

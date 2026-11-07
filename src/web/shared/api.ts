@@ -22,6 +22,7 @@ import type {
 import type { Emoji } from '../../core/reactions';
 import type { ReactionPlace } from '../../core/store/reactions';
 import type { LiveState } from '../../core/changes';
+import type { Pasted } from '../../core/store/pasting';
 import type { BlockContent as StoreBlockContent, BlockPatch as StoreBlockPatch } from '../../core/store/inputs';
 import type { ConnectorStatus } from '../../core/connectors';
 import type { DeletionSummary } from '../../core/deletions';
@@ -32,6 +33,7 @@ import type { AgentSkills, AgentTask, TricotSkill } from '../../core/skills';
 import type { SearchKind, SearchResponse } from '../../core/search';
 import type { LiveStepsAction, LiveStepsPreview, LiveStepsReport, LiveStepsResult, LiveStepsScope } from '../../core/liveSteps';
 import type { AgentUsageReport } from '../../core/usage';
+import type { AgentRules } from '../../core/agentRules';
 import type { PairingSession } from '../../core/pairing';
 import type { ApprovalReply } from '../../core/approvals';
 import { routes, routeUrl, type ParamNames, type PathParams, type Route, type UrlArgs } from '../../core/routes';
@@ -203,6 +205,10 @@ export const api = {
   // it did there since `day` and `week` (the person's today and week, ms).
   agentUsage: (name: string, query: { board?: string; day: number; week: number }) =>
     get(routes.agentUsage)<AgentUsageReport>({ name }, { ...(query.board && { board: query.board }), day: String(query.day), week: String(query.week) }),
+  // The model and thinking level each agent starts on, by agent id; and
+  // setting one's, which is the person's alone (null: its own).
+  agentRules: () => get(routes.agentRules)<{ rules: AgentRules }>(),
+  setAgentRule: (agent: string, rule: { model: string | null; effort: string | null }) => post(routes.setAgentRule)<{ rules: AgentRules }>(rule, { agent }),
   // The skills people add in Tricot, for one agent or (no agent) every agent.
   addSkill: (actor: string, skill: { name: string; description: string; instructions: string; agent?: string }) =>
     post(routes.addSkill)<TricotSkill>({ actor, ...skill }),
@@ -348,6 +354,9 @@ export const api = {
   deleteVersion: (id: string, actor: string, rev: number) => post(routes.deleteVersion)<{ ok: true; deleted: DeletedItem }>({ actor }, { id, rev }),
   deleteEarlierVersions: (id: string, actor: string) => post(routes.deleteEarlierVersions)<{ ok: true; deleted: DeletedItem }>({ actor }, { id }),
   moveItems: (ref: CanvasRef, actor: string, moves: Move[]) => post(routes.moveItems)<{ ok: true }>({ actor, ...ref, moves }),
+  // Copies of blocks (and groups, and the links between them) from one canvas on this one, centred on `at`.
+  pasteBlocks: (ref: CanvasRef, actor: string, input: { ids: string[]; at?: { x: number; y: number } }) =>
+    post(routes.pasteBlocks)<Pasted>({ actor, ...ref, ...input }),
   addGroup: (ref: CanvasRef, actor: string, input: { title: string; x: number; y: number; w: number; h: number }) =>
     post(routes.addGroup)<Group>({ actor, ...ref, ...input }),
   renameGroup: (id: string, actor: string, title: string) => post(routes.renameGroup)<Group>({ actor, title }, { id }),

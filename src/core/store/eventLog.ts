@@ -167,8 +167,13 @@ export class EventLog {
   // Long-poll: resolves with new events (from anyone but `exclude`, the first
   // `limit` if given, none for another agent alone), or an empty list on timeout/abort.
   waitForEvents(boardId: string, since: number, options: WaitOptions): Promise<BoardEvent[]> {
-    const { timeoutMs, signal, exclude, limit, settleMs } = options;
-    const pending = this.eventsSince(boardId, since, exclude, limit);
+    const { timeoutMs, signal, exclude, limit, settleMs, accept } = options;
+    const read = () => {
+      if (!accept) return this.eventsSince(boardId, since, exclude, limit);
+      const events = this.eventsSince(boardId, since, exclude).filter(accept);
+      return limit === undefined ? events : events.slice(0, limit);
+    };
+    const pending = read();
     if (pending.length > 0 || signal?.aborted) return Promise.resolve(pending);
 
     return new Promise((resolve) => {
@@ -181,10 +186,11 @@ export class EventLog {
         signal?.removeEventListener('abort', finish);
         stopWatching();
         // A board deleted while waiting has no events left to give.
-        resolve(this.findBoard(boardId) ? this.eventsSince(boardId, since, exclude, limit) : []);
+        resolve(this.findBoard(boardId) ? read() : []);
       };
       const unsubscribe = this.subscribe(boardId, (event) => {
         if (exclude && !wakes(event, exclude)) return;
+        if (accept && !accept(event)) return;
         // More events never put it off; a message for it can bring it forward.
         const settle = settleMs ?? settleAfter(event, exclude);
         if (Date.now() + settle >= settleAt) return;

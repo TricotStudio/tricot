@@ -28,6 +28,12 @@ export const VERBOSE = option('verbose', 'boolean', '--verbose', 'With that ques
 export const NO_OPEN = option('no-open', 'boolean', '--no-open', "Don't open the browser");
 export const NO_UPDATE_CHECK = option('no-update-check', 'boolean', '--no-update-check', "Don't ask GitHub once a day whether a newer Tricot is out (or set TRICOT_NO_UPDATE_CHECK=1)");
 export const BACKGROUND = option('background', 'boolean', '-d, --background', 'Keep running after this terminal closes (logs to <data>/server.log)', 'd');
+// An agent's model and thinking level for this run (core/agentRules.ts): each
+// is the agent's named before it, and stands in for the rule set in its panel.
+export const MODEL = option('model', 'string', '--model <name>', 'The model the agent starts on, this run (over the one set in its panel)');
+export const EFFORT = option('effort', 'string', '--effort <level>', 'Its thinking level, this run');
+// The options that belong to the agent named before them (main.ts Words.placed).
+export const PER_AGENT = [MODEL.name, EFFORT.name];
 
 // Every command takes these, and `tricot --help` lists them.
 export const VERSION = option('version', 'boolean', '-v, --version', 'Print the version', 'v');

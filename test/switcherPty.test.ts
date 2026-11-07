@@ -62,6 +62,32 @@ for (const name of PTY_HELPERS) {
       assert.equal(ended.exitCode, 128 + 15);
     });
 
+    // A SIGSTOP, as Ctrl+Z's SIGTSTP never reaches an agent here (ptyHelpers.ts).
+    // Perl's $? reads 0 for a stopped agent, which once passed for an exit:
+    // the helper reported it ended, and left it stopped for good.
+    it('continues an agent that stops, which keeps working and ends as it would have', { skip: name === 'script' && 'the script command runs the agent under a shell, which never sees it stop, so nothing continues it' }, async () => {
+      const agent = run(it_, node, ['-e', PROBE]);
+      const pid = await agent.pty.ready;
+      let ended = false;
+      void agent.exited.then(() => (ended = true));
+      try {
+        assert.ok(await waitFor(() => agent.output().includes('size 77x21')), agent.output());
+        for (const key of ['a', 'b']) {
+          process.kill(pid, 'SIGSTOP');
+          // Stopped, it can't answer until the helper continues it.
+          agent.pty.write(key);
+          const answer = `keys ${Buffer.from(key).toString('hex')}`;
+          assert.ok(await waitFor(() => agent.output().includes(answer) || ended), agent.output());
+          assert.equal(ended, false, 'the helper took the stop for an exit');
+        }
+        agent.pty.write('q');
+        assert.deepEqual(await agent.exited, { exitCode: 5 });
+      } finally {
+        // Should the helper have let go of it, stopped.
+        if (alive(pid)) process.kill(pid, 'SIGKILL');
+      }
+    });
+
     it('hangs the agent up when Tricot lets go of it', async () => {
       const sleeper = run(it_, '/bin/sleep', ['30']);
       const pid = await sleeper.pty.ready;

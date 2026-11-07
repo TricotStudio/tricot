@@ -66,15 +66,51 @@ describe('First looks, over MCP and REST', () => {
     removeScratch(dir);
   });
 
+  it('keeps unaddressed backlog cards quiet until a person requests a named agent', async () => {
+    const boardId = (await post('/boards', { actor: 'Wassim', title: 'Quiet backlog' })).json.id as string;
+    await callText('Claude', 'get_board', { board_id: boardId });
+    await callText('Codex', 'get_board', { board_id: boardId });
+    const card = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'An idea for later' })).json;
+    for (const agent of ['Claude', 'Codex'] as const) {
+      const overview = await callText(agent, 'get_board', { board_id: boardId });
+      assert.ok(!overview.includes(card.id) && !overview.includes(card.title));
+      assert.doesNotMatch(overview, /take_first_look/);
+      const updates = await callText(agent, 'get_updates', { board_id: boardId, since: 0 });
+      assert.doesNotMatch(updates, /take it with take_first_look/);
+      const waited = await callText(agent, 'wait_for_updates', { board_id: boardId, since: 0, timeout_seconds: 1 });
+      assert.doesNotMatch(waited, /take it with take_first_look/);
+      const refused = await call(agent, 'take_first_look', { task_id: card.id });
+      assert.equal(refused.isError, true);
+      assert.match(refused.content[0].text, /not addressed to you/);
+    }
+    assert.equal((await call('Claude', 'update_task', { task_id: card.id, assignee: 'Claude' })).isError, true);
+    assert.equal((await call('Claude', 'comment', { task_id: card.id, body: '@Codex please check this.' })).isError, true);
+    assert.equal((await call('Claude', 'take_first_look', { task_id: card.id })).isError, true);
+    assert.equal((await call('Codex', 'take_first_look', { task_id: card.id })).isError, true);
+
+    const tagged = await post(`/tasks/${card.id}/comments`, { actor: 'Wassim', body: '@Codex please give it a first look.' });
+    assert.equal(tagged.status, 200);
+    assert.match(await callText('Codex', 'get_board', { board_id: boardId }), /needs a first look, and it's for you \(@-mentioned\)/);
+    assert.equal((await call('Claude', 'take_first_look', { task_id: card.id })).isError, true);
+    await callText('Codex', 'take_first_look', { task_id: card.id });
+
+    const assigned = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Assigned review' })).json;
+    const assignment = await post(`/tasks/${assigned.id}`, { actor: 'Wassim', assignee: 'Claude' });
+    assert.equal(assignment.status, 200, JSON.stringify(assignment.json));
+    assert.match(await callText('Claude', 'get_board', { board_id: boardId }), /"Assigned review" needs a first look, and it's for you \(assigned to you\)/);
+    assert.equal((await call('Codex', 'take_first_look', { task_id: assigned.id })).isError, true);
+    await callText('Claude', 'take_first_look', { task_id: assigned.id });
+  });
+
   it('tells agents to take it, gives it to one of two racing agents, and the comment gives it', async () => {
-    assert.match(clients.Claude.getInstructions() ?? '', /When a new backlog card needs a first look \(get_board names it\), take it with take_first_look and comment with feasibility and approach/);
+    assert.match(clients.Claude.getInstructions() ?? '', /Leave backlog cards alone unless a person assigns you or someone @-mentions you/);
     const boardId = (await post('/boards', { actor: 'Wassim', title: 'Roadmap' })).json.id as string;
     await callText('Claude', 'get_board', { board_id: boardId });
     await callText('Codex', 'get_board', { board_id: boardId });
-    const card = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Dark mode toggle' })).json;
+    const card = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Dark mode toggle', detail: '@Claude @Codex please give this a first look.' })).json;
     assert.equal(card.firstLook.status, 'open');
 
-    const needs = `T1 [task id: ${card.id}] "Dark mode toggle" needs a first look: take it with take_first_look, then comment on it with feasibility and approach (and a mock on its canvas for UI work). Don't claim it; it's in the backlog.`;
+    const needs = `T1 [task id: ${card.id}] "Dark mode toggle" needs a first look, and it's for you (@-mentioned): take it with take_first_look, then comment on it with feasibility and approach (and a mock on its canvas for UI work). Don't claim it; it's in the backlog.`;
     assert.ok((await callText('Claude', 'get_updates', { board_id: boardId, since: 0 })).includes(needs));
     assert.ok((await callText('Codex', 'get_board', { board_id: boardId })).includes(needs));
 
@@ -115,14 +151,14 @@ describe('First looks, over MCP and REST', () => {
     const boardId = (await post('/boards', { actor: 'Wassim', title: 'Lapses' })).json.id as string;
     await callText('Claude', 'get_board', { board_id: boardId });
     await callText('Codex', 'get_board', { board_id: boardId });
-    const card = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Search filters' })).json;
+    const card = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Search filters', detail: '@Claude @Codex please give this a first look.' })).json;
     await callText('Claude', 'take_first_look', { task_id: card.id });
     const cursor = (await (await fetch(`${base}/api/boards/${boardId}`)).json()).seq as number;
 
     clock += 10 * 60_000;
     const updates = await callText('Codex', 'get_updates', { board_id: boardId, since: cursor });
     assert.match(updates, /Claude \(agent\) didn't comment on T1 "Search filters" within 10 minutes of taking its first look, so it's open again/);
-    assert.match(updates, /T1 \[task id: \w+\] "Search filters" needs a first look: take it with take_first_look/);
+    assert.match(updates, /T1 \[task id: \w+\] "Search filters" needs a first look, and it's for you \(@-mentioned\): take it with take_first_look/);
     assert.match(await callText('Codex', 'take_first_look', { task_id: card.id }), /^You're taking the first look at T1/);
   });
 
@@ -131,9 +167,9 @@ describe('First looks, over MCP and REST', () => {
     await callText('Claude', 'get_board', { board_id: boardId });
     await callText('Codex', 'get_board', { board_id: boardId });
     const card = (await post(`/boards/${boardId}/tasks`, { actor: 'Wassim', title: 'Header mock', detail: '@Codex sketch the header' })).json;
-    assert.match(await callText('Claude', 'get_board', { board_id: boardId }), /"Header mock" needs a first look, for Codex: only Codex can take it; not for you, carry on\./);
+    assert.ok(!(await callText('Claude', 'get_board', { board_id: boardId })).includes(card.id));
     const refused = await call('Claude', 'take_first_look', { task_id: card.id });
-    assert.equal(refused.content[0].text, "T1's first look is for Codex (Codex is @-mentioned on it), so only Codex can take it; carry on with something else.");
+    assert.match(refused.content[0].text, /not addressed to you/);
     assert.match(await callText('Codex', 'get_board', { board_id: boardId }), /"Header mock" needs a first look, and it's for you \(@-mentioned\)/);
     await callText('Codex', 'take_first_look', { task_id: card.id });
   });

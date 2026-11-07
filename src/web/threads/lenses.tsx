@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { samePerson } from '../../core/format';
-import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, LENSES, presetLens } from '../../core/threads';
+import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, LENSES, lensChoice, presetLens } from '../../core/threads';
 import type { ThreadLens } from '../../core/types';
 import { Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
@@ -19,14 +19,6 @@ const GENERAL_LINE = 'Agents answer as they see fit.';
 
 export function LensChip({ lens, children }: { lens: ThreadLens | undefined; children?: ReactNode }) {
   return <span className={`lens-chip ${lensTone(lens)}`}>{children ?? lens?.name ?? 'General'}</span>;
-}
-
-// A lens as the API takes it: a preset by name, one's own with its brief;
-// null for General answered by any agent.
-export function lensChoice(name: string, brief: string | undefined, agent: string | undefined): ThreadLens | null {
-  const preset = presetLens(name);
-  if (preset?.name === 'General' && !agent) return null;
-  return { name: preset?.name ?? name, ...(!preset && brief ? { brief } : {}), ...(agent ? { agent } : {}) };
 }
 
 // A lens chip that is the button for changing it: it opens the menu under
