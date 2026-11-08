@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A shared planning board where humans and agents make decisions together, over MCP",
-  "releaseNotes": "Connect Linear and Slack to read issues and threads. Edit notes, diagrams, tables and captions right in a block's full view, and zoom into big diagrams. Clearer command help, smoother runs on Windows, and failed updates now put your boards back.",
+  "releaseNotes": "The terminal's Tricot tab opens on a chat with the whole board, and a click on the strip switches tabs. Pick an agent's model and thinking for one message, as @Claude:opus:high or from the @ menu. Grok Build, Goose and Hermes Agent join, and blocks copy between canvases.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
