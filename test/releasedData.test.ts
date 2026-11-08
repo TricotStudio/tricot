@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +17,17 @@ import { removeScratch } from './platform';
 // (scripts/db-fixture.mjs): a decision with two options and two blocks, a
 // provisional decision, a task for it with a note and a comment, three blocks
 // on the board's canvas, one of them reworded once (so it has a version) and a
-// pin on it. Every release writes data version 6, so each is read by the
-// migrations since, and by what reads the board now.
-const RELEASES = ['0.1.0', '0.1.1', '0.1.2', '0.1.3'];
+// pin on it. Each release writes the data version it names here, so each is
+// read by the migrations since (none, for a release at the latest), and by
+// what reads the board now.
+const RELEASES: [version: string, dataVersion: number][] = [
+  ['0.1.0', 6],
+  ['0.1.1', 6],
+  ['0.1.2', 6],
+  ['0.1.3', 6],
+  ['0.1.4', 7],
+  ['0.1.5', 7],
+];
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const planner: Actor = { kind: 'agent', name: 'Planner' };
 const sam: Actor = { kind: 'human', name: 'Sam' };
@@ -58,26 +66,29 @@ describe('Boards saved by each release', () => {
     if (dir) removeScratch(dir);
   });
 
-  for (const version of RELEASES) {
+  for (const [version, dataVersion] of RELEASES) {
+    const migrated = dataVersion < MIGRATIONS.length;
     describe(`Tricot ${version}`, () => {
       beforeEach(() => folderWith(version));
 
-      it('left data version 6, which the first six migrations are', () => {
-        const before = stored(MIGRATIONS.slice(0, 6));
-        assert.equal(before.version, 6);
+      it(`left data version ${dataVersion}, which the first ${dataVersion} migrations are`, () => {
+        const before = stored(MIGRATIONS.slice(0, dataVersion));
+        assert.equal(before.version, dataVersion);
         assert.equal(before.boards.length, 1);
       });
 
-      it('is migrated after a copy of it, and its board reads back identical', async () => {
-        const before = stored(MIGRATIONS.slice(0, 6)).boards;
+      it(migrated ? 'is migrated after a copy of it, and its board reads back identical' : 'is at the latest data version, and its board reads back identical', async () => {
+        const before = stored(MIGRATIONS.slice(0, dataVersion)).boards;
         const store = open();
         await store.flush();
         const after = stored();
         assert.equal(after.version, MIGRATIONS.length);
         assert.deepEqual(after.boards, before, 'every board, as the release saved it');
-        const backups = readdirSync(path.join(dir, 'backups'));
-        assert.equal(backups.length, 1);
-        assert.match(backups[0], /^tricot-v6-.*\.db$/);
+        const backups = existsSync(path.join(dir, 'backups')) ? readdirSync(path.join(dir, 'backups')) : [];
+        if (migrated) {
+          assert.equal(backups.length, 1);
+          assert.match(backups[0], new RegExp(`^tricot-v${dataVersion}-.*\\.db$`));
+        } else assert.deepEqual(backups, [], 'nothing to migrate, so nothing is backed up');
       });
 
       it('reads: its decisions, task, blocks, pin, versions and log', () => {

@@ -201,6 +201,14 @@ It checks these and lists what's left:
 
 Tell the person in a few sentences what is out and what, if anything, is left for them.
 
+Then, with their yes, make the release's database fixture, so every later release is tested on boards this one saved (RELEASING.md, "Before a release", item 5):
+
+```sh
+node scripts/db-fixture.mjs vx.y.z
+```
+
+It starts the tagged release from source in a temporary worktree, with a temporary home and data folder and a free port, and writes `test/fixtures/tricot-x.y.z.db`. Add `['x.y.z', <data version>]` to `RELEASES` in `test/releasedData.test.ts`, where the data version is what the fixture holds (`sqlite3 test/fixtures/tricot-x.y.z.db 'PRAGMA user_version'`). Run that test, then commit both files together, and hand over `! git push origin main`.
+
 ## Board notes (optional)
 
 If the `tricot` MCP tools are connected and the person named a release task, post a short comment on it (the `comment` tool) at these points:
