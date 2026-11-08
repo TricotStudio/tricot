@@ -1,8 +1,8 @@
 class Tricot < Formula
   desc "Shared planning board where humans and agents make decisions together"
   homepage "https://tricotstudio.com"
-  url "https://github.com/TricotStudio/tricot/releases/download/v0.1.4/tricot-0.1.4.tgz"
-  sha256 "d3102e12a5e9d7a6efb71f01cfb38dc990ac7c6e698190f2941553d4aae1284d"
+  url "https://github.com/TricotStudio/tricot/releases/download/v0.1.5/tricot-0.1.5.tgz"
+  sha256 "af1581b0fc1d8c31e8d7043891c29feb8cbb07d8643614c6a226edbe61f26832"
   license "Apache-2.0"
 
   livecheck do
@@ -11,8 +11,8 @@ class Tricot < Formula
   end
 
   bottle do
-    root_url "https://github.com/TricotStudio/tricot/releases/download/v0.1.4"
-    sha256 cellar: :any_skip_relocation, all: "50613b0826964655cf1c7b85ed7d64892a173bb7549707efbde7544be4dd4d53"
+    root_url "https://github.com/TricotStudio/tricot/releases/download/v0.1.5"
+    sha256 cellar: :any_skip_relocation, all: "8b87478caf1672b489587ed600e957c60f91656b25ba456cf7ef92d63a83572f"
   end
 
   depends_on "node"
