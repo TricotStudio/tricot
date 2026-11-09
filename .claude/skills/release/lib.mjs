@@ -230,6 +230,20 @@ export function releaseCommitMessage(version, notes, trailer) {
 // What the person runs to send the release out; agents never push.
 export const pushCommand = (version) => `git push origin main && git push origin v${version}`;
 
+// Whether a Homebrew formula is the one for `version`: it downloads that
+// release's package (scripts/homebrew-formula.mjs writes the address).
+export const formulaIsFor = (formula, version) => formula.includes(`/download/v${version}/tricot-${version}.tgz"`);
+
+// What the tap's formula still needs before it is the one written here for
+// `version`: 'older' (it is missing or for an earlier version), 'different'
+// (it is for `version` but not this file: the bottle made again?), or
+// undefined when it is this one. Compared with the formula here alone, a tap
+// and a checkout both still on the last version would look done.
+export function tapFormulaGap(tapFormula, formula, version) {
+  if (typeof tapFormula !== 'string' || !formulaIsFor(tapFormula, version)) return 'older';
+  return tapFormula === formula ? undefined : 'different';
+}
+
 // "owner/repo" from package.json's repository, when it is on GitHub, read as
 // githubRepo in src/server/updates.ts reads it.
 export function githubRepo(repository) {

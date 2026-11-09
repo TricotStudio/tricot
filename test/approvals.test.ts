@@ -318,7 +318,7 @@ describe('The approval routes, and the hook', () => {
     const res = await post('/api/seats/ticket', {}, { ...page(), ...seat!.sign('POST', '/api/seats/ticket', '{}') });
     return `${url}${url.includes('?') ? '&' : '?'}ticket=${((await res.json()) as { ticket: string }).ticket}`;
   };
-  const waitingOne = () => waitFor(async () => (await listed())[0]);
+  const waitingOne = () => waitFor(async () => (await listed())[0], 20_000); // past the hook's first try (runHook)
   // The hook holds its request once it waits on it: its check that this is Tricot passed.
   const holding = () => waitFor(() => (reached.some((r) => r.endsWith('/wait')) ? true : undefined));
   const answer = (id: string, body: Record<string, unknown>, headers?: Record<string, string>) => {
@@ -329,8 +329,12 @@ describe('The approval routes, and the hook', () => {
 
   // The hook as the agent runs it: the event on stdin, its decision on stdout.
   // It finds Tricot's lock in the test's data folder, never in ~/.tricot.
+  // The hook's first try at the board gets 8 s, not 1.5 s: on a busy runner
+  // (Windows CI) the board, or a program between, can take longer than that
+  // to answer, and the hook would step aside before what a test checks.
+  // Nothing here hangs, so no test waits the longer limit out.
   function runHook(event: unknown, args: string[] = [], { url = base, data = dir, node = [] as string[], env = {} as Record<string, string> } = {}) {
-    const child = spawn(process.execPath, [...node, HOOK, '--url', url, ...args], { env: { PATH: process.env.PATH, TRICOT_DATA_DIR: data, ...env } });
+    const child = spawn(process.execPath, [...node, HOOK, '--url', url, ...args], { env: { PATH: process.env.PATH, TRICOT_DATA_DIR: data, TRICOT_APPROVE_FIRST_MS: '8000', ...env } });
     children.push(child);
     let stdout = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -1200,7 +1204,7 @@ describe('The approval hook through a real restart of Tricot', () => {
       publishLock(data, { pid: process.pid, startedAt: new Date().toISOString(), port: at, host: '127.0.0.1', url: base, mcpUrl: `${base}/mcp` });
       const first = readLock(data)!;
 
-      const hook = spawn(process.execPath, [HOOK, '--url', base, '--name', 'Claude'], { env: { PATH: process.env.PATH, TRICOT_DATA_DIR: data } });
+      const hook = spawn(process.execPath, [HOOK, '--url', base, '--name', 'Claude'], { env: { PATH: process.env.PATH, TRICOT_DATA_DIR: data, TRICOT_APPROVE_FIRST_MS: '8000' } });
       children.push(hook);
       let stdout = '';
       hook.stdout.on('data', (d) => (stdout += d));

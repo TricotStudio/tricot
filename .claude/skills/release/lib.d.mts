@@ -46,4 +46,6 @@ export function withReleaseNotes(json: string, notes: string): string;
 export function wrap(text: string, width?: number): string;
 export function releaseCommitMessage(version: string, notes?: string, trailer?: string): string;
 export function pushCommand(version: string): string;
+export function formulaIsFor(formula: string, version: string): boolean;
+export function tapFormulaGap(tapFormula: string | undefined, formula: string, version: string): 'older' | 'different' | undefined;
 export function githubRepo(repository: unknown): string | undefined;

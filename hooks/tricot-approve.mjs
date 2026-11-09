@@ -44,7 +44,10 @@ import path from 'node:path';
 
 const CODEX = process.argv.includes('--codex');
 const FIRST_RETRY_MS = 300; // at first, one more try after this, then the terminal asks
-const FIRST_SEND_MS = 1_500; // and each try's own limit, for a Tricot that hangs
+// And each try's own limit, for a Tricot that hangs. TRICOT_APPROVE_FIRST_MS
+// lengthens it for the tests, whose board, on a busy CI runner, can be slower
+// than that without hanging (test/approvals.test.ts).
+const FIRST_SEND_MS = Number(process.env.TRICOT_APPROVE_FIRST_MS) > 0 ? Number(process.env.TRICOT_APPROVE_FIRST_MS) : 1_500;
 const AWAY_MS = 60_000; // how long Tricot may be gone while it waits (a restart)
 const RETRY_MS = 500;
 const WAIT_TIMEOUT_MS = 40_000; // a wait is answered within 25 s (server/approvals.ts WAIT_MS)

@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { checkNotes, compareVersions, githubRepo, NOTES_MAX, parseVersion, preLaunchWarning, pushCommand, releaseCommitMessage, resolveTarget, suggestBump, withReleaseNotes } from './lib.mjs';
+import { checkNotes, compareVersions, formulaIsFor, githubRepo, NOTES_MAX, parseVersion, preLaunchWarning, pushCommand, releaseCommitMessage, resolveTarget, suggestBump, tapFormulaGap, withReleaseNotes } from './lib.mjs';
 
 const { values: flags, positionals } = parseArgs({
   allowPositionals: true,
@@ -331,7 +331,7 @@ async function published(version) {
   const formulaFile = 'packaging/homebrew/Formula/tricot.rb';
   const formula = readFileSync(path.join(root, formulaFile), 'utf8');
   const bottleSha = /^ {4}sha256 cellar: :any_skip_relocation, all: "([0-9a-f]{64})"$/m.exec(formula)?.[1];
-  if (!formula.includes(`/download/${tag}/${asset}"`)) left(`The Homebrew formula is still for an older version: node scripts/homebrew-formula.mjs ${version}.`);
+  if (!formulaIsFor(formula, version)) left(`The Homebrew formula is still for an older version: node scripts/homebrew-formula.mjs ${version}.`);
   else if (!bottleSha) left(`The formula for ${version} names no bottle, so Homebrew would build it from source and ask for a recent Xcode: once the release has ${bottleAsset}, node scripts/homebrew-formula.mjs ${version}.`);
   else if (bottleDigest && bottleDigest !== bottleSha) left(`The formula's bottle isn't the release's ${bottleAsset} (sha256 ${bottleSha}, the release's is ${bottleDigest}; the bottle was made again?): node scripts/homebrew-formula.mjs ${version}.`);
   else if (git('status', '--porcelain', '--', formulaFile).out) left(`The formula for ${version} is written but not committed ("Homebrew formula for ${version}").`);
@@ -345,8 +345,10 @@ async function published(version) {
 
   const tap = path.resolve(flags.tap ?? path.join(root, '..', 'homebrew-tap'));
   const tapFormula = path.join(tap, 'Formula', 'tricot.rb');
+  const tapGap = existsSync(path.join(tap, '.git')) ? tapFormulaGap(existsSync(tapFormula) ? readFileSync(tapFormula, 'utf8') : undefined, formula, version) : undefined;
   if (!existsSync(path.join(tap, '.git'))) warn(`There's no tap checkout at ${tap}: give its folder with --tap.`);
-  else if (!existsSync(tapFormula) || readFileSync(tapFormula, 'utf8') !== formula) left(`The tap's Formula/tricot.rb isn't this one yet: copy ${formulaFile} there and commit it ("Update tricot to ${version}").`);
+  else if (tapGap === 'older') left(`The tap's Formula/tricot.rb isn't for ${version} yet: once ${formulaFile} is, copy it there and commit it ("Update tricot to ${version}").`);
+  else if (tapGap === 'different') left(`The tap's formula for ${version} isn't the one here (the bottle made again?): copy ${formulaFile} there and commit it ("Update tricot to ${version}").`);
   else if (run('git', ['status', '--porcelain', '--', 'Formula/tricot.rb'], { cwd: tap }).out) left(`The tap's formula is copied but not committed ("Update tricot to ${version}").`);
   else {
     ok(`The tap has the formula for ${version}, committed.`);

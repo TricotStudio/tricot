@@ -7,6 +7,7 @@ import {
   checkNotes,
   classifyCommit,
   compareVersions,
+  formulaIsFor,
   githubRepo,
   NOTES_MAX,
   PRE_LAUNCH,
@@ -16,6 +17,7 @@ import {
   releaseCommitMessage,
   resolveTarget,
   suggestBump,
+  tapFormulaGap,
   withReleaseNotes,
 } from '../.claude/skills/release/lib.mjs';
 import { compareVersions as appCompare } from '../src/core/version';
@@ -206,6 +208,25 @@ describe('the release skill: the commit and the push', () => {
 
   it('hands over the push of main and the tag, and nothing else', () => {
     assert.equal(pushCommand('0.1.1'), 'git push origin main && git push origin v0.1.1');
+  });
+
+  it("tells which version a Homebrew formula is for, and what the tap's still needs", () => {
+    // Whichever formula the checkout holds, for any version and bottle, as scripts/homebrew-formula.mjs writes it.
+    const written = readFileSync(path.join(root, 'packaging/homebrew/Formula/tricot.rb'), 'utf8');
+    const formula = (version: string, bottle = 'a'.repeat(64)) =>
+      written
+        .replace(/\/download\/v\d+\.\d+\.\d+\/tricot-\d+\.\d+\.\d+\.tgz"/, `/download/v${version}/tricot-${version}.tgz"`)
+        .replace(/(all: ")[0-9a-f]{64}"/, `$1${bottle}"`);
+    const version = '1.2.3';
+    const here = formula(version);
+    assert.ok(formulaIsFor(here, version));
+    for (const other of ['1.2.2', '1.2.30', '11.2.3']) assert.equal(formulaIsFor(formula(other), version), false, other);
+
+    assert.equal(tapFormulaGap(here, here, version), undefined, 'the same file, for this version: done');
+    assert.equal(tapFormulaGap(formula('1.2.2'), here, version), 'older');
+    assert.equal(tapFormulaGap(undefined, here, version), 'older', 'no formula in the tap');
+    assert.equal(tapFormulaGap(formula('1.2.2'), formula('1.2.2'), version), 'older', 'matching an older formula here is not done');
+    assert.equal(tapFormulaGap(formula(version, 'b'.repeat(64)), here, version), 'different', 'this version with another bottle');
   });
 
   it("reads the GitHub repository as the app does", () => {
