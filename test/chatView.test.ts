@@ -4,8 +4,8 @@ import type { ChatItem, ChatPlace } from '../src/core/chatStream';
 import type { Actor } from '../src/core/types';
 import { ChatLayout, chatGeometry, chatLines, chatTints, renderChat, type ChatAnchor, type ChatViewData } from '../src/cli/switcher/chatView';
 import { columns, type Rgb } from '../src/cli/switcher/strip';
-import { DIM, onBand, paint } from '../src/cli/switcher/tabView';
-import { bandOf, type Compose } from '../src/cli/switcher/threadsView';
+import { DIM, linkAt, onBand, paint, webAddresses } from '../src/cli/switcher/tabView';
+import { bandOf, messageRows, type Compose } from '../src/cli/switcher/threadsView';
 
 // The chat's stream, drawn (T21): each item's head row (who, where it
 // belongs, when), its text and reactions as a thread's messages are drawn, at
@@ -268,6 +268,39 @@ describe('the chat’s looks', () => {
     assert.notEqual(bandOf(true), '48;5;254', 'not the strip’s bar');
   });
 
+  it('says who is working on a row above the line, its spinner turning each second, and gives the row back once no one is (T38)', () => {
+    const working = [{ name: 'Claude', words: 'Running the tests', lasted: '12 s' }, { name: 'Codex', words: 'Editing src/cli/switcher/tabView.ts' }];
+    const busy = (now: number, cols = 100) => renderChat(view({ compose: compose({ working }), now }), cols, 14).plain.map((l) => l.trimEnd());
+    const frame = busy(NOW - (NOW % 4000));
+    assert.equal(frame.at(-4), ' ✻ Claude: Running the tests · 12 s  ·  Codex: Editing src/cli/switcher/tabView.ts');
+    assert.equal(frame.at(-3), ' › What do you want to work through?', 'the line under it');
+    assert.equal(busy(NOW - (NOW % 4000) + 1000).at(-4)!.slice(0, 3), ' ✳ ', 'the next turn a second on');
+    const narrow = busy(NOW, 50).at(-4)!;
+    assert.ok(columns(narrow) <= 49 && narrow.includes('Claude') && narrow.includes('Codex'), 'every name while it can: ' + narrow);
+    const idle = renderChat(view({ compose: compose() }), 100, 14);
+    assert.equal(idle.plain.at(-3)!.trimEnd(), ' › What do you want to work through?');
+    assert.equal(renderChat(view({ compose: compose({ working }) }), 100, 14).plain.length, idle.plain.length, 'the same height: the row is the stream’s');
+  });
+
+  it('lists a / with a row per choice and what it does, as Claude Code does, scrolled so the next one shows', () => {
+    const choices = [
+      { label: '/status', note: 'Tricot command', description: 'Agents, approvals and board activity' },
+      { label: '/threads', note: 'Tricot command', description: 'Browse conversations' },
+      { label: '/review', note: 'Claude', description: 'Review the working tree' },
+    ];
+    const typed = (at: number, list: { label: string; note?: string; description: string }[] = choices) => compose({ text: '/', cursor: 1, choices: list, at, status: { text: 'Navigate in Tricot; no message is sent.', tone: 'normal' } });
+    assert.deepEqual(renderChat(view({ compose: typed(1) }), 80, 24).plain.slice(-6, -2).map((l) => l.trimEnd()), [
+      '   /status   Agents, approvals and board activity · Tricot command',
+      ' ❯ /threads  Browse conversations · Tricot command',
+      '   /review   Review the working tree · Claude',
+      ' › /',
+    ]);
+    const many = Array.from({ length: 9 }, (_, i) => ({ label: `/s${i}`, description: `Skill ${i}` }));
+    const listed = renderChat(view({ compose: typed(7, many) }), 80, 24).plain.slice(-9, -3).map((l) => l.trimEnd());
+    assert.deepEqual(listed, [' ↑ /s2  Skill 2', '   /s3  Skill 3', '   /s4  Skill 4', '   /s5  Skill 5', '   /s6  Skill 6', ' ❯ /s7  Skill 7'], 'six rows at most, the one Tab is on in view');
+    assert.equal(renderChat(view({ compose: typed(0, many) }), 80, 12).plain.slice(-6, -3).length, 3, 'fewer in a short window');
+  });
+
   it('draws each item on its tint across the stream, its words keeping their looks, and what the stream says on the terminal’s own background', () => {
     const frame = renderChat(view(), 120, 14, false, DARK);
     const stream = frame.rows.slice(0, 10);
@@ -507,5 +540,44 @@ describe('the chat’s stream, laid out only as it shows', () => {
     const frame = renderChat(view({ sending: [STREAM[5].key] }), 120, 14);
     assert.deepEqual(frame.times, STREAM.slice(2, 5).map((it) => it.at), 'not the first, cut above, nor one on its way');
     assert.deepEqual(renderChat(view({ items: [], status: { text: 'Reading the board…' } }), 80, 14).times, []);
+  });
+});
+
+// T36 (#11): a click on a link in the Tricot tab opens it, so the frame says where each is.
+describe('links in the chat', () => {
+  it('finds the web addresses in a text, without the punctuation after one or a bracket around it', () => {
+    const urls = (text: string) => webAddresses(text).map((l) => l.url);
+    assert.deepEqual(urls('See https://example.com/a?b=1, or http://127.0.0.1:4545.'), ['https://example.com/a?b=1', 'http://127.0.0.1:4545']);
+    assert.deepEqual(urls('(at https://example.com/x) and [docs](https://en.wikipedia.org/wiki/Knit_(fabric))'), ['https://example.com/x', 'https://en.wikipedia.org/wiki/Knit_(fabric)']);
+    assert.deepEqual(urls('file:///etc/passwd javascript:alert(1) https:// ftp://x.org'), [], 'web addresses alone, and whole ones');
+  });
+
+  it('draws a link underlined and says where it is, an address cut onto two rows going to the whole of it on each', () => {
+    const url = 'https://example.com/a/very/long/path/that/wraps';
+    const rows = messageRows(`Read ${url} first`, undefined, 30, 'Sam');
+    const frame = rows.map((row) => paint(row, 30));
+    assert.deepEqual(frame.map((r) => r.plain.trimEnd()), ['    Read', '    https://example.com/a/ver', '    y/long/path/that/wraps', '    first']);
+    assert.deepEqual(frame.map((r) => r.links), [[], [{ from: 4, to: 29, url }], [{ from: 4, to: 26, url }], []]);
+    assert.ok(frame[1].line.includes('\x1b[0;4mhttps://'), 'underlined');
+    const tab = { rows: frame.map((r) => r.line), plain: frame.map((r) => r.plain), links: frame.map((r) => r.links) };
+    assert.equal(linkAt(tab, 10, 2), url);
+    assert.equal(linkAt(tab, 3, 1), undefined, 'beside it, nothing');
+    assert.equal(linkAt(tab, 5, 0), undefined);
+  });
+
+  it('links the cards a message names to their pages, and leaves a number the board hasn’t, or one inside an address, as text', () => {
+    const card = (kind: 'task' | 'decision', number: number) => (number === 36 ? `#/b/b1/${kind === 'task' ? 't' : 'd'}/x${number}` : undefined);
+    const [row] = messageRows('See T36, #36 and T7 at https://x.org/T36', undefined, 80, 'Sam', card);
+    assert.deepEqual(paint(row, 80).links, [
+      { from: 8, to: 11, url: '#/b/b1/t/x36' },
+      { from: 13, to: 16, url: '#/b/b1/d/x36' },
+      { from: 27, to: 44, url: 'https://x.org/T36' },
+    ]);
+  });
+
+  it('keeps a link on the stream’s tint', () => {
+    const [row] = onBand([['go ', undefined], ['https://x.org', undefined, 'https://x.org']], '48;5;237', 20);
+    assert.deepEqual(row, ['go ', '48;5;237']);
+    assert.deepEqual(paint(onBand([['go '], ['https://x.org', undefined, 'https://x.org']], '48;5;237', 20), 20).links, [{ from: 3, to: 16, url: 'https://x.org' }]);
   });
 });

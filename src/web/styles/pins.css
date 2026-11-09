@@ -267,7 +267,7 @@
 }
 .pin-box.is-draft .pin-box-n {
   background: var(--pin-draft);
-  color: #1a1a18; /* dark on amber reads in both themes */
+  color: var(--pin-draft-text);
 }
 
 /* A flowchart's nodes and arrows. Mermaid styles its parts by the diagram's

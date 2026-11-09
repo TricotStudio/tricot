@@ -548,6 +548,7 @@ describe("the Usage section's words (core/usage.ts)", () => {
     assert.deepEqual([0, 30_000, 45 * 60_000, 130 * 60_000, 120 * 60_000].map(workingText), ['none', 'under a minute', '45m', '2h 10m', '2h']);
     assert.equal(notSharedLine('gemini', 'Gemini CLI'), 'Gemini keeps its quota to itself: see /stats in Gemini.');
     assert.equal(notSharedLine('grok', 'Grok Build'), 'Grok keeps its usage allowance to itself: see /usage in Grok.');
+    assert.equal(notSharedLine('copilot', 'Copilot CLI'), 'Copilot keeps its usage to itself: see /usage in Copilot.');
     assert.equal(notSharedLine('pi', 'Pi'), 'Pi shares tokens and cost, not plan limits.');
     assert.equal(notSharedLine('claude', 'Claude Code'), undefined);
   });

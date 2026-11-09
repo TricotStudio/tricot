@@ -2,34 +2,46 @@
 name: Tricot
 description: A calm, live board where a person and their agents make decisions together.
 colors:
-  bg: "#f6f6f4"
-  surface: "#ffffff"
-  surface-2: "#efefec"
-  border: "#e5e5e1"
-  border-strong: "#d0d0cb"
-  text: "#1a1a18"
-  muted: "#5c5c57"
-  faint: "#6d6d67"
-  primary: "#1a1a18"
+  bg: "#edeae4"
+  surface: "#f8f6f2"
+  surface-2: "#e4e0d8"
+  border: "#dcd7ce"
+  border-strong: "#ccc6bc"
+  text: "#1d1828"
+  muted: "#5d5866"
+  faint: "#65606d"
+  primary: "#1d1828"
   primary-text: "#ffffff"
   focus: "#2c58b8"
-  danger: "#b03a26"
-  danger-bg: "#fbe7e2"
+  danger: "#a3392c"
+  danger-bg: "#f6d9d3"
   open: "#d08c12"
-  open-bg: "#fbf1dc"
-  open-ink: "#8a5a0c"
+  open-bg: "#f4e6c7"
+  open-ink: "#7a580a"
   exploring: "#3b6fd6"
-  exploring-bg: "#e7eefb"
-  exploring-ink: "#2c58b8"
+  exploring-bg: "#dde3f1"
+  exploring-ink: "#2c55ad"
   provisional: "#7a4fc9"
-  provisional-bg: "#efe9fb"
-  provisional-ink: "#6440b0"
+  provisional-bg: "#e5ddf3"
+  provisional-ink: "#5a37c8"
   decided: "#2f8a57"
-  decided-bg: "#e2f2e8"
-  decided-ink: "#1f6e43"
+  decided-bg: "#e0eadd"
+  decided-ink: "#2b693d"
   deferred: "#9a9a93"
-  deferred-bg: "#efefec"
-  deferred-ink: "#62625c"
+  deferred-bg: "#e4e5e5"
+  deferred-ink: "#4a5764"
+  yarn-violet: "#b8a2f4"
+  yarn-violet-deep: "#5a37c8"
+  yarn-coral: "#f2968a"
+  yarn-coral-deep: "#a3392c"
+  yarn-marigold: "#ecbf63"
+  yarn-marigold-deep: "#7a580a"
+  yarn-sky: "#9fb8ef"
+  yarn-sky-deep: "#2c55ad"
+  yarn-sage: "#a7cfad"
+  yarn-sage-deep: "#2b693d"
+  yarn-fog: "#b4bdc6"
+  yarn-fog-deep: "#4a5764"
 typography:
   display:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif"
@@ -208,14 +220,14 @@ components:
 
 **Creative North Star: "The Quiet Control Room"**
 
-Tricot is a room you can leave running. Decisions, tasks, and agents are always live, but the room stays quiet: the chrome is plain neutral grey and white, and colour shows up only where something has a status or needs you. You should be able to glance at a board from across the desk and know what is waiting on you, what agents are exploring, and what is settled, without reading a word.
+Tricot is a room you can leave running. Decisions, tasks, and agents are always live, but the room stays quiet: the chrome is warm paper and a violet-black ink in light, a neutral near-black in dark, and colour shows up only where something has a status or needs you. You should be able to glance at a board from across the desk and know what is waiting on you, what agents are exploring, and what is settled, without reading a word.
 
 Quiet does not mean cold. The voice is plain, friendly, and human: sentence-case headings, everyday words ("Needs you", "Decide for now", "Still holds"), people shown as tinted circles with their initial, and agents as neutral squares beside them. Density is moderate: cards and panels have room to breathe, but a board with a dozen decisions still fits on one screen.
 
 This system grew out of a deliberate pass to strip AI-generated habits from the UI: no coloured side stripes, no uppercase eyebrow labels, no unicode glyphs standing in for icons, no monospace as decoration, no glow halos. Those stay out.
 
 **Key Characteristics:**
-- Neutral paper-grey page, white sheets, hairline borders; near-black ink for text and the primary action.
+- In light, a warm paper page (undyed wool), lighter sheets, warm hairline borders, and a violet-black ink for text and the primary action. In dark, a neutral near-black with a light grey ink.
 - Five status colours (amber, blue, violet, green, stone), each in three strengths: marker, tint, ink.
 - Two attention signals only: blue for "new since you looked", amber for "needs you".
 - The platform's own sans-serif at four sizes and three weights; mono only for code and commands.
@@ -225,7 +237,9 @@ This system grew out of a deliberate pass to strip AI-generated habits from the 
 
 ## Colors
 
-A plain neutral ground with five status colours used as signals, never as decoration. Values above are the light theme (`src/web/themes/light.css`); each other theme, dark among them, is a file beside it that redefines every token under `:root[data-theme='<id>']` and a line in `src/web/themes/registry.ts`.
+A quiet, warm ground with five status colours used as signals, never as decoration. Values above are the light theme (`src/web/themes/light.css`); each other theme, dark among them, is a file beside it that redefines every token under `:root[data-theme='<id>']` and a line in `src/web/themes/registry.ts`.
+
+The light theme's ground and ink come from Tricot's palette, made first for the website (its version 3): an undyed-wool paper and a violet-black ink. The app takes the palette's paper, panel, ink, muted and rule colours, and adds the steps between them it needs. The warm paper and the violet-black ink are the light theme's alone: dark mode is a neutral near-black, with no warm or violet tint. The statuses take their tints and text from the yarns (below), in both themes; their markers keep their own, stronger colours, since a yarn is too faint for a small square or dot. `brand/README.md` lists the whole palette.
 
 ### Primary
 - **Ink** (`primary`, same as `text`): the primary action (*Decide*, *Create board*, *Post*), headings, body text, and the selected-option ring. The UI's only "brand colour" is ink on paper.
@@ -235,19 +249,30 @@ A plain neutral ground with five status colours used as signals, never as decora
 - **Exploring Blue** (`exploring`, `exploring-bg`, `exploring-ink`): decisions where agents are gathering evidence. The canvas connection line uses it too.
 - **Provisional Violet** (`provisional`, `provisional-bg`, `provisional-ink`): proceed-but-cheap-to-change decisions, and the *agent's call* tag.
 - **Decided Green** (`decided`, `decided-bg`, `decided-ink`): binding decisions, the chosen option, ticked task boxes, the live indicator, and the "+" on pros.
-- **Deferred Stone** (`deferred`, `deferred-bg`, `deferred-ink`): parked decisions; a warm grey so it reads as status without competing.
-- **Signal Red** (`danger`, `danger-bg`): blocking questions, errors, and the "−" on cons.
+- **Deferred Stone** (`deferred`, `deferred-bg`, `deferred-ink`): parked decisions; a warm grey marker with fog's tint and text, so it reads as status without competing.
+
+Each status's tint (`-bg`) is its yarn mixed into the sheet (`surface`): 30% in light, 9% in dark, where a stronger mix would take the faint ink under 4.5:1. Its ink (`-ink`) is the yarn's deep colour in light and the yarn itself in dark. Open takes marigold, exploring sky, provisional violet, decided sage and deferred fog. Every ink keeps 4.5:1 on its tint, the sheet and the sunk sheet. The markers (`open`, `exploring`…) are not yarns: they stay the stronger colours above.
+- **Signal Red** (`danger`, `danger-bg`): blocking questions, errors, delete buttons, and the "−" on cons. From coral: the red is coral's deep in light and the coral yarn in dark, both text and marker, and its tint is coral mixed into the sheet like the status tints. A delete button fills with it and takes `primary-text` (white in light, the near-black in dark).
 
 ### Neutral
-- **Paper** (`bg`): the page and the canvas floor.
-- **Sheet** (`surface`): cards, panels, top bar, canvas blocks, inputs.
-- **Sunk Sheet** (`surface-2`): hover fills, tab track, code, option letters, table headers.
-- **Hairline** (`border`) and **Firm Hairline** (`border-strong`): every in-page edge; the firm one for inputs, buttons, hover, and dashed "add" affordances.
+- **Paper** (`bg`): the page and the canvas floor. The palette's paper in light; a neutral near-black in dark.
+- **Sheet** (`surface`): cards, panels, top bar, canvas blocks, inputs. A lighter warm sheet in light; a neutral step above the page in dark.
+- **Sunk Sheet** (`surface-2`): hover fills, tab track, code, option letters, table headers. The palette's panel in light; a neutral step above the sheet in dark.
+- **Hairline** (`border`) and **Firm Hairline** (`border-strong`): every in-page edge; the firm one for inputs, buttons, hover, and dashed "add" affordances. The firm one is the palette's rule in light.
 - **Muted Ink** (`muted`) and **Faint Ink** (`faint`): secondary text and meta (timestamps, counts, hints). Faint is the lightest text allowed and still meets 4.5:1.
 - **Focus Blue** (`focus`): keyboard focus rings, text selection, and "new since you looked" dots and badges.
 
+### Brand palette: the yarns
+Six soft yarns, each a status hue chalked down, are the brand's accents: for the website, pictures and other brand work, and in the app only as the statuses' tints and text, never its controls. Each has a deep version for text on light grounds; on the near-black text takes the yarn itself, and text on a yarn fill takes the ink in both.
+- **Violet** (`yarn-violet`, `yarn-violet-deep`): the brand, from provisional.
+- **Coral** (`yarn-coral`, `yarn-coral-deep`): people.
+- **Marigold** (`yarn-marigold`, `yarn-marigold-deep`): from open.
+- **Sky** (`yarn-sky`, `yarn-sky-deep`): from exploring.
+- **Sage** (`yarn-sage`, `yarn-sage-deep`): from decided.
+- **Fog** (`yarn-fog`, `yarn-fog-deep`): from deferred, and agents at rest.
+
 ### Named Rules
-**The Meaning-Only Rule.** Colour appears only where it carries a status or an attention signal. Chrome, headings, and controls stay neutral.
+**The Meaning-Only Rule.** Colour appears only where it carries a status or an attention signal. Chrome, headings, and controls stay paper and ink.
 
 **The Three Strengths Rule.** Every status colour comes as a marker (squares, icons, edges), a tint (backgrounds), and an ink (text). Text on a tint always uses the ink, never the marker; the marker alone fails contrast.
 
@@ -300,7 +325,7 @@ Below 900px everything stacks into one column: lanes run vertically, the activit
 
 ## Elevation & Depth
 
-Depth is borders-first. Everything that sits in the page (cards, panels, options, tables, comments, the top bar) is a flat white sheet with a 1px hairline on the paper ground. Shadows are reserved for layers that float over other content: the connect popover, the inbox panel, the canvas toolbar, canvas blocks, node toolbars, and link labels. Hover deepens a border (`border` to `border-strong`) rather than lifting the element.
+Depth is borders-first. Everything that sits in the page (cards, panels, options, tables, comments, the top bar) is a flat sheet with a 1px hairline on the paper ground. Shadows are reserved for layers that float over other content: the connect popover, the inbox panel, the canvas toolbar, canvas blocks, node toolbars, and link labels. Hover deepens a border (`border` to `border-strong`) rather than lifting the element.
 
 ### Shadow Vocabulary
 - **Hairline lift** (`--shadow-sm`: `0 1px 2px` at 5%): small floating chips such as link labels and the active tab thumb.
@@ -334,7 +359,7 @@ Plain, friendly, quiet controls: they look like the platform's own, and only the
 ### Buttons
 - **Shape:** gently curved (6px), 1px border, inline icon with a 6px gap.
 - **Primary:** solid ink with white text (7px 14px). One per area: *Decide*, *Create board*, *Post*. Hover drops to 88% opacity.
-- **Secondary:** white sheet, firm hairline, ink text; hover fills with sunk sheet.
+- **Secondary:** sheet, firm hairline, ink text; hover fills with sunk sheet.
 - **Quiet:** no fill or border, muted text; hover fills with sunk sheet and darkens to ink. Used for *Defer*, *Reopen*, *Hide activity*, *Back*.
 - **Small:** 4px 10px at 13px, same variants.
 - **Disabled:** primary turns into a sunk sheet with faint text; others drop to 45% opacity.
@@ -352,24 +377,24 @@ Plain, friendly, quiet controls: they look like the platform's own, and only the
 - **Style:** 11px/500 sentence-case text on a status tint with its ink, 4px corners, 1px 6px padding (*blocking*, *recommended*, *chosen*, *agent's call*, *stale*). Icons inside tags use the same ink.
 
 ### Cards / Containers
-- **Decision card:** white sheet, hairline border, 10px corners, 12px 14px padding. Meta row (number, tags, creator), the question in heading weight, then options or the chosen answer, then a faint footer. Hover deepens the border. A card changed by someone else flashes a lane-colour wash that settles over 1.8s; a card waiting on you takes a soft amber wash.
-- **Panel:** white sheet, hairline, 10px corners, 20px padding, 14px internal gap.
+- **Decision card:** sheet, hairline border, 10px corners, 12px 14px padding. Meta row (number, tags, creator), the question in heading weight, then options or the chosen answer, then a faint footer. Hover deepens the border. A card changed by someone else flashes a lane-colour wash that settles over 1.8s; a card waiting on you takes a soft amber wash.
+- **Panel:** sheet, hairline, 10px corners, 20px padding, 14px internal gap.
 - **Banner:** a status tint with ink text, 10px corners, 12px 14px padding; used for the decision's current state.
 
 ### Inputs / Fields
-- **Style:** white sheet, firm hairline, 6px corners, 8px 10px padding, inherited 14px type; placeholders in faint ink.
+- **Style:** sheet, firm hairline, 6px corners, 8px 10px padding, inherited 14px type; placeholders in faint ink.
 - **Focus:** 2px focus-blue outline.
 - **Error:** a 13px danger-coloured line under the field naming the problem.
 
 ### Navigation
-- **Top bar:** white, hairline bottom border, brand mark or back button on the left; live indicator, inbox, theme toggle, and user chip on the right.
-- **Tabs:** a sunk-sheet track holding text tabs; the active tab is a white thumb with a hairline lift. Counts sit in faint caption type.
+- **Top bar:** sheet, hairline bottom border, brand mark or back button on the left; live indicator, inbox, theme toggle, and user chip on the right.
+- **Tabs:** a sunk-sheet track holding text tabs; the active tab is a sheet thumb with a hairline lift. Counts sit in faint caption type.
 
 ### Option card (signature)
 The heart of a decision. A selectable radio card: option letter chip, label in heading weight, tags, description, pros (+ in green ink) and cons (− in red), plus findings. Selected: ink border with a 1px ink ring and an inverted letter chip. Chosen: decided-green border. Nothing is preselected, not even the recommendation.
 
 ### Canvas block (signature)
-A floating white block on the dotted paper canvas: a header row (faint block kind, title, pin chip, author mark) over a scrollable body. Selected: ink ring. Highlighted from a hovered option: an amber ring. New since you looked: blue-tinted border and a small *new* badge.
+A floating sheet on the dotted paper canvas: a header row (faint block kind, title, pin chip, author mark) over a scrollable body. Selected: ink ring. Highlighted from a hovered option: an amber ring. New since you looked: blue-tinted border and a small *new* badge.
 
 ### Icons
 One family, drawn inline as SVG on a 16px grid with a 1.5 stroke, round caps and joins, sized at 1em. Current set: arrows, plus, x, check, bell, star (filled), partly, sun, moon.
@@ -378,7 +403,7 @@ One family, drawn inline as SVG on a 16px grid with a 1.5 stroke, round caps and
 
 ### Do:
 - **Do** use the status marker square for status everywhere, and the tint with its ink for tags and banners.
-- **Do** keep chrome neutral; let colour mean status or attention only.
+- **Do** keep chrome to paper and ink; let colour mean status or attention only.
 - **Do** use blue for "new since you looked" and amber for "needs you", nothing else.
 - **Do** write headings and labels in sentence case, in plain words.
 - **Do** keep to 400/500/600 weights and the type sizes above, with tabular figures for numbers.

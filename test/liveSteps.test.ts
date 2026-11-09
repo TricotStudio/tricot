@@ -57,9 +57,11 @@ describe('Live steps, for the person', () => {
         ['goose', false, 'off', 'Not installed on this machine'],
         ['hermes', false, 'off', 'Not installed on this machine'],
         ['grok', false, 'off', 'Not installed on this machine'],
+        ['copilot', false, 'off', 'Not installed on this machine'],
       ],
     );
     assert.equal(byId(agents, 'grok').where, '~/.grok/hooks/tricot-steps.json');
+    assert.equal(byId(agents, 'copilot').where, '~/.copilot/hooks/tricot-steps.json');
     assert.equal(byId(agents, 'claude').where, '~/.claude/settings.json');
     assert.equal(byId(agents, 'pi').where, '~/.pi/agent/extensions/tricot-steps/');
     assert.equal(byId(agents, 'gemini').where, '~/.gemini/settings.json');
@@ -167,6 +169,23 @@ describe('Live steps, for the person', () => {
     assert.equal(byId(agents, 'grok').trust, undefined, 'its user hooks need no trust');
     applyLiveSteps(ctx, planLiveSteps(ctx, 'grok', 'off'));
     assert.equal(byId(liveStepsAgents(ctx), 'grok').state, 'off');
+  });
+
+  it('turns Copilot CLI on and off in a hook file of its own, in its own words', () => {
+    const ctx = homeWith('.copilot');
+    let agents = liveStepsAgents(ctx);
+    assert.equal(byId(agents, 'copilot').found, true);
+    const copilot = planLiveSteps(ctx, 'copilot', 'on');
+    assert.equal(copilot.sendsAs, 'Copilot');
+    assert.equal(compactFiles(copilot.files), '~/.copilot/hooks/{tricot-steps.mjs, tricot-describe.mjs, tricot-steps.json}');
+    assert.match(copilot.notes[0], /waits for each hook/);
+    assert.match(copilot.notes[1], /needs `node` on the PATH Copilot runs with/);
+    assert.match(applyLiveSteps(ctx, copilot).summary, /Copilot CLI picks it up in its next session/);
+    agents = liveStepsAgents(ctx);
+    assert.equal(liveStepsLabel(byId(agents, 'copilot')), 'On · Copilot CLI, user hooks');
+    assert.equal(byId(agents, 'copilot').trust, undefined, 'its user hooks need no trust');
+    applyLiveSteps(ctx, planLiveSteps(ctx, 'copilot', 'off'));
+    assert.equal(byId(liveStepsAgents(ctx), 'copilot').state, 'off');
   });
 
   it('shows the exact files and lines before writing, and writes what was shown', () => {
@@ -334,6 +353,7 @@ describe('The live steps routes', () => {
         ['goose', false, 'off'],
         ['hermes', false, 'off'],
         ['grok', false, 'off'],
+        ['copilot', false, 'off'],
       ],
     );
   });

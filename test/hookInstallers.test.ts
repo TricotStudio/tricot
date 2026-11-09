@@ -9,6 +9,7 @@ import { runCli } from '../src/cli/main';
 import { findHookInstaller, hookInstallers, UnreadableSettings, type HookInstaller, type HookTarget } from '../src/server/hooks';
 import { claude } from '../src/server/hooks/claude';
 import { codex, CODEX_TRUST, CODEX_USAGE } from '../src/server/hooks/codex';
+import { copilot, COPILOT_NEEDS_NODE, COPILOT_WAITS } from '../src/server/hooks/copilot';
 import { APPROVAL_STATUS, APPROVAL_TIMEOUT_S } from '../src/server/hooks/commandHooks';
 import { gemini, GEMINI_WAITS } from '../src/server/hooks/gemini';
 import { goose, GOOSE_WAITS } from '../src/server/hooks/goose';
@@ -53,9 +54,9 @@ const write = (file: string, text: string) => {
 const mtimes = (files: string[]) => files.map((f) => statSync(f).mtimeMs);
 
 // The installed hook script, as the agent runs it: an event on stdin.
-function runScript(script: string, event: Record<string, unknown>): Promise<{ code: number | null; stdout: string }> {
+function runScript(script: string, event: Record<string, unknown>, args: string[] = []): Promise<{ code: number | null; stdout: string }> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [script, '--dry-run'], { env: { PATH: process.env.PATH } });
+    const child = spawn(process.execPath, [script, '--dry-run', ...args], { env: { PATH: process.env.PATH } });
     let stdout = '';
     child.stdout.on('data', (d) => (stdout += d));
     child.on('close', (code) => resolve({ code, stdout }));
@@ -82,6 +83,7 @@ describe('the hook installer registry', () => {
         ['goose', 'Goose', 'Goose'],
         ['hermes', 'Hermes Agent', 'Hermes'],
         ['grok', 'Grok Build', 'Grok'],
+        ['copilot', 'Copilot CLI', 'Copilot'],
       ],
     );
     assert.equal(findHookInstaller('codex'), codex);
@@ -90,21 +92,23 @@ describe('the hook installer registry', () => {
     assert.equal(findHookInstaller('goose'), goose);
     assert.equal(findHookInstaller('hermes'), hermes);
     assert.equal(findHookInstaller('grok'), grok);
+    assert.equal(findHookInstaller('copilot'), copilot);
     assert.equal(findHookInstaller('cursor'), undefined);
     assert.deepEqual(claude.scopes, ['user', 'project']);
-    for (const other of [codex, pi, omp, gemini, opencode, goose, hermes, grok]) assert.deepEqual(other.scopes, ['user']);
+    for (const other of [codex, pi, omp, gemini, opencode, goose, hermes, grok, copilot]) assert.deepEqual(other.scopes, ['user']);
   });
 
   it("finds an agent by its folder or its command on PATH, without running it", () => {
     const target = freshHome();
     assert.deepEqual(
       hookInstallers().map((i) => i.detect(target).found),
-      [false, false, false, false, false, false, false, false, false],
+      [false, false, false, false, false, false, false, false, false, false],
     );
     mkdirSync(path.join(target.home, '.codex'));
     mkdirSync(path.join(target.home, '.omp'));
     mkdirSync(path.join(target.home, '.gemini'));
     mkdirSync(path.join(target.home, '.grok'));
+    mkdirSync(path.join(target.home, '.copilot'));
     const bin = path.join(target.home, 'bin');
     const program = (name: string) => path.join(bin, name);
     write(program('pi'), '#!/bin/sh\nexit 1\n');
@@ -120,6 +124,7 @@ describe('the hook installer registry', () => {
     assert.deepEqual(gemini.detect(withPath), { found: true, folder: path.join(target.home, '.gemini') });
     assert.deepEqual(opencode.detect(withPath), { found: true, command: program('opencode') });
     assert.deepEqual(grok.detect(withPath), { found: true, folder: path.join(target.home, '.grok') });
+    assert.deepEqual(copilot.detect(withPath), { found: true, folder: path.join(target.home, '.copilot') });
     mkdirSync(path.join(target.home, '.config/opencode'), { recursive: true });
     assert.deepEqual(opencode.detect(target), { found: true, folder: path.join(target.home, '.config/opencode') });
   });
@@ -769,6 +774,104 @@ describe('Grok Build steps (~/.grok/hooks/tricot-steps.json)', () => {
     assert.ok(existsSync(path.join(grokHome, 'hooks/tricot-steps.json')));
     assert.equal(existsSync(path.join(target.home, '.grok')), false);
     assert.throws(() => grok.preview({ ...target, project: target.home }, setup, 'project'), /user scope, not project/);
+  });
+});
+
+describe('Copilot CLI steps (~/.copilot/hooks/tricot-steps.json)', () => {
+  const files = (folder: string) => ({
+    hooks: path.join(folder, 'hooks/tricot-steps.json'),
+    script: path.join(folder, 'hooks/tricot-steps.mjs'),
+    describe: path.join(folder, 'hooks/tricot-describe.mjs'),
+  });
+  // A hook file of the person's own beside it, in Copilot's own shape: Copilot loads every *.json in the folder.
+  const theirsCopilot = { version: 1, hooks: { preToolUse: [{ type: 'command', bash: './audit.sh', powershell: './audit.ps1', timeoutSec: 10 }] } };
+
+  it('shows its hook file, that Copilot CLI waits for it and needs node, and writes nothing', () => {
+    const target = freshHome();
+    const f = files(path.join(target.home, '.copilot'));
+    const preview = copilot.preview(target, setup);
+    assert.deepEqual(preview.notes, [COPILOT_WAITS, COPILOT_NEEDS_NODE]);
+    assert.ok(preview.text.includes('add to ~/.copilot/hooks/tricot-steps.json'), preview.text);
+    assert.deepEqual(
+      preview.changes.map((c) => [fromHome(target.home, c.path), c.does]),
+      [
+        ['.copilot/hooks/tricot-steps.mjs', 'write'],
+        ['.copilot/hooks/tricot-describe.mjs', 'write'],
+        ['.copilot/hooks/tricot-steps.json', 'add'],
+      ],
+    );
+    const hooks = JSON.parse(preview.changes[2].lines!).hooks;
+    assert.deepEqual(Object.keys(hooks), ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Stop', 'SubagentStop']);
+    assert.equal(hooks.PreToolUse[0].matcher, undefined, 'every tool');
+    assert.equal(hooks.PostToolUse[0].matcher, 'bash|powershell|task|Bash|Agent|Task', 'its own names and Claude Code’s');
+    assert.equal(hooks.PostToolUseFailure[0].matcher, 'bash|powershell|task|Bash|Agent|Task');
+    assert.equal(hooks.Notification[0].matcher, 'permission_prompt|elicitation_dialog');
+    assert.deepEqual(hooks.PreToolUse[0].hooks[0], { type: 'command', command: `node "${asWritten(f.script)}" --name Copilot --url ${TRICOT_URL} --copilot`, timeout: 5 });
+    assert.equal(existsSync(path.join(target.home, '.copilot')), false);
+    assert.equal(copilot.status(target).state, 'off');
+  });
+
+  it("sets up its own hook file beside the person's, once, runs as Copilot sends its events, and takes it out again", async () => {
+    const target = freshHome();
+    const f = files(path.join(target.home, '.copilot'));
+    const theirFile = path.join(path.dirname(f.hooks), 'audit.json');
+    write(theirFile, JSON.stringify(theirsCopilot, null, 2));
+    const done = copilot.install(target, { ...setup, name: 'Copilot Two' });
+    assert.equal(done.changed, true);
+    assert.deepEqual(done.files, [f.script, f.describe, f.hooks]);
+    assert.match(done.message, /Copilot CLI picks it up in its next session/);
+    assert.deepEqual(json(theirFile), theirsCopilot, 'their file is not touched');
+    const command = json(f.hooks).hooks.PreToolUse[0].hooks[0].command;
+    assert.equal(command, `node "${asWritten(f.script)}" --name 'Copilot Two' --url ${TRICOT_URL} --copilot`);
+    assert.deepEqual(copilot.status(target), { state: 'on', where: [f.hooks, f.script, f.describe], sendsAs: 'Copilot Two' });
+
+    // Copilot CLI's own events (its hooks reference, set up with Claude Code's event names), through the copied script, run with --copilot as its hook runs it.
+    const copilotEvent = (name: string, more: Record<string, unknown>) => ({ hook_event_name: name, session_id: 'c1', timestamp: '2026-11-08T12:00:00.000Z', cwd: '/w', ...more });
+    const step = async (event: Record<string, unknown>) => {
+      const ran = await runScript(f.script, event, ['--copilot']);
+      assert.equal(ran.code, 0);
+      assert.doesNotMatch(ran.stdout, /SECRET/);
+      return ran.stdout ? JSON.parse(ran.stdout) : undefined;
+    };
+    assert.equal((await step(copilotEvent('PreToolUse', { tool_name: 'Read', tool_input: { path: '/w/src/a.ts' } }))).text, `Reading ${fromProject('src/a.ts')}`);
+    const test = { tool_name: 'Bash', tool_input: { command: 'npm test -- --token SECRET', description: 'SECRET' } };
+    const started = await step(copilotEvent('PreToolUse', test));
+    assert.deepEqual([started.text, started.running, started.session], ['Running npm test', true, 'c1']);
+    const ended = await step(copilotEvent('PostToolUse', { ...test, tool_result: { result_type: 'success', text_result_for_llm: 'SECRET' } }));
+    assert.deepEqual([ended.text, ended.ended, ended.tool], ['Ran npm test', true, started.tool], 'its end pairs with its start');
+    const failed = await step(copilotEvent('PostToolUseFailure', { ...test, error: 'SECRET' }));
+    assert.equal(failed.text, 'npm test failed');
+    const claim = await step(copilotEvent('PreToolUse', { tool_name: 'tricot-claim_task', tool_input: { task_id: 't_1', note: 'SECRET' } }));
+    assert.deepEqual([claim.text, claim.task], ['Claiming the task', 't_1']);
+    const asked = await step({ sessionId: 'c1', timestamp: 1, cwd: '/w', hook_event_name: 'Notification', message: 'SECRET', notification_type: 'permission_prompt' });
+    assert.deepEqual([asked.text, asked.session], ['Waiting for your permission in the terminal', 'c1']);
+    assert.equal((await step(copilotEvent('Stop', { transcript_path: '/tmp/SECRET', stop_reason: 'end_turn', stop_hook_active: false }))).text, 'Finished its turn');
+    assert.equal(await step(copilotEvent('SessionStart', { source: 'startup', initial_prompt: 'SECRET' })), undefined);
+    // Without --copilot, a view's path is still read (as Claude Code's Read is), but its call isn't paired.
+    assert.equal((await runScript(f.script, copilotEvent('PreToolUse', test))).stdout.includes('"tool"'), false);
+
+    const before = mtimes([f.script, f.describe, f.hooks]);
+    assert.equal(copilot.install(target, { ...setup, name: 'Copilot Two' }).changed, false);
+    assert.deepEqual(mtimes([f.script, f.describe, f.hooks]), before, 'nothing written again');
+    assert.deepEqual(copilot.install(target, setup).files, [f.hooks], 'a new name changes only the hook file');
+    assert.equal(json(f.hooks).hooks.PreToolUse.length, 1, 'replaced, not added twice');
+
+    const removed = copilot.uninstall(target);
+    assert.equal(removed.changed, true);
+    assert.deepEqual(json(f.hooks), {}, 'a file with no hooks, which Copilot reads as none');
+    assert.deepEqual(json(theirFile), theirsCopilot, 'their file is not touched');
+    assert.equal(existsSync(f.script) || existsSync(f.describe), false);
+    assert.equal(copilot.status(target).state, 'off');
+    assert.equal(copilot.uninstall(target).changed, false);
+  });
+
+  it('uses COPILOT_HOME when it is set, and only the user scope', () => {
+    const target = freshHome();
+    const copilotHome = path.join(target.home, 'copilot-home');
+    copilot.install({ ...target, env: { COPILOT_HOME: copilotHome } }, setup);
+    assert.ok(existsSync(path.join(copilotHome, 'hooks/tricot-steps.json')));
+    assert.equal(existsSync(path.join(target.home, '.copilot')), false);
+    assert.throws(() => copilot.preview({ ...target, project: target.home }, setup, 'project'), /user scope, not project/);
   });
 });
 

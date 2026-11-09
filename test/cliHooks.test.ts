@@ -10,6 +10,7 @@ import { runCli, type CliContext, type CliResult } from '../src/cli/main';
 import { claude } from '../src/server/hooks/claude';
 import { codex } from '../src/server/hooks/codex';
 import { gemini } from '../src/server/hooks/gemini';
+import { copilot } from '../src/server/hooks/copilot';
 import { grok } from '../src/server/hooks/grok';
 import { opencode } from '../src/server/hooks/opencode';
 import { pi } from '../src/server/hooks/pi';
@@ -191,6 +192,17 @@ describe('live steps from the terminal', () => {
       assert.equal(json(path.join(home, '.grok/hooks/tricot-steps.json')).hooks.PreToolUse[0].hooks[0].command.includes(`--url http://127.0.0.1:${port}`), true);
     });
 
+    it('asks for Copilot CLI like the others, and a yes sets it up in its own hook file', async () => {
+      mkdirSync(path.join(home, '.copilot'));
+      await startAndStop('enter');
+      assert.match(said(), /It found Copilot CLI on this machine/);
+      assert.match(said(), /Copilot CLI +~\/\.copilot\/hooks\/\{tricot-steps\.mjs, tricot-describe\.mjs, tricot-steps\.json\}/);
+      assert.equal(copilot.status(target()).state, 'on');
+      assert.match(said(), /Copilot CLI waits for each hook/, 'what to know about it, said after installing');
+      const command: string = json(path.join(home, '.copilot/hooks/tricot-steps.json')).hooks.PreToolUse[0].hooks[0].command;
+      assert.ok(command.includes(`--url http://127.0.0.1:${port}`) && command.endsWith(' --copilot'), command);
+    });
+
     it('finds an agent by its command on PATH too', async () => {
       const bin = path.join(scratch, 'bin');
       mkdirSync(bin);
@@ -322,7 +334,7 @@ describe('live steps from the terminal', () => {
 
       rmSync(path.join(home, '.claude'), { recursive: true });
       assert.equal((await run(['steps', 'on', '--yes'])).exitCode, 1);
-      assert.match(err.join('\n'), /found none of Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode, Goose, Hermes Agent and Grok Build/);
+      assert.match(err.join('\n'), /found none of Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode, Goose, Hermes Agent, Grok Build and Copilot CLI/);
     });
   });
 

@@ -1,6 +1,7 @@
-// Slack's REST routes, under /api/connectors/slack: the live card of a linked
-// thread, and sharing a decision to a channel. A token never leaves this
-// process: what goes out is what Slack said about a thread.
+// Serving Slack's REST routes (core/connectors/slack/routes.ts), under
+// /api/connectors/slack: the live card of a linked thread, and sharing a
+// decision to a channel. A token never leaves this process: what goes out is
+// what Slack said about a thread.
 //
 // Sharing posts to Slack as the person who signed in, so it is the one route
 // that asks the person check itself (personOnly, tier B: only one of their
@@ -11,7 +12,7 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { parseThreadKey } from '../../../core/connectors/slack/link';
 import type { SlackProblem } from '../../../core/connectors/slack/thread';
-import { routes } from '../../../core/routes';
+import { slackRoutes } from '../../../core/connectors/slack/routes';
 import { personOnly, type PersonGate } from '../../access';
 import { routesOn } from '../../routing';
 import { ConnectorError } from '../oauth';
@@ -34,7 +35,7 @@ function boardOrigin(req: Request): string {
 // Reasons a card can't show its thread that aren't worth an error on every card: they come back with the answer.
 const QUIET = new Set(['not_connected', 'needs_sign_in', 'not_found', 'missing_scope', 'rate_limited', 'unavailable']);
 
-export function slackRoutes(reader: SlackReader, shares: SlackShares, person: PersonGate): Router {
+export function slackRouter(reader: SlackReader, shares: SlackShares, person: PersonGate): Router {
   const router = Router();
   const on = routesOn(router, '/api/connectors/slack');
   router.use((_req, res, next) => {
@@ -43,7 +44,7 @@ export function slackRoutes(reader: SlackReader, shares: SlackShares, person: Pe
   });
 
   // A thread's card: its first message, who wrote it and the replies, or why not.
-  on(routes.slackThread, async (req, res) => {
+  on(slackRoutes.thread, async (req, res) => {
     const thread = parseThreadKey(`${param(req, 'channel')}/${param(req, 'ts')}`);
     if (!thread) {
       res.status(404).json({ error: 'Not a Slack thread.' });
@@ -60,7 +61,7 @@ export function slackRoutes(reader: SlackReader, shares: SlackShares, person: Pe
 
   // "Share to Slack" on a decision: the question, the options and a link back,
   // posted to a channel as the person.
-  on(routes.slackShareDecision, personOnly(person, 'B'), async (req, res) => {
+  on(slackRoutes.shareDecision, personOnly(person, 'B'), async (req, res) => {
     const { channel } = shareBody.parse(req.body);
     res.status(201).json({ shared: await shares.shareDecision(param(req, 'decisionId'), channel, boardOrigin(req)) });
   });

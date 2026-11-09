@@ -34,8 +34,9 @@ function byKind(needs: Need[]): [NeedKind, Need[]][] {
   return [...groups.entries()];
 }
 
-// A row opens its card by its link; a thread waiting on you opens in the
-// conversation docked on the right, on the tab it was started from.
+// A row opens its card, or the pin on the board context it is about, by its
+// link; a thread waiting on you opens in the conversation docked on the
+// right, on the tab it was started from.
 function openNeed(e: MouseEvent, need: Need, close: () => void): void {
   close();
   const target = need.target;

@@ -256,7 +256,7 @@ export class BoardRepository {
   // memory that finds it (by any of its ids), and viewers are told it is gone.
   removeBoard(board: Board): void {
     const key = boardKey(board);
-    this.db.deleteBoard(key, [board.id, ...(board.aliases ?? [])]);
+    this.db.deleteBoard(key);
     for (const canvas of [board.canvas, ...board.decisions.map((d) => d.canvas), ...board.tasks.map((t) => t.canvas)]) {
       for (const item of [...canvas.blocks, ...canvas.groups, ...canvas.links, ...canvas.pins]) this.itemIndex.delete(item.id);
     }

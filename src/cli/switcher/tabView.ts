@@ -75,6 +75,9 @@
 //     ❯ 1  Claude
 //      2  Codex
 //
+// /add and /stop typed in the chat draw these same lists, and the question
+// after them, at the chat's foot in place of its keys (tricotTab.ts).
+//
 // Every size gets what fits: each row has a priority, and the rows kept are
 // the most important ones, in their order (a short window loses the blank
 // rows, then the activity, then all but the first lines of a long
@@ -124,7 +127,18 @@ export interface TabFrame {
   rows: string[]; // each as written from the row's first column, colours and all
   plain: string[]; // the same as text
   cursor?: { x: number; y: number }; // from 0; shown only while a reason is typed
+  links?: FrameLink[][]; // each row's links, where a click opens one (T36)
 }
+
+// A link on a row: its columns, from 0, `to` not included, and where it goes.
+export interface FrameLink {
+  from: number;
+  to: number;
+  url: string;
+}
+
+// The link at a cell of a frame, from 0, if one is drawn there.
+export const linkAt = (frame: TabFrame, x: number, y: number): string | undefined => frame.links?.[y]?.find((l) => x >= l.from && x < l.to)?.url;
 
 // Looks, as SGR parameters: the terminal's own colours, bold and dim, and
 // the strip's alert colour, light or dark.
@@ -132,20 +146,47 @@ export const BOLD = '1';
 export const DIM = '2';
 export const alertOf = (light: boolean) => (light ? '38;5;130' : '38;5;214');
 
-export type Part = [text: string, sgr?: string];
+// `link`: where a click on it goes (FrameLink); it is drawn underlined.
+export type Part = [text: string, sgr?: string, link?: string];
 
-// One row: the parts, cut to the width, the rest erased.
-export function paint(parts: Part[], width: number): { line: string; plain: string } {
+// One row: the parts, cut to the width, the rest erased, and where its links are.
+export function paint(parts: Part[], width: number): { line: string; plain: string; links: FrameLink[] } {
   let line = '';
   let plain = '';
-  for (const [text, sgr] of parts) {
-    const room = width - columns(plain);
+  let used = 0;
+  const links: FrameLink[] = [];
+  for (const [text, sgr, link] of parts) {
+    const room = width - used;
     if (room <= 0) break;
     const shown = fit(text, room);
-    line += `\x1b[0${sgr ? `;${sgr}` : ''}m${shown}`;
+    const looks = link ? (sgr ? `${sgr};4` : '4') : sgr;
+    line += `\x1b[0${looks ? `;${looks}` : ''}m${shown}`;
     plain += shown;
+    const wide = columns(shown);
+    if (link && wide) links.push({ from: used, to: used + wide, url: link });
+    used += wide;
   }
-  return { line: columns(plain) < width ? `${line}\x1b[0m\x1b[K` : `${line}\x1b[0m`, plain };
+  return { line: used < width ? `${line}\x1b[0m\x1b[K` : `${line}\x1b[0m`, plain, links };
+}
+
+// Where the web addresses in a text are, by character, and each whole.
+export function webAddresses(text: string): FrameLink[] {
+  const found: FrameLink[] = [];
+  for (const match of text.matchAll(/\bhttps?:\/\/[^\s<>"'`]+/gi)) {
+    let url = match[0];
+    // A sentence's end, or a bracket that closes around it, isn't the address's.
+    for (;;) {
+      const trimmed = url.replace(/[.,;:!?*_]+$/, '');
+      const closing = /[)\]]$/.exec(trimmed)?.[0];
+      const open = closing === ')' ? '(' : '[';
+      const unbalanced = closing && trimmed.split(open).length <= trimmed.split(closing).length - 1;
+      const next = unbalanced ? trimmed.slice(0, -1) : trimmed;
+      if (next === url) break;
+      url = next;
+    }
+    if (/^https?:\/\/[^/?#\s]/i.test(url)) found.push({ from: match.index!, to: match.index! + url.length, url });
+  }
+  return found;
 }
 
 // A row on a background (an SGR one, "48;5;235"), across `width` columns:
@@ -155,7 +196,7 @@ export function onBand(parts: Part[], background: string, width: number): Part[]
   const cut = cutParts(parts, width);
   const used = cut.reduce((sum, [text]) => sum + columns(text), 0);
   const fill: Part[] = used < width ? [[' '.repeat(width - used), background]] : [];
-  return [...cut.map(([text, sgr]): Part => [text, sgr ? `${sgr};${background}` : background]), ...fill];
+  return [...cut.map(([text, sgr, link]): Part => (link ? [text, sgr ? `${sgr};${background}` : background, link] : [text, sgr ? `${sgr};${background}` : background])), ...fill];
 }
 
 // Parts at the left and at the right of one row; the right ones go first
@@ -175,10 +216,10 @@ function spread(left: Part[], right: Part[], width: number, gap = 3): Part[] {
 export function cutParts(parts: Part[], room: number): Part[] {
   const out: Part[] = [];
   let left = room;
-  for (const [text, sgr] of parts) {
+  for (const [text, sgr, link] of parts) {
     if (left <= 0) break;
     const shown = fit(text, left);
-    out.push([shown, sgr]);
+    out.push(link ? [shown, sgr, link] : [shown, sgr]);
     left -= columns(shown);
   }
   return out;
@@ -228,16 +269,17 @@ const BESIDE_GAP = 3;
 // The same board header above the status view and conversations.
 export function tabHeader(view: Pick<TabView, 'title' | 'url' | 'connected' | 'wordmark'>, cols: number, room: number): Part[][] {
   const title = view.title ? oneLine(view.title) : undefined;
-  const address: Part = [view.connected ? view.url : `${view.url} · connecting…`, DIM];
+  // The address opens the board when clicked (tricotTab.ts).
+  const address: Part[] = [[view.url, DIM, view.url], ...(view.connected ? [] : ([[' · connecting…', DIM]] as Part[]))];
   if (view.wordmark && room >= view.wordmark.length) {
     const width = Math.max(...view.wordmark.map(partsWidth));
-    const words: Part[][] = [title ? [[title, BOLD]] : [], [address]];
+    const words: Part[][] = [title ? [[title, BOLD]] : [], address];
     return view.wordmark.map((mark, i) => {
       const beside = words[i] ?? [];
       return beside.length ? [...mark, [' '.repeat(width - partsWidth(mark) + BESIDE_GAP)] as Part, ...cutParts(beside, cols - width - BESIDE_GAP - 1)] : mark;
     });
   }
-  return [spread([[' Tricot', BOLD], ...(title ? ([[' · '], [title, BOLD]] as Part[]) : [])], [address, [' ']], cols, 2)];
+  return [spread([[' Tricot', BOLD], ...(title ? ([[' · '], [title, BOLD]] as Part[]) : [])], [...address, [' ']], cols, 2)];
 }
 
 interface Row {
@@ -246,17 +288,25 @@ interface Row {
   command?: number; // the command's line, from 0
 }
 
+// A tone's look: the alert colour, dim, or the terminal's own.
+const toneOf = (tone: Tone, light: boolean) => (tone === 'alert' ? alertOf(light) : tone === 'quiet' ? DIM : undefined);
+
+// What the last key did, on as many rows as it takes, to a few: above the keys
+// here, and at the chat's foot for what a command typed there did (tricotTab.ts).
+export function noteRows(note: { text: string; tone: Tone }, cols: number, light = false): Part[][] {
+  return wrap(oneLine(note.text), Math.max(10, cols - 2), NOTE_ROWS).map((line) => [[` ${line}`, toneOf(note.tone, light)]]);
+}
+
 export function renderTab(view: TabView, cols: number, rows: number, light = false): TabFrame {
   const alert = alertOf(light);
   const body: Row[] = [];
   const add = (priority: number, parts: Part[], more: Partial<Row> = {}) => body.push({ parts, priority, ...more });
   const blank = (priority: number) => add(priority, []);
-  const toneSgr = (tone: Tone) => (tone === 'alert' ? alert : tone === 'quiet' ? DIM : undefined);
+  const toneSgr = (tone: Tone) => toneOf(tone, light);
   let cursorRow: { index: number; x: number } | undefined;
 
   // ---- the keys, and what the last one did: the last rows, always (the rest has the rows above them)
-  const footer: Part[][] = [];
-  if (view.note) for (const line of wrap(oneLine(view.note.text), Math.max(10, cols - 2), NOTE_ROWS)) footer.push([[` ${line}`, toneSgr(view.note.tone)]]);
+  const footer: Part[][] = view.note ? noteRows(view.note, cols, light) : [];
   footer.push(...promptRows(view, rows, cols));
   const room = Math.max(0, rows - footer.length);
 
@@ -365,17 +415,19 @@ export function renderTab(view: TabView, cols: number, rows: number, light = fal
   const cursorAt = cursorRow && kept.has(cursorRow.index) ? shown.indexOf(body[cursorRow.index]) : -1;
   while (shown.length && !shown[shown.length - 1].parts.length) shown = shown.slice(0, -1);
 
-  const out: TabFrame = { rows: [], plain: [] };
+  const out: TabFrame = { rows: [], plain: [], links: [] };
   const push = (parts: Part[]) => {
-    const { line, plain } = paint(parts, cols);
+    const { line, plain, links } = paint(parts, cols);
     out.rows.push(line);
     out.plain.push(plain);
+    out.links!.push(links);
   };
   for (const row of shown) push(row.parts);
   while (out.rows.length < room) push([]);
   for (const parts of footer.slice(-rows)) push(parts);
   out.rows = out.rows.slice(0, rows);
   out.plain = out.plain.slice(0, rows);
+  out.links = out.links!.slice(0, rows);
   if (cursorAt >= 0 && cursorRow) out.cursor = { x: Math.min(cols - 1, cursorRow.x), y: cursorAt };
   return out;
 }
@@ -393,7 +445,9 @@ export function tail(text: string, room: number): string {
 
 // The last rows: the keys, or the question one of them asks (the add and stop
 // lists are one row to an agent, the rest are one row), in `room` rows at most.
-function promptRows(view: TabView, room: number, cols: number): Part[][] {
+// The chat draws the lists and the question at its foot too, for /add and
+// /stop typed there (tricotTab.ts).
+export function promptRows(view: Pick<TabView, 'prompt' | 'quitting'>, room: number, cols: number): Part[][] {
   const key = (k: string, words: string): Part[] => [[k, BOLD], [` ${words}`]];
   const sep: Part = [' · '];
   if (view.quitting) return [[[' Closing the agents…', DIM]]];

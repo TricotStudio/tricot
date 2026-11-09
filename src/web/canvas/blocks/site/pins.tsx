@@ -9,6 +9,7 @@ import { elementQuote } from '../../../../core/blocks/site/site';
 import { pinComments } from '../../../../core/pins';
 import type { Pin } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
+import { askToUnpin } from '../../../shared/confirm';
 import { MentionTextarea } from '../../../shared/mentions';
 import { useCanvas } from '../../context';
 
@@ -110,8 +111,8 @@ export function SitePinChip(props: { pin: Pin; open: boolean; part?: string; los
   const classes = ['pin-chip', 'is-comment', 'site-pin-chip', asked && 'is-ask', resolved && 'is-done', lost && 'is-lost', fresh && 'is-new', open && 'is-open'];
   const what = asked ? 'Asked agents to change' : 'Notes on';
   const state = resolved ? `, resolved by ${resolved.by.name}` : asked && waiting ? ', waiting for an agent' : '';
-  const unpin = () => {
-    if (comments.length && !window.confirm(`Unpin this element and remove its thread of ${plural(comments.length, 'comment')}?`)) return;
+  const unpin = async () => {
+    if (comments.length && !(await askToUnpin('this element', comments.length))) return;
     canvas.removeItem(pin.id);
   };
   return (

@@ -67,6 +67,11 @@ export function blockLabel(block: Block): string {
   return kind.untitled?.(block) ?? `untitled ${block.type}`;
 }
 
+// A block as a pin's refusals name it: note "Plans" is a note.
+export function blockIs(block: Block): string {
+  return `${blockLabel(block)} is ${/^[aeiou]/.test(block.type) ? 'an' : 'a'} ${block.type}`;
+}
+
 // The person a block belongs to, if any. A block a person made, or has edited
 // since, is theirs; any other block is the agents'. A sync of all of the board
 // context leaves a person's blocks alone; selecting one for a sync lets agents

@@ -163,7 +163,7 @@ function callbackPage(res: Response, code: number, outcome: Outcome): void {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)} · Tricot</title>
 <style>
-:root { --bg: #f6f6f4; --surface: #fff; --border: #e5e5e1; --text: #1a1a18; --muted: #5c5c57; --mark: #2f8a57; --mark-bg: #e2f2e8; --primary: #1a1a18; --primary-text: #fff; color-scheme: light; }
+:root { --bg: #edeae4; --surface: #f8f6f2; --border: #dcd7ce; --text: #1d1828; --muted: #5d5866; --mark: #2f8a57; --mark-bg: #e2f2e8; --primary: #1d1828; --primary-text: #fff; color-scheme: light; }
 :root.is-failed { --mark: #b03a26; --mark-bg: #fbe7e2; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --bg: #121211; --surface: #1a1a19; --border: #2e2e2b; --text: #ececea; --muted: #a6a6a0; --mark: #5cc08a; --mark-bg: #17301f; --primary: #ececea; --primary-text: #121211; color-scheme: dark; } :root.is-failed:not([data-theme='light']) { --mark: #ec8a77; --mark-bg: #381f19; } }
 :root[data-theme='dark'] { --bg: #121211; --surface: #1a1a19; --border: #2e2e2b; --text: #ececea; --muted: #a6a6a0; --mark: #5cc08a; --mark-bg: #17301f; --primary: #ececea; --primary-text: #121211; color-scheme: dark; }

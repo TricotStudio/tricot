@@ -12,7 +12,7 @@ import type { ConnectorAccess, ConnectorStatus } from './connector';
 import { connectorKinds, findConnector } from './registry';
 
 export type { ConnectorAccess, ConnectorId, ConnectorKind, ConnectorState, ConnectorStatus } from './connector';
-export { connectorKinds, connectorPinning, findConnector } from './registry';
+export { connectorKinds, connectorPinning, connectorRoutes, findConnector } from './registry';
 
 // Plain words for the scopes any connector may ask for. Scopes are the
 // services' own identifiers, so one table serves them all.

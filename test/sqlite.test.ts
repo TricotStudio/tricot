@@ -1,20 +1,19 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { BoardDb } from '../src/core/store/boardDb';
 import { BoardImage, Dirty, joinBoard, type Op, type StoredRow } from '../src/core/store/boardRows';
 import { BoardWriter } from '../src/core/store/boardTables';
 import { inTransaction } from '../src/core/store/sqlite';
 import { MIGRATIONS, MigrationError, NewerDataError, openDatabase, userVersion, type Migration } from '../src/core/store/migrations';
-import { splitLegacyBoard } from '../src/core/store/legacyBoard';
 import { Store } from '../src/core/store';
 import { boardKey, type Actor, type Board } from '../src/core/types';
-import { jsonFolder, savedBoard } from './savedBoard';
+import { savedBoard } from './savedBoard';
 import { eventsOf, legacyBoard, versionsOf } from './tables';
 import { removeScratch, WINDOWS } from './platform';
 
@@ -59,112 +58,7 @@ describe('Boards in SQLite', () => {
   });
 
   afterEach(() => {
-    mock.restoreAll();
     for (const made of folders.splice(0)) removeScratch(made);
-  });
-
-  // Boards as an earlier version left them: what a store saved, written out as JSON files.
-  async function earlierFolder(...titles: string[]): Promise<{ folder: string; boards: Board[] }> {
-    const source = new Store(scratch());
-    source.load();
-    const made = titles.map((title) => populate(source, title));
-    const boards = made.map((b) => legacyBoard(source, b.id));
-    await source.flush();
-    const folder = jsonFolder(...boards);
-    folders.push(folder);
-    return { folder, boards };
-  }
-
-  describe('importing the JSON boards', () => {
-    it('imports every board, finds them the same, and moves the files, with the rest left alone', async () => {
-      const { folder, boards } = await earlierFolder('Roadmap', 'Website');
-      // Not boards: a connector's file, and one that doesn't parse.
-      writeFileSync(path.join(folder, 'google-client.json'), JSON.stringify({ installed: { client_id: 'x' } }));
-      writeFileSync(path.join(folder, 'broken.json'), '{ not json');
-      mkdirSync(path.join(folder, 'assets'));
-      writeFileSync(path.join(folder, 'assets', 'pic.png'), 'png');
-      const errors = mock.method(console, 'error', () => {});
-      const logs = mock.method(console, 'log', () => {});
-
-      const store = new Store(folder);
-      store.load();
-      for (const board of boards) assert.deepEqual(legacyBoard(store, board.id), board, 'with its events and versions');
-      assert.match(String(logs.mock.calls[0].arguments[0]), /Moved 2 boards into .*tricot\.db\. The JSON files are kept in .*backup-json-\d{4}-\d\d-\d\d/);
-      assert.match(String(errors.mock.calls[0].arguments[1] ?? errors.mock.calls[0].arguments[0]), /broken\.json|Unexpected|JSON/);
-      await store.flush();
-
-      assert.deepEqual(names(folder).filter((f) => f.endsWith('.json')), ['broken.json', 'google-client.json']);
-      const [backup] = names(folder, 'backup-json-');
-      assert.deepEqual(names(path.join(folder, backup)), boards.map((b) => `${b.id}.json`).sort());
-      assert.ok(existsSync(path.join(folder, 'assets', 'pic.png')), 'images stay files');
-      assert.deepEqual(JSON.parse(readFileSync(path.join(folder, backup, `${boards[0].id}.json`), 'utf8')), boards[0], 'the kept files are as they were');
-
-      // The next start reads the database alone.
-      rmSync(path.join(folder, backup), { recursive: true });
-      const again = new Store(folder);
-      again.load();
-      for (const board of boards) assert.deepEqual(legacyBoard(again, board.id), board);
-      assert.deepEqual(names(folder, 'backup-json-'), [], 'nothing imported twice');
-      await again.flush();
-    });
-
-    it('keeps old boards exactly as they were, a missing list apart from an empty one', async () => {
-      const bare = {
-        id: 'bare-ab12', title: 'Bare', createdBy: human, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-        seq: 0, nextDecisionNumber: 1, decisions: [], canvas: { blocks: [], groups: [], links: [] }, extra: { kept: [1, 2, 3] },
-      };
-      const empty = { ...bare, id: 'empty-cd34', nextTaskNumber: 1, tasks: [], threads: [], events: [], canvas: { blocks: [], groups: [], links: [], pins: [] } };
-      const folder = jsonFolder(bare, empty);
-      folders.push(folder);
-      const store = new Store(folder);
-      store.load();
-      await store.flush();
-      const read = (id: string) => savedBoard(folder, id);
-      const { events: _events, ...emptyNow } = empty;
-      assert.deepEqual(read('empty-cd34'), emptyNow, 'with no log of its own to hold');
-      // The one with lists missing had them added as it was imported (shapeDefaults.ts), and kept what the store doesn't know.
-      const tidied = read('bare-ab12');
-      assert.deepEqual((tidied as Board & { extra: unknown }).extra, bare.extra);
-      assert.deepEqual(tidied.canvas, { blocks: [], groups: [], links: [], pins: [] });
-      assert.deepEqual(tidied.tasks, []);
-    });
-
-    it('stops, with the files untouched and nothing started, if a board would not come back the same', async () => {
-      const { folder, boards } = await earlierFolder('Roadmap');
-      // 1e400 reads as Infinity, which JSON can't hold: the copy in the database could not be the same.
-      const text = readFileSync(path.join(folder, `${boards[0].id}.json`), 'utf8').replace('"seq":', '"odd": 1e400, "seq":').replace('"seq" :', '"odd": 1e400, "seq" :');
-      writeFileSync(path.join(folder, `${boards[0].id}.json`), text);
-      assert.match(text, /1e400/);
-      const before = names(folder);
-
-      const store = new Store(folder);
-      assert.throws(() => store.load(), /Could not move your boards into the new database: Board "roadmap-\w+" came back different \(board\.odd/);
-      assert.throws(() => store.load(), /untouched\. Nothing was started\./);
-      assert.deepEqual(names(folder), before, 'no database, no leftovers, no backup folder');
-      assert.equal(readFileSync(path.join(folder, `${boards[0].id}.json`), 'utf8'), text);
-    });
-
-    it('keeps the files if two of them are one board', async () => {
-      const { folder, boards } = await earlierFolder('Roadmap');
-      writeFileSync(path.join(folder, 'copy.json'), JSON.stringify({ ...boards[0] }));
-      const store = new Store(folder);
-      assert.throws(() => store.load(), /are the same board/);
-      assert.ok(existsSync(path.join(folder, 'copy.json')));
-      assert.ok(!existsSync(path.join(folder, 'tricot.db')));
-    });
-
-    it('starts empty when there are no boards, and ignores board files that turn up beside a database', async () => {
-      const first = new Store(dir);
-      first.load();
-      await first.flush();
-      assert.ok(existsSync(path.join(dir, 'tricot.db')));
-      const { folder, boards } = await earlierFolder('Late');
-      writeFileSync(path.join(dir, `${boards[0].id}.json`), readFileSync(path.join(folder, `${boards[0].id}.json`)));
-      const second = new Store(dir);
-      second.load();
-      assert.deepEqual(second.listBoards(), []);
-      await second.flush();
-    });
   });
 
   describe('migrations', () => {
@@ -257,10 +151,11 @@ describe('Boards in SQLite', () => {
     type Legacy = ReturnType<typeof legacyBoard>;
     const count = (db: ReturnType<typeof openDatabase>, sql: string) => Number((db.prepare(sql).get() as { n: number }).n);
 
-    // A database as data version 1 held a board: its events in rows of 100, and each block carrying its versions.
+    // A database as data version 1 held a board: its events in rows of 100, and
+    // each block carrying its versions in its own row, as the legacy board does.
     function version1(file: string, legacy: Legacy): void {
       const db = openDatabase(file, [MIGRATIONS[0]]);
-      const { board, events, versions } = splitLegacyBoard(legacy);
+      const { events, ...board } = legacy;
       inTransaction(db, () => {
         const put = db.prepare('INSERT INTO items (board, owner, kind, id, pos, body) VALUES (?, ?, ?, ?, ?, ?)');
         for (const op of new BoardImage().plan(board, Dirty.everything())) {
@@ -269,12 +164,6 @@ describe('Boards in SQLite', () => {
         }
         for (let at = 0; at < events.length; at += 100) {
           put.run(boardKey(board), '', 'events', String(at / 100).padStart(8, '0'), at / 100, JSON.stringify(events.slice(at, at + 100)));
-        }
-        for (const change of versions) {
-          if (change.op !== 'add') continue;
-          const row = db.prepare("SELECT body FROM items WHERE kind = 'block' AND id = ?").get(change.block) as { body: string };
-          const body = JSON.stringify({ ...JSON.parse(row.body), versions: change.versions });
-          db.prepare("UPDATE items SET body = ? WHERE kind = 'block' AND id = ?").run(body, change.block);
         }
       });
       db.close();

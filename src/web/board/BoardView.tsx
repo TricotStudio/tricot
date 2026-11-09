@@ -7,12 +7,12 @@ import { CardView, DecisionsView } from '../decisions';
 import { RestoreButton, useBoard, useHistory } from '../live';
 import { AgentsProvider, ConnectAgent, StepsProvider, type StepsStore } from '../agents';
 import { RosterProvider } from '../shared/mentions';
-import { CanvasView, SyncControl } from '../canvas';
+import { CanvasView, openPin, SyncControl } from '../canvas';
 import { ActorBadge, Icon, Popover, timeAgo } from '../shared/components';
 import { forgetBoard } from './deleteBoard';
 import { ArchivedBar, BoardTopBar } from './heading';
 import { ReadOnlyContext, useSidePanel, useStoredFlag, useTick } from '../shared/hooks';
-import { go, linkTo, onBoard, type BoardViewName } from '../shared/pages';
+import { go, leavePin, linkTo, onBoard, type BoardViewName } from '../shared/pages';
 import { noteOpened } from './recentBoards';
 import { RefsProvider, RefText } from '../shared/refs';
 import { useTitlePart } from '../shared/tabTitle';
@@ -136,10 +136,11 @@ interface Props {
   view: BoardViewName;
   decisionId?: string;
   taskId?: string;
+  pinId?: string; // a pin on the Board Context the address leads to
   name: string;
 }
 
-export function BoardView({ boardId, view, decisionId, taskId, name }: Props) {
+export function BoardView({ boardId, view, decisionId, taskId, pinId, name }: Props) {
   const { board, error, live, deleted, steps } = useBoard(boardId);
   // The tab carries the board's name, and follows it when it is renamed.
   useTitlePart('page', deleted ? undefined : board?.title);
@@ -172,6 +173,15 @@ export function BoardView({ boardId, view, decisionId, taskId, name }: Props) {
   useEffect(() => {
     if (board?.aliases?.includes(boardId)) location.replace(onBoard(location.hash, board.id));
   }, [board, boardId]);
+  // A pin the address leads to (a Needs you item, the inbox, a notification,
+  // the Activity log) opens on the Board Context once it is drawn there
+  // (canvas/focus.ts); the address drops it meanwhile, so the same link opens
+  // it again.
+  useEffect(() => {
+    if (!pinId) return;
+    openPin(pinId);
+    leavePin();
+  }, [pinId]);
   // The board switcher lists the boards opened here, the latest first: noted
   // once per board, not on every change.
   const openedId = board?.id;

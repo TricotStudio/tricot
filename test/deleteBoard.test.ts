@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -181,32 +181,6 @@ describe('Deleting an archived board for good', () => {
     store.deleteBoard(board.id, sam, 'Old plan');
     assert.equal(told, 1);
     assert.deepEqual(await waiting, []);
-  });
-
-  it('also removes its files from the JSON backups of an import, under any id, and leaves other boards and the database backups', async () => {
-    const board = store.createBoard({ title: 'First name' }, sam);
-    const old = board.id;
-    store.updateBoard(old, { title: 'Second name' }, sam);
-    const current = store.getBoard(old).id;
-    const other = store.createBoard({ title: 'Keeper' }, sam);
-    store.setArchived(old, true, sam);
-    const first = path.join(dir, 'backup-json-2026-01-01');
-    const second = path.join(dir, 'backup-json-2026-01-01-2');
-    const copies = path.join(dir, 'backups');
-    for (const folder of [first, second, copies]) mkdirSync(folder);
-    writeFileSync(path.join(first, `${old}.json`), '{}');
-    writeFileSync(path.join(second, `${current}.json`), '{}');
-    writeFileSync(path.join(first, `${other.id}.json`), '{}');
-    writeFileSync(path.join(copies, `${old}.json`), '{}');
-    writeFileSync(path.join(dir, `${old}.json`), '{}');
-
-    store.deleteBoard(current, sam, 'Second name');
-
-    assert.equal(existsSync(path.join(first, `${old}.json`)), false, 'under its first id');
-    assert.equal(existsSync(path.join(second, `${current}.json`)), false, 'under its current id');
-    assert.equal(existsSync(path.join(first, `${other.id}.json`)), true, "another board's file stays");
-    assert.equal(existsSync(path.join(copies, `${old}.json`)), true, 'backups/ is left as it is');
-    assert.equal(existsSync(path.join(dir, `${old}.json`)), true, 'only backup-json-* folders are looked in');
   });
 
   it('stays deleted after a restart', async () => {

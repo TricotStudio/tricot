@@ -2,10 +2,11 @@
 // (the options it is given by `tricot`, updatesFor).
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { routes, routeUrl } from '../core/routes';
 import { SEAT_NEEDED } from '../core/seats';
 import { BACKUP_NOTE, type UpdateHow, type UpdateState } from '../core/update';
 import { isNewer } from '../core/version';
-import { authHeaders } from '../server/access';
+import { authHeaders } from '../platform/token';
 import { BREW_FORMULA, brewUpgrade, detectLaunch, howToUpdate, launchKind, npmBeside, npmInstall, npmInstallFile, restartCommand, type Command, type Launch, type ServerPlace } from '../install/handoff';
 import { findRunning, type ServerLock } from '../platform/lock';
 import { runProgram } from '../platform/run';
@@ -112,10 +113,11 @@ async function updateRunning(env: Env, running: ServerLock, version: string): Pr
   try {
     res = await asThisTerminal(url, authHeaders(dataDir), async (headers, terminal) => {
       const body = JSON.stringify({ version });
+      const update = routeUrl(routes.startUpdate);
       const send = async () => {
-        const answer = await fetch(`${url}/api/update`, {
+        const answer = await fetch(`${url}${update}`, {
           method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json', ...terminal.sign('POST', '/api/update', body) },
+          headers: { ...headers, 'Content-Type': 'application/json', ...terminal.sign('POST', update, body) },
           body,
           signal: AbortSignal.timeout(30_000),
         });
@@ -163,7 +165,7 @@ async function updateRunning(env: Env, running: ServerLock, version: string): Pr
 
 async function updateState(lock: ServerLock, dataDir: string): Promise<UpdateState | undefined> {
   try {
-    const res = await fetch(`${lock.url}/api/update`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${lock.url}${routeUrl(routes.update)}`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(2000) });
     return res.ok ? ((await res.json()) as UpdateState) : undefined;
   } catch {
     return undefined;

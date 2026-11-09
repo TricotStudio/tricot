@@ -43,6 +43,11 @@ export function codexHooks(command: string): HookEvents {
 
 export const codexFolder = (target: HookTarget) => target.env?.CODEX_HOME || path.join(target.home, '.codex');
 
+const HOOKS_FILE = 'hooks.json';
+
+// Its hooks file, where its hooks for every project are.
+export const codexHooksFile = (target: HookTarget) => path.join(codexFolder(target), HOOKS_FILE);
+
 // Whether config.toml has hooks of its own ([hooks…] or [[hooks…]] tables):
 // read as text, never parsed or written.
 const INLINE_HOOKS = /^\s*\[\[?\s*hooks\s*[.\]]/m;
@@ -54,7 +59,7 @@ export const codex = commandHookInstaller({
   command: 'codex',
   scopes: ['user'],
   folder: codexFolder,
-  settings: 'hooks.json',
+  settings: HOOKS_FILE,
   // --usage: at each turn's end, its plan usage from the end of its own session file (hooks/tricot-usage.mjs).
   run: (script, setup) => scriptCommand(shellPath(script), setup.url, setup.name, false, true),
   hooks: (command) => codexHooks(command),

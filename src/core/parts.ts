@@ -3,13 +3,28 @@
 // parts, which it pins: a website's elements (core/blocks/site), a code
 // block's lines, a note's words, a diagram's nodes and arrows, boxes on an
 // image. People comment on them, and may ask agents to act on them; these are
-// the words for that, whichever of the two says them.
+// the words for that, whichever of the two says them. How any pinned part
+// reads and behaves is its hooks' to say too (partHooks), the page's as much
+// as the server's: nothing else switches on a part's kind.
 
 import { kindOf, kinds } from './blocks/registry';
-import type { PartWords } from './blocks/kind';
+import type { PartHooks, PartsHooks, PartWords } from './blocks/kind';
 import type { ConnectorAsk } from './connectors/connector';
 import { connectorKinds, connectorPinning } from './connectors/registry';
 import type { Block, Board } from './types';
+
+// How a pinned part reads and behaves, by its anchor's kind ('spot'): its
+// connector's (a Google Doc's paragraph), its block's kind's, or, for a part
+// named without its block (or on a block that doesn't have it), the first
+// kind's that has it. Undefined for a whole block, and for a kind of part
+// no kind has.
+export function partHooks(anchorKind: string, block?: Block): PartHooks | undefined {
+  const connector = connectorPinning(anchorKind)?.pins;
+  if (connector) return connector;
+  const name = anchorKind as keyof PartsHooks;
+  const own = block && kindOf(block.type).pins?.parts?.[name];
+  return (own ?? kinds().find((kind) => kind.pins?.parts?.[name])?.pins?.parts?.[name]) as PartHooks | undefined;
+}
 
 // What a kind of part says of itself, by its name ("doc", "site", "code"):
 // a comment's askPart, a pairing session's part.

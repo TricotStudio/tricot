@@ -11,7 +11,7 @@ import type { ConnectorTool, ServerConnector, ServerConnectorKind } from '../con
 import type { PendingSignIn } from '../oauth';
 import { SlackConnector, type SlackOptions } from './connector';
 import { SlackReader } from './reader';
-import { slackRoutes } from './routes';
+import { slackRouter } from './routes';
 import { SlackShares } from './share';
 import { slackTools } from './tools';
 
@@ -38,7 +38,7 @@ class SlackServer extends SlackConnector implements ServerConnector {
   }
 
   routes(store: Store, person: PersonGate): Router {
-    return slackRoutes(this.reader, new SlackShares(this, store), person);
+    return slackRouter(this.reader, new SlackShares(this, store), person);
   }
 
   tools(): ConnectorTool[] {

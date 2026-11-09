@@ -4,7 +4,23 @@
 import { z } from 'zod';
 import type { Shape } from './kind';
 import { kinds } from './registry';
-import type { BlockContent } from '../store/inputs';
+import type { BlockContent, PinPart } from '../store/inputs';
+
+// The part of a block people pin: one object for each kind of part a kind
+// has (a part two kinds have, as a diff's and a code block's lines, is the
+// first's), and the whole block.
+export function pinParts(): z.ZodType<PinPart> {
+  const parts = new Map<string, z.ZodObject>();
+  for (const kind of kinds()) {
+    for (const [name, schema] of Object.entries(kind.people?.parts ?? {})) if (schema && !parts.has(name)) parts.set(name, schema);
+  }
+  parts.set('block', z.object({ kind: z.literal('block') }));
+  const objects = [...parts.values()];
+  const union = z.discriminatedUnion('kind', objects as [(typeof objects)[number], ...typeof objects], {
+    error: `A pinned part's kind is one of: ${[...parts.keys()].join(', ')}.`,
+  });
+  return union as unknown as z.ZodType<PinPart>; // the kinds' own parts make up PinPart, but a connector's (a doc's), which its own routes take
+}
 
 // The content of a block people add: one object for each kind people can add.
 export function createContent(): z.ZodType<BlockContent> {

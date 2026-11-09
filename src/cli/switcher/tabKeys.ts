@@ -4,7 +4,8 @@
 // waited for and handed on whole (an arrow whose Esc came alone included, so
 // an Esc alone here is Esc pressed alone). This reads those bytes as the tab's
 // keys: letters and other text (UTF-8, a character cut between two reads
-// waited for), Enter, Esc, Tab and Shift+Tab, Backspace, the four arrows, Home and End, Page Up and
+// waited for), Enter, a new line (Option+Enter, Ctrl+J), a word left or right
+// or deleted (Option+arrows, Option+Backspace, Ctrl+W), Ctrl+A and Ctrl+E, Esc, Tab and Shift+Tab, Backspace, the four arrows, Home and End, Page Up and
 // Page Down, Ctrl+U, Ctrl+L and Ctrl+C, and a paste whole. Anything else is a key the
 // tab has no use for.
 //
@@ -19,7 +20,7 @@ import { legacyOf, readKey } from './keyboard';
 export type TabKey =
   | { kind: 'text'; text: string } // printable: what is typed
   | { kind: 'paste'; text: string }
-  | { kind: 'enter' | 'escape' | 'tab' | 'backtab' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'home' | 'end' | 'pageup' | 'pagedown' | 'clear' | 'lens' | 'interrupt' | 'other' };
+  | { kind: 'enter' | 'newline' | 'wordleft' | 'wordright' | 'deleteword' | 'escape' | 'tab' | 'backtab' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'home' | 'end' | 'pageup' | 'pagedown' | 'clear' | 'lens' | 'interrupt' | 'other' };
 
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
@@ -44,15 +45,30 @@ const SEQUENCES: [string, TabKey][] = [
   ['\x1b[5~', { kind: 'pageup' }],
   ['\x1b[6~', { kind: 'pagedown' }],
   ['\x1b[Z', { kind: 'backtab' }], // Shift+Tab
+  ['\x1b\r', { kind: 'newline' }], // Option+Enter (Alt+Enter)
+  ['\x1b\n', { kind: 'newline' }],
+  // A word at a time (T37): Option+← → as macOS terminals send them (Esc b, Esc f), Alt or Ctrl with an arrow
+  // as the others do; Option+Backspace and Ctrl+W delete the word before the cursor.
+  ['\x1bb', { kind: 'wordleft' }],
+  ['\x1bf', { kind: 'wordright' }],
+  ['\x1b[1;3D', { kind: 'wordleft' }],
+  ['\x1b[1;3C', { kind: 'wordright' }],
+  ['\x1b[1;5D', { kind: 'wordleft' }],
+  ['\x1b[1;5C', { kind: 'wordright' }],
+  ['\x1b\x7f', { kind: 'deleteword' }],
+  ['\x1b\x08', { kind: 'deleteword' }],
 ];
 
 const CONTROLS: Record<number, TabKey> = {
   0x0d: { kind: 'enter' },
-  0x0a: { kind: 'enter' },
+  0x0a: { kind: 'newline' }, // Ctrl+J: Enter is \r in a terminal set raw
   0x09: { kind: 'tab' },
   0x7f: { kind: 'backspace' },
   0x08: { kind: 'backspace' },
   0x15: { kind: 'clear' }, // Ctrl+U
+  0x17: { kind: 'deleteword' }, // Ctrl+W
+  0x01: { kind: 'home' }, // Ctrl+A, and Cmd+← where the terminal sends it so
+  0x05: { kind: 'end' }, // Ctrl+E, and Cmd+→
   0x0c: { kind: 'lens' }, // Ctrl+L
   0x03: { kind: 'interrupt' }, // Ctrl+C
 };

@@ -47,6 +47,7 @@ export const pi: AgentKind = {
     ],
     levels: thinkingLevels('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
   },
+  skills: 'skills',
 
   ...server,
 };

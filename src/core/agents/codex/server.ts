@@ -3,7 +3,7 @@
 
 import { codexLines, shellNoun, TOKEN_ENV, tokenLineName } from '../../connect';
 import { codexSession } from '../../sessions';
-import { codex as hooks } from '../../../server/hooks/codex';
+import { codexHooksFile, codex as hooks } from '../../../server/hooks/codex';
 import { installedHooks } from '../../../server/hooks/session';
 import type { AgentServerHalf } from '../agent';
 
@@ -20,7 +20,7 @@ export const server: AgentServerHalf = {
   // Codex takes hooks from its settings alone, so its come from live steps, once.
   sessionHooks({ target }) {
     return {
-      said: installedHooks('codex', target).approvals
+      said: installedHooks(codexHooksFile(target)).approvals
         ? 'Approvals come to the board, through the hook in your Codex settings.'
         : "Codex asks for approvals in the terminal: they come to the board once its live steps are on (tricot steps on --agent codex), as Codex can't take hooks for one session.",
     };

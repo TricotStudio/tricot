@@ -160,7 +160,8 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     actor,
     wordmark: ctx.env.TRICOT_NO_ANIMATION === '1' ? 'whole' : 'knit',
     trueColour: /^(truecolor|24bit)$/i.test(ctx.env.COLORTERM ?? ''),
-    open: () => a.openBoard(lock, board.id, { always: true }),
+    open: (page) => a.openBoard(lock, board.id, { always: true, ...(page && { page }) }),
+    openLink: (url) => ctx.open(url),
     // Every agent Tricot knows but those running. One that isn't installed
     // says so; one Tricot can't give the board for one session says to
     // connect it first, and picking it says why and how.

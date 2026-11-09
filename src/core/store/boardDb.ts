@@ -1,18 +1,17 @@
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { BoardImage, Dirty, type Op } from './boardRows';
 import { BoardWriter, readBoards } from './boardTables';
 import { changeFrom } from './changes';
 import type { EventQuery } from './eventTables';
-import { importBoardFiles, removeBackedUpBoardFiles } from './jsonImport';
 import { openDatabase } from './migrations';
 import { inTransaction, type Database } from './sqlite';
 import type { NewChange } from '../changes';
 import type { Dismissed } from '../needs';
 import type { AgentSkill, SkillList, TricotSkill } from '../skills';
 import { boardKey, type Board, type BlockVersion, type BoardEvent } from '../types';
+import { DATABASE_FILE } from './databaseFile';
 
-export const DATABASE_FILE = 'tricot.db';
+export { DATABASE_FILE };
 
 // Changes are written a moment after they are made, so a burst of them is one
 // write. Each write is one transaction of only what changed, so a crash
@@ -65,11 +64,10 @@ export class BoardDb {
     return path.join(this.dataDir, DATABASE_FILE);
   }
 
-  // The connection, opened when first needed: JSON board files are imported
-  // if that makes the database, and it is migrated to the newest version.
+  // The connection, opened when first needed: the database is made if there
+  // is none, and migrated to the newest version.
   private connection(): { db: Database; writer: BoardWriter } {
     if (!this.db || !this.writer) {
-      if (!existsSync(this.file)) importBoardFiles(this.dataDir, this.file);
       this.db = openDatabase(this.file);
       this.writer = new BoardWriter(this.db);
     }
@@ -103,16 +101,10 @@ export class BoardDb {
   }
 
   // Removes a board from the database, in every table that keys on it, in one
-  // transaction: all of it or none. What was waiting to be written for it is
-  // dropped, and so are its files (by any of its `ids`) in the JSON backups of an import.
-  deleteBoard(key: string, ids: string[]): void {
+  // transaction: all of it or none. What was waiting to be written for it is dropped.
+  deleteBoard(key: string): void {
     const { db, writer } = this.connection();
     inTransaction(db, () => writer.remove(key));
-    try {
-      removeBackedUpBoardFiles(this.dataDir, ids);
-    } catch (error) {
-      console.error(`Could not remove board ${key} from the JSON backups in ${this.dataDir}:`, error);
-    }
     this.pending.delete(key);
     this.unchecked.delete(key);
     this.images.delete(key);

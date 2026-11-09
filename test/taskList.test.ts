@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -15,8 +15,7 @@ import { MIGRATIONS, openDatabase, userVersion } from '../src/core/store/migrati
 import { proseOf, retick, setTask, taskLines, taskProgress, taskWords, withTasks } from '../src/core/taskList';
 import type { Actor, Block, Pin } from '../src/core/types';
 import { createApp } from '../src/server/app';
-import { jsonFolder } from './savedBoard';
-import { eventsOf, legacyBoard, versionsOf } from './tables';
+import { eventsOf, versionsOf } from './tables';
 import { readGuide } from './guide';
 import { removeScratch } from './platform';
 
@@ -312,32 +311,6 @@ describe('Checklists saved before they were notes', () => {
     const pin = store.canvasOf(old.id).canvas.pins.find((p) => p.id === pins.kept.id)!;
     assert.equal(words(back, pin), 'Gone step');
     assert.equal(pin.discussion?.thread?.[0].body, 'Why was it dropped?');
-  });
-
-  it('in board files an earlier Tricot left become notes as they are imported', async () => {
-    const source = new Store(scratch());
-    source.load();
-    const board = source.createBoard({ title: 'From files' }, sam);
-    const list = source.addBlock({ boardId: board.id }, { title: 'Steps', content: { type: 'note', text: 'Ship it' } }, agent);
-    source.updateBlock(list.id, { text: 'Ship it now' }, agent);
-    const pinned = source.pinComment(list.id, { kind: 'text', quote: 'Ship' }, 'When?', sam).pin;
-    const legacy = legacyBoard(source, board.id) as unknown as { canvas: { blocks: Record<string, unknown>[]; pins: Record<string, unknown>[] } };
-    const [block] = legacy.canvas.blocks;
-    const versions = (block.versions as Record<string, unknown>[]).map((v) => asChecklist(v, [{ id: 'a', text: 'Ship it', done: false }]));
-    legacy.canvas.blocks[0] = asChecklist(block, [{ id: 'a', text: 'Ship it now', done: true }], { versions });
-    legacy.canvas.pins[0] = { ...legacy.canvas.pins[0], anchor: { kind: 'text', prefix: '', suffix: ' it now', itemId: 'a' } };
-    await source.flush();
-
-    const dir = jsonFolder(legacy);
-    folders.push(dir);
-    const store = new Store(dir);
-    store.load();
-    const note = store.blockOf(list.id);
-    assert.ok(note.type === 'note' && note.text === '- [x] Ship it now');
-    assert.deepEqual(versionsOf(store, list.id).map((v) => v.type === 'note' && v.text), ['- [ ] Ship it']);
-    const pin = store.canvasOf(list.id).canvas.pins.find((p) => p.id === pinned.id)!;
-    assert.equal(words(note, pin), 'Ship');
-    assert.ok(!existsSync(path.join(dir, `${board.id}.json`)), 'the file was moved aside, as imports do');
   });
 
   it('place pins made across half a link, or on emphasis quoted with its marks, on the words or their line', () => {

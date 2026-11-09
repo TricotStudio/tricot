@@ -15,7 +15,7 @@ export type BoardViewName = 'decisions' | 'canvas' | 'tasks';
 export type PageRoute =
   | { page: 'home' }
   | { page: 'connectors'; from?: string } // from: the board it was opened from
-  | { page: 'board'; boardId: string; view: BoardViewName; decisionId?: string; taskId?: string };
+  | { page: 'board'; boardId: string; view: BoardViewName; decisionId?: string; taskId?: string; pinId?: string }; // pinId: a pin on the Board Context, to open
 
 // A value as one piece of an address, and back.
 const piece = (value: string) => encodeURIComponent(value);
@@ -36,19 +36,24 @@ export const pages = {
     link: (from?: string) => (from ? `#/connectors?from=${piece(from)}` : '#/connectors'),
   },
   board: {
-    pattern: /^#\/b\/([^/]+)(?:\/(canvas|tasks|decisions)|\/d\/([^/]+)|\/t\/([^/]+))?/,
+    pattern: /^#\/b\/([^/]+)(?:\/canvas\/p\/([^/]+)|\/(canvas|tasks|decisions)|\/d\/([^/]+)|\/t\/([^/]+))?/,
     read: (match: RegExpMatchArray): PageRoute => ({
       page: 'board',
       boardId: decodeURIComponent(match[1]),
-      view: (match[2] as BoardViewName | undefined) ?? 'tasks', // a board opens on its tasks
-      decisionId: valueOf(match[3]),
-      taskId: valueOf(match[4]),
+      view: match[2] ? 'canvas' : ((match[3] as BoardViewName | undefined) ?? 'tasks'), // a board opens on its tasks
+      decisionId: valueOf(match[4]),
+      taskId: valueOf(match[5]),
+      pinId: valueOf(match[2]),
     }),
     // A board on one of its tabs, or on the one it opens on.
     link: (boardId: string, view?: BoardViewName) => `#/b/${piece(boardId)}${view ? `/${view}` : ''}`,
     // A card on it, opened.
     task: (boardId: string, taskId: string) => `#/b/${piece(boardId)}/t/${piece(taskId)}`,
     decision: (boardId: string, decisionId: string) => `#/b/${piece(boardId)}/d/${piece(decisionId)}`,
+    // A pin on its Board Context, opened: its thread, or its block's full view
+    // at it (a website's element). The page drops the pin from the address
+    // once it has opened it, so the same link opens it again.
+    pin: (boardId: string, pinId: string) => `#/b/${piece(boardId)}/canvas/p/${piece(pinId)}`,
   },
   // Home is at #/, and is what any other address opens.
   home: {
@@ -85,6 +90,7 @@ export const linkTo = {
   askAgents: (boardId: string) => `${pages.board.link(boardId, 'canvas')}?ask`,
   task: pages.board.task,
   decision: pages.board.decision,
+  pin: pages.board.pin,
 };
 
 // The same address on a board's current id: an old link, or the board being

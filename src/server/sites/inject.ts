@@ -3,8 +3,10 @@
 // element starts on in its file (data-tricot-line), so a request on an
 // element names the file and line to change. The page is read as the
 // browser tokenizes it, near enough: comments, doctypes and closing tags are
-// passed over, attribute values may hold a ">", and the text of script,
-// style, textarea and title is never read as tags.
+// passed over, attribute values may hold a ">", the text of script, style,
+// textarea and title is never read as tags, and a tag that closes itself
+// (<path d="M0 0"/>) still does once marked: in an SVG, a path that no longer
+// closes itself swallows the shapes after it.
 
 export const FRAME_SCRIPT_PATH = '/__tricot/frame.js';
 export const LINE_ATTRIBUTE = 'data-tricot-line';
@@ -19,6 +21,31 @@ const lines = (text: string, from: number, to: number) => {
   for (let i = from; i < to; i++) if (text.charCodeAt(i) === 10) n++;
   return n;
 };
+
+const SPACE = /[\t\n\f\r ]/;
+
+// Where the browser's tokenizer is in a start tag, as far as it tells the
+// tag's own "/" from one in an attribute value (the HTML standard's
+// "Tokenization", from the tag name state on). A "/" in an unquoted value is
+// the value's: <a href=/docs/> links to "/docs/" and doesn't close itself,
+// and <path d=M0/> doesn't either, so marking it must keep that "/" in the
+// value. Quoted values are read apart, by the scan.
+type InTag = 'tagName' | 'gap' | 'attributeName' | 'beforeValue' | 'value';
+function afterChar(state: InTag, c: string): InTag {
+  const space = SPACE.test(c);
+  switch (state) {
+    case 'tagName':
+      return space || c === '/' ? 'gap' : 'tagName';
+    case 'gap': // before an attribute, after a value, or after a "/" not followed by ">"
+      return space || c === '/' ? 'gap' : 'attributeName';
+    case 'attributeName': // or the space after it, where "=" may still come
+      return c === '/' ? 'gap' : c === '=' ? 'beforeValue' : 'attributeName';
+    case 'beforeValue':
+      return space ? 'beforeValue' : 'value';
+    case 'value':
+      return space ? 'gap' : 'value';
+  }
+}
 
 // The page with each shown element marked with the line it starts on.
 export function withSourceLines(html: string): string {
@@ -47,17 +74,28 @@ export function withSourceLines(html: string): string {
     // The tag ends at the first > outside a quoted attribute value.
     let end = open + name.length + 1;
     let quote = '';
+    let state: InTag = 'tagName';
     for (; end < html.length; end++) {
       const c = html[end];
       if (quote) {
-        if (c === quote) quote = '';
+        if (c === quote) {
+          quote = '';
+          state = 'gap';
+        }
       } else if (c === '"' || c === "'") quote = c;
       else if (c === '>') break;
+      else state = afterChar(state, c);
     }
     if (end >= html.length) break;
     if (!UNSHOWN.has(name) && !html.slice(open, end).includes(LINE_ATTRIBUTE)) {
-      out += `${html.slice(copied, end)} ${LINE_ATTRIBUTE}="${line}"`;
-      copied = end;
+      // A tag that closes itself keeps its "/" (and the space before it) last.
+      let mark = end;
+      if (html[end - 1] === '/' && state !== 'value') {
+        mark = end - 1;
+        while (SPACE.test(html[mark - 1])) mark--;
+      }
+      out += `${html.slice(copied, mark)} ${LINE_ATTRIBUTE}="${line}"`;
+      copied = mark;
     }
     line += lines(html, open, end + 1);
     at = end + 1;

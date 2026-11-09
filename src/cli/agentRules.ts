@@ -13,7 +13,7 @@
 import { cleanRule, levelList, ruleFlags, ruleProblem, ruleWith, ruleWords, runsOnUrl, type AgentRule, type AgentRules } from '../core/agentRules';
 import type { AgentKind } from '../core/agents/agent';
 import { routes, routeUrl } from '../core/routes';
-import { authHeaders } from '../server/access';
+import { authHeaders } from '../platform/token';
 import type { Words } from './commands';
 
 // The --model and --effort given for each agent named, by id; a problem, said

@@ -10,7 +10,6 @@ import type {
   Link,
   MarkValue,
   Pin,
-  SceneView,
   Task,
   TaskStatus,
   Thread,
@@ -23,7 +22,7 @@ import type { Emoji } from '../../core/reactions';
 import type { ReactionPlace } from '../../core/store/reactions';
 import type { LiveState } from '../../core/changes';
 import type { Pasted } from '../../core/store/pasting';
-import type { BlockContent as StoreBlockContent, BlockPatch as StoreBlockPatch } from '../../core/store/inputs';
+import type { BlockContent as StoreBlockContent, BlockPatch as StoreBlockPatch, PinPart as StorePinPart } from '../../core/store/inputs';
 import type { ConnectorStatus } from '../../core/connectors';
 import type { DeletionSummary } from '../../core/deletions';
 import type { StartFolder } from '../../core/firstRun';
@@ -106,20 +105,10 @@ export type BlockPatch = StoreBlockPatch & {
   rev?: number; // the rev being edited; the server refuses the write if it has moved on
 };
 
-// The part of a block a person pins: words they selected (with the text
-// around them), table cells, a box drawn on an image (as
-// fractions of it), a diagram's node or arrow, or the whole block.
-export type PinPart =
-  | { kind: 'text'; quote: string; prefix: string; suffix: string }
-  | { kind: 'cells'; rows?: [number, number]; columns?: [number, number] }
-  | { kind: 'box'; x: number; y: number; w: number; h: number }
-  | { kind: 'node'; nodeId: string }
-  | { kind: 'arrow'; from: string; to: string; n: number }
-  | { kind: 'block' }
-  | { kind: 'line'; file: string; line: number; side: 'new' | 'old'; last?: number } // a line of a diff or a code block; on a code block, lines `line` to `last`
-  | { kind: 'point'; category?: string; series?: string } // a chart's bar, point or slice; a series alone, from its legend
-  | { kind: 'spot'; object?: string; x: number; y: number; z: number; view?: SceneView } // a point on a 3D scene (on a named object, in its coordinates), and the view it was seen from
-  | { kind: 'site'; page: string; selector: string; tag: string; text?: string; file?: string; line?: number }; // an element of a website's page
+// The part of a block a person pins, as the store takes it (core/store/inputs.ts):
+// words they selected (with the text around them), table cells, a box drawn
+// on an image (as fractions of it), a diagram's node or arrow, or the whole block.
+export type PinPart = StorePinPart;
 
 export interface Move {
   id: string;

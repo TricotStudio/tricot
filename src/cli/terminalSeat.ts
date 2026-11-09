@@ -10,6 +10,7 @@
 // While it is a seat it signs what needs one, says it is still there every
 // minute, and lets go as it ends. A board that no longer knows the seat
 // (the person removed it) makes it ask again.
+import { routes, routeUrl } from '../core/routes';
 import { ADMISSION_MS, SEAT_GONE, type AdmissionState } from '../core/seats';
 import { HOST_KEY_HEADER } from '../server/access';
 import { SeatKey } from './seatKey';
@@ -80,7 +81,7 @@ export class TerminalSeat {
     if (!key) return { ok: false, error: "Tricot's board can't be reached from this terminal right now." };
     let res: Response;
     try {
-      res = await this.post('/api/seats/admissions', { publicKey: this.key.publicKey, ...(this.options.label && { label: this.options.label }) }, { [HOST_KEY_HEADER]: key });
+      res = await this.post(routeUrl(routes.askToBeLetIn), { publicKey: this.key.publicKey, ...(this.options.label && { label: this.options.label }) }, { [HOST_KEY_HEADER]: key });
     } catch (error) {
       return { ok: false, error: `The board didn't answer: ${error instanceof Error ? error.message : error}` };
     }
@@ -116,7 +117,7 @@ export class TerminalSeat {
     this.seatId = undefined;
     if (!seat) return;
     try {
-      const res = await this.post('/api/seats/release', {}, this.key.sign(seat, 'POST', '/api/seats/release', '{}'));
+      const res = await this.postSigned(seat, routeUrl(routes.seatRelease));
       await res.arrayBuffer();
     } catch {
       // Gone already: the board lets it go once it stops hearing from it.
@@ -150,7 +151,7 @@ export class TerminalSeat {
     const seat = this.seatId;
     if (!seat) return;
     try {
-      const res = await this.post('/api/seats/beat', {}, this.key.sign(seat, 'POST', '/api/seats/beat', '{}'));
+      const res = await this.postSigned(seat, routeUrl(routes.seatBeat));
       this.heard(res.status, (await res.json().catch(() => ({}))) as { code?: unknown });
     } catch {
       // The board is away for now; the next beat tries again.
@@ -165,7 +166,7 @@ export class TerminalSeat {
       await new Promise((resolve) => setTimeout(resolve, this.options.pollMs ?? POLL_MS));
       let state: Partial<AdmissionState>;
       try {
-        const res = await this.doFetch(`${this.options.url}/api/seats/admissions/${encodeURIComponent(id)}`, {
+        const res = await this.doFetch(`${this.options.url}${routeUrl(routes.admission, { id })}`, {
           headers: { ...this.options.headers, [HOST_KEY_HEADER]: key },
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
@@ -190,5 +191,10 @@ export class TerminalSeat {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+  }
+
+  // An empty POST signed as `seat`: the address it signs is the one it goes to.
+  private postSigned(seat: string, route: string): Promise<Response> {
+    return this.post(route, {}, this.key.sign(seat, 'POST', route, '{}'));
   }
 }

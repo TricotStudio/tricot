@@ -7,7 +7,6 @@ import { blockPerson } from '../src/core/canvas';
 import { boardDigest, canvasDigest } from '../src/core/digest';
 import { Store } from '../src/core/store';
 import type { Actor, Block } from '../src/core/types';
-import { jsonFolder, savedBoard } from './savedBoard';
 import { eventsOf } from './tables';
 import { removeScratch } from './platform';
 
@@ -203,30 +202,5 @@ describe('Board context sync', () => {
     assert.deepEqual(board.syncRequest?.by, wassim);
     assert.deepEqual(board.syncRequest?.blockIds, [constraints.id]);
     assert.equal(blockPerson(board.canvas.blocks.find((b) => b.id === constraints.id)!)?.name, 'Wassim');
-  });
-
-  it('loads boards saved with "Include mine", reading an open request as a sync of all', async () => {
-    const constraints = note('Constraints', wassim);
-    const status = note('Status', claude);
-    await store.flush();
-    const saved = savedBoard(dir, boardId);
-    Object.assign(saved, {
-      syncRequest: { by: wassim, at: '2026-10-01T10:00:00.000Z', includeMine: true },
-      synced: { by: claude, at: '2026-09-30T10:00:00.000Z', note: 'Old sync', includeMine: false },
-    });
-    const old = jsonFolder(saved);
-
-    const reloaded = new Store(old);
-    reloaded.load();
-    const board = reloaded.getBoard(boardId);
-    assert.deepEqual(board.syncRequest, { by: wassim, at: '2026-10-01T10:00:00.000Z' });
-    assert.deepEqual(board.synced, { by: claude, at: '2026-09-30T10:00:00.000Z', note: 'Old sync' });
-    assert.match(boardDigest(board), /Sync requested by Wassim \(human\) .+ \(agent-made blocks only;/);
-    reloaded.updateBlock(status.id, { text: 'Synced' }, claude);
-    assert.throws(() => reloaded.updateBlock(constraints.id, { text: 'Rewritten' }, claude), /is Wassim's .+ covers agent-made blocks only/);
-    reloaded.finishSync(boardId, undefined, claude);
-    assert.equal(eventsOf(reloaded, boardId).at(-1)!.summary, "synced the board context (answering Wassim's request)");
-    await reloaded.flush();
-    removeScratch(old);
   });
 });

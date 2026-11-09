@@ -76,7 +76,7 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
       assert.ok(await agentShows(1, 'probes: kitty=no pos=1,1'), 'hidden Codex got answers at startup instead of waiting');
       let same = await matches();
       assert.ok(same.same, JSON.stringify(same.example));
-      assert.match(await strip(), /^ ● 1 Claude · (working|idle) {3}○ 2 Codex · (working|idle) .*Ctrl\+\\ next · Ctrl\+\\ 1–2 pick · Ctrl\+\\ q quit $/);
+      assert.match(await strip(), /^ ● 1 Claude · (working|idle) {3}○ 2 Codex · (working|idle) .*Ctrl\+\\ next $/);
       assert.equal(fake.raw, true, 'the terminal in raw mode');
       assert.ok(fake.observer.screen.altScreen, 'on its alternate screen, so nothing it had is lost');
 
@@ -348,7 +348,7 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
       async ({ host, fake, shows, strip }) => {
         const at = (tab: number) => waitFor(() => host.view().visible === tab);
         const tab = async () => (await fake.observer.settled(), fake.observer.text());
-        assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · \w+ {3}○ 2 Codex · \w+ {3}○ 3 Pi · \w+ .*Ctrl\+\\ next · Ctrl\+\\ 0–3 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+        assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · \w+ {3}○ 2 Codex · \w+ {3}○ 3 Pi · \w+ .*Ctrl\+\\ next $/.test(await strip())), await strip());
         await waitFor(() => host.view().agents.every((a) => a.screen.lines().join('').includes('stand-in')));
         await sleep(300);
 
@@ -368,7 +368,7 @@ describe('several agents in one terminal', { timeout: 60_000, skip: WINDOWS && '
         assert.deepEqual(host.view().agents.map((a) => a.name), ['Claude', 'Pi'], 'at once, before it has even closed');
         assert.deepEqual(host.view().stopped, [{ name: 'Codex', pid: codex }]);
         assert.ok(await shows(' Stopped Codex.'), await tab());
-        assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · \w+ {3}✕ 2 Pi · ended \(3\) .*Ctrl\+\\ next · Ctrl\+\\ 0–2 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+        assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · \w+ {3}✕ 2 Pi · ended \(3\) .*Ctrl\+\\ next $/.test(await strip())), await strip());
         assert.doesNotMatch(await strip(), /Codex/);
         assert.match(await tab(), /^ {3}1 Claude +\S.*\n {3}2 Pi +Ended \(3\)$/m, 'the list, closed up');
         assert.doesNotMatch(await tab(), /^ {3}\d Codex/m);
@@ -588,6 +588,30 @@ describe('the mouse, in every tab', { timeout: 60_000, skip: WINDOWS && 'needs p
       await sleep(200);
       assert.equal(got(host, 0), '', 'Plain got none of it');
       assert.doesNotMatch(host.view().agents[1].screen.lines().join('\n'), /last key: mouse/, 'nor did Claude');
+    } finally {
+      host.quit();
+      await host.done;
+    }
+  });
+
+  it('opens the board on a click on the address in the Tricot tab’s header, and nothing on a click beside it (T36)', async () => {
+    let opened = 0;
+    const links: string[] = [];
+    const fake = fakeTerminal(100, 30);
+    const host = tracked(startHost({ agents: [CLAUDE], terminal: fake.terminal, key: KEY, closeMs: 1_500, tricot: { url: 'http://127.0.0.1:9', open: () => void opened++, openLink: (url) => void links.push(url) } }));
+    try {
+      await host.started;
+      assert.ok(await waitFor(async () => (await mouseOf(fake)) === 'vt200 sgr'));
+      await fake.observer.settled();
+      const row = fake.observer.screen.lines().findIndex((l) => l.includes('http://127.0.0.1:9'));
+      assert.ok(row >= 0, fake.observer.screen.lines().join('\n'));
+      const x = fake.observer.screen.lines()[row].indexOf('http://127.0.0.1:9') + 3;
+      fake.type(`\x1b[<0;${x - 3};${row + 1}M\x1b[<0;${x - 3};${row + 1}m`);
+      await sleep(100);
+      assert.equal(opened, 0, 'beside it, nothing');
+      fake.type(`\x1b[<0;${x};${row + 1}M\x1b[<0;${x};${row + 1}m`);
+      assert.ok(await waitFor(() => opened === 1), 'on it, the board');
+      assert.deepEqual(links, []);
     } finally {
       host.quit();
       await host.done;

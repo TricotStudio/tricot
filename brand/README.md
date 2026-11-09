@@ -29,10 +29,35 @@ The mark holds up down to 16px, as a favicon. Don't use it any smaller.
 
 | Colour | Hex | Use |
 | --- | --- | --- |
-| Ink | `#1a1a18` | The mark on light backgrounds (the light theme's text) |
-| Paper | `#f6f6f4` | The light background (the light theme's page) |
+| Ink | `#1d1828` | The mark on light backgrounds (the light theme's text). A violet-black. |
+| Paper | `#edeae4` | The light background (the light theme's page). Undyed wool. |
 | Light ink | `#ececea` | The mark on dark backgrounds (the dark theme's text) |
-| Night | `#121211` | The dark background (the dark theme's page) |
+| Night | `#121211` | The dark background (the dark theme's page). A neutral near-black. |
+
+## Palette
+
+The mark's colours belong to a wider palette, first made for the website (its version 3) and now Tricot's own. The warm paper and the violet-black ink are the light theme's. Dark mode is a neutral near-black, with no warm or violet tint. The app's themes use the palette's paper, panel, ink, muted and rule colours, with a few steps between them ([DESIGN.md](../DESIGN.md)).
+
+Beside the paper and the ink, each ground has a panel, a muted ink for secondary text and a rule for lines:
+
+| Colour | Light | Dark |
+| --- | --- | --- |
+| Panel | `#e4e0d8` | `#1a1a19` |
+| Muted | `#5d5866` | `#a6a6a0` |
+| Rule | `#ccc6bc` | `#42423e` |
+
+Then six yarns: soft fills for the website, pictures and other brand work. Each comes from one of Tricot's status colours, chalked down. A yarn fill is too light for text on the paper, so text in a yarn's colour takes its deep version on light grounds and the yarn itself on dark ones. Text on a yarn fill takes the ink, `#1d1828`, in both.
+
+| Yarn | Fill | Deep | For |
+| --- | --- | --- | --- |
+| Violet | `#b8a2f4` | `#5a37c8` | The brand, and provisional decisions |
+| Coral | `#f2968a` | `#a3392c` | People, and the danger red |
+| Marigold | `#ecbf63` | `#7a580a` | Open decisions |
+| Sky | `#9fb8ef` | `#2c55ad` | Exploring |
+| Sage | `#a7cfad` | `#2b693d` | Decided |
+| Fog | `#b4bdc6` | `#4a5764` | Deferred, and agents at rest |
+
+In the app, the statuses take their tints and text from the yarns, in both themes: a status's tint is its yarn mixed into the sheet (30% in light, 9% in dark), and its text is the yarn's deep colour in light and the yarn itself in dark. Their markers, the small squares, dots and icons, keep the app's stronger status colours, since a yarn fill is too faint for them. The danger red comes from coral the same way: coral's deep in light, the coral yarn in dark, and coral mixed into the sheet for its tint. Otherwise the yarns stay out of the app's controls: there, colour means a status.
 
 ## Please don't
 

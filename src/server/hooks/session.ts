@@ -17,10 +17,9 @@
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { claudeFolder, stepsHooks } from './claude';
-import { codexFolder } from './codex';
+import { stepsHooks } from './claude';
 import { APPROVE_SCRIPT, approvalHooks, approveCommand, isApprovalHook, isStepsHook, mergeHooks, scriptCommand, STEPS_SCRIPT } from './commandHooks';
-import { eventsWithOurs, readHookSettings, shellPath, type HookEvents, type HookTarget } from './installer';
+import { eventsWithOurs, readHookSettings, shellPath, type HookEvents } from './installer';
 
 export interface SessionHooksOptions {
   url: string; // Tricot's address, which the hooks talk to
@@ -46,14 +45,16 @@ export interface InstalledHooks {
 }
 
 // Which of Tricot's hooks the person's own settings for every project run
-// already (Claude Code's ~/.claude/settings.json, Codex's ~/.codex/hooks.json),
-// read as the installers read them. Settings that can't be read run none of
-// Tricot's, as far as this can tell.
-export function installedHooks(agent: 'claude' | 'codex', target: HookTarget): InstalledHooks {
-  const folder = agent === 'claude' ? claudeFolder(target, 'user') : codexFolder(target);
+// already, read as the installers read them: the agent's server half names
+// its file (Claude Code's ~/.claude/settings.json, claudeUserSettings; Codex's
+// ~/.codex/hooks.json, codexHooksFile), and the scripts are in the hooks/
+// folder beside it. Settings that can't be read run none of Tricot's, as far
+// as this can tell.
+export function installedHooks(settingsFile: string): InstalledHooks {
+  const folder = path.dirname(settingsFile);
   let settings;
   try {
-    settings = readHookSettings(path.join(folder, agent === 'claude' ? 'settings.json' : 'hooks.json'));
+    settings = readHookSettings(settingsFile);
   } catch {
     return { steps: false, approvals: false };
   }

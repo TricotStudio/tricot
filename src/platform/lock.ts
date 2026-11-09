@@ -16,7 +16,8 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { authHeaders } from '../server/access';
+import { routes, routeUrl } from '../core/routes';
+import { authHeaders } from './token';
 import { keepPrivate } from './private';
 
 export interface ServerLock {
@@ -94,7 +95,7 @@ export function pidAlive(pid: number): boolean {
 async function answers(lock: ServerLock, dataDir: string): Promise<boolean> {
   if (!lock.url) return true;
   try {
-    const res = await fetch(`${lock.url}/api/info`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${lock.url}${routeUrl(routes.info)}`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(2000) });
     const info = (await res.json()) as { app?: string; pid?: number };
     return info.app === 'tricot' && info.pid === lock.pid;
   } catch {

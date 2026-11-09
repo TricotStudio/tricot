@@ -4,7 +4,12 @@
 import { readFlowchart } from './flowchart';
 import { findNode } from './quote';
 import type { BlockKind } from '../kind';
+import { blockIs } from '../../canvas';
+import { clip } from '../../format';
 import { server } from './server';
+
+// Said when a block isn't a diagram.
+const notHere = (block: Parameters<typeof blockIs>[0]) => `Only diagrams have nodes and arrows; ${blockIs(block)}.`;
 
 export interface DiagramTypes {
   type: 'diagram';
@@ -22,6 +27,30 @@ export const diagram: BlockKind<DiagramTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    parts: {
+      // A flowchart's node, by its id in the Mermaid source.
+      node: {
+        name: (pin) => `node "${clip(pin.quote, 80)}"`,
+        lost: 'node removed',
+        drawn: true,
+        askedTo: "change the diagram's source",
+        where: (pin) => ` (id ${pin.anchor.nodeId})`,
+        missing: notHere,
+      },
+      // A flowchart's arrow, by the nodes it joins.
+      arrow: {
+        name: (pin) => `arrow "${pin.quote}"`,
+        lost: 'arrow removed',
+        drawn: true,
+        askedTo: "change the diagram's source",
+        where(pin) {
+          const { from, to, label, n } = pin.anchor;
+          const which = n ? `, occurrence ${n + 1}` : ''; // as the pin tool counts them
+          return ` (${from} --> ${to}${label ? `, text "${label}"` : ''}${which})`;
+        },
+        missing: notHere,
+      },
+    },
     place(block, pin) {
       const { anchor } = pin;
       if (anchor.kind === 'node') {

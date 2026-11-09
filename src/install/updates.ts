@@ -27,7 +27,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { BACKUP_NOTE, type Checked, type CheckedState, type Release, type UpdateFailure, type UpdateHow, type UpdateState } from '../core/update';
 import { isNewer, isVersion } from '../core/version';
-import { isLoopbackHost } from '../server/access';
+import { isLoopbackHost } from '../platform/token';
 import {
   BREW_FORMULA,
   detectLaunch,

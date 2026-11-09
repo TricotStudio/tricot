@@ -52,6 +52,9 @@ export const claude: AgentKind = {
   // A tag (`@Claude:opus:high`) goes to a subagent: its Agent tool takes a
   // model by these names and an effort of the levels above (Claude Code 2.1).
   perMessage: { via: 'subagent', models: ['opus', 'sonnet', 'haiku', 'fable'] },
+  skills: 'skills',
+  // Its permission prompts come to the board through its PermissionRequest hook (server/hooks/claude.ts).
+  approvals: true,
 
   ...server,
 };

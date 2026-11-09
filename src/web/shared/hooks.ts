@@ -107,9 +107,9 @@ export function useBeside(open: boolean, root: RefObject<HTMLElement | null>): v
 }
 
 // Whether Escape closes `root`, a panel beside the board: not once something
-// took it (a field, a menu: defaultPrevented), nor while something is over
-// the board, and of the panels beside it, only the one opened last, which
-// takes it, so the next Escape closes the next.
+// took it (a field, a menu, an undo toast: defaultPrevented), nor while
+// something is over the board, and of the panels beside it, only the one
+// opened last, which takes it, so the next Escape closes the next.
 export function escapeCloses(root: RefObject<HTMLElement | null>, event: KeyboardEvent): boolean {
   if (event.defaultPrevented || escapedBeside.has(event) || overBoard(event) || besides.at(-1) !== root) return false;
   escapedBeside.add(event);

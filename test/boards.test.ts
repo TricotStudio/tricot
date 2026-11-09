@@ -5,8 +5,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Store } from '../src/core/store';
 import type { Actor } from '../src/core/types';
-import { jsonFolder, savedBoard } from './savedBoard';
-import { eventsOf, legacyBoard } from './tables';
+import { savedBoard } from './savedBoard';
+import { eventsOf } from './tables';
 import { removeScratch } from './platform';
 
 const agent: Actor = { kind: 'agent', name: 'claude' };
@@ -112,27 +112,6 @@ describe('Renaming and archiving boards', () => {
       events.map((e) => e.type),
       ['board_updated', 'decision_posted'],
     );
-  });
-
-  it('imports boards from before renames, and leaves out a copy left under an old id', async () => {
-    const legacy = legacyBoard(store, populated().board.id); // as the JSON files had it
-    // As if the server stopped after writing the renamed board but before removing its old file.
-    const old = jsonFolder(
-      { ...legacy, id: 'legacy-ab12', aliases: undefined, decisions: [], tasks: [] },
-      { ...legacy, id: 'old-cd34', title: 'Old', decisions: [], tasks: [] },
-      { ...legacy, id: 'new-ef56', aliases: ['old-cd34'], title: 'New', decisions: [], tasks: [] },
-    );
-
-    const reloaded = new Store(old);
-    reloaded.load();
-    assert.deepEqual(reloaded.listBoards().map((b) => b.id).sort(), ['legacy-ab12', 'new-ef56']);
-    assert.equal(reloaded.getBoard('old-cd34').title, 'New');
-    reloaded.postDecision('new-ef56', { question: 'Saved?' }, human);
-    await reloaded.flush();
-    assert.deepEqual(readdirSync(old).filter((f) => f.endsWith('.json')), [], 'the files are moved out');
-    const [backup] = readdirSync(old).filter((f) => f.startsWith('backup-json-'));
-    assert.deepEqual(readdirSync(path.join(old, backup)).sort(), ['legacy-ab12.json', 'new-ef56.json', 'old-cd34.json'], 'the stale copy is kept there too');
-    removeScratch(old);
   });
 
   it('archives a board read-only for everyone until a person unarchives it', () => {

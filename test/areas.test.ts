@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -138,6 +138,7 @@ describe('Areas over MCP and REST', () => {
   let base: string;
   let client: Client;
   let store: Store;
+  const old = { board: '', decision: '' };
 
   type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
   const call = async (name: string, args: Record<string, unknown>) => (await client.callTool({ name, arguments: args })) as ToolResult;
@@ -153,19 +154,12 @@ describe('Areas over MCP and REST', () => {
 
   before(async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-areas-e2e-'));
-    // A board saved before areas existed, as it would be on disk.
-    writeFileSync(
-      path.join(dir, 'old-board.json'),
-      JSON.stringify({
-        id: 'old-board', title: 'Old board', createdBy: human, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
-        seq: 0, nextDecisionNumber: 2, nextTaskNumber: 1, tasks: [], events: [], canvas: { blocks: [], groups: [], links: [], pins: [] },
-        decisions: [{
-          id: 'olddec', number: 1, boardId: 'old-board', question: 'Old question?', options: [], status: 'open', blocking: false, dependsOn: [],
-          history: [], asks: [], criteria: [], marks: [], comments: [], findings: [], canvas: { blocks: [], groups: [], links: [], pins: [] },
-          createdBy: agent, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
-        }],
-      }),
-    );
+    // A board whose decision has no area, as one saved before areas existed, read back from disk.
+    const earlier = new Store(dir);
+    earlier.load();
+    old.board = earlier.createBoard({ title: 'Old board' }, human).id;
+    old.decision = earlier.postDecision(old.board, { question: 'Old question?' }, agent).id;
+    await earlier.flush();
     store = new Store(dir);
     store.load();
     const app = createApp(store, { host: '127.0.0.1', mcpUrl: 'unused' });
@@ -199,8 +193,8 @@ describe('Areas over MCP and REST', () => {
   });
 
   it('reads an old board without areas as it was', async () => {
-    const text = await callText('get_board', { board_id: 'old-board' });
-    assert.match(text, /^- #1 \[id: olddec\] Old question\?$/m);
+    const text = await callText('get_board', { board_id: old.board });
+    assert.match(text, new RegExp(`^- #1 \\[id: ${old.decision}\\] Old question\\?$`, 'm'));
     assert.match(text, /Areas: none yet/);
   });
 

@@ -2,8 +2,15 @@
 // a folder on each side (core/blocks/quote, with its server.ts, and
 // web/canvas/blocks/quote) and an import and an entry in each registry, and
 // nothing else. It then checks the
-// result end to end (types, REST, MCP, agent text, search, versions, the web
-// bundle) and takes the kind out again.
+// result end to end (types, REST, MCP, agent text, search, versions, pins on
+// the whole block and on a part of it, the web bundle) and takes the kind out
+// again.
+//
+// Its part is words in the quote: it pins them with an anchor the board
+// already stores ('text', as a note's words are) and says in its own pin hooks
+// how they read, are found again and are lost. A new kind of anchor is a new
+// value in what boards store (PinAnchor in core/types.ts), which needs a
+// migration (AGENTS.md, Data), so it is more than a kind's folders can add.
 //
 //   npx tsx scripts/check-new-kind.ts            add it, check it, remove it
 //   npx tsx scripts/check-new-kind.ts install    add it and leave it, to look at
@@ -36,6 +43,7 @@ const CORE = `// A throwaway kind, for scripts/check-new-kind.ts: a quotation an
 
 import type { BlockKind } from '../kind';
 import { clip } from '../../format';
+import { findWords } from '../../pins';
 import { server } from './server';
 
 export interface QuoteTypes {
@@ -52,6 +60,23 @@ export const quote: BlockKind<QuoteTypes> = {
   defaultSize: { w: 340, h: 180 },
   untitled: (block) => \`quote "\${clip(block.quote, 40)}"\`,
   fromSnapshot: (version) => ({ quote: version.quote, speaker: version.speaker }),
+  pins: {
+    anchor: server.anchor,
+    // Words in the quote, found again by the text around them.
+    place(block, pin) {
+      if (pin.anchor.kind !== 'text') return undefined;
+      const at = findWords(block.quote, pin.quote, pin.anchor);
+      return at && { kind: 'text', ...at };
+    },
+    parts: {
+      text: {
+        name: (pin) => \`words “\${clip(pin.quote, 40)}” of the quote\`,
+        lost: 'quote reworded',
+        drawn: true,
+        where: () => ' (in its words)',
+      },
+    },
+  },
 
   ...server,
 };
@@ -62,7 +87,7 @@ const CORE_SERVER = `// What only the server uses of quote blocks.
 import { z } from 'zod';
 import type { QuoteTypes } from './index';
 import type { ServerHalf } from '../kind';
-import { missing } from '../shared';
+import { missing, wordsPin } from '../shared';
 import { LIMITS, limited, optional } from '../../store/validate';
 
 const words = (value: string) => limited(value, LIMITS.text, 'A quote');
@@ -92,6 +117,8 @@ export const server: ServerHalf<QuoteTypes> = {
   restorePatch: (version) => ({ quote: version.quote, speaker: version.speaker ?? '' }),
   digest: (block) => \`“\${block.quote}”\${block.speaker ? \` — \${block.speaker}\` : ''}\`,
   searchText: (block) => [block.quote, block.speaker],
+  // Words people select in it, or an agent names (the pin tool's text).
+  anchor: (block, part) => (part.kind === 'text' ? wordsPin(block, part, () => ({ text: block.quote })) : undefined),
 
   agent: {
     addShape: {
@@ -259,6 +286,24 @@ async function endToEnd(): Promise<void> {
   assert.match((await call('get_updates', { board_id: board, since: 0 })).text, /Sam \(human\) updated quote "Changed by a person".*reworded the quote/);
   ok('REST create, change and its refusals; what people did shows in agents\' updates');
 
+  // a part of it is pinned as its pin hooks say: words in the quote, named, found again and lost in its own words
+  const pinned = (await call('pin', { block_id: id, task_id: task, text: 'kind' })).text;
+  assert.match(pinned, /^Pinned words “kind” of the quote in quote "Be kind" to T1 \[pin id: \w+\]/);
+  const pinId = pinned.match(/\[pin id: (\w+)\]/)![1];
+  assert.ok((await call('pin', { block_id: id, task_id: task, text: 'kind' })).text.includes(`[pin id: ${pinId}]`), 'the same words again are the same part');
+  assert.match((await call('get_canvas', { board_id: board })).text, /\n {2}pinned words “kind” of the quote \(in its words\) → T1 \(to do\)/);
+  // a person rewords it, which loses the words: agents are told, and read the pin as lost
+  assert.equal((await rest('POST', `/canvas/blocks/${id}`, { actor: 'Sam', quote: 'Be gentle', rev: 3 })).status, 200);
+  assert.match((await call('get_updates', { board_id: board, since: 0 })).text, /Sam \(human\) updated quote "Be gentle" in the board context: reworded the quote; words “kind” of the quote, pinned to T1, is no longer there/);
+  assert.match((await call('get_canvas', { board_id: board })).text, /\n {2}pinned words “kind” of the quote \(in its words\) \(quote reworded\) → T1 \(to do\)/);
+  // people comment on its words over REST, and are refused a part it doesn't have, in that part's words
+  const commented = await rest('POST', `/canvas/blocks/${id}/pins/comment`, { actor: 'Sam', part: { kind: 'text', quote: 'gentle', prefix: 'Be ', suffix: '' }, body: 'Softer still?' });
+  assert.equal(commented.status, 201);
+  assert.match((await call('get_updates', { board_id: board, since: 0 })).text, /Sam \(human\) commented on words “gentle” of the quote in quote "Be gentle" \(board context\)/);
+  const cells = await rest('POST', `/canvas/blocks/${id}/pins/comment`, { actor: 'Sam', part: { kind: 'cells', rows: [0, 0] }, body: 'No cells here' });
+  assert.deepEqual([cells.status, cells.json.error], [400, 'Only tables have cells; quote "Be gentle" is a quote.']);
+  ok('pins words in it as its pin hooks say: named, the same part again, found, lost; people comment on them, and are refused parts it lacks');
+
   await client.close();
   server.closeAllConnections();
   server.close();
@@ -281,9 +326,10 @@ async function check(): Promise<void> {
     run('npx', ['vite', 'build', '--outDir', out, '--emptyOutDir']);
     const bundles = run('grep', ['-l', 'Say something worth quoting', '-r', path.join(out, 'assets')]);
     assert.ok(bundles.trim(), 'the web bundle carries the kind');
+    assert.ok(run('grep', ['-l', 'quote reworded', '-r', path.join(out, 'assets')]).trim(), 'the web bundle carries its part\'s pin hooks');
     assert.throws(() => run('grep', ['-rl', 'Quote blocks: who said them', path.join(out, 'assets')]), 'the web bundle leaves its server half out');
     rmSync(out, { recursive: true, force: true });
-    console.log('  ok  the web bundle carries its Add menu entry and its drawing, and leaves its server half out');
+    console.log('  ok  the web bundle carries its Add menu entry, its drawing and its part\'s pin hooks, and leaves its server half out');
   } finally {
     uninstall();
     console.log('Took the sample kind out again.');

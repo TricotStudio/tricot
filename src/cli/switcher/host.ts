@@ -54,7 +54,7 @@ import { NO_MOUSE } from './mouse';
 import { spawnPty, type Pty, type PtyHelper } from './pty';
 import { AgentScreen, type InputModes, type TerminalColours } from './screen';
 import { agentWords, isLight, renderStrip, rgbOf, type AgentNow, type Rgb, type StripEntry, type StripLayout } from './strip';
-import type { TabFrame } from './tabView';
+import { linkAt, type TabFrame } from './tabView';
 import type { ThreadsAccess } from './threadsTab';
 import { TricotTab, waitingFrom, type AddChoice } from './tricotTab';
 
@@ -89,7 +89,8 @@ export interface TricotSetup {
   threads?: ThreadsAccess; // reading the board's threads, and writing in them, as the person
   wordmark?: 'knit' | 'whole'; // at the tab's top: knitted as it first shows, or whole at once (TRICOT_NO_ANIMATION=1)
   trueColour?: boolean; // the terminal draws 24-bit colour (COLORTERM): the chat's tints lean from its background
-  open(): void; // the board, in the browser
+  open(page?: string): void; // the board, in the browser, or a page on it (an address after #, core/pages.ts)
+  openLink?(url: string): void; // a web address clicked in the Tricot tab, in the browser
   // The agents Tricot can start, but those running (by id); and one made
   // ready to start, as the others were, or why it can't be: soon, as it
   // reads what the agent starts on from the board first.
@@ -176,6 +177,7 @@ export function startHost(options: HostOptions): Host {
   let flash: { text: string; until: number; answer?: boolean } | undefined;
   let painted: string[] = [];
   let tabShown: string[] = [];
+  let tabLinks: TabFrame['links']; // where the links are in the Tricot tab as shown
   let tabDrawn: TabFrame | undefined; // the Tricot tab as last drawn, painted again for a tick that changes nothing in it
   let stripShown = '';
   let cursorShown = '';
@@ -224,7 +226,8 @@ export function startHost(options: HostOptions): Host {
         live: () => options.live?.now(),
         now,
         changed: () => schedule(),
-        open: () => setup.open(),
+        open: (page) => setup.open(page),
+        openLink: (url) => setup.openLink?.(url),
         quit: () => quit(),
         choices: () => setup.choices?.([...agents.filter((a) => a.state !== 'ended' && a.id).map((a) => a.id!), ...adding]) ?? [],
         add: (id) => addAgent(id),
@@ -257,7 +260,8 @@ export function startHost(options: HostOptions): Host {
     if (quitting) return 'Closing the agents…';
     if (agents.length === 1 && !setup) return router.armed ? 'then q quit · [ scroll' : `${k} q quit · ${k} [ scroll`;
     if (router.armed) return `then ${range} pick · q quit · [ scroll · ${k} next`;
-    return `${k} next · ${k} ${range} pick · ${k} q quit`;
+    // At rest, only the key that matters (#14): pressing it goes on and says the rest, the tabs are clickable, and the chat has /.
+    return `${k} next`;
   }
 
   function strip(): StripLayout {
@@ -288,6 +292,7 @@ export function startHost(options: HostOptions): Host {
     const drawn = agent ? undefined : (tabDrawn ??= tab!.render(size.cols, appRows(), light, tintFrom));
     if (drawn) {
       tabShown = drawn.plain;
+      tabLinks = drawn.links;
       // The wordmark knitting: its next stitch, through this same scheduling.
       const next = tab!.nextFrame();
       if (next !== undefined) schedule(next);
@@ -436,6 +441,11 @@ export function startHost(options: HostOptions): Host {
       case 'wheel':
         wheel(showing, action.up);
         return;
+      case 'point': {
+        const url = !showing && !scroll ? linkAt({ rows: [], plain: [], links: tabLinks }, action.column - 1, action.row - 1) : undefined;
+        if (url) tab?.link(url);
+        return;
+      }
       case 'suspend':
         say(`Ctrl+Z does nothing here. ${key.label} then q quits.`);
         return;

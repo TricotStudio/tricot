@@ -3,8 +3,9 @@
 // which draws them.
 
 import { kindOf } from './blocks/registry';
+import type { PartLike } from './blocks/kind';
 import type { DiffSide } from './blocks/diff/diff';
-import { clip } from './format';
+import { partHooks } from './parts';
 import type { Block, Board, Canvas, Comment, Decision, Pin, PinAnchor, Task, TaskStatus } from './types';
 
 type BoxAnchor = Extract<PinAnchor, { kind: 'box' }>;
@@ -196,13 +197,8 @@ export function pinAsk(comments: Comment[]): Comment | undefined {
 }
 
 // ---- describing pins ----------------------------------------------------------
-
-// A pin, or a part about to be pinned: its kind, a diff line's place, a
-// website element's page, and its quote.
-type PartLike = { anchor: { kind: PinAnchor['kind']; file?: string; line?: number; last?: number; side?: DiffSide; page?: string }; quote: string };
-
-// A line's number, or a range's: "12", "12–18".
-const linesAt = (anchor: { line?: number; last?: number }) => (anchor.last && anchor.last > anchor.line! ? `${anchor.line}–${anchor.last}` : `${anchor.line}`);
+// A part's kind says how it reads (its pins.parts, or its connector's pins:
+// core/parts.ts); what is said here is the same for every kind of part.
 
 // A card people pin whole, like a link, or a block.
 function wholeWord(block?: Block): string {
@@ -213,71 +209,34 @@ function wholeWord(block?: Block): string {
 // Search row, box 1, node "Retry", arrow "Client → Retry", the whole card.
 // Takes a pin, or a part about to be pinned.
 export function pinPart(pin: PartLike, block?: Block): string {
-  switch (pin.anchor.kind) {
-    case 'line': {
-      const lines = pin.anchor.last && pin.anchor.last > pin.anchor.line! ? 'lines' : 'line';
-      return `${pin.anchor.side === 'old' ? 'old ' : ''}${lines} ${linesAt(pin.anchor)}${pin.anchor.file ? ` of ${pin.anchor.file}` : ''}`;
-    }
-    case 'text':
-    case 'doc':
-      return `"${clip(pin.quote, 80)}"`;
-    case 'node':
-      return `node "${clip(pin.quote, 80)}"`;
-    case 'arrow':
-      return `arrow "${pin.quote}"`;
-    case 'cells':
-    case 'box':
-    case 'point':
-    case 'spot':
-      return pin.quote;
-    case 'site':
-      return `${pin.quote} on ${pin.anchor.page === '/' ? 'the home page' : `page ${pin.anchor.page}`}`;
-    default:
-      return `the whole ${wholeWord(block)}`;
-  }
+  if (pin.anchor.kind === 'block') return `the whole ${wholeWord(block)}`;
+  return partHooks(pin.anchor.kind, block)?.name?.(pin) ?? pin.quote;
 }
 
 // A part as a prompt or a comment quotes it: the words in quotes, or the part
 // named in its block: Retry budgets · Search row, Signup screen · box 1,
 // Design file · the whole card.
 export function partQuote(pin: PartLike, block?: Block): string {
-  const { kind } = pin.anchor;
-  if (kind === 'text' || kind === 'doc') return `“${pin.quote}”`;
-  if (kind === 'line') {
-    const { file, side } = pin.anchor;
-    const lines = linesAt(pin.anchor);
-    const where = file ? `${file}:${lines}` : `${lines.includes('–') ? 'lines' : 'line'} ${lines}`; // a code block with no path yet
-    return `${where}${side === 'old' ? ' (old)' : ''} · ${pin.quote ? `“${pin.quote}”` : 'a blank line'}`;
-  }
+  if (pin.anchor.kind === 'block') return `${pin.quote} · the whole ${wholeWord(block)}`;
+  const own = partHooks(pin.anchor.kind, block)?.quote;
+  if (own) return own(pin);
   const name = block ? block.title || kindOf(block.type).label : '';
-  if (kind === 'block') return `${pin.quote} · the whole ${wholeWord(block)}`;
   const part = pinPart(pin, block);
   return name ? `${name} · ${part}` : part;
 }
 
-// What a pin no longer finding its part means, by kind.
-export function pinLost(pin: Pin): string {
-  switch (pin.anchor.kind) {
-    case 'cells':
-      return 'cells changed';
-    case 'node':
-      return 'node removed';
-    case 'arrow':
-      return 'arrow removed';
-    case 'box':
-      return 'image changed';
-    case 'spot':
-      return 'object removed';
-    case 'line':
-    case 'point':
-      return 'no longer there';
-    case 'doc':
-      return 'paragraph removed';
-    case 'site':
-      return 'no longer on the page';
-    default:
-      return 'text changed';
-  }
+// What a pin no longer finding its part means: "cells changed".
+export function pinLost(pin: Pin, block?: Block): string {
+  return partHooks(pin.anchor.kind, block)?.lost ?? 'text changed';
+}
+
+// Whether two anchors pin the same part: as its kind says (a box or a spot
+// whatever number it was given, a website's element whatever it reads), or
+// else when they are equal.
+export function samePart(a: PinAnchor, b: PinAnchor, block?: Block): boolean {
+  if (a.kind !== b.kind) return false;
+  const same = partHooks(a.kind, block)?.same;
+  return same ? same(a, b) : JSON.stringify(a) === JSON.stringify(b);
 }
 
 export const TASK_STATUS_WORDS: Record<TaskStatus, string> = {

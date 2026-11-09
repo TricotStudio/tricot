@@ -59,6 +59,11 @@ export const hasStepsHooks = (settings: HookSettings) => eventsWithOurs(settings
 export const claudeFolder = (target: HookTarget, scope: 'user' | 'project') =>
   scope === 'project' ? path.join(projectFolder(target), '.claude') : target.env?.CLAUDE_CONFIG_DIR || path.join(target.home, '.claude');
 
+const SETTINGS = 'settings.json';
+
+// Its settings for every project, where its hooks for them are.
+export const claudeUserSettings = (target: HookTarget) => path.join(claudeFolder(target, 'user'), SETTINGS);
+
 export const claude = commandHookInstaller({
   id: 'claude',
   name: 'Claude Code',
@@ -66,7 +71,7 @@ export const claude = commandHookInstaller({
   command: 'claude',
   scopes: ['user', 'project'],
   folder: claudeFolder,
-  settings: 'settings.json',
+  settings: SETTINGS,
   run: (script, setup, scope) => scriptCommand(scope === 'project' ? PROJECT_SCRIPT : shellPath(script), setup.url, setup.name, setup.narration),
   hooks: (command, setup) => stepsHooks(command, setup.narration).hooks,
   approvals: (script, setup) => approveCommand(shellPath(script), setup.url, setup.name),

@@ -1,12 +1,13 @@
 // Tricot steps: one agent event as one short line ("Reading src/web/Home.tsx",
 // "Running npm test"), for the Tricot card the agent is working on. Shared by
-// the hook script Claude Code, Codex, Gemini CLI, Goose, Hermes and Grok Build run (tricot-steps.mjs),
+// the hook script Claude Code, Codex, Gemini CLI, Goose, Hermes, Grok Build and Copilot CLI run (tricot-steps.mjs),
 // the extension Pi and OMP load (tricot-steps-extension.ts) and the plugin
 // OpenCode loads (tricot-steps-opencode.js); the extension and the plugin
 // turn their own events into this shape first. The event is a hook event as
 // Claude Code sends it (https://code.claude.com/docs/en/hooks); Codex sends
-// the same shape (https://learn.chatgpt.com/docs/hooks), and Gemini CLI's
-// and Grok Build's tool names are turned into it here (fromGemini, fromGrok).
+// the same shape (https://learn.chatgpt.com/docs/hooks), and Gemini CLI's,
+// Grok Build's and Copilot CLI's tool names are turned into it here (fromGemini,
+// fromGrok, fromCopilot).
 //
 // A step describes what the agent does, never what it read or wrote: no file
 // contents, no command output, no prompt text, no query strings. A command is
@@ -271,15 +272,16 @@ function geminiMcp(name, context) {
   return older ? `mcp__${older[1]}__${older[2]}` : undefined;
 }
 
-// A start and its end share no id from Gemini CLI, so one is made from what
-// both carry: the session, the tool and what it was given (FNV-1a).
-function callId(session, tool, input) {
+// A start and its end share no id from Gemini CLI (nor from Copilot CLI), so
+// one is made from what both carry: the session, the tool and what it was
+// given (FNV-1a), after the agent's name.
+function callId(session, tool, input, agent = 'gemini') {
   let hash = 0x811c9dc5;
   for (const ch of `${session}\u0000${tool}\u0000${JSON.stringify(input)}`) {
     hash ^= ch.codePointAt(0);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return `gemini-${hash.toString(16)}`;
+  return `${agent}-${hash.toString(16)}`;
 }
 
 export const isGeminiEvent = (event) =>
@@ -528,6 +530,118 @@ export function fromGrok(event) {
       return { ...common, notification_type: event.notificationType };
     default:
       return common;
+  }
+}
+
+// ---- GitHub Copilot CLI ----------------------------------------------------------
+// Copilot CLI's hooks (docs.github.com/copilot/reference/hooks-reference), set
+// up with Claude Code's event names (PreToolUse, Stop), send Claude Code's
+// snake_case fields (hook_event_name, session_id, cwd, tool_name, tool_input)
+// and, on PreToolUse, Claude Code's tool names (Bash, Read, Edit, Agent), but
+// the arguments of its own tools (view's path) and no id for a call. It can't
+// be told from Claude Code by its fields, so its hook's command says --copilot
+// and tricot-steps.mjs hands its events here. Its Notification event has
+// sessionId where the others have session_id.
+//
+// UNVERIFIED: no real tool event from a running Copilot CLI was seen (one
+// needs a prompt, and none was sent); the events in test/stepsCopilot.test.ts
+// follow its hooks reference. Whether PostToolUse also gives Claude Code's tool names
+// isn't said, so both are read. The argument keys of its tools (path, command,
+// mode, agent_type, url, query) are not in its docs. How it names an MCP tool
+// in a hook is not said either: its docs give <server>-<tool> as the name the
+// model sees, so tricot-<tool> is read as Tricot's, as is mcp__tricot__<tool>.
+
+const copilotFile = (a) => a.file_path ?? a.path;
+// A command it was told not to wait for: its shell's async mode, or detached.
+const copilotBackground = (a) => a.mode === 'async' || a.detach === true || a.run_in_background === true;
+const copilotShell = (a) => ['Bash', { command: a.command, run_in_background: copilotBackground(a) }];
+const copilotRead = (a) => ['Read', { file_path: copilotFile(a) }];
+const copilotWrite = (a) => ['Write', { file_path: copilotFile(a) }];
+const copilotEdit = (a) => ['Edit', { file_path: copilotFile(a) }];
+const copilotGrep = (a) => ['Grep', { pattern: a.pattern, path: a.path }];
+const copilotGlob = (a) => ['Glob', { pattern: a.pattern }];
+const copilotFetch = (a) => ['WebFetch', { url: a.url }];
+const copilotSearch = (a) => ['WebSearch', { query: a.query }];
+const copilotAgent = (a) => [
+  'Agent',
+  { subagent_type: a.agent_type ?? a.subagent_type, description: a.description, run_in_background: a.mode === 'background' || a.run_in_background === true },
+];
+
+// Its own tools (its hooks reference's tool names), and the Claude Code names
+// it gives some of them, as Claude Code's.
+const COPILOT_TOOLS = {
+  bash: copilotShell,
+  powershell: copilotShell,
+  Bash: copilotShell,
+  view: copilotRead,
+  Read: copilotRead,
+  create: copilotWrite,
+  Write: copilotWrite,
+  edit: copilotEdit,
+  str_replace_editor: copilotEdit,
+  Edit: copilotEdit,
+  apply_patch: (a) => ['apply_patch', { patch: a.patch ?? a.input ?? a.command }],
+  grep: copilotGrep,
+  rg: copilotGrep,
+  Grep: copilotGrep,
+  glob: copilotGlob,
+  Glob: copilotGlob,
+  web_fetch: copilotFetch,
+  WebFetch: copilotFetch,
+  web_search: copilotSearch,
+  WebSearch: copilotSearch,
+  ask_user: () => ['AskUserQuestion', {}],
+  AskUserQuestion: () => ['AskUserQuestion', {}],
+  update_todo: () => ['TodoWrite', {}],
+  TodoWrite: () => ['TodoWrite', {}],
+  task: copilotAgent,
+  Agent: copilotAgent,
+  Task: copilotAgent,
+};
+
+// The tools that can run a while, for the hook's PostToolUse matcher: its
+// shells and its subagents, by its own names and by Claude Code's.
+export const COPILOT_LONG_TOOLS = ['bash', 'powershell', 'task', 'Bash', 'Agent', 'Task'];
+
+// Tricot's tools, as Claude Code names them: Copilot's <server>-<tool>, or Claude Code's own.
+function copilotMcp(name) {
+  if (name.startsWith('mcp__')) return name;
+  const tricot = /^tricot-(.+)$/.exec(name);
+  return tricot ? `mcp__${TRICOT_SERVER}__${tricot[1]}` : undefined;
+}
+
+// A Copilot CLI hook event as the one Claude Code would send, or undefined for
+// one with no step (SessionStart, UserPromptSubmit, …).
+export function fromCopilot(event) {
+  if (!event || typeof event !== 'object') return undefined;
+  const session = typeof event.session_id === 'string' ? event.session_id : typeof event.sessionId === 'string' ? event.sessionId : undefined;
+  const common = {
+    hook_event_name: event.hook_event_name,
+    ...(session !== undefined && { session_id: session }),
+    ...(typeof event.cwd === 'string' && { cwd: event.cwd }),
+    ...(typeof event.agent_id === 'string' && { agent_id: event.agent_id }),
+    ...(typeof event.agent_type === 'string' && { agent_type: event.agent_type }),
+  };
+  switch (event.hook_event_name) {
+    case 'PreToolUse':
+    case 'PostToolUse':
+    case 'PostToolUseFailure': {
+      const name = typeof event.tool_name === 'string' ? event.tool_name : '';
+      const raw = asObject(event.tool_input);
+      const own = Object.hasOwn(COPILOT_TOOLS, name) ? COPILOT_TOOLS[name] : undefined;
+      const mcp = name && !own ? copilotMcp(name) : undefined;
+      const [tool, input] = mcp ? [mcp, naming(raw)] : own ? own(raw) : [name, {}];
+      if (!tool) return undefined;
+      // No id for a call: one from what its start and its end both carry, by the tool as Claude Code names it.
+      return { ...common, tool_name: tool, tool_input: input, tool_use_id: callId(session ?? '', tool, raw, 'copilot') };
+    }
+    case 'Notification':
+      return { ...common, notification_type: event.notification_type ?? event.notificationType };
+    case 'Stop':
+    case 'SubagentStop':
+      return common;
+    default:
+      return undefined;
   }
 }
 

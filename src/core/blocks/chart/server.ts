@@ -114,6 +114,8 @@ export const agent: AgentHalf<ChartTypes> = {
 };
 
 export const people: PeopleHalf = {
+  // A category, and series on a chart of several, by name; a series alone is the whole series.
+  parts: { point: z.object({ kind: z.literal('point'), category: z.string().optional(), series: z.string().optional() }) },
   create: z.object({
     type: z.literal('chart'),
     kind: z.string(),

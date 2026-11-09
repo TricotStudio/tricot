@@ -9,7 +9,7 @@ import { ConnectorError } from '../oauth';
 import type { ConnectorTool, ServerConnector, ServerConnectorKind } from '../connector';
 import { GithubBlocks } from './blocks';
 import { GitHubConnector, type GithubOptions } from './connector';
-import { githubRoutes } from './routes';
+import { githubRouter } from './routes';
 import { GithubReader } from './reader';
 import { githubTools } from './tools';
 
@@ -35,7 +35,7 @@ class GithubServer extends GitHubConnector implements ServerConnector {
   failed(): void {}
 
   routes(store: Store): Router {
-    return githubRoutes(this, this.reader, new GithubBlocks(store, this.reader));
+    return githubRouter(this, this.reader, new GithubBlocks(store, this.reader));
   }
 
   tools(): ConnectorTool[] {

@@ -49,10 +49,12 @@ export interface ServerConnector {
   connectedNote?(status: ConnectorStatus): string;
   // What a person can allow on top, by name ("docs"): the scopes that asks for.
   readonly permissions?: Readonly<Record<string, string>>;
-  // Its REST routes, under /api/connectors/<id>, once the board's store is there.
-  // Everything but a GET is already a person's (the router they are mounted in
-  // asks `person`, tier B); a route that acts as the person in the service says
-  // so again with personOnly(person, 'B').
+  // Its REST routes, under /api/connectors/<id>, once the board's store is there:
+  // each registered with routesOn (server/routing.ts) from its core half's table
+  // (core/connectors/<id>/routes.ts), never a path of its own. Everything but
+  // a GET is already a person's (the router they are mounted in asks `person`,
+  // tier B); a route that acts as the person in the service says so again with
+  // personOnly(person, 'B').
   routes?(store: Store, person: PersonGate): Router;
   // Its MCP tools, once the board's store is there.
   tools?(store: Store): ConnectorTool[];

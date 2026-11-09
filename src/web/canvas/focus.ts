@@ -1,21 +1,27 @@
 import { useEffect, useState } from 'react';
-import type { Canvas } from '../../core/types';
+import type { Canvas, Pin } from '../../core/types';
 
-// Showing a block from elsewhere: a search result (board/search.tsx) or the
-// work a thread made (threadWork.tsx) opens the canvas, which may not be on
-// screen yet, so the block to show waits here until a canvas that has it is
-// drawn.
+// Showing a block or a pin from elsewhere: a search result (board/search.tsx)
+// or the work a thread made (threadWork.tsx) shows a block; a pin's address
+// (a Needs you item, the inbox, a notification, the Activity log: see
+// board/BoardView.tsx) opens a pin. Either opens the canvas, which may not be
+// on screen yet, so what to show waits here until a canvas that has it is
+// drawn. Asked again, it is shown again.
 const FOCUS_BLOCK = 'tricot:focus-block';
-let asked: { blockId: string; at: number } | null = null;
+let asked: { kind: 'block' | 'pin'; id: string; at: number } | null = null;
 
-export function focusBlock(blockId: string): void {
-  asked = { blockId, at: Date.now() };
+function ask(kind: 'block' | 'pin', id: string): void {
+  asked = { kind, id, at: Date.now() };
   window.dispatchEvent(new Event(FOCUS_BLOCK));
 }
 
-// For a canvas: shows the block a search result opened once it is drawn here.
-// `show` brings it into view and selects it, or says it can't yet.
-export function useFocusBlock(canvas: Canvas, show: (blockId: string) => boolean): void {
+export const focusBlock = (blockId: string): void => ask('block', blockId);
+export const openPin = (pinId: string): void => ask('pin', pinId);
+
+// For a canvas: shows the block or opens the pin asked for once it is drawn
+// here. `showBlock` brings a block into view and selects it, `showPin` opens
+// a pin; each says when it can't yet.
+export function useFocusBlock(canvas: Canvas, showBlock: (blockId: string) => boolean, showPin: (pin: Pin) => boolean): void {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const listener = () => setTick((t) => t + 1);
@@ -24,18 +30,25 @@ export function useFocusBlock(canvas: Canvas, show: (blockId: string) => boolean
   }, []);
   useEffect(() => {
     if (asked && Date.now() - asked.at > 10_000) asked = null; // its canvas never came
-    const blockId = asked?.blockId;
-    if (!blockId || !canvas.blocks.some((b) => b.id === blockId)) return;
+    const wanted = asked;
+    if (!wanted) return;
+    const here = wanted.kind === 'block' ? canvas.blocks.some((b) => b.id === wanted.id) : canvas.pins.some((p) => p.id === wanted.id);
+    if (!here) return;
+    const show = () => {
+      if (wanted.kind === 'block') return showBlock(wanted.id);
+      const pin = canvas.pins.find((p) => p.id === wanted.id);
+      return !pin || showPin(pin);
+    };
     let timer: ReturnType<typeof setTimeout>;
     // After the canvas's own first fit, so it doesn't undo this one.
     const attempt = (tries: number) => {
       timer = setTimeout(() => {
-        if (asked?.blockId !== blockId) return;
-        if (show(blockId) || tries === 0) asked = null;
+        if (asked !== wanted) return;
+        if (show() || tries === 0) asked = null;
         else attempt(tries - 1);
       }, 100);
     };
     attempt(30);
     return () => clearTimeout(timer);
-  }, [tick, canvas, show]);
+  }, [tick, canvas, showBlock, showPin]);
 }

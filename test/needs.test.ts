@@ -8,7 +8,8 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { unseenBy } from '../src/core/attention';
-import { boardNeeds, boardWork, byUrgency, dismissable, FOLD_OVER, needsAcross, needsFrom, type NeedsReport, type PresentAgent } from '../src/core/needs';
+import { boardNeeds, boardWork, byUrgency, dismissable, FOLD_OVER, needLink, needRows, needsAcross, needsFrom, type NeedsReport, type PresentAgent } from '../src/core/needs';
+import { linkTo, pageAt } from '../src/core/pages';
 import { Store } from '../src/core/store';
 import { boardKey, type Actor, type Board } from '../src/core/types';
 import { createApp } from '../src/server/app';
@@ -302,6 +303,56 @@ describe('What needs you across boards', () => {
     store.addComment(d.id, 'Built it that way.', claude);
     const reply = needsAcross(boards(), 'Sam', seen(mark)).rows.find((r) => r.ref === `#${d.number}`)!;
     assert.deepEqual([reply.kind, reply.why, reply.action], ['reply', 'Claude replied', 'Read']);
+  });
+
+  it('opens a reply on a part of the board context at its pin, a website’s element among them, and a finished request on the board context', () => {
+    const b = store.createBoard({ title: 'Launch site' }, sam).id;
+    const site = store.addBlock({ boardId: b }, { content: { type: 'site', url: 'http://localhost:5173/' } }, sam);
+    const plans = { kind: 'site', page: '/pricing', selector: '#plans', tag: 'h2', text: 'Plans' } as const;
+    const { pin } = store.pinComment(site.id, plans, 'Make the plans bolder.', sam, { ask: true });
+    const request = store.askAgents(b, 'Get me an architecture view', sam);
+    const before = store.getBoard(b).seq;
+    // An agent pairing on the website answers on the element (T258), and another finishes the request.
+    store.commentOnPin(pin.id, 'Made them bold.', claude);
+    const { group } = store.takeRequest(request.id, claude);
+    store.addBlock({ boardId: b }, { content: { type: 'note', text: 'Web, server, store' }, groupId: group!.id } as never, claude);
+    store.finishRequest(request.id, 'Added the architecture view.', claude);
+    const unseen = () => unseenBy(eventsOf(store, b), before, 'Sam');
+    const needs = needsFrom(store.getBoard(b), 'Sam', unseen());
+
+    const reply = needs.find((n) => n.key === pin.id)!;
+    assert.deepEqual([reply.kind, reply.why, reply.action, reply.square], ['reply', 'Claude replied', 'Read', 'context']);
+    assert.equal(reply.title, `“${pin.quote}” on the board context`);
+    assert.deepEqual(reply.target, { kind: 'pin', id: pin.id });
+    const address = needLink(b, reply.target);
+    assert.equal(address, linkTo.pin(b, pin.id));
+    assert.deepEqual(pageAt(address), { page: 'board', boardId: b, view: 'canvas', decisionId: undefined, taskId: undefined, pinId: pin.id }, 'the Board Context, opening the pin');
+
+    const finished = needs.find((n) => n.key === request.id)!;
+    assert.equal(finished.why, 'Claude answered your request');
+    assert.deepEqual(finished.target, { kind: 'board', view: 'canvas' });
+    assert.equal(needLink(b, finished.target), linkTo.board(b, 'canvas'));
+
+    // Unpinned since, its thread went with it: nothing is left to read.
+    store.removeItem(pin.id, sam);
+    assert.equal(needsFrom(store.getBoard(b), 'Sam', unseen()).find((n) => n.key === pin.id), undefined);
+  });
+
+  it(`folds more than ${FOLD_OVER} replies on the board context into a row that opens it`, () => {
+    const b = store.createBoard({ title: 'Notes' }, sam).id;
+    const pins = ['A', 'B', 'C', 'D'].map((text) => {
+      const note = store.addBlock({ boardId: b }, { content: { type: 'note', text } }, claude);
+      return store.pinComment(note.id, { kind: 'block' }, `About ${text}?`, sam).pin;
+    });
+    const before = store.getBoard(b).seq;
+    for (const pin of pins) store.commentOnPin(pin.id, 'Yes.', claude);
+    const needs = needsFrom(store.getBoard(b), 'Sam', unseenBy(eventsOf(store, b), before, 'Sam'));
+    assert.deepEqual(needs.map((n) => n.target), pins.map((p) => ({ kind: 'pin', id: p.id })));
+    const [folded] = needRows(needs);
+    assert.equal(folded.count, 4);
+    assert.equal(folded.title, '4 on the board context');
+    assert.deepEqual(folded.target, { kind: 'board', view: 'canvas' });
+    assert.equal(needLink(b, folded.target), linkTo.board(b, 'canvas'));
   });
 
   it("lists one board's needs from the events its page has unseen, as Home does", () => {

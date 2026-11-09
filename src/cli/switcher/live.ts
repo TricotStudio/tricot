@@ -16,6 +16,7 @@
 // restarts, and stops when the board is deleted.
 import type { Approval } from '../../core/approvals';
 import type { BoardChange, ChangedRow, RowKind, RowPatch, RowRef } from '../../core/changes';
+import { routes, routeUrl } from '../../core/routes';
 import type { AdmissionView } from '../../core/seats';
 import { isThreadEvent } from '../../core/threads';
 import type { BoardEvent, PinDiscussion } from '../../core/types';
@@ -101,7 +102,7 @@ export function watchBoard(options: WatchOptions): LiveFeed {
   const readActivity = async () => {
     if (!keep) return;
     try {
-      const res = await doFetch(`${options.url}/api/boards/${encodeURIComponent(options.board)}/events?limit=${keep}`, { headers: options.headers, signal: AbortSignal.timeout(10_000) });
+      const res = await doFetch(`${options.url}${routeUrl(routes.boardEvents, { boardId: options.board }, { limit: String(keep) })}`, { headers: options.headers, signal: AbortSignal.timeout(10_000) });
       if (!res.ok) return;
       const body = (await res.json()) as { events?: BoardEvent[] };
       if (!Array.isArray(body.events)) return;
@@ -155,7 +156,7 @@ export function watchBoard(options: WatchOptions): LiveFeed {
     try {
       const key = await options.hostKey?.();
       if (stopped) return;
-      const path = `/api/boards/${encodeURIComponent(options.board)}/stream`;
+      const path = routeUrl(routes.boardStream, { boardId: options.board });
       const res = await doFetch(`${options.url}${path}`, {
         headers: { Accept: 'text/event-stream', ...options.headers, ...(key && { [HOST_KEY_HEADER]: key }), ...options.sign?.('GET', path) },
         signal: abort.signal,

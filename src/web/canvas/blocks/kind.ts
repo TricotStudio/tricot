@@ -109,6 +109,7 @@ export interface OverlayProps<B extends Block = Block> {
   name: string; // the viewer
   version?: BlockVersion; // an earlier version, when one is being looked at
   pinId?: string; // the pin whose thread to open at
+  pinAsked?: number; // counts the asks to open at pinId: asked again for the same pin, it opens it again
   onClose(): void;
 }
 
@@ -135,7 +136,8 @@ export interface WebBlockKind<B extends Block = any> {
   readonly overlay?: Overlay<B>;
   // In the prompt for pinning a part of it: how much of it the pin takes (a table's cells, rows or columns).
   readonly PinScope?: ComponentType<{ draft: PinDraft; block: B; onChange(draft: PinDraft): void }>;
-  // Whether showing this pin's comment (from a comment about it) opens the block's overlay at it.
+  // Whether showing this pin's comment (from a comment about it, or the pin's
+  // address: a Needs you item) opens the block's overlay at it.
   opensOnPin?(block: B, pin: Pin): boolean;
   // Enter or Space on the block, once it has focus.
   activate?(block: B, canvas: CanvasContextValue): void;

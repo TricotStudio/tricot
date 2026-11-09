@@ -40,6 +40,7 @@ export const opencode: AgentKind = {
   // thinking level from its command line. Not installed where this was
   // written, so taken from its docs.
   startsOn: { models: [] },
+  skills: 'skills and commands',
 
   ...server,
 };

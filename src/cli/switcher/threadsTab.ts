@@ -63,10 +63,13 @@
 //                  line then starts one; the row under it says first that it
 //                  starts a new thread, with that lens unless it is General.
 //   the commands   / in the panel or in the status view opens a line of the
-//                  local commands, /status, /threads and /new (tabCommands.ts),
-//                  without touching what is typed on the stream's line; Enter
-//                  goes, Esc goes back. Typed on the stream's line, a command
-//                  alone does the same.
+//                  local commands, /status, /threads, /new, /add, /stop, /open
+//                  and /quit (tabCommands.ts), without touching what is typed
+//                  on the stream's line; Enter goes, Esc goes back. Typed on
+//                  the stream's line, a command alone does the same, and is
+//                  never sent. The row under the line says what Enter runs.
+//                  /add, /stop, /open and /quit are the tab's (tricotTab.ts):
+//                  the line closes first, back where it was opened from.
 //
 // The board is read (threadsRead.ts) when the tab first shows the chat, and
 // again each time the board's stream says its conversations changed (live.ts
@@ -104,7 +107,7 @@
 import { chatStream, type ChatItem, type ChatPlace } from '../../core/chatStream';
 import { replyPlaceholder, type Where } from '../../core/delivery';
 import { samePerson } from '../../core/format';
-import { boardAgents, boardPeople, findMentions, readTagTyping, readTyping } from '../../core/mentions';
+import { agentStateWords, boardAgents, boardPeople, findMentions, readTagTyping, readTyping } from '../../core/mentions';
 import { EMOJIS, hasReaction, type Emoji } from '../../core/reactions';
 import type { AgentSkills } from '../../core/skills';
 import { threadGroups, type ThreadGroups, type ThreadsSeen } from '../../core/threadList';
@@ -112,17 +115,18 @@ import { lensChoice, presetLens, shownTitle } from '../../core/threads';
 import type { Board, Thread, ThreadLens, ThreadMessage } from '../../core/types';
 import { ago, type TabFrame } from './tabView';
 import { aimRow, answerable, latestFrom, named, placeChoices, reactOn, replyOn, threadPlace, withComment, type CardPlace } from './chatAim';
-import { ChatLayout, chatGeometry, compareAt, conversationOf, renderChat, type ChatFrame, type ChatLines, type ChatTop } from './chatView';
-import type { BoardLive, Rgb, Tone } from './strip';
+import { linkTo } from '../../core/pages';
+import { ChatLayout, chatGeometry, compareAt, conversationOf, renderChat, type CardLinks, type ChatFrame, type ChatLines, type ChatTop } from './chatView';
+import type { BoardLive, Rgb, Tone, Working } from './strip';
 import type { TabKey } from './tabKeys';
-import { agentOf, choiceLabel, choiceNote, colonAfterName, completionAt, tabbed, type Cycle, type Places, type Roster } from './threadsComplete';
+import { agentOf, choiceLabel, choiceNote, colonAfterName, completionAt, tabbed, type Choice, type Cycle, type Places, type Roster } from './threadsComplete';
 import { OWN_STEPS, lensPicked, lensRows } from './threadsLens';
 import { Line, editLine } from './threadsLine';
 import type { ThreadsRead } from './threadsRead';
 import type { CommentSent, ThreadSent, ThreadsSend } from './threadsSend';
-import { composeFoot, itemId, listItems, panelGeometry, safe, type Compose, type LensRow, type LensView, type ListItem, type PanelView } from './threadsView';
+import { choiceRows, composeFoot, cursorAcross, inputRows, inputWidth, itemId, listItems, panelGeometry, safe, type Compose, type LensRow, type LensView, type ListItem, type PanelView } from './threadsView';
 import { hearsIt, heardBy } from './threadsWho';
-import { tabCommand, type TabCommand } from './tabCommands';
+import { TAB_COMMAND_LIST, tabCommand, tabCommandWords, type TabCommand } from './tabCommands';
 
 // What the threads need of the board: who is asking, the board, read, what
 // each agent can be asked to run, and sending as the person.
@@ -142,6 +146,7 @@ export interface ThreadsHost {
   askSeat(): void; // asks for this terminal to be let in, when the board says it must be
   seatWords(): string | undefined; // what that asking waits on, while it does
   navigate?(command: TabCommand): void;
+  working?(): Working[]; // the agents working now, for the row above the line (T38)
 }
 
 const NO_THREADS = { waiting: [], recent: [], earlier: [] } satisfies ThreadGroups;
@@ -242,9 +247,10 @@ export class ThreadsTab {
   private size = { cols: 80, rows: 24 }; // as last drawn: what keys scroll by
   private streamTop: ChatTop = 'end'; // the stream's first line shown, or its latest
   private streamOf: { board: Board; items: ChatItem[] } | undefined; // the stream as last gathered, from the board as read then
+  private cardsOf: { board: Board; cards: CardLinks } | undefined; // the cards linked, from the board as read then
   private shownOf: { all: ChatItem[]; picked: string; items: ChatItem[] } | undefined; // the thread picked's items, as last gathered
   private readonly layout = new ChatLayout(); // the stream's items laid out, kept from frame to frame
-  private drawn: { now: number; times: string[]; panel: boolean } | undefined; // the frame last drawn, for what the time alone changes in it
+  private drawn: { now: number; times: string[]; panel: boolean; working: string } | undefined; // the frame last drawn, for what the time alone changes in it
   private chosen: string | undefined; // the message in the stream chosen with Tab, by key: the line answers it
   private aimNew = false; // the stream's line starts a new thread, asked for with /new or a lens
   private held: Held | undefined; // where the stream's line was aimed when typing began
@@ -454,6 +460,7 @@ export class ThreadsTab {
           me: this.host.access?.me ?? '',
           now,
           ...(notice && { notice }),
+          ...(this.cards() && { cards: this.cards() }),
         },
         cols,
         rows,
@@ -465,7 +472,7 @@ export class ThreadsTab {
     // A thread read as it was drawn waits on the person no longer: the panel beside it says so at once
     // (drawn again from the stream's lines as laid out for the first).
     if (this.seenIn(items, frame.seen) && this.panelView()) frame = draw();
-    this.drawn = { now, times: frame.times, panel: panelShown };
+    this.drawn = { now, times: frame.times, panel: panelShown, working: this.workingKey(now) };
     return frame;
   }
 
@@ -475,7 +482,13 @@ export class ThreadsTab {
   // then; anything else that changes it asks for a frame of its own.
   due(now: number): boolean {
     const drawn = this.drawn;
-    return !drawn || this.clock(now, drawn) !== this.clock(drawn.now, drawn);
+    return !drawn || this.clock(now, drawn) !== this.clock(drawn.now, drawn) || this.workingKey(now) !== drawn.working;
+  }
+
+  // What the row of who is working says at `now`, its spinner's turn included (T38): it turns each second while it shows.
+  private workingKey(now: number): string {
+    const working = this.host.working?.() ?? [];
+    return working.length ? `${Math.floor(now / 1000)}\u0000${working.map((w) => `${w.name}\u0001${w.words}\u0001${w.lasted ?? ''}`).join('\u0000')}` : '';
   }
 
   // What the time changes in a frame drawn, as words at `now`: what the heads
@@ -524,7 +537,25 @@ export class ThreadsTab {
   // The stream's lines as drawn, at `width`: laid out as the keys ask for
   // them, from the layout the frames draw from, which keeps them for the next.
   private laid(items: ChatItem[], width: number, sending: ReadonlySet<string>): ChatLines {
-    return this.layout.lines(items, width, this.host.access?.me ?? '', this.host.now(), sending, this.chosen, this.pickedThread() === undefined);
+    return this.layout.lines(items, width, this.host.access?.me ?? '', this.host.now(), sending, this.chosen, this.pickedThread() === undefined, this.cards());
+  }
+
+  // The cards a message can name, each to its page on the board (T36), as the board was read.
+  private cards(): CardLinks | undefined {
+    const board = this.board;
+    if (!board) return undefined;
+    if (this.cardsOf?.board === board) return this.cardsOf.cards;
+    const tasks = new Map(board.tasks.map((t) => [t.number, t.id]));
+    const decisions = new Map(board.decisions.map((d) => [d.number, d.id]));
+    const cards: CardLinks = {
+      key: `${board.id}\u0000${[...tasks.keys()].join(',')}\u0000${[...decisions.keys()].join(',')}`,
+      link: (kind, number) => {
+        const id = (kind === 'task' ? tasks : decisions).get(number);
+        return id === undefined ? undefined : kind === 'task' ? linkTo.task(board.id, id) : linkTo.decision(board.id, id);
+      },
+    };
+    this.cardsOf = { board, cards };
+    return cards;
   }
 
   // The stream's columns and rows as drawn, for the keys that scroll it: the panel beside it takes some.
@@ -625,7 +656,7 @@ export class ThreadsTab {
 
   private draftOf(key: string): Draft {
     let draft = this.drafts.get(key);
-    if (!draft) this.drafts.set(key, (draft = { line: new Line() }));
+    if (!draft) this.drafts.set(key, (draft = { line: new Line(undefined, key !== NAVIGATION) })); // a message's takes new lines; a command's doesn't
     return draft;
   }
 
@@ -667,24 +698,56 @@ export class ThreadsTab {
     const listed = this.choicesFor(draft);
     const seat = this.host.seatWords();
     const aim = key === NEW ? this.aim(draft) : undefined;
+    const command = this.commandIn(draft); // what Enter runs instead of sending
     const status = draft.problem
       ? { text: draft.problem.needsSeat ? 'This terminal must be let in first: Enter asks, and your text is kept.' : draft.problem.text, tone: 'alert' as const }
-      : this.posting && key === NEW
-        ? { text: 'Starting the thread…', tone: 'normal' as const }
-        : seat
-          ? { text: seat, tone: 'normal' as const }
-          : aim
-            ? this.aimWords(aim, draft, names, Boolean(listed?.choices.some((c) => c.kind === 'place')))
-            : { text: 'Navigate in Tricot; no message is sent.', tone: 'normal' as const };
-    const placeholder = key === NAVIGATION ? 'Choose /status, /threads or /new' : aim?.kind === 'place' ? this.replyTo(aim) : 'What do you want to work through?';
+      : command
+        ? { text: `${tabCommandWords(command)}; no message is sent.`, tone: 'normal' as const }
+        : this.posting && key === NEW
+          ? { text: 'Starting the thread…', tone: 'normal' as const }
+          : seat
+            ? { text: seat, tone: 'normal' as const }
+            : aim
+              ? this.aimWords(aim, draft, names, Boolean(listed?.choices.some((c) => c.kind === 'place')))
+              : { text: 'Navigate in Tricot; no message is sent.', tone: 'normal' as const };
+    const placeholder = key === NAVIGATION ? `Choose ${TAB_COMMAND_LIST}` : aim?.kind === 'place' ? this.replyTo(aim) : 'What do you want to work through?';
+    const working = this.host.working?.() ?? [];
     return {
       text: draft.line.text,
       cursor: draft.line.cursor,
+      ...(working.length && { working }),
       ...(key === NAVIGATION && { navigation: true }),
       placeholder,
       status,
-      ...(listed && { choices: listed.choices.map((c) => ({ label: choiceLabel(c), ...(choiceNote(c) && { note: choiceNote(c)! }) })), at: listed.at }),
+      ...(listed && { choices: listed.choices.map((c) => this.choiceView(c)), at: listed.at }),
+      ...(this.arrowsPick(draft) && { picking: true }),
     };
+  }
+
+  // Whether ↑ ↓ go through the list over the line rather than scroll: while
+  // the line is a / alone, or a /, @ or > list shows, as one Tab wrote and
+  // left (a skill reads "@Claude /review ") or as what is typed fits (T39).
+  // A tag's models, on one row, leave them to scrolling.
+  private arrowsPick(draft: Draft): boolean {
+    if (!this.host.navigate) return false;
+    if (/^\s*\/\S*\s*$/.test(draft.line.text)) return true;
+    const first = this.choicesFor(draft)?.choices[0];
+    return Boolean(first && first.kind !== 'tag');
+  }
+
+  // A choice as its row shows it. The /, @ and > lists take a row each (T39):
+  // a command or skill with what it does, an agent with what it is doing, a
+  // person as one, a place with its title; a tag's models stay on one row.
+  private choiceView(c: Choice): { label: string; note?: string; description?: string } {
+    const label = choiceLabel(c);
+    if (c.kind === 'command' || c.kind === 'skill') return { label, ...(choiceNote(c) && { note: choiceNote(c)! }), description: c.description };
+    if (c.kind === 'place') return { label, description: c.note ?? '' };
+    if (c.kind === 'name') {
+      if (!c.agent) return { label, description: 'person' };
+      const presence = (this.host.live()?.presence ?? []).find((p) => samePerson(p.name, c.name));
+      return { label, description: this.board ? agentStateWords(this.board, c.name, presence) : 'agent' };
+    }
+    return { label };
   }
 
   // ---- where the stream's line goes ----------------------------------------------------
@@ -804,7 +867,8 @@ export class ThreadsTab {
   // The rows the line takes at the foot, as drawn, for the keys that scroll.
   private footRows(): number {
     const key = this.target();
-    return key === undefined ? 0 : composeFoot(this.size.rows, this.choicesFor(this.draftOf(key)) !== undefined).rows;
+    const compose = key === undefined ? undefined : this.composeView();
+    return compose ? composeFoot(this.size.rows, choiceRows(compose.choices), inputRows(compose.text, this.size.cols), Boolean(compose.working)).rows : 0;
   }
 
   // "/" lists what each agent can be asked to run, which is read from the
@@ -834,12 +898,19 @@ export class ThreadsTab {
   private edit(key: TabKey, draft: Draft): boolean {
     const { line } = draft;
     const navigation = Boolean(this.host.navigate);
-    const menu = navigation && /^\s*\/\S*\s*$/.test(line.text);
-    if (key.kind === 'tab' || key.kind === 'backtab' || (menu && (key.kind === 'up' || key.kind === 'down'))) {
+    if (key.kind === 'tab' || key.kind === 'backtab' || (this.arrowsPick(draft) && (key.kind === 'up' || key.kind === 'down'))) {
       this.wantSkills(line);
       const next = tabbed(line, this.cycle?.line === line ? this.cycle : undefined, this.roster(), this.navigating ? [] : this.skills, navigation, key.kind === 'up' || key.kind === 'backtab' ? -1 : 1, this.places());
       this.cycle = next && { ...next, line };
       return true;
+    }
+    // ↑ ↓ move between the rows of a text on several (T37); from its first up or its last down, they scroll.
+    if ((key.kind === 'up' || key.kind === 'down') && line.multiline) {
+      const to = cursorAcross(line.text, line.cursor, inputWidth(this.size.cols), key.kind === 'up' ? -1 : 1);
+      if (to !== undefined) {
+        line.cursor = to;
+        return true;
+      }
     }
     if (key.kind === 'text' && key.text === ':') colonAfterName(line, this.cycle?.line === line ? this.cycle : undefined);
     const done = editLine(line, key);
@@ -984,15 +1055,20 @@ export class ThreadsTab {
   // The local commands' line: Enter goes, Esc goes back to where it was opened from.
   private commandKey(key: TabKey): void {
     const draft = this.draftOf(NAVIGATION);
-    if (key.kind === 'escape' || key.kind === 'interrupt') {
-      const fromStatus = this.navigating?.fromStatus;
-      this.navigating = undefined;
-      draft.problem = undefined;
-      if (fromStatus) this.host.navigate?.('status');
-      return;
-    }
+    if (key.kind === 'escape' || key.kind === 'interrupt') return this.closeCommands();
     if (key.kind === 'enter') return void this.submit(draft, NAVIGATION);
     this.edit(key, draft);
+  }
+
+  // Closes the local commands' line, if it is open, back to where it was
+  // opened from: the status view, or the chat as it was. A command that acts
+  // rather than moves (/add, /stop, /open, /quit) goes back there first.
+  closeCommands(): void {
+    if (!this.navigating) return;
+    const { fromStatus } = this.navigating;
+    this.navigating = undefined;
+    this.draftOf(NAVIGATION).problem = undefined;
+    if (fromStatus) this.host.navigate?.('status');
   }
 
   // The keys of the stream's line (the header says what each does).
@@ -1265,7 +1341,7 @@ export class ThreadsTab {
       return;
     }
     if (key === NAVIGATION) {
-      draft.problem = { text: 'Choose /status, /threads or /new. Agent skills are available in a conversation.' };
+      draft.problem = { text: `Choose ${TAB_COMMAND_LIST}. Agent skills are available in a conversation.` };
       return;
     }
     if (draft.problem?.needsSeat) {

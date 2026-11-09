@@ -10,10 +10,12 @@ import { openThread } from '../threads';
 // Opens a place on a board from wherever the person is: a card's own view,
 // another tab, another board or Home. A thread opens in the conversation
 // docked on the right: there, when this board's tabs are on screen, else on
-// the tab it belongs to (threads.tsx).
+// the tab it belongs to (threads.tsx). A pin opens on the Board Context
+// (board/BoardView.tsx).
 function openPlace(boardId: string, place: NeedTarget): void {
   if (place.kind === 'task') go.task(boardId, place.id);
   else if (place.kind === 'decision') go.decision(boardId, place.id);
+  else if (place.kind === 'pin') go.pin(boardId, place.id);
   else if (place.kind === 'thread') openThread(place.id, undefined, { boardId, view: place.view });
   else if (place.view) go[place.view](boardId);
   else go.board(boardId);

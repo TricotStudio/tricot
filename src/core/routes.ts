@@ -1,22 +1,20 @@
 // Every REST route the server serves, once: its method and its path, with
 // :name where a piece of the path is a value. The server registers its routes
-// from this table (server/routing.ts) and the page builds its addresses from
-// it (routeUrl; web/shared/api.ts), so the two can't drift apart, and
-// test/routes.test.ts checks that nothing is served or called outside it.
+// from this table (server/routing.ts), and the page and the `tricot` command
+// build their addresses from it (routeUrl; web/shared/api.ts), so they can't
+// drift apart, and test/routes.test.ts checks that nothing is served or called
+// outside it. A connector's own routes are in its core folder
+// (core/connectors/<id>/routes.ts), and the connector registry gathers them
+// (connectorRoutes), so this table names no service.
 // The MCP endpoint is not REST and is not here.
 //
-// No imports: the browser takes it too (test/bundle.test.ts).
+// No imports but what a route is (route.ts): the browser takes it too
+// (test/bundle.test.ts), and the platform and the command's small modules load
+// it, so it never brings the registry or the store with it (test/layers.test.ts).
 
-export type HttpMethod = 'GET' | 'POST' | 'DELETE';
+import { del, get, post } from './route';
 
-export interface Route<Path extends string = string, Method extends HttpMethod = HttpMethod> {
-  readonly method: Method;
-  readonly path: Path;
-}
-
-const get = <Path extends string>(path: Path): Route<Path, 'GET'> => ({ method: 'GET', path });
-const post = <Path extends string>(path: Path): Route<Path, 'POST'> => ({ method: 'POST', path });
-const del = <Path extends string>(path: Path): Route<Path, 'DELETE'> => ({ method: 'DELETE', path });
+export { routeUrl, type HttpMethod, type ParamNames, type PathParams, type Query, type Route, type UrlArgs } from './route';
 
 export const routes = {
   // ---- the app ------------------------------------------------------------------------
@@ -173,59 +171,5 @@ export const routes = {
   startConnector: post('/api/connectors/:id/start'),
   connectorCallback: get('/api/connectors/:id/callback'),
   disconnectConnector: post('/api/connectors/:id/disconnect'),
-
-  githubDevice: get('/api/connectors/github/device'),
-  githubStartDevice: post('/api/connectors/github/device/start'),
-  githubPollDevice: post('/api/connectors/github/device/poll'),
-  githubCancelDevice: post('/api/connectors/github/device/cancel'),
-  githubToken: post('/api/connectors/github/token'),
-  githubRepos: get('/api/connectors/github/repos'),
-  githubCard: get('/api/connectors/github/cards/:owner/:repo/:kind/:number'),
-  githubShowChanges: post('/api/connectors/github/blocks/:blockId/diff'),
-  githubBringInFile: post('/api/connectors/github/blocks/:blockId/file'),
-
-  figmaToken: post('/api/connectors/figma/token'),
-  figmaFile: get('/api/connectors/figma/files/:fileId'),
-  figmaBringIn: post('/api/connectors/figma/frames'),
-  figmaRefresh: post('/api/connectors/figma/images/:blockId/refresh'),
-
-  linearKey: post('/api/connectors/linear/key'),
-  linearIssue: get('/api/connectors/linear/issues/:identifier'),
-
-  slackThread: get('/api/connectors/slack/threads/:channel/:ts'),
-  slackShareDecision: post('/api/connectors/slack/decisions/:decisionId/share'),
-
-  googleFile: get('/api/connectors/google/files/:fileId'),
-  googlePicker: post('/api/connectors/google/picker'),
-  googleChosen: post('/api/connectors/google/chosen'),
-  googleDoc: get('/api/connectors/google/docs/:blockId'),
-  googleDocDraft: post('/api/connectors/google/docs/:blockId/draft'),
-  googleDocDiscard: post('/api/connectors/google/docs/:blockId/discard'),
-  googleDocSave: post('/api/connectors/google/docs/:blockId/save'),
-  googleDocPins: post('/api/connectors/google/docs/:blockId/pins'),
-  googleDocResolve: post('/api/connectors/google/docs/:blockId/resolve'),
+  // and what each connector adds, under /api/connectors/<id>: in its own table (core/connectors/registry.ts connectorRoutes)
 } as const;
-
-// The names in a path pattern: '/api/boards/:boardId/tasks' has boardId.
-export type ParamNames<Path extends string> = Path extends `${string}:${infer Name}/${infer Rest}` ? Name | ParamNames<`/${Rest}`> : Path extends `${string}:${infer Name}` ? Name : never;
-
-export type PathParams<Path extends string> = { [Name in ParamNames<Path>]: string | number };
-
-export type Query = URLSearchParams | Record<string, string>;
-
-// What routeUrl takes after the route: the path's values when it has any, then a query.
-export type UrlArgs<Path extends string> = [ParamNames<Path>] extends [never] ? [params?: undefined, query?: Query] : [params: PathParams<Path>, query?: Query];
-
-// A route's address with each value put in, encoded as one piece of the path,
-// and the query after it when there is one. The values a path takes are the
-// type's to check: one missing is a type error here, not a 404 there.
-export function routeUrl<Path extends string>(route: Route<Path>, ...args: UrlArgs<Path>): string {
-  const [params, query] = args as [Record<string, string | number> | undefined, Query | undefined];
-  const path = route.path.replace(/:(\w+)/g, (_, name: string) => {
-    const value = params?.[name];
-    if (value === undefined) throw new Error(`${route.method} ${route.path} needs ${name}.`);
-    return encodeURIComponent(String(value));
-  });
-  const search = query === undefined ? '' : new URLSearchParams(query).toString();
-  return search ? `${path}?${search}` : path;
-}

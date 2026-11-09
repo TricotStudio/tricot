@@ -47,7 +47,4 @@ export function wordsPin(
   return { anchor: { kind: 'text', prefix, suffix }, quote };
 }
 
-// A block as a pin's refusals name it: note "Plans" is a note.
-export function blockIs(block: Block): string {
-  return `${blockLabel(block)} is ${/^[aeiou]/.test(block.type) ? 'an' : 'a'} ${block.type}`;
-}
+export { blockIs } from '../canvas';

@@ -44,6 +44,7 @@ export const omp: AgentKind = {
     ],
     levels: thinkingLevels('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'auto'),
   },
+  skills: 'skills',
 
   ...server,
 };

@@ -354,7 +354,7 @@ export function PieceView<B extends Block>(props: {
           <div className="piece-apart-chips">
             <span className="faint small">No longer where they were</span>
             {lost.map((pin) => (
-              <PairPinChip key={pin.id} pin={pin} open={pin.id === thread} part={pinPart(pin, shown)} lost={pinLost(pin)} onToggle={() => openPin(pin.id)} />
+              <PairPinChip key={pin.id} pin={pin} open={pin.id === thread} part={pinPart(pin, shown)} lost={pinLost(pin, shown)} onToggle={() => openPin(pin.id)} />
             ))}
           </div>
           {openLost && (

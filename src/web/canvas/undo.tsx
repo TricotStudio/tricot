@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { capital } from '../../core/deletions';
 import { api, type DeletedItem } from '../shared/api';
-import { typing } from '../shared/hooks';
+import { Icon } from '../shared/components';
+import { overBoard, typing } from '../shared/hooks';
 import './undo.css';
 
 // Right after a person deletes something on a canvas, a toast offers to undo
 // it for about 10 seconds (the bar counts down; hovering holds it), and ⌘Z
-// does the same while it's up. Anything deleted stays restorable from the
-// history for 30 days. Earlier versions deleted from a block's versions menu
-// are offered back the same way (`removed`). Home's archived boards use the
-// same toast (UndoToast) and shortcut.
+// does the same while it's up. Its × or Escape dismisses it at once: that
+// only hides it, as running out does, and undoes nothing. Anything deleted
+// stays restorable from the history for 30 days. Earlier versions deleted
+// from a block's versions menu are offered back the same way (`removed`).
+// Home's archived boards and deleted threads use the same toast (UndoToast)
+// and shortcut.
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const SHORTCUT = isMac ? '⌘Z' : 'Ctrl Z';
@@ -98,12 +101,16 @@ export function useUndoShortcut(on: boolean, undo: () => unknown): void {
   }, [on, undo]);
 }
 
-// The toast: what was done, then Undo and its shortcut, or a note alone. Its
-// bar counts down, then `onGone`; give each toast its own key, so a new one
-// counts down from the start.
+// The toast: what was done, then Undo and its shortcut, or a note alone, and
+// × to dismiss it. Its bar counts down, then `onGone`; × and Escape call it
+// at once. Give each toast its own key, so a new one counts down from the
+// start. The countdown is the bar's animation: gone with the toast, it
+// can't end later.
 export function UndoToast({ text, onUndo, onGone }: { text: string; onUndo?: () => void; onGone: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEscapeDismisses(root, onGone);
   return (
-    <div className={`undo-toast${onUndo ? '' : ' is-note'}`} role="status">
+    <div ref={root} className={`undo-toast${onUndo ? '' : ' is-note'}`} role="status">
       <span className="undo-toast-text">{text}</span>
       {onUndo && (
         <>
@@ -115,9 +122,52 @@ export function UndoToast({ text, onUndo, onGone }: { text: string; onUndo?: () 
           </kbd>
         </>
       )}
+      <button type="button" className="undo-toast-close" onClick={onGone} aria-label="Dismiss" title="Dismiss (Esc)">
+        <Icon name="x" />
+      </button>
       <span className="undo-toast-bar" aria-hidden="true">
         <i onAnimationEnd={onGone} />
       </span>
     </div>
   );
+}
+
+// What closes on Escape before a toast: a dialog, the canvas's pin prompt
+// among them, or a menu or popover over the board (overBoard).
+const LAYERS = '[role="dialog"], [role="alertdialog"]';
+const layerUp = (event: Event) => overBoard(event) || document.querySelector(LAYERS) !== null;
+
+// The toasts up now, oldest first: Escape dismisses the newest.
+const toasts: RefObject<HTMLElement | null>[] = [];
+
+// Escape dismisses the toast `root`, unless it goes to text being written, or
+// something else takes it: a layer up as the key went down (layerUp), which
+// closes on it alone, or a handler on the page that kept it (preventDefault).
+// The toast hears the key on <html>, once the page's own handlers have had
+// it and before the listeners on the document and the window (the panels
+// beside the board, menus, the pin prompt), and keeps it from those
+// (preventDefault, as escapeCloses reads it), so one Escape closes one thing.
+function useEscapeDismisses(root: RefObject<HTMLElement | null>, dismiss: () => void): void {
+  const latest = useRef(dismiss);
+  latest.current = dismiss;
+  useEffect(() => {
+    toasts.push(root);
+    const taken = new WeakSet<Event>();
+    const asItWentDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && layerUp(e)) taken.add(e);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || taken.has(e) || typing(e.target) || toasts.at(-1) !== root) return;
+      e.preventDefault();
+      latest.current();
+    };
+    const page = document.documentElement;
+    window.addEventListener('keydown', asItWentDown, true);
+    page.addEventListener('keydown', escape);
+    return () => {
+      toasts.splice(toasts.indexOf(root), 1);
+      window.removeEventListener('keydown', asItWentDown, true);
+      page.removeEventListener('keydown', escape);
+    };
+  }, [root]);
 }

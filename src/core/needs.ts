@@ -17,6 +17,7 @@
 
 import { needsInput } from './attention';
 import { clip, listNames, pendingAsks, samePerson } from './format';
+import { linkTo } from './pages';
 import { threadView, unseenCards, waitsOnYou, type ThreadsSeen } from './threadList';
 import { boardKey, type Board, type BoardEvent, type Decision, type Status, type Task, type TaskStatus } from './types';
 
@@ -61,13 +62,25 @@ const RANK: Record<NeedKind, number> = { blocking: 0, asked: 1, review: 2, confi
 
 export type NeedAction = 'Decide' | 'Confirm' | 'Review' | 'Unblock' | 'Read' | 'Reply';
 
-// Where a row opens: the card, or a view of its board for a folded row or the
-// board context.
+// Where a row opens: the card, the pin on the board context its thread is on
+// (a website's element opens in the site's full view), or a view of its board
+// for a folded row or the rest of the board context.
 export type NeedTarget =
   | { kind: 'decision'; id: string }
   | { kind: 'task'; id: string }
   | { kind: 'thread'; id: string; view: 'decisions' | 'tasks' | 'canvas' } // the tab it opens on
+  | { kind: 'pin'; id: string }
   | { kind: 'board'; view?: 'decisions' | 'tasks' | 'canvas' };
+
+// The address a row opens (core/pages.ts). A thread's opens the tab it is on,
+// where the page opens the thread in the conversation docked on the right
+// (web/inbox/needsYou.tsx).
+export function needLink(boardId: string, target: NeedTarget): string {
+  if (target.kind === 'decision') return linkTo.decision(boardId, target.id);
+  if (target.kind === 'task') return linkTo.task(boardId, target.id);
+  if (target.kind === 'pin') return linkTo.pin(boardId, target.id);
+  return linkTo.board(boardId, target.view);
+}
 
 export interface Need {
   kind: NeedKind;
@@ -165,7 +178,8 @@ function taskNeed(task: Task, board: Board, me: string, unseen: BoardEvent[]): N
 }
 
 // On the board context: replies in a comment thread you're part of, and an
-// agent answering what you asked for there. One row per thread or request.
+// agent answering what you asked for there. One row per thread or request. A
+// thread's row opens its pin, the request's the board context.
 function contextNeeds(board: Board, me: string, unseen: BoardEvent[]): Need[] {
   const latest = new Map<string, BoardEvent>();
   for (const e of unseen) {
@@ -181,7 +195,7 @@ function contextNeeds(board: Board, me: string, unseen: BoardEvent[]): Need[] {
       key: e.itemId!,
       boardId: board.id,
       board: board.title,
-      target: { kind: 'board', view: 'canvas' },
+      target: pin ? { kind: 'pin', id: pin.id } : { kind: 'board', view: 'canvas' },
       title,
       why: replyWhy(e, me),
       action: 'Read',
@@ -269,7 +283,8 @@ function fold(needs: Need[]): NeedRow {
   const refs = needs.flatMap((n) => n.ref ?? []).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   const shown = refs.length > 5 ? [...refs.slice(0, 4), `${refs.length - 4} more`] : refs;
   const kinds = new Set(needs.map((n) => n.target.kind));
-  const view = kinds.size === 1 && kinds.has('task') ? 'tasks' : kinds.size === 1 && kinds.has('decision') ? 'decisions' : undefined;
+  // Pins are on the board context.
+  const view = kinds.size === 1 && kinds.has('task') ? 'tasks' : kinds.size === 1 && kinds.has('decision') ? 'decisions' : first.target.kind === 'pin' ? 'canvas' : undefined;
   return {
     ...first,
     key: `${first.boardId}:${first.kind}`,

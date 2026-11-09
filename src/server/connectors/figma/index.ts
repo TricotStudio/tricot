@@ -7,7 +7,7 @@ import type { Store } from '../../../core/store';
 import type { ServerConnectorKind } from '../connector';
 import { FigmaConnector, type FigmaOptions } from './connector';
 import { FigmaFrames } from './frames';
-import { figmaRoutes } from './routes';
+import { figmaRouter } from './routes';
 import { figmaTools } from './tools';
 
 export { FigmaConnector } from './connector';
@@ -32,7 +32,7 @@ class FigmaServer extends FigmaConnector {
   }
 
   routes(store: Store) {
-    return figmaRoutes(this, this.framesOf(store));
+    return figmaRouter(this, this.framesOf(store));
   }
 
   tools(store: Store) {

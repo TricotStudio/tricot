@@ -4,7 +4,7 @@
 
 import { claudeCommand, shellQuote } from '../../connect';
 import { claudeSession } from '../../sessions';
-import { claude as hooks } from '../../../server/hooks/claude';
+import { claudeUserSettings, claude as hooks } from '../../../server/hooks/claude';
 import { claudeSessionSettings, installedHooks } from '../../../server/hooks/session';
 import type { AgentServerHalf, ConnectView } from '../agent';
 
@@ -26,7 +26,7 @@ export const server: AgentServerHalf = {
   // yes to live steps, as settings for the session; whatever its own settings
   // run already is left out, so nothing runs twice.
   sessionHooks({ target, source, url, name, stepsAsked }) {
-    const installed = installedHooks('claude', target);
+    const installed = installedHooks(claudeUserSettings(target));
     const steps = !installed.steps && stepsAsked;
     const approvals = !installed.approvals;
     const settings = claudeSessionSettings({ url, source, name, steps, approvals });

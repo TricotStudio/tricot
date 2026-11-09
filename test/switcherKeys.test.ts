@@ -15,7 +15,7 @@ const STRIP_ROW = 30;
 function router(options: { scrolling?: boolean; tricotTab?: boolean; mouse?: MouseWanted } = {}) {
   let clock = 1_000_000;
   const said: string[] = [];
-  const show = (a: HostAction) => (a.kind === 'next' ? (a.again ? 'again' : 'next') : a.kind === 'send' ? `send ${JSON.stringify(a.data.toString('latin1'))}` : a.kind === 'pick' ? `pick ${a.index + 1}` : a.kind === 'click' ? `click ${a.column}` : a.kind === 'wheel' ? `wheel ${a.up ? 'up' : 'down'}` : a.kind === 'scroll' ? `scroll ${a.lines}` : a.kind === 'scroll-page' ? `page ${a.pages}` : a.kind === 'scroll-end' ? `end ${a.top ? 'top' : 'bottom'}` : a.kind);
+  const show = (a: HostAction) => (a.kind === 'next' ? (a.again ? 'again' : 'next') : a.kind === 'send' ? `send ${JSON.stringify(a.data.toString('latin1'))}` : a.kind === 'pick' ? `pick ${a.index + 1}` : a.kind === 'click' ? `click ${a.column}` : a.kind === 'point' ? `point ${a.column},${a.row}` : a.kind === 'wheel' ? `wheel ${a.up ? 'up' : 'down'}` : a.kind === 'scroll' ? `scroll ${a.lines}` : a.kind === 'scroll-page' ? `page ${a.pages}` : a.kind === 'scroll-end' ? `end ${a.top ? 'top' : 'bottom'}` : a.kind);
   const state = { scrolling: options.scrolling ?? false };
   const mouse = options.mouse;
   const r = new InputRouter({ key: KEY, tricotTab: options.tricotTab, stripRow: () => STRIP_ROW, scrolling: () => state.scrolling, ...(mouse && { mouse: () => mouse }), emit: (a) => said.push(show(a)), now: () => clock, holdMs: 20 });
@@ -227,12 +227,14 @@ describe('the mouse', () => {
     }
   });
 
-  it('picks from the Tricot tab, where nothing above the strip is anyone’s but the wheel', () => {
+  it('picks from the Tricot tab, where above the strip only a left press and the wheel are anyone’s', () => {
     const t = router({ tricotTab: true, mouse: NONE });
     t.type(`${SGR(0, 2, STRIP_ROW)}${SGR(0, 2, STRIP_ROW, true)}`);
     assert.deepEqual(t.said, ['click 2']);
     t.type(`${SGR(0, 5, 3)}${SGR(0, 5, 3, true)}${SGR(35, 6, 3)}${SGR(64, 5, 3)}${SGR(65, 5, 3)}${SGR(66, 5, 3)}${SGR(69, 5, 3)}`);
-    assert.deepEqual(t.said.slice(1), ['wheel up', 'wheel down', 'wheel down'], 'a click and a move go nowhere; the wheel, Shift held or not, scrolls; sideways it does nothing');
+    assert.deepEqual(t.said.slice(1), ['point 5,3', 'wheel up', 'wheel down', 'wheel down'], 'a left press is the host’s, for a link there (T36); its release and a move go nowhere; the wheel, Shift held or not, scrolls; sideways it does nothing');
+    t.type(`${SGR(2, 5, 3)}${SGR(2, 5, 3, true)}`);
+    assert.equal(t.said.length, 5, 'another button does nothing');
   });
 
   it('gives an agent that asked for presses and releases those and the wheel, as they came, and no motion', () => {

@@ -3,7 +3,7 @@
 // reach its files (test/webImports.test.ts).
 export { CanvasView } from './CanvasView';
 export { Comparison, comparisonData } from './blocks/comparison/comparison';
-export { focusBlock } from './focus';
+export { focusBlock, openPin } from './focus';
 export { besidePins, PinnedFrom } from './pins';
 export { SyncControl } from './sync';
 export { UndoToast, useUndoDelete, useUndoShortcut } from './undo';

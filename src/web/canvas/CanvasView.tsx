@@ -49,7 +49,7 @@ import { useCopyBlocks } from './copy';
 import { useIntake } from './intake';
 import { PanHint } from './panHint';
 import { BlockNode, FrameNode, LinkEdge, type CanvasNode, type LinkEdgeType } from './nodes';
-import { PinPrompt, PinThread, selectedWords } from './pins';
+import { PinPrompt, PinThread, wordsPressed, wordsReleased } from './pins';
 import { useUndoDelete } from './undo';
 
 const nodeTypes = { block: BlockNode, frame: FrameNode };
@@ -361,12 +361,14 @@ function CanvasSurface(props: Props) {
   // A block's overlay: an image's picture at full size, a Google Doc's editor.
   // A kind that has one opens it from its card (canvas.openOverlay), unless it
   // edits and the board is read-only. Closing one that asks puts focus back on the block.
-  const [overlay, setOverlay] = useState<{ blockId: string; version?: BlockVersion; pinId?: string } | null>(null);
+  // Each ask to open it at a pin is counted, so asking for the same pin again opens it again.
+  const [overlay, setOverlay] = useState<{ blockId: string; version?: BlockVersion; pinId?: string; pinAsked?: number } | null>(null);
+  const pinAsks = useRef(0);
   const openOverlay = useCallback(
     (blockId: string, options: { version?: BlockVersion; pinId?: string } = {}) => {
       const block = canvas.blocks.find((b) => b.id === blockId);
       const open = block && webKindOf(block.type).overlay;
-      if (open && !(readOnly && open.changes)) setOverlay({ blockId, ...options });
+      if (open && !(readOnly && open.changes)) setOverlay({ blockId, ...options, ...(options.pinId ? { pinAsked: ++pinAsks.current } : {}) });
     },
     [canvas, readOnly],
   );
@@ -507,27 +509,56 @@ function CanvasSurface(props: Props) {
   const selected = useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes]);
   useCopyBlocks(canvas, selected, !overlay);
 
-  // Selecting words in a note pins them. A double-click's
-  // word selection is left alone: double-clicking edits.
+  // Selecting words in a note pins them: the press begins in the note's words
+  // and the selection is there as the button comes up (wordsPressed and
+  // wordsReleased, pins.tsx). A press anywhere else pins nothing, whatever the
+  // browser holds selected. A press on the empty canvas, which draws a
+  // selection box, lets go of words left selected, as a click on a page does,
+  // and selects none: a browser would start a selection in the first words on
+  // the canvas, in whichever block they are, and Safari's grows over every
+  // block as the box is drawn. A double-click's word selection is left alone:
+  // double-clicking edits.
   useEffect(() => {
-    if (readOnly) return;
-    const onMouseUp = (event: MouseEvent) => {
-      if (event.button !== 0 || event.detail > 1) return;
-      if ((event.target as HTMLElement | null)?.closest?.('input, textarea, .pin-prompt')) return;
+    let pressed: HTMLElement | null = null;
+    let onPane = false;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      const inCanvas = Boolean(target && wrapper.current?.contains(target));
+      pressed = inCanvas ? wordsPressed(event) : null;
+      onPane = inCanvas && event.button === 0 && Boolean(target?.classList?.contains('react-flow__pane'));
       const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-      const range = selection.getRangeAt(0);
-      const start = range.startContainer;
-      const container = (start instanceof Element ? start : start.parentElement)?.closest<HTMLElement>('[data-pin-text]');
-      if (!container || !wrapper.current?.contains(container)) return;
-      if (container.closest('.is-viewing-version')) return; // an earlier version is only for looking at
-      const part = selectedWords(container, range);
-      if (!part) return;
-      selection.removeAllRanges();
-      setPinDraft({ blockId: container.dataset.blockId!, part, quote: part.quote });
+      if (onPane && selection && !selection.isCollapsed) selection.removeAllRanges();
     };
+    const onPointerUp = () => {
+      onPane = false;
+    };
+    const onSelectStart = (event: Event) => {
+      if (onPane) event.preventDefault();
+    };
+    const onMouseUp = (event: MouseEvent) => {
+      const from = pressed;
+      pressed = null;
+      if (readOnly || !from || event.button !== 0 || event.detail > 1) return;
+      if ((event.target as HTMLElement | null)?.closest?.('input, textarea, .pin-prompt')) return;
+      if (from.closest('.is-viewing-version')) return; // an earlier version is only for looking at
+      const selection = window.getSelection();
+      const part = wordsReleased(from, selection);
+      if (!part) return;
+      selection?.removeAllRanges();
+      setPinDraft({ blockId: from.dataset.blockId!, part, quote: part.quote });
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('pointercancel', onPointerUp, true);
+    document.addEventListener('selectstart', onSelectStart, true);
     document.addEventListener('mouseup', onMouseUp);
-    return () => document.removeEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('pointercancel', onPointerUp, true);
+      document.removeEventListener('selectstart', onSelectStart, true);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
   }, [readOnly]);
 
   // The prompt follows its part as the canvas pans and zooms.
@@ -593,7 +624,39 @@ function CanvasSurface(props: Props) {
     },
     [flow, selectBlocks],
   );
-  useFocusBlock(canvas, showBlock);
+  // A pin opened from its address (a Needs you item, the inbox, a
+  // notification) opens its thread: in its block's full view, at its part (a
+  // website's element, on its page), when the kind opens there or that view
+  // is open already; else by its chip, out from under another block's full
+  // view, shown as a comment's quote shows it once its block is drawn.
+  // Opened, its replies are seen.
+  const showPin = useCallback(
+    (pin: Pin) => {
+      const block = canvas.blocks.find((b) => b.id === pin.blockId);
+      if (!block) return true;
+      const drawn = Boolean(flow.getInternalNode(block.id)?.measured.width);
+      const bring = () => void flow.fitView({ nodes: [{ id: block.id }], duration: 400, maxZoom: 1, padding: 0.3 });
+      if (webKindOf(block.type).opensOnPin?.(block, pin) || (overlay?.blockId === block.id && !overlay.version)) {
+        if (drawn) bring(); // for when the full view closes
+        onSeeItem(pin.id);
+        openOverlay(block.id, { pinId: pin.id });
+        return true;
+      }
+      if (!drawn) return false;
+      bring();
+      onSeeItem(pin.id);
+      setOverlay(null);
+      setFocus(null);
+      requestAnimationFrame(() => setFocus(pin.id));
+      if (pin.discussion) {
+        setPinDraft(null);
+        setThread(pin.id);
+      }
+      return true;
+    },
+    [canvas, flow, onSeeItem, openOverlay, overlay],
+  );
+  useFocusBlock(canvas, showBlock, showPin);
 
   // A comment from the prompt shows where it went: in the card's discussion,
   // or the board context pin's thread, opened.
@@ -824,7 +887,15 @@ function CanvasSurface(props: Props) {
           />
         )}
         {overlay && overlaid && Overlay && !(readOnly && Overlay.changes) && (
-          <Overlay.Component key={overlaid.id} block={overlaid} name={name} version={overlay.version} pinId={overlay.pinId} onClose={closeOverlay} />
+          <Overlay.Component
+            key={overlaid.id}
+            block={overlaid}
+            name={name}
+            version={overlay.version}
+            pinId={overlay.pinId}
+            pinAsked={overlay.pinAsked}
+            onClose={closeOverlay}
+          />
         )}
         {overlays}
         {empty && (

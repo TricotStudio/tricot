@@ -10,9 +10,10 @@
 // Linux), that is the end of it and the signal follows at once. On Windows
 // the person is asked to let this terminal in, in a browser they have let in,
 // and has a minute to do it, when there is a terminal to say so in.
+import { routes, routeUrl } from '../core/routes';
 import { SEAT_NEEDED } from '../core/seats';
 import { isWindows } from '../platform/os';
-import { authHeaders } from '../server/access';
+import { authHeaders } from '../platform/token';
 import { asThisTerminal } from './terminalKey';
 
 export const STOP_ALLOWED_WITHIN_MS = 60_000;
@@ -44,9 +45,10 @@ export async function askToStop(a: AskToStop): Promise<boolean> {
       async (headers, terminal) => {
         const send = async () => {
           const body = '{}';
-          const answer = await fetch(`${url}/api/stop`, {
+          const stop = routeUrl(routes.stop);
+          const answer = await fetch(`${url}${stop}`, {
             method: 'POST',
-            headers: { ...headers, 'Content-Type': 'application/json', ...terminal.sign('POST', '/api/stop', body) },
+            headers: { ...headers, 'Content-Type': 'application/json', ...terminal.sign('POST', stop, body) },
             body,
             signal: AbortSignal.timeout(5_000),
           });

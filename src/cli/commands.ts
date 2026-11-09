@@ -5,6 +5,7 @@
 // entry here and its run function. The commands that start an agent, or only show
 // how to connect one, come from the agent registry (core/agents/registry.ts,
 // through agentCommands.ts): one entry per agent, in the registry's order.
+import { agentKinds } from '../core/agents/registry';
 import { listNames } from '../core/format';
 import { findRunning } from '../platform/lock';
 import { agentEntries } from './agentCommands';
@@ -60,7 +61,7 @@ const access = (env: Env, { arg }: Words): Promise<CliResult> => {
   return accessCommand({ dataDir: env.dataDir, out: ctx.out, err: ctx.err, ...(ctx.keys && { keys: ctx.keys }), ...(ctx.ask && { ask: ctx.ask }) }, arg);
 };
 
-const AGENT_OPTION = { name: 'agent', type: 'string', usage: '--agent <id>', words: 'Just this agent (claude, codex, pi, omp, gemini, opencode, goose, hermes, grok)' } satisfies Option;
+const AGENT_OPTION = { name: 'agent', type: 'string', usage: '--agent <id>', words: `Just this agent (${agentKinds().map((kind) => kind.id).join(', ')})` } satisfies Option;
 const PROJECT_OPTION = { name: 'project', type: 'boolean', usage: '--project', words: "on/off, with --agent claude: only this project's .claude/settings.json, not every project's (on asks first)" } satisfies Option;
 const NARRATION_OPTION = { name: 'narration', type: 'boolean', usage: '--narration', words: 'on --project: also show the first line of each message Claude writes in the terminal (never its thinking); off unless asked for' } satisfies Option;
 const PRINT_OPTION = { name: 'print', type: 'boolean', usage: '--print', words: 'Only show the command, run nothing' } satisfies Option;

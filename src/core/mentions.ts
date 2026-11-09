@@ -45,6 +45,19 @@ export function boardAgents(board: Pick<Board, 'activity'>, present: string[] = 
   return names;
 }
 
+// What an agent is doing, in a word or three, as the Live indicator says it:
+// beside its name in the page's @ list and the Tricot tab's. `presence`: its
+// own, if it is connected.
+export function agentStateWords(board: Pick<Board, 'tasks'>, name: string, presence: { state: 'listening' | 'working' | 'away'; focus?: { kind: string; id: string } } | undefined): string {
+  if (!presence) return 'not connected';
+  if (presence.state === 'away') return 'not checking';
+  if (presence.state === 'listening') return 'listening';
+  const focus = presence.focus?.kind === 'task' ? board.tasks.find((t) => t.id === presence.focus!.id) : undefined;
+  const claimed = board.tasks.find((t) => t.status === 'in_progress' && t.claimedBy?.kind === 'agent' && samePerson(t.claimedBy.name, name));
+  const task = focus ?? claimed;
+  return task ? `working on T${task.number}` : 'working';
+}
+
 // The board's people, by name, most recently active first.
 export function boardPeople(board: Pick<Board, 'activity'>): string[] {
   return peopleOn(board).map((p) => p.name);

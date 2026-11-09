@@ -524,11 +524,71 @@ describe("A page's lines and frame script", () => {
         '  class=x data-tricot-line="2">',
         '<script>if (a < b) document.write("<p>no</p>")</script>',
         '<STYLE>p > a { }</Style>',
-        '<p data-tricot-line="7">One<br/ data-tricot-line="7">two<img src=x/ data-tricot-line="7"></p>',
+        '<p data-tricot-line="7">One<br data-tricot-line="7"/>two<img src=x/ data-tricot-line="7"></p>',
         '<textarea data-tricot-line="8"><b>raw</b></textarea>',
         '</div>',
       ].join('\n'),
     );
+  });
+
+  // Marked, the page is the same page with only the line attributes added.
+  const marks = (html: string) => {
+    const marked = withSourceLines(html);
+    assert.equal(marked.replace(/ data-tricot-line="\d+"/g, ''), html);
+    return marked;
+  };
+
+  it("keeps an SVG's shapes that close themselves closed, so they stay siblings", () => {
+    const svg = [
+      '<svg class="mark" viewBox="0 0 10 10">',
+      '  <path d="M0 0H10"/>',
+      '  <rect x="3" y="3"',
+      '        width="4" height="4" />',
+      '  <path d="M0 0/1>2"/><path d=\'a/b\'/>',
+      '  <rect',
+      '    x="1"',
+      '  /><circle r="1"/>',
+      '</svg>',
+      '<p>after</p>',
+    ].join('\n');
+    assert.equal(
+      marks(svg),
+      [
+        '<svg class="mark" viewBox="0 0 10 10" data-tricot-line="1">',
+        '  <path d="M0 0H10" data-tricot-line="2"/>',
+        '  <rect x="3" y="3"',
+        '        width="4" height="4" data-tricot-line="3" />',
+        '  <path d="M0 0/1>2" data-tricot-line="5"/><path d=\'a/b\' data-tricot-line="5"/>',
+        '  <rect',
+        '    x="1" data-tricot-line="6"',
+        '  /><circle r="1" data-tricot-line="8"/>',
+        '</svg>',
+        '<p data-tricot-line="10">after</p>',
+      ].join('\n'),
+    );
+  });
+
+  it('marks <br/>, <img />, and other tags that close themselves before their slash', () => {
+    assert.equal(marks('<br/>'), '<br data-tricot-line="1"/>');
+    assert.equal(marks('<img src="a.png" />'), '<img src="a.png" data-tricot-line="1" />');
+    assert.equal(marks('<input disabled/><input disabled\t/>'), '<input disabled data-tricot-line="1"/><input disabled data-tricot-line="1"\t/>');
+    assert.equal(marks('<input value="/>"/>'), '<input value="/>" data-tricot-line="1"/>');
+    assert.equal(marks("<a title='x/'/>"), `<a title='x/' data-tricot-line="1"/>`);
+    // One already marked is left as it is.
+    assert.equal(withSourceLines('<circle r="1" data-tricot-line="40"/>'), '<circle r="1" data-tricot-line="40"/>');
+    // A "/" not just before the ">" doesn't close the tag, as before.
+    assert.equal(marks('<br / >'), '<br /  data-tricot-line="1">');
+  });
+
+  it("leaves a / that ends an unquoted value in the value, as the browser reads it", () => {
+    // <a href=/docs/> links to "/docs/" and doesn't close itself: the mark goes after the value.
+    assert.equal(marks('<a href=/docs/>Docs</a>'), '<a href=/docs/ data-tricot-line="1">Docs</a>');
+    assert.equal(marks('<a href=/>Home</a>'), '<a href=/ data-tricot-line="1">Home</a>');
+    assert.equal(marks('<a href= />Home</a>'), '<a href= / data-tricot-line="1">Home</a>');
+    assert.equal(marks('<svg><path d=M0/><rect/></svg>'), '<svg data-tricot-line="1"><path d=M0/ data-tricot-line="1"><rect data-tricot-line="1"/></svg>');
+    // A space ends the value, so the "/" after it is the tag's own.
+    assert.equal(marks('<a href=/docs/ />'), '<a href=/docs/ data-tricot-line="1" />');
+    assert.equal(marks('<svg><path d=M0 /></svg>'), '<svg data-tricot-line="1"><path d=M0 data-tricot-line="1" /></svg>');
   });
 
   it('reads a large page in one pass', () => {

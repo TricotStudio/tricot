@@ -7,7 +7,7 @@
 // browser imports this, and the tests read it.
 
 import { LIMITS } from './schemas/limits';
-import { findAgent } from './agents/registry';
+import { defaultAgent, findAgent } from './agents/registry';
 import type { ThreadDoor } from './types';
 
 // ---- when it shows ------------------------------------------------------------------
@@ -170,11 +170,13 @@ const messageOf = (error: unknown): string => {
 export type FirstTool = string;
 
 // The agent to show the command for: the first found on this computer (as
-// live steps see them: its folder or its command), else Claude Code.
+// live steps see them: its folder or its command), else the registry's
+// default (Claude Code).
 export function agentToConnect(agents: { id: string; name: string; found: boolean }[] | undefined): { tool: FirstTool; name: string; found: boolean } {
   const here = agents?.find((a) => a.found && findAgent(a.id));
   if (here) return { tool: here.id, name: here.name, found: true };
-  return { tool: 'claude', name: findAgent('claude')!.name, found: false };
+  const { id, name } = defaultAgent();
+  return { tool: id, name, found: false };
 }
 
 // What to do with the command, in a sentence, before it. An agent with no

@@ -41,7 +41,7 @@
 }
 .inbox-button.needs-you .inbox-count {
   background: var(--open);
-  color: #fff;
+  color: var(--primary-text);
 }
 .inbox-panel {
   position: absolute;

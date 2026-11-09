@@ -101,6 +101,36 @@ export function agentDoing(agent: AgentNow, live: BoardLive | undefined, now: nu
   return agent.lastOutput !== undefined && now - agent.lastOutput < ACTIVE_MS ? { words: 'working', tone: 'normal' } : { words: 'idle', tone: 'quiet' };
 }
 
+// Who is working now (T38), for the row above the chat's line: each agent
+// this terminal runs that is doing something (a step running or just taken,
+// or drawing, without steps), then any other agent on the board with a live
+// step, each with its words and, for a step that runs, how long it has.
+export interface Working {
+  name: string;
+  words: string;
+  lasted?: string;
+}
+
+const IDLE_WORDS = new Set(['listening on the board', 'idle', 'starting']);
+
+export function workingNow(agents: AgentNow[], live: BoardLive | undefined, now: number): Working[] {
+  const here = agents
+    .filter((agent) => agent.state === 'running' && !agent.closing)
+    .flatMap((agent): Working[] => {
+      const { words, tone, lasted } = agentDoing(agent, live, now);
+      return tone === 'normal' && !IDLE_WORDS.has(words) ? [{ name: clean(agent.name), words, ...(lasted && { lasted }) }] : [];
+    });
+  const others = new Map<string, Working>();
+  for (const step of live?.steps ?? []) {
+    if (agents.some((a) => samePerson(a.name, step.agent)) || others.has(step.agent.toLowerCase())) continue;
+    const latest = latestStep(step.agent, live, now);
+    if (!latest || phaseOf(latest, now) !== 'live' || latest.done) continue; // a turn's end isn't work
+    const lasted = latest.running && !latest.ended ? now - Date.parse(latest.at) : 0;
+    others.set(step.agent.toLowerCase(), { name: clean(step.agent), words: clean(stepText(latest)), ...(lasted >= 1000 && { lasted: shortDuration(lasted) }) });
+  }
+  return [...here, ...others.values()];
+}
+
 // ---- drawing ------------------------------------------------------------------------
 
 export interface StripEntry extends AgentWords {

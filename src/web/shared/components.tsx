@@ -200,7 +200,8 @@ export function CopyLine({ text, block }: { text: string; block?: boolean }) {
 // A <details> popover: its <summary>, then a .popover-body. A browser leaves
 // one open until its summary is clicked again; this one also closes on a
 // click outside it or on Escape, as the other panels do (useDismiss).
-export function Popover({ className, children }: { className?: string; children: ReactNode }) {
+// `children` may take `close`, for an item in it that closes it as it's picked.
+export function Popover({ className, children }: { className?: string; children: ReactNode | ((close: () => void) => ReactNode) }) {
   const root = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
   const close = useCallback(() => {
@@ -212,7 +213,7 @@ export function Popover({ className, children }: { className?: string; children:
   useDismiss(open, close, root);
   return (
     <details ref={root} className={className ? `popover ${className}` : 'popover'} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      {children}
+      {typeof children === 'function' ? children(close) : children}
     </details>
   );
 }

@@ -155,6 +155,14 @@ export interface AgentBrowserHalf {
   // How it does one message on another model and thinking level, when a
   // person tags it so. None: it can't, and uses its own.
   perMessage?: PerMessageTraits;
+  // What it calls what a person can ask of it with "/", which it tells
+  // Tricot with report_skills: "skills", "prompts", "skills and commands".
+  skills: string;
+  // Its permission prompts come to the board, for a person to answer there
+  // (core/approvals.ts), once its live steps are on: its hook installer
+  // writes the approval hook too (hooks.approvals says the same). None: it
+  // asks in its terminal.
+  approvals?: true;
 }
 
 // How its MCP client treats one long call. A wait (wait_for_updates, or

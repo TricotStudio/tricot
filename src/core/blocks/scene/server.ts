@@ -80,7 +80,7 @@ const part: PartWords = {
 };
 
 const ask: AskWords = {
-  part: ({ pin, block }) => `${pin.quote}${pinWhere(pin)} of ${blockNamed(block, '3D scene')}`,
+  part: ({ pin, block }) => `${pin.quote}${pinWhere(pin, block)} of ${blockNamed(block, '3D scene')}`,
   how: ({ block }) =>
     `Change the scene with update_block (block_id: ${block.id}, scene: its whole three.js JSON, as get_block gives it), keeping the name (and uuid) of each object you keep: spots stay on their objects by them`,
   view: 'the scene',
@@ -119,9 +119,22 @@ export const agent: AgentHalf<SceneTypes> = {
   },
 };
 
+const point3 = z.tuple([z.number(), z.number(), z.number()]);
+
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('scene'), scene: z.string() }),
   patch: { scene: z.string().optional() },
+  // A spot: a named object (by name or uuid) and a point in its coordinates, or a point in the scene; and the view it was seen from.
+  parts: {
+    spot: z.object({
+      kind: z.literal('spot'),
+      object: z.string().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      z: z.number().optional(),
+      view: z.object({ eye: point3, target: point3 }).optional(),
+    }),
+  },
 };
 
 export const server: ServerHalf<SceneTypes> = {

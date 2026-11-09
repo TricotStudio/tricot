@@ -7,7 +7,7 @@ import type { ServerConnectorKind } from '../connector';
 import type { BuiltInGoogle } from './builtIn';
 import { GoogleConnector, type GoogleEndpoints, type GoogleOptions } from './connector';
 import { DocDrafts, GoogleDocs } from './docs';
-import { googleRoutes } from './routes';
+import { googleRouter } from './routes';
 import { googleTools } from './tools';
 
 export { CLIENT_FILE, GOOGLE_ENDPOINTS, GOOGLE_PERMISSIONS, GOOGLE_SCOPES, GoogleConnector, findGoogleClient, readGoogleClient, resolveGoogleClient } from './connector';
@@ -40,7 +40,7 @@ class GoogleServer extends GoogleConnector {
   }
 
   routes(store: Store) {
-    return googleRoutes(this, this.draftsOf(store));
+    return googleRouter(this, this.draftsOf(store));
   }
 
   tools(store: Store) {

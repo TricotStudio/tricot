@@ -8,10 +8,9 @@ import { boardDigest, canvasDigest, decisionDetail, eventsDigest, taskDetail } f
 import { readFlowchart } from '../src/core/blocks/diagram/flowchart';
 import { pendingAsks } from '../src/core/format';
 import { mentionsDigest } from '../src/core/mentions';
-import { noteText, placePin, quoteAt } from '../src/core/pins';
+import { noteText, placePin, quoteAt, samePart } from '../src/core/pins';
 import { Store } from '../src/core/store';
-import type { Actor, Canvas } from '../src/core/types';
-import { jsonFolder, savedBoard } from './savedBoard';
+import type { Actor } from '../src/core/types';
 import { eventsOf } from './tables';
 import { removeScratch } from './platform';
 
@@ -212,6 +211,22 @@ describe('Pins', () => {
     assert.throws(() => store.pinTask(signup.id, { ...box, x: 0.8 }, { text: 'x' }, sam), /stays inside it/);
     assert.throws(() => store.pinTask(signup.id, { ...box, w: 0 }, { text: 'x' }, sam), /fractions of the image/);
     assert.throws(() => store.pinTask(note('Hi').id, box, { text: 'x' }, sam), /Boxes are drawn on images; note "Where we are" is a note/);
+  });
+
+  // The page asks the same (a thread's "Pinned here too"), so a box drawn
+  // again, which gets a new number, is the box a thread is on.
+  it('takes a part as the same as its kind says: a box or a spot whatever its number or view, an element whatever it reads', () => {
+    const box = { kind: 'box' as const, x: 0.1, y: 0.62, w: 0.3333, h: 0.15, n: 1 };
+    assert.ok(samePart(box, { ...box, n: 3 }), 'a box drawn again');
+    assert.ok(!samePart(box, { ...box, y: 0.1 }), 'another box');
+    const view = { eye: [3, 2, 5] as [number, number, number], target: [1.5, 1, 0] as [number, number, number] };
+    const spot = { kind: 'spot' as const, n: 1, x: 0.2, y: 0.5, z: 0.5, name: 'Q2', object: 'q2', view };
+    assert.ok(samePart(spot, { ...spot, n: 2, view: { ...view, eye: [0, 0, 9] } }), 'a spot seen from elsewhere');
+    assert.ok(!samePart(spot, { ...spot, name: 'Q3' }), 'a spot on another object');
+    const element = { kind: 'site' as const, page: '/', selector: '#buy', tag: 'button', text: 'Buy' };
+    assert.ok(samePart(element, { ...element, text: 'Buy now', file: 'index.html', line: 4 }), 'an element that reads otherwise now');
+    assert.ok(!samePart({ kind: 'text', prefix: 'a ', suffix: '' }, { kind: 'text', prefix: 'b ', suffix: '' }), 'words elsewhere');
+    assert.ok(!samePart(box, { kind: 'block' }), 'parts of two kinds');
   });
 
   it('pins a flowchart node or arrow by its id, and notices when the source drops it', () => {
@@ -493,19 +508,6 @@ describe('Pins', () => {
     assert.equal(summaries(1)[0], 'removed note "Where we are" in the board context, with its pin to T2');
     assert.deepEqual(store.getBoard(boardId).canvas.pins, []);
     assert.throws(() => store.removeItem(mine.id, sam), /No canvas block, group, link or pin/);
-  });
-
-  it('loads boards saved before pins existed', async () => {
-    note('Old note');
-    await store.flush();
-    const saved = savedBoard(dir, boardId);
-    delete (saved.canvas as Partial<Canvas>).pins;
-    const old = jsonFolder(saved);
-    const reloaded = new Store(old);
-    reloaded.load();
-    assert.deepEqual(reloaded.getBoard(boardId).canvas.pins, []);
-    await reloaded.flush();
-    removeScratch(old);
   });
 
   it('reads a note the way it renders, near enough to find words in', () => {

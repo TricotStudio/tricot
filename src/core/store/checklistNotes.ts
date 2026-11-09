@@ -1,7 +1,7 @@
 // Checklist blocks became notes with task lists (#83): one kind of block for
 // both, its ticks in the note's Markdown. This moves what was saved as a
-// checklist over, once: from the database (the data migration "checklists
-// become notes") and from board files an earlier Tricot left (the JSON import).
+// checklist over, once, in the database (the data migration "checklists
+// become notes").
 // A block keeps its id, title, place and rev; each of its versions becomes the
 // note it showed; a pin on an item, or on words in one, moves to the same words
 // on that item's line, and keeps its id, so the comments that carry it stay
@@ -178,30 +178,4 @@ function keptChecklists(kept: Kept, checklist: (id: unknown) => Json | undefined
     changed = true;
   }
   return changed;
-}
-
-// ---- in a board file --------------------------------------------------------------
-
-type BoardLike = { canvas?: Json; decisions?: { canvas?: Json }[]; tasks?: { canvas?: Json }[]; deleted?: { kept?: Kept }[] };
-type VersionsLike = { op: string; versions?: Json[] }[];
-
-// A board as an earlier Tricot saved it, with its blocks' versions apart
-// (legacyBoard.ts), moved over in place.
-export function boardChecklistsToNotes(saved: unknown, changes: readonly unknown[]): void {
-  const board = saved as BoardLike;
-  const versions = changes as VersionsLike;
-  const canvases = [board.canvas, ...(board.decisions ?? []).map((d) => d.canvas), ...(board.tasks ?? []).map((t) => t.canvas)].filter(isObject);
-  const blocksOf = (canvas: Json) => (Array.isArray(canvas.blocks) ? (canvas.blocks as Json[]) : []);
-  const checklists = new Map<unknown, Json>();
-  for (const deletion of board.deleted ?? []) if (isChecklist(deletion.kept?.block)) checklists.set(deletion.kept.block.id, deletion.kept.block);
-  for (const canvas of canvases) for (const block of blocksOf(canvas)) if (isChecklist(block)) checklists.set(block.id, block);
-
-  for (const canvas of canvases) {
-    if (Array.isArray(canvas.pins)) canvas.pins = (canvas.pins as Json[]).map((pin) => pinOnNote(pin, checklists.get(pin.blockId)));
-    if (Array.isArray(canvas.blocks)) canvas.blocks = blocksOf(canvas).map((block) => (isChecklist(block) ? asNote(block) : block));
-  }
-  for (const deletion of board.deleted ?? []) if (deletion.kept) keptChecklists(deletion.kept, (id) => checklists.get(id));
-  for (const change of versions) {
-    if (change.op === 'add' && Array.isArray(change.versions)) change.versions = change.versions.map((v) => (isChecklist(v) ? asNote(v) : v));
-  }
 }

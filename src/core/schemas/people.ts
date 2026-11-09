@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { createContent, patchFields } from '../blocks/people';
-import { APPROVAL_HARNESSES, APPROVAL_REASON_LIMIT, APPROVAL_SESSION_ITEM, APPROVAL_SESSION_ITEMS } from '../approvals';
+import { createContent, patchFields, pinParts } from '../blocks/people';
+import { APPROVAL_REASON_LIMIT, APPROVAL_SESSION_ITEM, APPROVAL_SESSION_ITEMS, approvalHarnesses } from '../approvals';
 import { DOORS } from '../doors';
+import { orNames } from '../format';
 import { SEARCH_KINDS, type SearchKind } from '../search';
 import { USAGE_SOURCES } from '../usage';
 import { fields } from './fields';
@@ -111,46 +112,8 @@ export const people = {
   pairingEnd: z.object(by),
 };
 
-const span = z.tuple([z.number().int(), z.number().int()]);
-const point3 = z.tuple([z.number(), z.number(), z.number()]);
-const sceneView = z.object({ eye: point3, target: point3 });
-
-const pinPart = z.discriminatedUnion(
-  'kind',
-  [
-    z.object({
-      kind: z.literal('text'),
-      quote: z.string(),
-      prefix: fields.pinContext.optional(),
-      suffix: fields.pinContext.optional(),
-    }),
-    z.object({ kind: z.literal('cells'), rows: span.optional(), columns: span.optional() }),
-    z.object({ kind: z.literal('box'), x: z.number(), y: z.number(), w: z.number(), h: z.number() }),
-    z.object({ kind: z.literal('node'), nodeId: z.string() }),
-    z.object({ kind: z.literal('arrow'), from: z.string(), to: z.string(), n: z.number().int().min(0).optional() }),
-    z.object({ kind: z.literal('block') }),
-    z.object({ kind: z.literal('line'), file: z.string(), line: z.number().int().min(1), side: z.enum(['new', 'old']).optional(), last: z.number().int().min(1).optional() }),
-    z.object({ kind: z.literal('point'), category: z.string().optional(), series: z.string().optional() }),
-    z.object({
-      kind: z.literal('spot'),
-      object: z.string().optional(),
-      x: z.number().optional(),
-      y: z.number().optional(),
-      z: z.number().optional(),
-      view: sceneView.optional(),
-    }),
-    z.object({
-      kind: z.literal('site'),
-      page: z.string(),
-      selector: z.string(),
-      tag: z.string(),
-      text: z.string().optional(),
-      file: z.string().optional(),
-      line: z.number().int().optional(),
-    }),
-  ],
-  { error: 'A pinned part\'s kind is one of: text, item, cells, box, node, arrow, block, line, point, spot, site.' },
-);
+// What part of a block people pin: each kind says its parts (core/blocks/).
+const pinPart = pinParts();
 
 const placement = { x: z.number().optional(), y: z.number().optional(), w: z.number().optional(), h: z.number().optional() };
 
@@ -261,10 +224,12 @@ export const agentStepName = z.object({ name: actorName });
 // the agent's words, which run of the agent asks, and what "Allow for this
 // session" would also allow, in words. The hook waits with the key it was
 // given; a person answers from the page by the request's id, and may say why
-// they deny it.
+// they deny it. The harness is one of the agents whose prompts come to the
+// board (the registry's).
+const harnesses = approvalHarnesses() as [string, ...string[]];
 export const approvals = {
   request: z.object({
-    harness: z.enum(APPROVAL_HARNESSES as ['claude', 'codex'], { error: 'harness is "claude" or "codex".' }),
+    harness: z.enum(harnesses, { error: `harness is ${orNames(harnesses.map((id) => `"${id}"`))}.` }),
     tool: z.string().trim().min(1).max(200),
     input: z.unknown(),
     description: z.string().max(2_000).optional(),

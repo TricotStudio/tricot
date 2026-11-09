@@ -1,6 +1,7 @@
 // Table blocks: columns and rows of text.
 
 import type { BlockKind, BlockOf } from '../kind';
+import { blockIs } from '../../canvas';
 import type { PinPlace } from '../../pins';
 import type { PinAnchor } from '../../types';
 import { server } from './server';
@@ -56,6 +57,15 @@ export const table: BlockKind<TableTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    parts: {
+      // Cells, rows or columns: tinted in the table, named by their quote (the Search row).
+      cells: {
+        lost: 'cells changed',
+        drawn: true,
+        askedTo: 'change the table',
+        missing: (block) => `Only tables have cells; ${blockIs(block)}.`,
+      },
+    },
     place: (block, pin) => (pin.anchor.kind === 'cells' ? placeCells(block, pin.anchor) : undefined),
   },
 

@@ -1,6 +1,7 @@
-// Google's REST routes, under /api/connectors/google: a file's name for link
-// cards, what the Picker needs, and a Google Doc's draft on its link block. The service's token
-// stays in this process; what goes out is the doc's text and the draft.
+// Serving Google's REST routes (core/connectors/google/routes.ts), under
+// /api/connectors/google: a file's name for link cards, what the Picker needs,
+// and a Google Doc's draft on its link block. The service's token stays in
+// this process; what goes out is the doc's text and the draft.
 
 import { Router, type ErrorRequestHandler, type Request } from 'express';
 import { z } from 'zod';
@@ -8,7 +9,7 @@ import { DocError, type DocChange } from '../../../core/connectors/google/doc';
 import type { Actor } from '../../../core/types';
 import type { GoogleConnector } from './connector';
 import type { DocDrafts } from './docs';
-import { routes } from '../../../core/routes';
+import { googleRoutes } from '../../../core/connectors/google/routes';
 import { routesOn } from '../../routing';
 
 const actorName = z.string().trim().min(1).max(60);
@@ -51,26 +52,26 @@ function person(name: string): Actor {
 
 const param = (req: Request, name: string): string => String(req.params[name]);
 
-export function googleRoutes(google: GoogleConnector, drafts: DocDrafts): Router {
+export function googleRouter(google: GoogleConnector, drafts: DocDrafts): Router {
   const router = Router();
   const on = routesOn(router, '/api/connectors/google');
 
   // A Google file's name and last edit, for link cards. Fails quietly: null
   // when Google isn't connected or won't show it.
-  on(routes.googleFile, async (req, res) => {
+  on(googleRoutes.file, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ file: await google.driveFile(param(req, 'fileId')) });
   });
 
   // What the browser's Picker needs to let a person choose docs: a short-lived
   // access token and the public keys. A POST, so the Origin check covers it.
-  on(routes.googlePicker, async (_req, res) => {
+  on(googleRoutes.picker, async (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json(await google.pickerConfig());
   });
 
   // Docs were chosen in the Picker (it talks to Google, not to this server): names looked up before may be wrong now.
-  on(routes.googleChosen, (req, res) => {
+  on(googleRoutes.chosen, (req, res) => {
     docSchemas.chosen.parse(req.body);
     google.chosen();
     res.json({ ok: true });
@@ -83,29 +84,29 @@ export function googleRoutes(google: GoogleConnector, drafts: DocDrafts): Router
   const doc = Router({ mergeParams: true });
   const onDoc = routesOn(doc, '/api/connectors/google/docs/:blockId');
   const block = (req: Request) => param(req, 'blockId');
-  onDoc(routes.googleDoc, async (req, res) => {
+  onDoc(googleRoutes.doc, async (req, res) => {
     const name = typeof req.query.actor === 'string' && req.query.actor.trim() ? req.query.actor.trim().slice(0, 60) : 'Someone';
     res.json(await drafts.open(block(req), person(name)));
   });
-  onDoc(routes.googleDocDraft, async (req, res) => {
+  onDoc(googleRoutes.docDraft, async (req, res) => {
     const { actor, revision, changes } = docSchemas.draft.parse(req.body);
     res.json(await drafts.edit(block(req), revision, changes as DocChange[], person(actor)));
   });
-  onDoc(routes.googleDocDiscard, (req, res) => {
+  onDoc(googleRoutes.docDiscard, (req, res) => {
     const { actor } = docSchemas.actor.parse(req.body);
     drafts.discard(block(req), person(actor));
     res.json({ ok: true });
   });
-  onDoc(routes.googleDocSave, async (req, res) => {
+  onDoc(googleRoutes.docSave, async (req, res) => {
     const { actor } = docSchemas.actor.parse(req.body);
     res.json(await drafts.save(block(req), person(actor)));
   });
   // Words in a paragraph, pinned with a request for agents to edit it, or a comment.
-  onDoc(routes.googleDocPins, async (req, res) => {
+  onDoc(googleRoutes.docPins, async (req, res) => {
     const { actor, ask, ...input } = docSchemas.pin.parse(req.body);
     res.status(201).json(await drafts.pin(block(req), { ...input, ask: Boolean(ask) }, person(actor)));
   });
-  onDoc(routes.googleDocResolve, async (req, res) => {
+  onDoc(googleRoutes.docResolve, async (req, res) => {
     const { actor, conflict, keep } = docSchemas.resolve.parse(req.body);
     res.json({ draft: (await drafts.resolve(block(req), conflict, keep, person(actor))) ?? null });
   });

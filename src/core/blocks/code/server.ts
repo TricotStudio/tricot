@@ -184,6 +184,7 @@ export const agent: AgentHalf<CodeTypes> = {
 };
 
 export const people: PeopleHalf = {
+  // Its lines are pinned as a diff's are: diff/server.ts says what people send of one.
   create: z.object({
     type: z.literal('code'),
     text: z.string(),

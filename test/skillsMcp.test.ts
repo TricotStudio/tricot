@@ -7,9 +7,11 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { agentKinds, skillsWords } from '../src/core/agents/registry';
 import { SKILLS_NUDGE } from '../src/core/skills';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
+import { readGuide } from './guide';
 import { removeScratch } from './platform';
 
 type ToolResult = { content: { type: string; text: string }[]; isError?: boolean };
@@ -100,6 +102,16 @@ describe('Skills called with "/", over MCP and REST', () => {
     } finally {
       await next.close();
     }
+  });
+
+  // What each agent calls its skills, from the registry: a new agent is named there without a word here.
+  it('tells an agent what counts as a skill, naming every agent in the registry', async () => {
+    const tool = (await clients.Claude.listTools()).tools.find((t) => t.name === 'report_skills')!;
+    const said = (tool.inputSchema.properties as Record<string, { description?: string }>).skills.description ?? '';
+    const guide = await readGuide(clients.Claude, 'conversation');
+    assert.ok(said.includes(`(${skillsWords()})`), said);
+    assert.ok(guide.includes(`Skills are ${skillsWords()}.`), 'the guide says the same');
+    for (const kind of agentKinds()) assert.ok(said.includes(kind.name) && guide.includes(kind.name), kind.id);
   });
 
   it('keeps each agent\'s skills app-wide and replaces them with a new report', async () => {

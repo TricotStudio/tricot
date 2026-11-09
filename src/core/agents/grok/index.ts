@@ -43,6 +43,8 @@ export const grok: AgentKind = {
   // no thinking level from its command line. From its docs, not run, and for
   // when Tricot can start it.
   startsOn: { models: [] },
+  // Its skills (.grok/skills; one a person may call shows as /<name>): its docs on skills and plugins.
+  skills: 'skills',
 
   ...server,
 };

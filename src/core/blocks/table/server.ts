@@ -117,9 +117,13 @@ export const agent: AgentHalf<TableTypes> = {
   },
 };
 
+const span = z.tuple([z.number().int(), z.number().int()]);
+
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('table'), columns: z.array(z.string()), rows: z.array(z.array(z.string())) }),
   patch: { columns: columnsOfText, rows: rowsOfText },
+  // Cells by 0-based inclusive ranges: no rows spans whole columns, no columns whole rows.
+  parts: { cells: z.object({ kind: z.literal('cells'), rows: span.optional(), columns: span.optional() }) },
 };
 
 export const server: ServerHalf<TableTypes> = {

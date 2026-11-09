@@ -3,9 +3,10 @@
 // start for one session, its live-steps installer and what `tricot connect`
 // says) and an import and an entry in the registry, and nothing else. It then
 // checks the result end to end (types, `tricot` help and its unknown-command
-// hint, `tricot acme`, `tricot connect`, the Connect panel's data, first run,
-// usage, the live-steps installers, the web bundle), says exactly which files
-// the change touched, and takes the agent out again, even when a check fails.
+// hint, `tricot acme`, `tricot connect`, the Connect panel's data, what
+// report_skills says, approvals, first run, usage, the live-steps installers,
+// the web bundle), says exactly which files the change touched, and takes the
+// agent out again, even when a check fails.
 //
 //   npx tsx scripts/check-new-agent.ts            add it, check it, remove it
 //   npx tsx scripts/check-new-agent.ts install    add it and leave it, to look at
@@ -65,6 +66,7 @@ export const acme: AgentKind = {
   },
   panel: { intro: ['Run once in a terminal; Acme Code then has the board in every session.'], note: ['It shows on the board as “Acme”.'] },
   usage: { shares: 'tokens', source: 'acme' },
+  skills: 'recipes',
 
   ...server,
 };
@@ -175,7 +177,7 @@ async function endToEnd(): Promise<void> {
   try {
     // the registry, and what reads it
     const { agentKinds, findAgent, panelTexts, agentsInCliOrder, installHints } = await import('../src/core/agents/registry');
-    assert.deepEqual(agentKinds().map((kind) => kind.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode', 'goose', 'hermes', 'grok', 'acme']);
+    assert.deepEqual(agentKinds().map((kind) => kind.id), ['claude', 'codex', 'pi', 'omp', 'gemini', 'opencode', 'goose', 'hermes', 'grok', 'copilot', 'acme']);
     assert.equal(agentsInCliOrder().at(-1)?.id, 'acme', 'one without a place in the CLI order comes last');
     ok('the registry lists it, after the others');
 
@@ -185,11 +187,12 @@ async function endToEnd(): Promise<void> {
     assert.ok(isKnownCommand('acme') && isAgentCommand('acme'));
     assert.match(commandHelp('acme')!, /^tricot acme: start the board and Acme Code together, in this terminal/);
     const main = mainHelp('1.0.0').replace(/\s+/g, ' '); // as wrapped, in one line
-    assert.match(main, /Also codex, opencode, pi, omp and acme; several at once: tricot claude codex/);
-    assert.match(main, /Connect claude, codex, pi, gemini, grok or acme: shows its own command/, 'acme runs a command of its own, so `tricot connect` runs it');
+    assert.match(main, /Also codex, opencode, pi, omp, copilot and acme; several at once: tricot claude codex/);
+    assert.match(main, /Connect claude, codex, pi, gemini, grok, copilot or acme: shows its own command/, 'acme runs a command of its own, so `tricot connect` runs it');
     assert.equal(unknownCommand('acmee'), 'Unknown command "acmee". Did you mean "acme"?');
     assert.ok(AGENTS.acme.session);
-    ok('CLI help: its command, the list of those that start, and the closest-command hint');
+    assert.match(commandHelp('steps')!.replace(/\s+/g, ' '), /--agent <id> Just this agent \(claude, codex, pi, omp, gemini, opencode, goose, hermes, grok, copilot, acme\)/);
+    ok('CLI help: its command, the list of those that start, the agents `tricot steps --agent` takes, and the closest-command hint');
 
     // `tricot acme`: not installed here, so it says how to get it, and starts nothing
     const started = tricot(home, ['acme', '--board', 'x']);
@@ -208,8 +211,8 @@ async function endToEnd(): Promise<void> {
     assert.match(connected.output, /Run once; Acme Code then has the board in every session:\n {2}acme-code mcp add tricot "?http:\/\/127\.0\.0\.1:4999\/mcp\?agent=Acme"?/);
     const overview = tricot(home, ['connect', '--port', '4999']).output;
     assert.match(overview, /^ {2}acme-code mcp add tricot /m);
-    assert.match(overview, /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, grok, acme\)\./);
-    assert.match(tricot(home, ['connect', 'nope']).output, /Unknown agent "nope"\. Try: claude, codex, pi, omp, gemini, opencode, goose, hermes, grok, acme, mcp-json, url\./);
+    assert.match(overview, /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, grok, copilot, acme\)\./);
+    assert.match(tricot(home, ['connect', 'nope']).output, /Unknown agent "nope"\. Try: claude, codex, pi, omp, gemini, opencode, goose, hermes, grok, copilot, acme, mcp-json, url\./);
     ok('`tricot connect`: its --print, the overview, the list of names');
 
     // the Connect panel's data
@@ -218,6 +221,22 @@ async function endToEnd(): Promise<void> {
     assert.equal(texts.other, 'http://127.0.0.1:4545/mcp');
     assert.deepEqual(findAgent('acme')!.panel.intro, ['Run once in a terminal; Acme Code then has the board in every session.']);
     ok('the Connect panel: its tab, its words and the command to copy');
+
+    // what an agent is told its skills are, and the live-steps hint for an agent of no known tool
+    const { skillsWords } = await import('../src/core/agents/registry');
+    const { tools } = await import('../src/core/schemas');
+    assert.match(skillsWords(), /, Grok Build or Copilot CLI skills, Acme Code recipes$/);
+    assert.ok(String(tools.report_skills.skills.description).includes('Acme Code recipes'));
+    const { stepsCommandUnder } = await import('../src/core/liveSteps');
+    assert.equal(stepsCommandUnder('Acme').others.at(-1), 'acme');
+    ok('report_skills names it by what it calls its skills, and the live-steps hint lists it');
+
+    // approvals: it has none, so a request from it is refused
+    const { approvalHarnesses } = await import('../src/core/approvals');
+    const { approvals } = await import('../src/core/schemas');
+    assert.deepEqual(approvalHarnesses(), ['claude', 'codex']);
+    assert.equal(approvals.request.safeParse({ harness: 'acme', tool: 'Bash', input: {} }).success, false);
+    ok('approvals: without approvals of its own, its requests are refused');
 
     // first run
     const { agentToConnect, connectWords } = await import('../src/core/firstRun');

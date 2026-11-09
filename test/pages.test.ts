@@ -15,6 +15,7 @@ const board = (boardId: string, more: Partial<Extract<PageRoute, { page: 'board'
   view: 'tasks',
   decisionId: undefined,
   taskId: undefined,
+  pinId: undefined,
   ...more,
 });
 
@@ -30,6 +31,7 @@ describe('The table of pages', () => {
     assert.deepEqual(pageAt(linkTo.task(id, 't 1/2')), board(id, { taskId: 't 1/2' }));
     assert.deepEqual(pageAt(linkTo.decision(id, 'd?1')), board(id, { decisionId: 'd?1' }));
     assert.deepEqual(pageAt(linkTo.askAgents(id)), board(id, { view: 'canvas' }));
+    assert.deepEqual(pageAt(linkTo.pin(id, 'p/1?')), board(id, { view: 'canvas', pinId: 'p/1?' }), 'a pin opens on the Board Context');
   });
 
   it('builds the addresses links have always had', () => {
@@ -42,6 +44,7 @@ describe('The table of pages', () => {
     assert.equal(linkTo.askAgents('x'), '#/b/x/canvas?ask');
     assert.equal(linkTo.task('x', 'y'), '#/b/x/t/y');
     assert.equal(linkTo.decision('x', 'y'), '#/b/x/d/y');
+    assert.equal(linkTo.pin('x', 'y'), '#/b/x/canvas/p/y');
   });
 
   it('opens Home for any other address', () => {
@@ -58,6 +61,7 @@ describe('The table of pages', () => {
   it("moves an address to its board's new id, and keeps the rest of it", () => {
     assert.equal(onBoard('#/b/old-name/d/1', 'new name'), '#/b/new%20name/d/1');
     assert.equal(onBoard('#/b/old-name', 'new'), '#/b/new');
+    assert.equal(onBoard('#/b/old-name/canvas/p/7', 'new'), '#/b/new/canvas/p/7');
     assert.equal(onBoard('#/connectors?from=old', 'new'), '#/connectors?from=old');
   });
 });

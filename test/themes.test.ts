@@ -91,12 +91,7 @@ describe('The theme before first paint', () => {
 
   // Runs index.html's script as the build writes it, with this much remembered and the OS light or dark.
   function prePaint(stored: Record<string, string>, osDark: boolean): string | undefined {
-    const storage: Record<string, string> = { ...stored };
-    Object.defineProperties(storage, {
-      getItem: { value: (key: string) => (Object.hasOwn(storage, key) ? storage[key] : null) },
-      setItem: { value: (key: string, value: string) => void (storage[key] = String(value)) },
-      removeItem: { value: (key: string) => void delete storage[key] },
-    });
+    const storage = { getItem: (key: string) => (Object.hasOwn(stored, key) ? stored[key] : null) };
     const dataset: Record<string, string> = {};
     vm.runInNewContext(script!, { localStorage: storage, matchMedia: () => ({ matches: osDark }), document: { documentElement: { dataset } } });
     return dataset.theme;
@@ -115,9 +110,5 @@ describe('The theme before first paint', () => {
         assert.equal(prePaint(value === null ? {} : { 'tricot:theme': value }, osDark), expected, `remembered ${value}, OS ${osDark ? 'dark' : 'light'}`);
       }
     }
-  });
-
-  it("still reads a theme saved under the tool's earlier name", () => {
-    assert.equal(prePaint({ 'openboard:theme': 'dark' }, false), 'dark');
   });
 });

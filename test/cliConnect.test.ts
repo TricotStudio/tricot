@@ -94,7 +94,7 @@ describe('tricot connect <agent>', () => {
     answer = true;
     result = { exitCode: 0, stdout: '', stderr: '' };
     held = { exitCode: 1, stdout: '', stderr: 'No MCP server named "tricot".' };
-    agentsHere = ['claude', 'codex', 'pi', 'gemini', 'grok'];
+    agentsHere = ['claude', 'codex', 'pi', 'gemini', 'grok', 'copilot'];
     agentsOnPath(agentsHere);
   });
   afterEach(() => removeScratch(scratch));
@@ -149,6 +149,7 @@ describe('tricot connect <agent>', () => {
         ['pi', "Pi's settings"],
         ['gemini', "Gemini CLI's settings"],
         ['grok', "Grok Build's settings"],
+        ['copilot', "Copilot CLI's settings"],
       ]) {
         asked.length = 0;
         await run('connect', agent);
@@ -156,11 +157,12 @@ describe('tricot connect <agent>', () => {
       }
     });
 
-    it('runs the commands as printed for Codex, Pi, Gemini CLI and Grok Build, named on the board', async () => {
+    it('runs the commands as printed for Codex, Pi, Gemini CLI, Grok Build and Copilot CLI, named on the board', async () => {
       await run('connect', 'codex');
       await run('connect', 'pi');
       await run('connect', 'gemini');
       await run('connect', 'grok');
+      await run('connect', 'copilot');
       assert.deepEqual(
         ran.map((c) => [path.basename(c.command), ...c.args]),
         [
@@ -168,8 +170,21 @@ describe('tricot connect <agent>', () => {
           ['pi', 'mcp', 'add', 'tricot', '--url', url('Pi')],
           ['gemini', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', url('Gemini')],
           ['grok', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', url('Grok')],
+          ['copilot', 'mcp', 'add', '--transport', 'http', '--timeout', '300000', 'tricot', url('Copilot')],
         ],
       );
+    });
+
+    it('says which settings Copilot CLI keeps the board in, and that it asks before each board tool', async () => {
+      await run('connect', 'copilot');
+      assert.match(said(), /adds a server named tricot to Copilot CLI's settings \(~\/\.copilot\/mcp-config\.json\), for every session/);
+      assert.match(said(), /Connected: Copilot CLI now has the board, in every session/);
+      assert.match(said(), /Copilot CLI asks before each board tool unless you allow them \(copilot --allow-tool=tricot allows them all\)\./);
+      out.length = 0;
+      await run('connect', 'copilot', '--print');
+      assert.match(said(), /^Run once; Copilot CLI then has the board in every session:$/m);
+      assert.match(said(), new RegExp(`^  copilot mcp add --transport http --timeout 300000 tricot "http://127\\.0\\.0\\.1:${port}/mcp\\?agent=Copilot"$`, 'm'));
+      assert.match(said(), /^It keeps the server in ~\/\.copilot\/mcp-config\.json\./m);
     });
 
     it('says which settings Grok Build keeps the board in, and that the instructions can be printed alone', async () => {
@@ -221,7 +236,7 @@ describe('tricot connect <agent>', () => {
 
   describe('with --print', () => {
     it('never runs anything, and asks nothing, even with --yes and a yes ready', async () => {
-      for (const agent of ['claude', 'codex', 'pi', 'gemini', 'grok']) {
+      for (const agent of ['claude', 'codex', 'pi', 'gemini', 'grok', 'copilot']) {
         for (const flags of [['--print'], ['--print', '--yes']]) {
           const { exitCode } = await run('connect', agent, ...flags);
           assert.equal(exitCode, 0);
@@ -279,12 +294,14 @@ describe('tricot connect <agent>', () => {
       stderr: '',
     });
 
-    it('asks Claude Code, and Codex, what they have, with their own command and nothing else', async () => {
+    it('asks Claude Code, Codex and Copilot CLI what they have, with their own command and nothing else', async () => {
       await run('connect', 'claude');
       await run('connect', 'codex');
+      await run('connect', 'copilot');
       assert.deepEqual(asking.map((a) => [path.basename(a.command), ...a.args]), [
         ['claude', 'mcp', 'get', 'tricot'],
         ['codex', 'mcp', 'get', 'tricot'],
+        ['copilot', 'mcp', 'get', 'tricot'],
       ]);
       assert.equal(asking[0].timeoutMs, 10_000);
     });
@@ -320,6 +337,29 @@ describe('tricot connect <agent>', () => {
       assert.equal(exitCode, 0);
       assert.deepEqual(ran, []);
       assert.match(said(), /^Codex is already connected to this board\. Nothing to do\.$/m);
+    });
+
+    // As Copilot CLI 1.0.107 says it (its token header masked), and what it says of a server it hasn't, exiting 1.
+    const copilotHas = (address: string): CommandResult => ({
+      exitCode: 0,
+      stdout: `tricot\n  Status: Enabled\n  Type: http\n  URL: ${address}\n  Headers:\n    Authorization: ***\n  Tools: * (all)\n  Timeout: 300000ms\n  Source: User\n`,
+      stderr: '',
+    });
+
+    it('knows Copilot CLI has it from its URL line, and replaces another, remove then add', async () => {
+      held = copilotHas(url('Copilot'));
+      assert.equal((await run('connect', 'copilot')).exitCode, 0);
+      assert.equal(ran.length, 0);
+      assert.match(said(), /^Copilot CLI is already connected to this board\. Nothing to do\.$/m);
+      out.length = 0;
+      held = copilotHas('http://127.0.0.1:4545/mcp?agent=Copilot');
+      assert.equal((await run('connect', 'copilot')).exitCode, 0);
+      assert.match(said(), /Copilot CLI already has a server named tricot, at http:\/\/127\.0\.0\.1:4545\/mcp\?agent=Copilot, which is not this board's address\. Tricot would replace it, running:\n {2}copilot mcp remove tricot\n {2}copilot mcp add /);
+      assert.deepEqual(ran.map((c) => c.args.slice(0, 2)), [['mcp', 'remove'], ['mcp', 'add']]);
+      ran.length = 0;
+      held = { exitCode: 1, stdout: '', stderr: 'Error: Server "tricot" not found.\n\nAvailable servers:\n  github-mcp-server\n' };
+      await run('connect', 'copilot');
+      assert.deepEqual(ran.map((c) => c.args.slice(0, 2)), [['mcp', 'add']], 'none there: it only adds');
     });
 
     it('says what it found at another port, asks once, and replaces it: remove, then add', async () => {
@@ -452,6 +492,12 @@ describe('tricot connect <agent>', () => {
       err.length = 0;
       assert.equal((await run('connect', 'grok', '--yes')).exitCode, 1);
       assert.match(complained(), /^  grok mcp remove --scope user tricot$/m);
+
+      // Copilot CLI 1.0.107's own words for it.
+      result = { exitCode: 1, stdout: '', stderr: 'Error: Server "tricot" already exists. To update it, remove it first:\n  copilot mcp remove tricot' };
+      err.length = 0;
+      assert.equal((await run('connect', 'copilot', '--yes')).exitCode, 1);
+      assert.match(complained(), /^  copilot mcp remove tricot$/m);
     });
 
     it('does not suggest replacing anything for another failure', async () => {
@@ -514,6 +560,17 @@ describe('tricot connect <agent>', () => {
       assert.ok(!JSON.stringify(ran[0].args).includes(TOKEN));
       assert.ok(!everything().includes(TOKEN));
       assert.match(said(), /reads the token from TRICOT_TOKEN: set it in the shell/);
+    });
+
+    it('gives Copilot CLI the header that names the variable, and the token in the environment', async () => {
+      const { exitCode } = await run('connect', 'copilot', '--yes', '--host', '0.0.0.0');
+      assert.equal(exitCode, 0);
+      assert.deepEqual(ran[0].args, [
+        'mcp', 'add', '--transport', 'http', '--timeout', '300000', '--header', 'Authorization: Bearer ${TRICOT_TOKEN}', 'tricot', `http://127.0.0.1:${port}/mcp?agent=Copilot`,
+      ]);
+      assert.equal(ran[0].env.TRICOT_TOKEN, TOKEN);
+      assert.ok(!JSON.stringify(ran[0].args).includes(TOKEN));
+      assert.ok(!everything().includes(TOKEN));
     });
 
     it("keeps the token out of what the agent says back, should it repeat it", async () => {
@@ -612,7 +669,7 @@ describe('tricot connect <agent>', () => {
       const { exitCode } = await run('connect');
       assert.equal(exitCode, 0);
       assert.match(said(), /^Connect an agent \(once\):$/m);
-      assert.match(said(), /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, grok\)\. Add --print to only see the command\./);
+      assert.match(said(), /To have Tricot run one of these for you, after asking: tricot connect claude \(or codex, pi, gemini, grok, copilot\)\. Add --print to only see the command\./);
       assert.deepEqual(ran, []);
       assert.deepEqual(asked, []);
     });
@@ -629,10 +686,10 @@ describe('tricot connect <agent>', () => {
   describe('the help', () => {
     it('lists connect in the main help, and says its options in its own (cliHelp.test.ts has the rest)', async () => {
       await run('--help');
-      assert.match(said(), /tricot connect \[agent\]\s+Connect claude, codex, pi, gemini or grok: shows its own command,\s+asks,/);
+      assert.match(said(), /tricot connect \[agent\]\s+Connect claude, codex, pi, gemini, grok or copilot: shows its own\s+command, asks,/);
       out.length = 0;
       await run('connect', '--help');
-      assert.match(said().replace(/\s+/g, ' '), /Connect claude, codex, pi, gemini or grok: shows its own command, asks, and runs it\. --print only shows it/);
+      assert.match(said().replace(/\s+/g, ' '), /Connect claude, codex, pi, gemini, grok or copilot: shows its own command, asks, and runs it\. --print only shows it/);
       assert.match(said(), /--print\s+Only show the command, run nothing/);
       assert.match(said(), /--yes\s+Don't ask \(it still shows what it changes\)/);
     });

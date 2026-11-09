@@ -10,58 +10,23 @@
 // the data folder.
 //
 // And who may act as a person, and at which tier: asPerson, below.
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import os from 'node:os';
-import path from 'node:path';
 import type { Request, RequestHandler } from 'express';
 import { SEAT_GONE, SEAT_NEEDED, TICKET_PARAM } from '../core/seats';
 import { isCallbackPath } from './connectors/connector';
 import type { Seat, SeatCheck, Seats } from './seats';
 
-// Hosts that only this machine can reach.
-const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1'];
-// How a browser writes them in an Origin or Host header.
+// How a browser writes the hosts only this machine can reach (platform/token.ts
+// isLoopbackHost) in an Origin or Host header.
 const LOOPBACK_NAMES = ['127.0.0.1', 'localhost', '[::1]'];
 
-export const isLoopbackHost = (host: string): boolean => LOOPBACK_HOSTS.includes(host);
+// The token file and the loopback hosts are the platform's, shared with the
+// `tricot` command and updating: the same as ever for the server's code here.
+export { authHeaders, isLoopbackHost, loadToken, readToken, tokenFile } from '../platform/token';
 
 export const COOKIE_NAME = 'tricot_token';
-const TOKEN_BYTES = 32;
 const COOKIE_DAYS = 365;
-
-export const tokenFile = (dataDir: string) => path.join(dataDir, 'token');
-
-function readTokenFile(dataDir: string): string | undefined {
-  try {
-    const token = readFileSync(tokenFile(dataDir), 'utf8').trim();
-    return token.length >= TOKEN_BYTES ? token : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// The token this data folder uses beyond this machine, if one has been made.
-export const readToken = readTokenFile;
-
-// The folder's token: the one already there, or a new random one, kept
-// readable by this user alone. Made once; the same token stays across restarts.
-export function loadToken(dataDir: string): string {
-  const existing = readTokenFile(dataDir);
-  if (existing) return existing;
-  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-  const token = randomBytes(TOKEN_BYTES).toString('base64url');
-  writeFileSync(tokenFile(dataDir), `${token}\n`, { mode: 0o600 });
-  chmodSync(tokenFile(dataDir), 0o600);
-  return token;
-}
-
-// The Authorization header a program on this machine sends to a server that
-// requires the token; none when the folder has no token.
-export function authHeaders(dataDir: string): Record<string, string> {
-  const token = readTokenFile(dataDir);
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 // A service sends the person's browser back to a connector's callback
 // (connectors/connector.ts) after sign-in: a top-level GET navigation from

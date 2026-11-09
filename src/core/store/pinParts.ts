@@ -1,9 +1,8 @@
 import { BoardError } from './errors';
 import type { PinPart } from './inputs';
 import { label, taskLabel } from './labels';
-import { blockIs } from '../blocks/shared';
 import { kindOf } from '../blocks/registry';
-import { partOf, partWords } from '../parts';
+import { partHooks, partOf } from '../parts';
 import { blockLabel } from '../canvas';
 import { pinPart, placePin } from '../pins';
 import type { Block, Board, Pin, PinAnchor } from '../types';
@@ -31,33 +30,6 @@ export function pinRef(board: Board, pin: Pin, full = false): string {
   return 'work that is gone';
 }
 
-// Whether two anchors pin the same part. A box or a spot is the same whatever
-// number it would be given; a website's element is its page's element,
-// whatever it reads or wherever its file has it now.
-export function samePart(a: PinAnchor, b: PinAnchor): boolean {
-  if (a.kind === 'site' && b.kind === 'site') return a.page === b.page && a.selector === b.selector;
-  if (a.kind === 'box' && b.kind === 'box') return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
-  if (a.kind === 'spot' && b.kind === 'spot') return a.x === b.x && a.y === b.y && a.z === b.z && a.name === b.name; // whatever it was seen from
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-// What a part says when its block isn't a kind that has it. A kind that has
-// the part makes its anchor (kind.pins.anchor); these are the words for the
-// parts there are, which a new kind of part adds to. A connector's parts
-// (a Google Doc's paragraphs) say it themselves (connector.pins.missing).
-const NOT_HERE: Partial<Record<PinPart['kind'], (block: Block) => string>> = {
-  text: (block) => `Words are pinned in notes; ${blockIs(block)}.`,
-  cells: (block) => `Only tables have cells; ${blockIs(block)}.`,
-  box: (block) => `Boxes are drawn on images; ${blockIs(block)}.`,
-  node: (block) => `Only diagrams have nodes and arrows; ${blockIs(block)}.`,
-  arrow: (block) => `Only diagrams have nodes and arrows; ${blockIs(block)}.`,
-  line: (block) => `Lines are pinned in diffs and code blocks; ${blockIs(block)}.`,
-  point: (block) => `Points are pinned in charts; ${blockIs(block)}.`,
-  spot: (block) => `Spots are pinned on 3D scenes; ${blockIs(block)}.`,
-  site: (block) => `Elements are pinned on websites; ${blockIs(block)}.`,
-  block: () => '',
-};
-
 // Turns the part someone pinned into an anchor that finds it again after
 // edits, and the quote that shows it. Throws when the part isn't on the block.
 // `pins` are the canvas's, which number boxes.
@@ -66,6 +38,7 @@ export function pinAnchor(block: Block, part: PinPart, pins: Pin[]): { anchor: P
   if (part.kind === 'block') return { anchor: { kind: 'block' }, quote: block.title || kind.pins?.whole?.quote(block) || blockLabel(block) };
   const found = kind.pins?.anchor?.(block, part, pins);
   if (found) return found;
-  const say = NOT_HERE[part.kind] ?? partWords(part.kind)?.missing;
-  throw new BoardError(say ? say(block) : `Unknown kind of pin "${(part as { kind: string }).kind}".`);
+  // A block that isn't a kind that has the part: the part's own words say which have it.
+  const say = partHooks(part.kind)?.missing;
+  throw new BoardError(say ? say(block) : `Unknown kind of pin "${part.kind}".`);
 }

@@ -1,10 +1,12 @@
-// The installer for an agent that runs a command on each hook event: Claude
-// Code and Codex, which keep hooks in the same JSON shape (settings.json,
-// hooks.json). Tricot's hook is hooks/tricot-steps.mjs, copied with the
-// module it imports (tricot-describe.mjs) into the agent's own folder, under
-// hooks/, and run by an entry on each event Tricot listens to. Each agent's
-// file (claude.ts, codex.ts) says where its folder is, the command, the
-// events and what to know; this is the rest.
+// The installer for an agent that runs a command on each hook event and keeps
+// its hooks in Claude Code's JSON shape (each event, then groups of a matcher
+// and its hooks), in its own settings file or one of Tricot's: the agents
+// whose installer is commandHookInstaller. Tricot's hook is
+// hooks/tricot-steps.mjs, copied with the module it imports
+// (tricot-describe.mjs) into the agent's own folder, under hooks/, and run by
+// an entry on each event Tricot listens to. Each agent's file (claude.ts,
+// codex.ts and the others that call commandHookInstaller) says where its
+// folder is, the command, the events and what to know; this is the rest.
 //
 // An agent that passes its plan usage on (usageLine.ts) gets
 // hooks/tricot-usage.mjs beside them too, in the user scope: Claude Code as

@@ -112,8 +112,8 @@ export class Boards {
   // Deletes an archived board for good, once a person has typed its title: no
   // bin. Archiving is the way to keep a board. Everything of it goes, from the
   // database, from memory and from search, and so do its pictures that no other
-  // board or earlier version still shows, and its files in the JSON backups of
-  // an import. Whole-database backups from before an upgrade are left alone.
+  // board or earlier version still shows. Whole-database backups from before an
+  // upgrade are left alone.
   deleteBoard(boardId: string, actor: Actor, confirm: string): void {
     if (actor.kind !== 'human') throw new BoardError('Only people delete a board.');
     const board = this.repo.getBoard(boardId);

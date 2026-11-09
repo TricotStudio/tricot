@@ -180,7 +180,7 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
   }
   let term: ReturnType<typeof terminal> | undefined;
   const ctx = (options: Options = {}, argv: string[] = []): CliContext => {
-    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok'].includes(word)).length > 1;
+    const several = argv.slice(0, argv.indexOf('--') < 0 ? undefined : argv.indexOf('--')).filter((word) => ['claude', 'codex', 'opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok', 'copilot'].includes(word)).length > 1;
     const withHost = !options.noTerminal && (options.terminal ?? several);
     term = options.keys ? terminal(options.keys) : undefined;
     return {
@@ -339,6 +339,27 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.deepEqual(JSON.parse(launches[1].env.OPENCODE_CONFIG_CONTENT!), {
         mcp: { tricot: { type: 'remote', url: `${server.mcpUrl}?agent=OpenCode&model=&effort=`, enabled: true, timeout: 300000 } },
       });
+      assert.deepEqual(snapshot(home), before, 'no file in the home folder changed');
+    });
+
+    it("starts Copilot CLI with the board's server for the session, over its own tricot, writing nothing", async () => {
+      const { server, ids } = await boardWith('Roadmap');
+      writeFileSync(path.join(bin, 'copilot'), FAKE_AGENT, { mode: 0o755 });
+      mkdirSync(path.join(home, '.copilot'));
+      writeFileSync(path.join(home, '.copilot/mcp-config.json'), '{"mcpServers":{"tricot":{"type":"http","url":"http://127.0.0.1:4545/mcp","tools":["*"]}}}\n');
+      const before = snapshot(home);
+      assert.equal((await run(['copilot', '--board', ids[0], '--no-open'])).exitCode, 0, err.join('\n'));
+      assert.deepEqual(recorded().args, [
+        '--additional-mcp-config',
+        JSON.stringify({ mcpServers: { tricot: { type: 'http', url: `${server.mcpUrl}?agent=Copilot&model=&effort=`, tools: ['*'], timeout: 300000 } } }),
+        '--enable-mcp-server=tricot',
+        '--allow-tool=tricot',
+        '-i',
+        `Use the Tricot board ${ids[0]} and start listening.`,
+      ]);
+      assert.ok(!recorded().env.includes('TRICOT_TOKEN'));
+      assert.match(said(), /Copilot CLI gets the board for this session only; its settings stay as they are\./);
+      assert.match(said(), /Starting Copilot CLI on "Roadmap"…/);
       assert.deepEqual(snapshot(home), before, 'no file in the home folder changed');
     });
 
@@ -560,6 +581,14 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       assert.ok(!omp.extension.includes(token), 'not in its file');
       assert.equal(JSON.parse(omp.extension).mcpServers.tricot.headers.Authorization, 'Bearer ${TRICOT_TOKEN}', 'which OMP fills in from its environment');
 
+      writeFileSync(path.join(bin, 'copilot'), FAKE_AGENT, { mode: 0o755 });
+      assert.equal((await run(['copilot', '--board', id, '--no-open'])).exitCode, 0, err.join('\n'));
+      const copilot = recorded();
+      assert.ok(copilot.env.includes('TRICOT_TOKEN'), 'in its environment');
+      assert.equal(launches[4].env.TRICOT_TOKEN, token);
+      assert.ok(!copilot.args.join(' ').includes(token), 'not in its arguments');
+      assert.equal(JSON.parse(copilot.args[1]).mcpServers.tricot.headers.Authorization, 'Bearer ${TRICOT_TOKEN}', 'which Copilot fills in from its environment');
+
       assert.ok(!said().includes(token) && !err.join('\n').includes(token), 'never on screen');
       assert.deepEqual(snapshot(home), before);
     });
@@ -776,9 +805,10 @@ describe('tricot <agent>', { skip: WINDOWS && 'starts shell-script stand-ins for
       // Every agent Tricot knows but those running; those it can't find on PATH say so.
       const byId = (running: string[]) => Object.fromEntries(tricot.choices!(running).map((c) => [c.id, c]));
       for (const agent of ['pi', 'omp']) rmSync(path.join(bin, agent));
-      assert.deepEqual(Object.keys(byId(['claude', 'codex'])), ['opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok'], 'in the order Tricot lists them, those running left out');
+      assert.deepEqual(Object.keys(byId(['claude', 'codex'])), ['opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok', 'copilot'], 'in the order Tricot lists them, those running left out');
       const missing = byId(['claude', 'codex']);
-      assert.deepEqual(['opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok'].map((id) => missing[id].note), [undefined, 'not installed', 'not installed', 'not installed', 'not installed', 'not installed', 'not installed']);
+      assert.deepEqual(['opencode', 'gemini', 'pi', 'omp', 'goose', 'hermes', 'grok', 'copilot'].map((id) => missing[id].note), [undefined, 'not installed', 'not installed', 'not installed', 'not installed', 'not installed', 'not installed', 'not installed']);
+      assert.equal(missing.copilot.problem, "Copilot CLI isn't installed here, or isn't on your PATH: Tricot looked for `copilot`. Install it, then add it again.");
       assert.equal(missing.grok.name, 'Grok Build');
       assert.equal(missing.grok.problem, "Grok Build isn't installed here, or isn't on your PATH: Tricot looked for `grok`. Install it, then add it again.");
       assert.equal(missing.gemini.name, 'Gemini CLI');

@@ -44,6 +44,9 @@ export const codex: AgentKind = {
     models: ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-luna'].map((id) => ({ id, label: id })),
     levels: thinkingLevels('low', 'medium', 'high', 'xhigh', 'max', 'ultra'),
   },
+  skills: 'prompts',
+  // Its permission prompts come to the board through its PermissionRequest hook (server/hooks/codex.ts).
+  approvals: true,
 
   ...server,
 };

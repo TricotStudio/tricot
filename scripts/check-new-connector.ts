@@ -1,11 +1,12 @@
 // Proves what adding a connector, and a source of links, takes. It adds a
 // throwaway "Acme" connector (a service that recognises acme.example project
-// links, has a panel on the Connectors page, one REST route and one read tool)
-// and a throwaway "Pinboard" source of links (pinboard.example), each only as
-// its own files plus an import and an entry in each registry that lists it. It
-// then checks the result end to end (types, REST, MCP, the Origin check on the
-// sign-in callback, agent text, the web bundle), says exactly which files the
-// change touched, and takes both out again.
+// links, has a panel on the Connectors page, one REST route declared in its
+// core folder and one read tool) and a throwaway "Pinboard" source of links
+// (pinboard.example), each only as its own files plus an import and an entry
+// in each registry that lists it. It then checks the result end to end (types,
+// the route table's test, REST, MCP, the Origin check on the sign-in callback,
+// agent text, the web bundle), says exactly which files the change touched,
+// and takes both out again.
 //
 //   npx tsx scripts/check-new-connector.ts            add them, check them, remove them
 //   npx tsx scripts/check-new-connector.ts install    add them and leave them, to look at
@@ -47,6 +48,7 @@ const CORE_INDEX = `// A throwaway connector, for scripts/check-new-connector.ts
 // What the browser needs of it is here; what only the server uses is in server.ts.
 
 import type { ConnectorKind } from '../connector';
+import { acmeRoutes } from './routes';
 import { server } from './server';
 import { acmeSources } from './sources';
 
@@ -56,8 +58,19 @@ export const acme: ConnectorKind = {
   scopes: { 'acme.read': { label: 'See your Acme projects', agent: 'Acme projects' } },
   identity: { scopes: [], email: [] },
   sources: [acmeSources],
+  routes: acmeRoutes,
   agent: server.agent,
 };
+`;
+
+const CORE_ROUTES = `// Acme's REST routes, under /api/connectors/acme: a project's name. The server
+// serves them, the page asks for them, and the connector registry gathers them.
+
+import { get } from '../../route';
+
+export const acmeRoutes = {
+  project: get('/api/connectors/acme/projects/:id'),
+} as const;
 `;
 
 const CORE_SOURCES = `// The Acme links Tricot recognises: acme.example/projects/<id>.
@@ -95,11 +108,13 @@ export const server: ConnectorServerHalf = {
 };
 `;
 
-const SERVER_INDEX = `// Acme's server half: no sign-in to do (a stand-in), one REST route and one MCP tool.
+const SERVER_INDEX = `// Acme's server half: no sign-in to do (a stand-in), one REST route (its core half's) and one MCP tool.
 
 import { Router } from 'express';
 import { z } from 'zod';
 import { describeAccess, type ConnectorStatus } from '../../../core/connectors';
+import { acmeRoutes } from '../../../core/connectors/acme/routes';
+import { routesOn } from '../../routing';
 import type { ConnectorTool, ServerConnector, ServerConnectorKind } from '../connector';
 import { ConnectorError } from '../oauth';
 
@@ -133,7 +148,10 @@ class Acme implements ServerConnector {
 
   routes() {
     const router = Router();
-    router.get('/projects/:id', (req, res) => res.json({ name: \`Acme project \${req.params.id}\` }));
+    const on = routesOn(router, '/api/connectors/acme');
+    on(acmeRoutes.project, (req, res) => {
+      res.json({ name: \`Acme project \${req.params.id}\` });
+    });
     return router;
   }
 
@@ -153,8 +171,10 @@ class Acme implements ServerConnector {
 export const acmeServer: ServerConnectorKind = { id: 'acme', create: () => new Acme() };
 `;
 
-const WEB_INDEX = `// Acme's web half: its panel on the Connectors page, the real name of a project on a link card, and its mark.
+const WEB_INDEX = `// Acme's web half: its panel on the Connectors page, the real name of a project on a link card (asked for by its core half's route), and its mark.
 
+import { acmeRoutes } from '../../../core/connectors/acme/routes';
+import { get } from '../../shared/api';
 import type { WebConnector } from '../connector';
 
 export const acme: WebConnector = {
@@ -164,7 +184,7 @@ export const acme: WebConnector = {
   setup: { intro: 'Acme needs nothing set up.', files: [] },
   signOutHint: 'there is nothing to remove.',
   accessNote: () => 'Read-only: it names your projects.',
-  fileInfo: async (id) => ({ name: \`Acme project \${id}\` }),
+  fileInfo: (id) => get(acmeRoutes.project)<{ name: string }>({ id }),
   marks: { acme: { tile: '#a1c3e0', glyph: <circle cx="16" cy="16" r="6" fill="#fff" /> } },
 };
 `;
@@ -206,6 +226,7 @@ export const pinboard: WebSource = {
 function sources(): Record<string, string> {
   return {
     [at('src/core/connectors/acme/index.ts')]: CORE_INDEX,
+    [at('src/core/connectors/acme/routes.ts')]: CORE_ROUTES,
     [at('src/core/connectors/acme/sources.ts')]: CORE_SOURCES,
     [at('src/core/connectors/acme/server.ts')]: CORE_SERVER,
     [at('src/server/connectors/acme/index.ts')]: SERVER_INDEX,
@@ -387,19 +408,22 @@ async function check(): Promise<void> {
     console.log('  typecheck...');
     run('npx', ['tsc', '--noEmit']);
     console.log('  ok  both compile against the contracts (core, server and web halves)');
+    console.log('  route table...');
+    run('npx', ['tsx', '--test', 'test/routes.test.ts']);
+    console.log('  ok  test/routes.test.ts passes: its route is gathered into the table through the registry, and served once, where the table says');
     console.log('  end to end...');
     process.stdout.write(run('npx', ['tsx', 'scripts/check-new-connector.ts', 'e2e']));
     console.log('  web bundle...');
     const out = mkdtempSync(path.join(os.tmpdir(), 'check-connector-web-'));
     run('npx', ['vite', 'build', '--outDir', out, '--emptyOutDir']);
-    for (const text of ['Acme projects panel', '#a1c3e0', '#b2d4f6', 'https://acme.example/embed/', 'https://pinboard.example/embed/']) {
+    for (const text of ['Acme projects panel', '#a1c3e0', '#b2d4f6', 'https://acme.example/embed/', 'https://pinboard.example/embed/', '/api/connectors/acme/projects/:id']) {
       assert.ok(run('grep', ['-rl', text, path.join(out, 'assets')]).trim(), `the web bundle carries ${text}`);
     }
     for (const text of ['the names of Acme projects', 'read_acme_project', 'three open tasks']) {
       assert.throws(() => run('grep', ['-rl', text, path.join(out, 'assets')]), `the web bundle leaves out ${text}`);
     }
     rmSync(out, { recursive: true, force: true });
-    console.log('  ok  the web bundle carries its panel, marks and recognisers, and leaves its server half, its tool and its agent text out');
+    console.log('  ok  the web bundle carries its panel, marks, recognisers and route, and leaves its server half, its tool and its agent text out');
   } finally {
     uninstall();
     console.log('Took the samples out again.');

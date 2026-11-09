@@ -20,7 +20,7 @@
 // A terminal's seat lasts while it runs: it says so every minute, lets go as
 // it ends, and one not heard from for a while is let go.
 import { createHash, createPublicKey, randomBytes, randomInt, verify, type KeyObject } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   ADMISSION_MS,
@@ -38,6 +38,7 @@ import {
   type SeatPublicKey,
   type SeatView,
 } from '../core/seats';
+import { keepPrivate } from '../platform/private';
 
 export const SEATS_FILE = 'seats.json';
 export const seatsFile = (dataDir: string) => path.join(dataDir, SEATS_FILE);
@@ -523,7 +524,7 @@ export class Seats {
       const file = seatsFile(dir);
       const temp = `${file}.${process.pid}.tmp`;
       writeFileSync(temp, `${JSON.stringify(this.data, null, 2)}\n`, { mode: 0o600 });
-      chmodSync(temp, 0o600);
+      keepPrivate(temp);
       renameSync(temp, file);
     } catch (error) {
       console.error(`Tricot couldn't save who can act for you: ${(error as Error).message}`);

@@ -12,6 +12,7 @@ import { blockLabel } from '../../canvas';
 import { clip } from '../../format';
 import { plainMarkdown } from '../../markdown';
 import { findWords, noteText, quoteAt } from '../../pins';
+import { fields } from '../../schemas/fields';
 import { BoardError } from '../../store/errors';
 import type { PinPart } from '../../store/inputs';
 import { LIMITS, limited, required } from '../../store/validate';
@@ -114,6 +115,8 @@ function taskPart(markdown: string, task: TaskLine, words: string | undefined, o
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('note'), text: z.string() }),
   patch: { text: plainText },
+  // Words selected in it, with the text either side that finds them again.
+  parts: { text: z.object({ kind: z.literal('text'), quote: z.string(), prefix: fields.pinContext.optional(), suffix: fields.pinContext.optional() }) },
 };
 
 // What changed in a note's tasks when nothing around them did: ticked,

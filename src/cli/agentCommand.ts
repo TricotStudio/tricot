@@ -1,6 +1,7 @@
-// `tricot claude`, `tricot codex`, `tricot opencode`, `tricot pi` and `tricot omp`: the
-// board and the agent together, in one command. It finds the agent's command on PATH
-// (without running it), starts the board in the background or finds the one
+// `tricot claude`, `tricot codex`, `tricot opencode`, `tricot pi`, `tricot omp` and
+// `tricot copilot`: the board and the agent together, in one command. It finds
+// the agent's command on PATH (without running it), starts the board in the
+// background or finds the one
 // already running, has the person pick a board (chooseBoard.ts) unless
 // --board names one, opens it, asks the first-run live-steps question as
 // `tricot` does, then runs the agent in this terminal, connected for this
@@ -19,8 +20,10 @@
 // board as it loads, and OMP an extension folder that holds the board's entry
 // (agentSessions/omp.ts); each in a folder made for the session and removed
 // when it ends. Gemini CLI has no way to take the board for one session that
-// Tricot has built yet, so `tricot gemini` says how to connect it, as `tricot
-// connect gemini` does, and starts nothing.
+// Tricot has built yet, nor do the others without a `session`, so `tricot
+// gemini` starts nothing: with a board running it connects the agent as
+// `tricot connect gemini` does, asks which board, and says what to tell it
+// (joinBoard.ts); with none, it says how to connect it.
 //
 // It starts the agent on the model and thinking level set in its panel on
 // the board, the same on every board, and --model and --effort after its
@@ -47,6 +50,7 @@ import { readRules, ruleForRun, startedOn, startsOnLine, UNREAD_RULES } from './
 import { sweepFolders } from './agentSessions/folder';
 import { chooseBoard } from './chooseBoard';
 import { liveStepsContext, rememberedAnswer } from './hooks';
+import { joinBoard } from './joinBoard';
 import type { CliContext, CliResult } from './main';
 import { severalAgents } from './severalAgents';
 import { runInTerminal } from './terminal';
@@ -57,6 +61,9 @@ export interface AgentEnv {
   ctx: CliContext;
   values: { board?: string; name?: string; 'no-open'?: boolean };
   dataDir: string;
+  port: number; // where a board started on this data would listen
+  // The board running on this data, if there is one: never started, nor held.
+  running(): Promise<RunningLock | undefined>;
   // The board running on this data, or one started now in the background;
   // nothing, and said why, when neither.
   // A board an agent command started is held with a lease, so it stops with
@@ -70,16 +77,18 @@ export interface AgentEnv {
   access(lock: RunningLock): { needed: boolean; token?: string };
   // Opens the board in the browser, unless --no-open; `always`: whatever it
   // said (o in the Tricot tab, a person asking).
-  openBoard(lock: RunningLock, board: string, options?: { always?: boolean }): void;
+  openBoard(lock: RunningLock, board: string, options?: { always?: boolean; page?: string }): void; // page: an address after # on it (core/pages.ts)
   // The first `tricot`'s question about live steps (hooks.ts).
   firstRun(lock: RunningLock): Promise<void>;
-  // What `tricot connect <agent>` prints.
-  connect(agent: string): Promise<CliResult>;
+  // What `tricot connect <agent> --print` prints, without --board's sentence.
+  // `ask`: what `tricot connect <agent>` does instead, without --yes: shows the
+  // agent's own command, asks, and runs it on yes.
+  connect(agent: string, ask?: boolean): Promise<CliResult>;
 }
 
 // The agents Tricot knows, by id, in the order `tricot --help` and the Tricot
 // tab list them. Those with a `session` it starts; the others (`cantStart` says
-// why) it only shows how to connect. This is the registry's view
+// why) it only helps connect (joinBoard.ts). This is the registry's view
 // (core/agents/registry.ts), not a table of its own.
 export const AGENTS: Record<string, AgentKind> = Object.fromEntries(agentsInCliOrder().map((kind) => [kind.id, kind]));
 
@@ -94,7 +103,7 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   if (Array.isArray(id)) return severalAgents(a, id, passthrough, chosen);
   if (stripRuns(a, id)) return severalAgents(a, [id], passthrough, chosen);
   const agent = AGENTS[id];
-  if (!agent.session) return cantStartYet(a, id, agent);
+  if (!agent.session) return joinBoard(a, id, agent);
   const command = which(agent.command, ctx.env);
   if (!command) {
     notInstalled(ctx, id, agent);
@@ -206,12 +215,4 @@ export function notInstalled(ctx: CliContext, id: string, agent: AgentKind, then
 // note in a few rows and cuts what doesn't fit, so what to do comes first.
 export function connectFirst(id: string, agent: AgentKind): string {
   return `Connect ${agent.name} first, with: tricot connect ${id}. Tricot can't start it for you yet: ${agent.cantStart}.`;
-}
-
-// Today's connect instructions, and why it can't start this one.
-async function cantStartYet(a: AgentEnv, id: string, agent: AgentKind): Promise<CliResult> {
-  await a.connect(id);
-  a.ctx.out('');
-  a.ctx.out(`Tricot can't start ${agent.name} for you yet: ${agent.cantStart}, and this command leaves its settings alone. Connect it once as above, then start it yourself.`);
-  return { exitCode: 1 };
 }

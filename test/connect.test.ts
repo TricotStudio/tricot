@@ -9,6 +9,7 @@ import {
   geminiLines,
   gooseEntry,
   grokLines,
+  copilotLines,
   hermesEntry,
   ompConfig,
   ompEntry,
@@ -65,6 +66,12 @@ describe('connecting Gemini CLI and OpenCode', () => {
     const lines = geminiLines(gemini, 's3cret');
     assert.deepEqual(lines, ['export TRICOT_TOKEN=s3cret', `gemini mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot "${gemini}"`]);
     assert.doesNotMatch(lines[1], /s3cret/);
+  });
+
+  it('gives Copilot CLI one command, for every session, with a timeout for long waits and the token in a header that names the variable', () => {
+    const copilot = 'http://127.0.0.1:4545/mcp?agent=Copilot';
+    assert.deepEqual(copilotLines(copilot), [`copilot mcp add --transport http --timeout 300000 tricot "${copilot}"`]);
+    assert.deepEqual(copilotLines(copilot, 's3cret'), ['export TRICOT_TOKEN=s3cret', `copilot mcp add --transport http --timeout 300000 --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot "${copilot}"`]);
   });
 
   it('gives Grok Build one command, for every session (--scope user), with the token in a header that names the variable', () => {
@@ -228,6 +235,10 @@ describe('the commands, pasted into zsh and bash', () => {
 
       it('gives Gemini CLI its address, named Gemini, for every session', () => {
         assertLines(texts.gemini, [['gemini', 'mcp', 'add', '--scope', 'user', '--transport', 'http', 'tricot', named(address, 'Gemini')]]);
+      });
+
+      it('gives Copilot CLI its address, named Copilot, for every session', () => {
+        assertLines(texts.copilot, [['copilot', 'mcp', 'add', '--transport', 'http', '--timeout', '300000', 'tricot', named(address, 'Copilot')]]);
       });
 
       it('gives Grok Build its address, named Grok, for every session', () => {

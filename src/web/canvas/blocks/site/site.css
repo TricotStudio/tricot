@@ -138,23 +138,131 @@
 .site-view-marks .pin-thread {
   max-height: min(420px, calc(100% - 24px));
 }
+/* Under the page, the threads not drawn on an element (apart.tsx): one row,
+   whatever their number, with what doesn't fit under "N more" at its end,
+   whose list opens above it. A thread opened from it opens under the row,
+   and scrolls in what the strip may take. */
 .site-view-apart {
-  display: grid;
+  flex: none;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   max-height: 45%;
   padding: 8px 14px 10px;
   border-top: 1px solid var(--border);
   background: var(--surface);
-  overflow: auto;
 }
-.site-view-apart-chips {
+.site-view-apart-row {
+  position: relative;
+  flex: none;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+/* Room round the chips for a focus ring, which the row would cut off. */
+.site-view-apart-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: -3px;
+  padding: 3px;
+  overflow: hidden;
+}
+.site-view-apart-chips > *,
+.site-view-apart-copy-line > * {
+  flex: none;
+}
+/* The one chip shown in a row too narrow for it whole: its element's name is cut short. */
+.site-view-apart-chips.is-squeezed > :last-child {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.site-view-apart-heading {
+  white-space: nowrap;
 }
 .site-view-apart .pin-chip {
   margin-left: 0;
+}
+/* Each entry at its whole width, where no one sees it, to know what fits. */
+.site-view-apart-copy {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.site-view-apart-copy-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+}
+.site-view-apart-more {
+  flex: none;
+  margin-left: auto;
+}
+.site-view-apart-more-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.12s;
+}
+.site-view-apart-more-button:hover,
+.popover[open] > .site-view-apart-more-button {
+  background: var(--border);
+  color: var(--text);
+}
+/* A thread open from under it. */
+.site-view-apart-more-button.is-open {
+  background: color-mix(in srgb, var(--pin) 24%, var(--surface));
+  color: var(--pin-ink);
+}
+.site-view-apart-more .popover-body {
+  top: auto;
+  bottom: calc(100% + 8px);
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(480px, 60vh);
+  padding: 12px;
+  gap: 12px;
+  overflow-y: auto;
+}
+.site-view-apart-list section {
+  display: grid;
+  gap: 6px;
+}
+.site-view-apart-list h3 {
+  margin: 0;
+  font-weight: 400;
+}
+.site-view-apart-list ul {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.site-view-apart-list li {
+  max-width: 100%;
+  min-width: 0;
+}
+.site-view-apart-thread {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* A website that couldn't be drawn says so where it is. */

@@ -173,6 +173,33 @@ export function grokLines(url: string, token?: string, shell?: Shell): string[] 
   return readingToken(grokWords(url, token), token, shell);
 }
 
+// GitHub Copilot CLI: `copilot mcp add` keeps the entry in ~/.copilot/mcp-config.json
+// ($COPILOT_HOME's when that is set), for every session; it has no scope. It
+// has a header option, stores the value as written and expands ${VAR} in a
+// header when it loads its config, so with a token the header names
+// TRICOT_TOKEN (single quotes keep the shell from expanding it) and the token
+// stays out of the file. A call gives up after the entry's timeout, 30
+// seconds unless set, so the entry asks for OMP_TIMEOUT_MS, and a wait for
+// updates ends inside that (agents/copilot/server.ts). What of this is not
+// confirmed is listed in agents/copilot/index.ts.
+export const COPILOT_FILE = '~/.copilot/mcp-config.json';
+
+export function copilotWords(url: string, token?: string): string[] {
+  const add = ['copilot', 'mcp', 'add', '--transport', 'http', '--timeout', String(OMP_TIMEOUT_MS)];
+  return token ? [...add, '--header', `Authorization: Bearer \${${TOKEN_ENV}}`, 'tricot', url] : [...add, 'tricot', url];
+}
+
+export function copilotLines(url: string, token?: string, shell?: Shell): string[] {
+  return readingToken(copilotWords(url, token), token, shell);
+}
+
+// The same entry as `copilot mcp add` writes it, for the one session Tricot
+// starts it for (core/sessions.ts copilotSession).
+export function copilotEntry(url: string, token?: string) {
+  const headers = token ? { headers: { Authorization: `Bearer \${${TOKEN_ENV}}` } } : {};
+  return { type: 'http', url, tools: ['*'], timeout: OMP_TIMEOUT_MS, ...headers };
+}
+
 // OpenCode 1 adds a server only by asking questions (`opencode mcp add`), so
 // it is an entry for opencode.json, which OpenCode 2 reads too. Its {env:…}
 // puts the token in from the environment. In OpenCode 1 a call gives up

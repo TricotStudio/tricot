@@ -12,6 +12,7 @@
 // (switcher/answers.ts): never in an environment variable, an argument or a
 // file. When the board gives none (an older Tricot, or too many terminals at
 // once), the call goes without, and the board says why it refused it.
+import { routes, routeUrl } from '../core/routes';
 import { HOST_KEY_HEADER } from '../server/access';
 import { TerminalSeat } from './terminalSeat';
 
@@ -40,7 +41,7 @@ export async function asThisTerminal<T>(
     });
   let key: string | undefined;
   try {
-    const res = await post('/api/approvals/hosts');
+    const res = await post(routeUrl(routes.registerHost));
     const body = (await res.json().catch(() => ({}))) as { key?: unknown };
     if (res.status === 201 && typeof body.key === 'string') key = body.key;
   } catch {
@@ -64,7 +65,7 @@ export async function asThisTerminal<T>(
     await seat.release();
     // Gone already (an update restarts the board): it lets go once no heartbeat comes.
     if (key)
-      await post('/api/approvals/hosts/release', key)
+      await post(routeUrl(routes.hostRelease), key)
         .then((res) => res.arrayBuffer())
         .catch(() => undefined);
   }

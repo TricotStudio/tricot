@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { dismissable, type Dismissed, type Need, type NeedRow, type NeedsReport, type Square } from '../../core/needs';
+import { dismissable, needLink, type Dismissed, type Need, type NeedRow, type NeedsReport, type Square } from '../../core/needs';
 import { api } from '../shared/api';
 import { seenEverywhere } from './away';
 import { onBoardsChanged } from '../live';
 import { Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
-import { linkTo } from '../shared/pages';
 
 // What needs the viewer across every board (core/needs.ts): Home's list, its
 // bell, and the inbox's Everywhere tab on a board. A board's own "Needs you"
@@ -94,14 +93,10 @@ export function useNeeds(name: string, enabled = true): { report: NeedsReport | 
   return { report, error };
 }
 
-// Where a row opens: its card, or the view of its board a folded row is about.
-export function needHash(row: Need): string {
-  const target = row.target;
-  if (target.kind === 'decision') return linkTo.decision(row.boardId, target.id);
-  if (target.kind === 'task') return linkTo.task(row.boardId, target.id);
-  // A thread's row opens the tab it is on, and the dock opens it there (needsYou.tsx).
-  return linkTo.board(row.boardId, target.view);
-}
+// Where a row opens: its card, the pin on the board context it is about, or
+// the view of its board a folded row is about. A thread's row opens the tab it
+// is on, and the dock opens it there (needsYou.tsx).
+export const needHash = (row: Need): string => needLink(row.boardId, row.target);
 
 // The status square: a decision's status or a task's lane (styles.css, .sq).
 export function StatusSquare({ square, label }: { square: Square; label?: string }) {

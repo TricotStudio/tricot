@@ -1,9 +1,11 @@
 // GitHub as a connector (core half, browser-safe): who it is, what it may
-// read in plain words, and the links it recognises. Signing in (a code typed
-// on github.com, or a personal token), reading pull requests, issues and
-// files, its routes and its tool are in server/connectors/github/.
+// read in plain words, the links it recognises and its REST routes
+// (routes.ts). Signing in (a code typed on github.com, or a personal token),
+// reading pull requests, issues and files, serving its routes and its tool are
+// in server/connectors/github/.
 
 import type { ConnectorKind } from '../connector';
+import { githubRoutes } from './routes';
 import { CHECKS, CONTENTS, ISSUES, PULL_REQUESTS } from './scopes';
 import { server } from './server';
 import { githubSources } from './sources';
@@ -19,5 +21,6 @@ export const github: ConnectorKind = {
   },
   identity: { scopes: [], email: [] },
   sources: [githubSources],
+  routes: githubRoutes,
   agent: server.agent,
 };

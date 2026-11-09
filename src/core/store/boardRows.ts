@@ -276,21 +276,3 @@ export function joinBoard(headBody: string, stored: StoredRow[]): { board: Board
   if (isObject(board.canvas)) board.canvas = joinCanvas(board.canvas, 'board');
   return { board: board as unknown as Board, image };
 }
-
-// The first place two values differ, for saying what a check found.
-export function firstDifference(a: unknown, b: unknown, path = 'board'): string | undefined {
-  if (Object.is(a, b)) return undefined;
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) {
-    return `${path}: ${JSON.stringify(a)?.slice(0, 80)} is now ${JSON.stringify(b)?.slice(0, 80)}`;
-  }
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  for (const key of keys) {
-    const inA = key in a;
-    const inB = key in b;
-    const at = `${path}.${key}`;
-    if (inA !== inB) return `${at}: ${inA ? 'is missing afterwards' : 'appeared'}`;
-    const difference = firstDifference((a as Obj)[key], (b as Obj)[key], at);
-    if (difference) return difference;
-  }
-  return undefined;
-}

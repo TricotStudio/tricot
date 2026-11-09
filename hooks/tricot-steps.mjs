@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 // Tricot steps: shows what this agent is doing, one short line per step, on
 // the Tricot card it is working on ("Reading src/web/Home.tsx", "Running npm
-// test"). Claude Code, Codex, Gemini CLI, Goose and Hermes run it on each hook
-// event it is set up for, with the event as JSON on stdin
+// test"). Claude Code, Codex, Gemini CLI, Goose, Hermes, Grok Build and
+// Copilot CLI run it on each hook event it is set up for, with the event as JSON on stdin
 // (https://code.claude.com/docs/en/hooks, https://learn.chatgpt.com/docs/hooks,
 // https://geminicli.com/docs/hooks/reference/,
 // https://goose-docs.ai/docs/guides/context-engineering/hooks,
-// https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks); Tricot's hook installers
+// https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks,
+// https://docs.github.com/copilot/reference/hooks-reference); Tricot's hook installers
 // (src/server/hooks/) set it up beside tricot-describe.mjs, which turns the
 // event into the step, and take it away again.
 //
-//   node tricot-steps.mjs [--name Claude] [--url http://127.0.0.1:4545] [--narration] [--usage] [--dry-run]
+//   node tricot-steps.mjs [--name Claude] [--url http://127.0.0.1:4545] [--narration] [--usage] [--copilot] [--dry-run]
+//
+// With --copilot (Copilot CLI's hook), the event is read as Copilot's: it
+// looks like Claude Code's, with Copilot's own tool arguments (fromCopilot).
 //
 // With --usage (Codex's hook), at the end of each turn it also sends Codex's
 // plan usage, numbers only, which tricot-usage.mjs (copied beside it) reads
@@ -33,7 +37,7 @@
 // TRICOT_TOKEN, when set, is sent as the bearer token a board listening
 // beyond this machine needs. No dependencies: Node 18 or newer.
 
-import { describe } from './tricot-describe.mjs';
+import { describe, fromCopilot } from './tricot-describe.mjs';
 
 const HARD_LIMIT_MS = 1500;
 const SEND_TIMEOUT_MS = 1000;
@@ -73,7 +77,8 @@ async function main() {
   const raw = await readInput();
   if (!raw) return;
   const event = JSON.parse(raw);
-  const step = describe(event, { narration: process.argv.includes('--narration') });
+  // Copilot CLI's events look like Claude Code's but aren't quite: its hook says so.
+  const step = describe(process.argv.includes('--copilot') ? fromCopilot(event) : event, { narration: process.argv.includes('--narration') });
   const usage = await codexUsage(event);
   if (!step && !usage) return;
   const at = Date.now();

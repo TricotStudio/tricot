@@ -5,7 +5,8 @@
 //
 //   core/connectors/<id>/    this file's half: who it is, the links it
 //                            recognises, how pins on its content are found
-//                            (index.ts, browser-safe) and what only the server
+//                            (index.ts, browser-safe), its REST routes
+//                            (routes.ts, browser-safe) and what only the server
 //                            needs (server.ts: what agents are told, its part
 //                            of the store; swapped for an empty stub in the
 //                            browser build, see vite.config.ts)
@@ -19,6 +20,8 @@
 // are code in this repository, not something third parties load (#67); the
 // shape leaves room for a public API later, and none is built.
 
+import type { PartHooks } from '../blocks/kind';
+import type { Route } from '../route';
 import type { LinkSourceKind } from '../sources/types';
 import type { PinPlace } from '../pins';
 import type { PinPart } from '../store/inputs';
@@ -59,8 +62,9 @@ export interface ConnectorStatus {
 
 // A connector whose documents people pin parts of (words in a Google Doc's
 // paragraph) says how. `kind` is the pin anchor's kind; a pin whose anchor has
-// it is the connector's to place, name and explain.
-export interface ConnectorPins {
+// it is the connector's to place, name and explain, and its part reads and
+// behaves as its hooks say, as a kind's parts do (PartHooks).
+export interface ConnectorPins extends PartHooks {
   readonly kind: string;
   // Where a pin's part is now: null once it has changed past finding.
   place(block: Block, pin: Pin): PinPlace | null | undefined;
@@ -108,6 +112,16 @@ export interface ConnectorLinkHooks {
   retarget?(block: Block): void;
 }
 
+// ---- its REST routes ---------------------------------------------------------------
+
+// A connector's own REST routes, by name, each under /api/connectors/<id>/,
+// written in its routes.ts with route.ts's helpers. The registry gathers every
+// connector's (connectorRoutes), which with the app's own (core/routes.ts) are
+// every route served; its server half registers each one from here (routesOn),
+// and its web half asks for each one from here (get and post of
+// web/shared/api.ts).
+export type ConnectorRoutes = Readonly<Record<string, Route>>;
+
 // ---- the kind ----------------------------------------------------------------------
 
 export interface ConnectorKind {
@@ -120,6 +134,8 @@ export interface ConnectorKind {
   // The links it recognises (Docs, Sheets and Slides), tried before the others.
   readonly sources?: readonly LinkSourceKind[];
   readonly pins?: ConnectorPins;
+  // What it adds to the REST routes (its routes.ts).
+  readonly routes?: ConnectorRoutes;
 
   readonly agent?: ConnectorAgentText;
   readonly link?: ConnectorLinkHooks;

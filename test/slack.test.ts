@@ -550,7 +550,7 @@ describe('Slack connector', () => {
       assert.ok(readers.every((text) => !/chat\./.test(text)), 'what reads never calls a chat method');
       // The only route that posts is a POST, behind personOnly; the reads are GETs.
       const routes = readFileSync(path.join(folder, 'routes.ts'), 'utf8');
-      assert.match(routes, /on\(routes\.slackShareDecision, personOnly\(person, 'B'\)/);
+      assert.match(routes, /on\(slackRoutes\.shareDecision, personOnly\(person, 'B'\)/);
     });
   });
 

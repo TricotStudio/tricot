@@ -94,7 +94,14 @@ import type { ChatItem, ChatPlace } from '../../core/chatStream';
 import { refLabel } from '../../core/refs';
 import { columns, fit, type Rgb } from './strip';
 import { BOLD, DIM, ago, alertOf, cutParts, onBand, type Part, type TabFrame } from './tabView';
-import { column, composeFoot, composeRows, framed, lastRow, messageRows, panelGeometry, panelKeys, panelRows, safe, wrapLine, type Compose, type Laid, type PanelView } from './threadsView';
+import { choiceRows, column, composeFoot, composeRows, framed, inputRows, lastRow, messageRows, panelGeometry, panelKeys, panelRows, safe, wrapLine, type CardLink, type Compose, type Laid, type PanelView } from './threadsView';
+
+// The cards the stream can link to (CardLink), and what tells one board's
+// cards from another's, or from the same board's before a card came or went.
+export interface CardLinks {
+  key: string;
+  link: CardLink;
+}
 
 // From this many rows a blank row parts the stream from the line to type on.
 export const GAP_FROM = 10;
@@ -121,22 +128,24 @@ const ABOUT = ', about ';
 const used = (parts: Part[]) => parts.reduce((sum, [text]) => sum + columns(text), 0);
 
 // Where an item belongs, as words: what leads (dim), the title, and the part pinned.
-function placeWords(place: ChatPlace): { lead: Part[]; title: string; part?: string } {
+function placeWords(place: ChatPlace, card?: CardLink): { lead: Part[]; title: string; part?: string; link?: string } {
   if (place.kind === 'thread') return { lead: [['in ', DIM], ...(place.lens ? ([[`${safe(place.lens)} · `, DIM]] as Part[]) : [])], title: safe(place.title) };
   if (place.kind === 'board') return { lead: [['on ', DIM]], title: 'the board', part: safe(place.pin.quote) };
-  return { lead: [['on ', DIM], [`${refLabel({ kind: place.kind, number: place.number })} `]], title: safe(place.title), ...(place.pin && { part: safe(place.pin.quote) }) };
+  const link = card?.(place.kind, place.number);
+  const label = refLabel({ kind: place.kind, number: place.number });
+  return { lead: [['on ', DIM], ...(link ? ([[label, undefined, link], [' ']] as Part[]) : ([[`${label} `]] as Part[]))], title: safe(place.title), ...(place.pin && { part: safe(place.pin.quote) }), ...(link && { link }) };
 }
 
 // The row that heads an item: who wrote it, where it belongs and when, cut to
 // `width`; without where (`placed` false, the stream narrowed to one thread),
 // as a thread's messages were headed: "Claude  agent · 2 min ago".
-function headRow(item: ChatItem, width: number, me: string, now: number, sending: boolean, selected: boolean, placed: boolean): Part[] {
+function headRow(item: ChatItem, width: number, me: string, now: number, sending: boolean, selected: boolean, placed: boolean, card?: CardLink): Part[] {
   const mine = item.author.kind === 'human' && samePerson(item.author.name, me);
   const agent = item.author.kind === 'agent';
   const who: Part[] = [selected ? ['❯ ', BOLD] : ['  '], [mine ? 'You' : safe(item.author.name), BOLD]];
   if (!placed) return cutParts([...who, [`  ${agent ? 'agent · ' : ''}${sending ? 'sending…' : ago(item.at, now)}`, DIM]], Math.max(1, width - 1));
   const lead: Part[] = [...who, [agent ? '  agent · ' : ' · ', DIM]];
-  const where = placeWords(item.place);
+  const where = placeWords(item.place, card);
   const when: Part = [` · ${sending ? 'sending…' : ago(item.at, now)}`, DIM];
   const room = width - 1 - used(lead) - used(where.lead);
   // The time stays unless the title would be left with next to nothing.
@@ -146,12 +155,12 @@ function headRow(item: ChatItem, width: number, me: string, now: number, sending
   // The part pinned, with what is left: none when that is too little to read.
   const left = titleRoom - columns(title) - columns(ABOUT);
   const part: Part[] = where.part && left >= Math.min(PART_LEAST, columns(where.part)) ? [[`${ABOUT}${fit(where.part, left)}`, DIM]] : [];
-  return cutParts([...lead, ...where.lead, [title], ...part, ...(keepTime ? [when] : [])], Math.max(1, width - 1));
+  return cutParts([...lead, ...where.lead, where.link ? [title, undefined, where.link] : [title], ...part, ...(keepTime ? [when] : [])], Math.max(1, width - 1));
 }
 
 // An item's lines at `width`: its head row, its text and its reactions.
-function itemLines(item: ChatItem, width: number, me: string, now: number, sending: boolean, selected: boolean, placed: boolean): Part[][] {
-  return [headRow(item, width, me, now, sending, selected, placed), ...messageRows(item.body, item.reactions, width, me)];
+function itemLines(item: ChatItem, width: number, me: string, now: number, sending: boolean, selected: boolean, placed: boolean, card?: CardLink): Part[][] {
+  return [headRow(item, width, me, now, sending, selected, placed, card), ...messageRows(item.body, item.reactions, width, me, card)];
 }
 
 // The stream's lines at `width`, every item's. `starts` is the line each item
@@ -280,8 +289,8 @@ export class ChatLayout {
   private readonly kept = new Map<string, Kept>();
   private tinted: { items: ChatItem[]; light: boolean; from: string; tints: string[] } | undefined;
 
-  lines(items: ChatItem[], width: number, me: string, now: number, sending: ReadonlySet<string> = new Set(), selected?: string, placed = true): ChatLines {
-    const shape = `${width}\u0000${me}\u0000${placed}`;
+  lines(items: ChatItem[], width: number, me: string, now: number, sending: ReadonlySet<string> = new Set(), selected?: string, placed = true, cards?: CardLinks): ChatLines {
+    const shape = `${width}\u0000${me}\u0000${placed}\u0000${cards?.key ?? ''}`;
     if (shape !== this.shape) {
       this.kept.clear();
       this.shape = shape;
@@ -297,7 +306,7 @@ export class ChatLayout {
         kept.item = item;
         return kept.lines;
       }
-      const lines = itemLines(item, width, me, now, going, item.key === selected, placed);
+      const lines = itemLines(item, width, me, now, going, item.key === selected, placed, cards?.link);
       this.kept.set(item.key, { item, marks, lines });
       return lines;
     });
@@ -391,6 +400,7 @@ export interface ChatViewData {
   me: string; // the person's name, as the board has it
   now: number;
   notice?: string; // what waits on the person elsewhere, for the last row
+  cards?: CardLinks; // the cards a message can name, linked (T36)
 }
 
 // The frame, the keys of the items shown down to their last line, and when
@@ -424,7 +434,7 @@ function newerRow(below: number, width: number, enter: boolean, typed: boolean):
 export function renderChat(view: ChatViewData, cols: number, rows: number, light = false, tintFrom?: Rgb): ChatFrame {
   const alert = alertOf(light);
   const { compose, panel } = view;
-  const foot = compose ? composeFoot(rows, Boolean(compose.choices)) : undefined;
+  const foot = compose ? composeFoot(rows, choiceRows(compose.choices), inputRows(compose.text, cols), Boolean(compose.working)) : undefined;
   const side = panel && panelGeometry(cols);
   const over = side !== undefined && !side.wide; // the panel over the stream, in a narrow window
   const only = view.only !== undefined;
@@ -447,7 +457,7 @@ export function renderChat(view: ChatViewData, cols: number, rows: number, light
     // Only the items that show are laid out, each kept by the layout until it changes.
     const layout = view.layout ?? new ChatLayout();
     const sending = new Set(view.sending);
-    const laid = layout.lines(view.items, width, view.me, view.now, sending, view.selected, !only);
+    const laid = layout.lines(view.items, width, view.me, view.now, sending, view.selected, !only, view.cards);
     // Each line on its item's tint, across the stream.
     const tints = layout.tints(view.items, light, tintFrom);
     let at = laid.find(view.top, body);
@@ -477,7 +487,7 @@ export function renderChat(view: ChatViewData, cols: number, rows: number, light
 
   let cursor: { x: number; y: number } | undefined;
   if (compose && foot) {
-    const drawn = composeRows(compose, foot, cols, light);
+    const drawn = composeRows(compose, foot, cols, light, view.now);
     cursor = { x: drawn.cursor.x, y: out.length + drawn.cursor.y };
     out.push(...drawn.rows);
   }
@@ -503,7 +513,9 @@ export function renderChat(view: ChatViewData, cols: number, rows: number, light
               : view.replying
                 ? [enter('send'), ['@', 'new thread'], ['>', 'elsewhere'], ['Tab', 'an earlier one'], esc, ...later(['↑↓ PgUp PgDn', 'scroll'])]
                 : [enter('new thread'), ['↑↓ PgUp PgDn', 'scroll'], ['Tab', 'complete @ /'], esc, ...later(['^L', 'lens'])];
-    return [[' '], ...actions.flatMap(([k, words], i) => [...(i ? [[compact ? '  ' : ' · '] as Part] : []), ...key(k, compact ? '' : words)])];
+    // While a /, @ or > list shows, ↑ ↓ pick in it (T39); Page Up and Page Down still scroll.
+    const said = compose?.picking ? actions.map(([k, words]): [string, string] => (k === '↑↓ PgUp PgDn' ? ['↑↓', 'pick'] : [k, words])) : actions;
+    return [[' '], ...said.flatMap(([k, words], i) => [...(i ? [[compact ? '  ' : ' · '] as Part] : []), ...key(k, compact ? '' : words)])];
   };
   out.push(lastRow(panel?.keys ? panelKeys(panel) : keysRow, compose, foot, view.notice, cols, light));
   return { ...framed(out, rows, cols, cursor), seen, times };

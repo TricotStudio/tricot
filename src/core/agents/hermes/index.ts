@@ -67,6 +67,8 @@ export const hermes: AgentKind = {
   // this run"); its --reasoning-effort is for scheduled jobs alone, so no
   // thinking level. From its docs, not run, and for when Tricot can start it.
   startsOn: { models: [] },
+  // Its skills (agentskills.io's format, shared on its Skills Hub): its docs' skills pages.
+  skills: 'skills',
 
   ...server,
 };

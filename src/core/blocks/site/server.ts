@@ -13,7 +13,7 @@ import { homePath, isHidden } from '../homeFolder';
 import { BoardError } from '../../store/errors';
 import { LIMITS, limited, required } from '../../store/validate';
 import { siteAsksDigest } from './agent';
-import { MAX_PAGES, elementQuote, elementText, fileLine, isSelector, localAddress, pageText, pageTitle, sitePage, siteName, siteSourceWords, type SitePage } from './site';
+import { MAX_PAGES, elementQuote, elementText, isSelector, localAddress, pageText, pageTitle, sitePage, siteName, siteSourceWords, type SitePage } from './site';
 
 type SiteBlock = BlockOf<SiteTypes>;
 
@@ -92,7 +92,6 @@ function tagName(value: string): string {
 // Its elements, as people pin them and agents read them; requests to change them read as a Google Doc's paragraphs' do.
 const part: PartWords = {
   kind: 'site',
-  where: (pin) => (pin.anchor.kind === 'site' ? ` (${clip(pin.anchor.selector, 100)}${pin.anchor.file ? `; ${fileLine(clip(pin.anchor.file, 120), pin.anchor.line)}` : ''})` : ''),
   label: (block) => `website "${clip(block.type === 'site' ? siteName(block) : (block.title ?? ''), 60)}"`,
   seen: "People see it on the element, in the website's full view",
   ask: {
@@ -135,6 +134,18 @@ export const agent: AgentHalf<SiteTypes> = {
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('site'), folder: z.string().optional(), url: z.string().optional(), page: z.string().optional() }),
   patch: { folder: z.string().optional(), url: z.string().optional(), page: z.string().optional(), pageTitle: z.string().optional() },
+  // An element on a page, as a person's view of the page found it.
+  parts: {
+    site: z.object({
+      kind: z.literal('site'),
+      page: z.string(),
+      selector: z.string(),
+      tag: z.string(),
+      text: z.string().optional(),
+      file: z.string().optional(),
+      line: z.number().int().optional(),
+    }),
+  },
 };
 
 // Where a website comes from, and the page it shows, as agents read it.

@@ -21,6 +21,7 @@ import { usePairing } from '../../pairing/session';
 import { PairingShell, panelOpen, reachWords } from '../../pairing/shell';
 import { PinThread } from '../../pins';
 import type { OverlayProps } from '../kind';
+import { ApartStrip } from './apart';
 import { SANDBOX, pageAddress, pinsOnPage, siteChanged, tell, useFrameMessages, useSiteAddress } from './frame';
 import { SiteAskPrompt, SitePinChip } from './pins';
 
@@ -34,6 +35,7 @@ const PROMPT_HEIGHT = 230;
 const READY_LIMIT = { count: 12, ms: 5000 }; // pages shown, at most, so fast
 const SAVE_MS = 1500; // the page and title shown are kept on the block once they settle
 const RELOAD_MS = 1500; // a change to the files reloads the page at most so often
+const REVEAL_MS = 3000; // an element asked into view is asked again, as its page is laid out, for so long
 
 const pageWords = (page: string) => (page === '/' ? 'Home page' : page);
 
@@ -47,7 +49,7 @@ function placeBy(rect: Rect, screen: { w: number; h: number }, phone: boolean, h
   return { left, top: above ? rect.y - 10 : Math.min(below, Math.max(12, screen.h - 60)), above };
 }
 
-export function SiteView({ block, name, pinId, onClose }: OverlayProps<SiteBlock>) {
+export function SiteView({ block, name, pinId, pinAsked, onClose }: OverlayProps<SiteBlock>) {
   const canvas = useCanvas();
   const { seeItem, readOnly } = canvas;
   const { address, error, blocked } = useSiteAddress(block.id);
@@ -110,15 +112,32 @@ export function SiteView({ block, name, pinId, onClose }: OverlayProps<SiteBlock
     return () => observer.disconnect();
   }, [address]);
 
-  // A pin opened from elsewhere (its chip on the card, a comment about it) is on its page.
+  // A pinned element brought into view. A frame just loaded may lay its page
+  // out before it knows its own size, which leaves it where it was, so it is
+  // asked again as the frame says where the element is, until it is on screen.
+  const revealing = useRef<{ id: string; until: number } | null>(null);
+  const reveal = (id: string) => {
+    revealing.current = { id, until: Date.now() + REVEAL_MS };
+    tell(frame.current, siteOrigin, { type: 'reveal', id });
+  };
+
+  // A pin opened from elsewhere (its chip on the card, a comment about it, a
+  // Needs you item) opens its thread on its element, on its page, brought into
+  // view: once the frame finds it, or now, when the frame shows its page and
+  // has found its pins. Asked again, even for the pin already open, the same.
   const opened = useRef<string | null>(null);
   useEffect(() => {
     if (!pinId) return;
     setThread(pinId);
-    opened.current = pinId;
     const pin = sitePins.find((p) => p.id === pinId);
-    if (pin?.anchor.kind === 'site' && pin.anchor.page !== page) setLoad((now) => ({ page: (pin.anchor as { page: string }).page, n: now.n + 1, scrollY: 0 }));
-  }, [pinId]); // only when asked to open at a pin
+    const on = pin?.anchor.kind === 'site' ? pin.anchor.page : page;
+    if (on !== page) {
+      opened.current = pinId;
+      ready.current = false;
+      setLoad((now) => ({ page: on, n: now.n + 1, scrollY: 0 }));
+    } else if (ready.current) reveal(pinId);
+    else opened.current = pinId;
+  }, [pinId, pinAsked]); // only when asked to open at a pin
 
   // The page shown, and its title, kept on the block for everyone and for
   // agents once it settles: what a person looking at the site moved to, not
@@ -159,15 +178,23 @@ export function SiteView({ block, name, pinId, onClose }: OverlayProps<SiteBlock
         keep(message.page, message.title);
         break;
       }
-      case 'rects':
+      case 'rects': {
         setRects(message.pins);
         setChosenRect(message.chosen);
+        const asked = revealing.current;
+        if (!asked) break;
+        const rect = message.pins[asked.id];
+        const height = screen.current?.clientHeight ?? 0;
+        const shown = rect && rect.w > 0 && rect.y < height && rect.y + rect.h > 0;
+        if (!rect || shown || Date.now() > asked.until) revealing.current = null;
+        else tell(frame.current, siteOrigin, { type: 'reveal', id: asked.id });
         break;
+      }
       case 'found':
         // Lost is this view's word only: the board keeps the pin as it was.
         setLost(message.lost);
         if (opened.current && message.found.includes(opened.current)) {
-          tell(frame.current, siteOrigin, { type: 'reveal', id: opened.current });
+          reveal(opened.current);
           opened.current = null;
         }
         break;
@@ -253,7 +280,7 @@ export function SiteView({ block, name, pinId, onClose }: OverlayProps<SiteBlock
     setThread(pin.id);
     setChosen(null);
     seeItem(pin.id);
-    tell(frame.current, siteOrigin, { type: 'reveal', id: pin.id });
+    reveal(pin.id);
   };
 
   // A note on the element picked, or a request to change it: to the agent
@@ -383,7 +410,8 @@ export function SiteView({ block, name, pinId, onClose }: OverlayProps<SiteBlock
     );
   }
 
-  // Threads not drawn on an element: lost from this page, or on another page.
+  // Threads not drawn on an element: lost from this page, or on another page,
+  // in one row under the page (apart.tsx), with what doesn't fit under More.
   const apart = [...lostHere, ...elsewhere];
   const apartOpen = open && apart.includes(open) ? open : undefined;
 
@@ -442,24 +470,20 @@ export function SiteView({ block, name, pinId, onClose }: OverlayProps<SiteBlock
       <div className="site-view-body">{body}</div>
       {apart.length > 0 && (
         <footer className="site-view-apart">
-          <div className="site-view-apart-chips">
-            {lostHere.length > 0 && <span className="faint small">No longer on this page</span>}
-            {lostHere.map((pin) => (
-              <SitePinChip key={pin.id} pin={pin} open={pin.id === thread} part={pin.quote} lost="not found" onToggle={() => toggleThread(pin.id)} />
-            ))}
-            {elsewhere.length > 0 && <span className="faint small">On other pages</span>}
-            {elsewhere.map((pin) => (
-              <SitePinChip
-                key={pin.id}
-                pin={pin}
-                open={pin.id === thread}
-                part={`${pageWords((pin.anchor as { page: string }).page)} · ${pin.quote}`}
-                onToggle={() => goTo(pin)}
-              />
-            ))}
-          </div>
+          <ApartStrip
+            open={thread}
+            groups={[
+              { label: 'No longer on this page', pins: lostHere.map((pin) => ({ pin, part: pin.quote, lost: 'not found', onToggle: () => toggleThread(pin.id) })) },
+              {
+                label: 'On other pages',
+                pins: elsewhere.map((pin) => ({ pin, part: `${pageWords((pin.anchor as { page: string }).page)} · ${pin.quote}`, onToggle: () => goTo(pin) })),
+              },
+            ].filter((group) => group.pins.length > 0)}
+          />
           {apartOpen && (
-            <PinThread key={apartOpen.id} inline pin={apartOpen} block={block} name={name} onClose={() => setThread(null)} live={live(apartOpen)} address={pairing.address} />
+            <div className="site-view-apart-thread">
+              <PinThread key={apartOpen.id} inline pin={apartOpen} block={block} name={name} onClose={() => setThread(null)} live={live(apartOpen)} address={pairing.address} />
+            </div>
           )}
         </footer>
       )}

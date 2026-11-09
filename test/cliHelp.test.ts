@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { AGENTS } from '../src/cli/agentCommand';
 import { closestCommand, distance } from '../src/cli/help';
 import { runCli, type CliResult } from '../src/cli/main';
+import { agentKinds } from '../src/core/agents/registry';
 import { listNames } from '../src/core/format';
 import { lockFile } from '../src/platform/lock';
 import { removeScratch } from './platform';
@@ -80,21 +81,23 @@ describe('the help', () => {
       assert.match(help, /\n\nRun tricot <command> --help for what a command does and the options it takes\.$/, 'and points at the commands');
     });
 
-    it('names the agent commands that start the agent and those that only show how to connect, from the agents table', async () => {
+    it('names the agent commands that start the agent and those that only help it join the board, from the agents table', async () => {
       const startable = Object.keys(AGENTS).filter((id) => AGENTS[id].session);
       const shown = Object.keys(AGENTS).filter((id) => !AGENTS[id].session);
       const [first, ...others] = startable;
       const main = flat(await helpOf('--help'));
       assert.match(main, new RegExp(`tricot ${first} Start the board and ${AGENTS[first].name} on it, in this terminal\\. Also ${listNames(others)}; several at once: tricot ${first} ${others[0]}`));
-      if (shown.length) assert.match(main, new RegExp(`tricot ${shown[0]} Show how to connect ${AGENTS[shown[0]].name}`));
+      if (shown.length) assert.match(main, new RegExp(`tricot ${shown[0]} Help ${AGENTS[shown[0]].name} \\(also ${listNames(shown.slice(1))}\\) join the running board: Tricot can't start these yet`));
       for (const id of Object.keys(AGENTS)) {
         const help = flat(await helpOf(id, '--help'));
-        assert.match(help, new RegExp(`^tricot ${id}: ${AGENTS[id].session ? `start the board and ${AGENTS[id].name} together` : `show how to connect ${AGENTS[id].name}`}`), id);
+        assert.match(help, new RegExp(`^tricot ${id}: ${AGENTS[id].session ? `start the board and ${AGENTS[id].name} together` : `help ${AGENTS[id].name} join the running board, as Tricot can't start it yet`}`), id);
         if (AGENTS[id].session) {
           assert.match(help, new RegExp(`Any of ${listNames(startable)}\\.`), id);
-          if (shown.length) assert.match(help, new RegExp(`${listNames(shown)} can't take the board for one session yet`), id);
+          if (shown.length) assert.match(help, new RegExp(`${listNames(shown)} can't take the board for one session yet: tricot ${shown[0]} starts nothing, and helps them join the running board instead`), id);
         } else {
-          assert.match(help, new RegExp(`tricot ${id} only shows how to connect it, as tricot connect ${id} --print does, and starts nothing`), id);
+          assert.match(help, new RegExp(`tricot ${id} starts nothing\\. With a board running on this data, it offers to connect ${AGENTS[id].name} as tricot connect ${id} does, asks which board unless --board`), id);
+          assert.match(help, new RegExp(`With none running, or without a terminal, it shows how to connect it, as tricot connect ${id} --print does\\.`), id);
+          assert.match(help, /--board <id> +Give this board, instead of asking which/, id);
         }
       }
     });
@@ -147,11 +150,12 @@ describe('the help', () => {
       assert.match(connect, /\n {2}--yes {14}Don't ask \(it still shows what it changes\)\n/);
       assert.match(connect, /\n {2}--board <id> {7}Name this board in the connect instructions\n/);
       assert.match(connect, /\n {2}--port <n> {9}Port \(default \$PORT or 4545\)\n/);
-      assert.match(flat(connect), /Connect claude, codex, pi, gemini or grok: shows its own command, asks, and runs it\. --print only shows it \(omp, opencode, goose, hermes, mcp-json and url are only ever shown/);
+      assert.match(flat(connect), /Connect claude, codex, pi, gemini, grok or copilot: shows its own command, asks, and runs it\. --print only shows it \(omp, opencode, goose, hermes, mcp-json and url are only ever shown/);
 
       const steps = flat(await helpOf('steps', '--help'));
       assert.match(steps, /Usage tricot steps \[status\|on\|off\] \[options\]/);
-      assert.match(steps, /--agent <id> Just this agent \(claude, codex, pi, omp, gemini, opencode, goose, hermes, grok\)/);
+      // Every agent in the registry, in its order: a new one is listed without a word here.
+      assert.ok(steps.includes(`--agent <id> Just this agent (${agentKinds().map((kind) => kind.id).join(', ')})`), steps);
       assert.match(steps, /--project on\/off, with --agent claude: only this project's \.claude\/settings\.json, not every project's \(on asks first\)/);
       assert.match(steps, /--narration on --project: also show the first line of each message Claude writes in the terminal \(never its thinking\); off unless asked for/);
 

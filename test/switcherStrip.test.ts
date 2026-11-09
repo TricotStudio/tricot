@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import type { Approval } from '../src/core/approvals';
 import { watchBoard } from '../src/cli/switcher/live';
-import { agentWords, columns, isLight, renderStrip, rgbOf, type AgentNow, type BoardLive, type StripEntry } from '../src/cli/switcher/strip';
+import { agentWords, columns, isLight, renderStrip, rgbOf, workingNow, type AgentNow, type BoardLive, type StripEntry } from '../src/cli/switcher/strip';
 import type { AgentStep } from '../src/server/steps';
 import { waitFor } from './switcher/harness';
 
@@ -19,6 +19,24 @@ const running = (name: string): AgentNow => ({ name, state: 'running', lastOutpu
 const step = (agent: string, text: string, more: Partial<AgentStep> = {}): AgentStep => ({ agent, text, at: ago(3_000), ...more });
 const approval = (agent: string, more: Partial<Approval> = {}): Approval => ({ id: 'a1', agent, harness: 'claude', tool: 'Bash', input: { command: 'npm test' }, at: ago(1_000), ...more });
 const live = (more: Partial<BoardLive> = {}): BoardLive => ({ board: 'roadmap-1', steps: [], approvals: [], presence: [], ...more });
+
+// T38 (#12): the row above the chat's line says who is working, and on what.
+describe('who is working, for the Tricot tab’s chat', () => {
+  it('names each agent here that is doing something, then any other on the board with a live step, and leaves out the idle, the listening and those waiting for an OK', () => {
+    const board = live({
+      steps: [step('Claude', 'Running npm test', { running: true, at: ago(12_000) }), step('Gemini', 'Editing tabView.ts'), step('Amp', 'Finished', { done: true })],
+      presence: [{ name: 'Pi', state: 'listening' } as BoardLive['presence'][number]],
+      approvals: [approval('OpenCode')],
+    });
+    const agents: AgentNow[] = [running('Claude'), { name: 'Codex', state: 'running', lastOutput: NOW - 500 }, running('Pi'), running('OpenCode'), running('Idle'), { name: 'Gone', state: 'ended' }];
+    assert.deepEqual(workingNow(agents, board, NOW), [
+      { name: 'Claude', words: 'Running npm test', lasted: '12 s' },
+      { name: 'Codex', words: 'working' },
+      { name: 'Gemini', words: 'Editing tabView.ts' },
+    ]);
+    assert.deepEqual(workingNow([running('Idle')], live(), NOW), [], 'no one working');
+  });
+});
 
 describe("an agent's words in the strip", () => {
   it('says how it ended, with its exit code when that is not 0', () => {

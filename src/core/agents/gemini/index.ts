@@ -43,6 +43,7 @@ export const gemini: AgentKind = {
   startsOn: {
     models: [{ id: 'auto', label: 'Auto' }, ...['gemini-2.5-pro', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'].map((id) => ({ id, label: id }))],
   },
+  skills: 'skills and commands',
 
   ...server,
 };

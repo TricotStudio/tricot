@@ -18,13 +18,13 @@ import { tagText } from '../../core/agentTags';
 import type { AgentBrowserHalf } from '../../core/agents/agent';
 import { agentKindOf } from '../../core/agents/registry';
 import { samePerson } from '../../core/format';
-import { asksYou, boardAgents, boardPeople, findMentions, MENTION_TYPING, nameFits, rehypeMentions, SKILL_TYPING, withMention, withSkill } from '../../core/mentions';
+import { agentStateWords, asksYou, boardAgents, boardPeople, findMentions, MENTION_TYPING, nameFits, rehypeMentions, SKILL_TYPING, withMention, withSkill } from '../../core/mentions';
 import { TASK_STATUS_WORDS } from '../../core/pins';
 import { pickableCards, pickCards, readCardQuery, type PickableCard } from '../../core/refPicker';
 import { refLabel } from '../../core/refs';
 import { readSkillRequest, rehypeSkill, type AgentSkills, type SkillList } from '../../core/skills';
 import type { Options } from 'react-markdown';
-import type { Board, Comment, TaskStatus } from '../../core/types';
+import type { Comment, TaskStatus } from '../../core/types';
 import { api, type AgentPresence, type LiveBoard } from './api';
 import { ActorBadge, Icon, Md } from './components';
 import { cellChoices, cellLabel, cellListName, cellsOf, cellWords, stepCell, takesTag, writtenTag, type CellChoice, type TagCell } from './mentionTags';
@@ -57,23 +57,12 @@ export function useRoster(): Roster {
 
 const STATE_ORDER: Record<AgentPresence['state'], number> = { listening: 0, working: 1, away: 2 };
 
-// What an agent is doing, in a word or three, as the Live indicator says it.
-function agentState(board: Board, name: string, presence: AgentPresence | undefined): string {
-  if (!presence) return 'not connected';
-  if (presence.state === 'away') return 'not checking';
-  if (presence.state === 'listening') return 'listening';
-  const focus = presence.focus?.kind === 'task' ? board.tasks.find((t) => t.id === presence.focus!.id) : undefined;
-  const claimed = board.tasks.find((t) => t.status === 'in_progress' && t.claimedBy?.kind === 'agent' && samePerson(t.claimedBy.name, name));
-  const task = focus ?? claimed;
-  return task ? `working on T${task.number}` : 'working';
-}
-
 export function RosterProvider({ board, me, children }: { board: LiveBoard; me: string; children: ReactNode }) {
   const value = useMemo((): Roster => {
     const presence = board.presence ?? [];
     const agents = boardAgents(board, presence.map((a) => a.name)).map((name): RosterAgent & { rank: number } => {
       const here = presence.find((a) => samePerson(a.name, name));
-      return { name, state: agentState(board, name, here), present: Boolean(here), rank: here ? STATE_ORDER[here.state] : 3 };
+      return { name, state: agentStateWords(board, name, here), present: Boolean(here), rank: here ? STATE_ORDER[here.state] : 3 };
     });
     agents.sort((a, b) => a.rank - b.rank);
     const people = boardPeople(board).filter((p) => !samePerson(p, me));

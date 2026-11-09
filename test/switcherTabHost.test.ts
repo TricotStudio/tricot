@@ -143,7 +143,7 @@ describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'nee
       // ---- first: the Tricot tab
       assert.ok(await shows(' Tricot · Roadmap'), await screen());
       assert.equal(host.view().visible, TRICOT_TAB);
-      assert.ok(await waitFor(async () => /^ ● Tricot   ○ 1 Claude · .*○ 2 Codex · .*Ctrl\+\\ next · Ctrl\+\\ 0–2 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+      assert.ok(await waitFor(async () => /^ ● Tricot   ○ 1 Claude · .*○ 2 Codex · .*Ctrl\+\\ next $/.test(await strip())), await strip());
       assert.ok(await shows('   1 Claude   '), await screen());
       assert.ok(await shows('   Nothing is waiting for you.'));
       store.planTasks(board, [{ title: 'Ship the tab' }], { kind: 'human', name: 'Sam' });
@@ -242,7 +242,7 @@ describe('the Tricot tab, in the host', { timeout: 90_000, skip: WINDOWS && 'nee
       assert.deepEqual(host.view().agents.map((a) => a.name), ['Claude', 'OpenCode'], 'Codex left, and OpenCode moved up to 2');
       assert.ok(await shows('   2 OpenCode   '), await screen());
       assert.doesNotMatch(await screen(), /^ {3}\d Codex/m, 'gone from the list');
-      assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · .*○ 2 OpenCode · .*Ctrl\+\\ 0–2 pick · Ctrl\+\\ q quit $/.test(await strip())), await strip());
+      assert.ok(await waitFor(async () => /^ ● Tricot {3}○ 1 Claude · .*○ 2 OpenCode · .*Ctrl\+\\ next $/.test(await strip())), await strip());
       assert.doesNotMatch(await strip(), /Codex/, 'and from the strip');
       assert.ok(await waitFor(() => !alive(codexPid), 4_000), 'Codex was closed');
 

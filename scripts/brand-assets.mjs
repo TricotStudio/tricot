@@ -387,8 +387,8 @@ function encodePng({ width, height, pixels }, { rgba = false } = {}) {
 }
 
 // One ink on transparency: Chrome's edge pixels come back from
-// premultiplied alpha a shade off the ink (#191917 for #1a1a18), so every
-// pixel takes the ink exactly and keeps its alpha.
+// premultiplied alpha a shade off the ink, so every pixel takes the ink
+// exactly and keeps its alpha.
 function smaller(png, { ink, rgba } = {}) {
   const image = decodePng(png);
   if (ink) {

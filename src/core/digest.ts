@@ -11,7 +11,7 @@ import { clip, describeChoice, listNames, optionPerson, peopleOn, pendingAsks, s
 import { driftAge, driftChanges, driftOf } from './freshness';
 import { canvasesOf, canvasName, pinAsk, pinComments, pinLost, pinPart, pinsTo, pinTarget, placePin } from './pins';
 import { kindOf } from './blocks/registry';
-import { askingWords, partAsks, partOf, partWords } from './parts';
+import { askingWords, partAsks, partHooks, partOf } from './parts';
 import { cell } from './blocks/shared';
 import { taskClosure } from './closure';
 import { requestHeading, requestsDigest } from './requests';
@@ -500,31 +500,17 @@ function pinnedFrom(board: Board, target: { taskId?: string; decisionId?: string
     '',
     '## Pinned from',
     ...pins.map(({ pin, block, decision, task }) => {
-      const lost = placePin(block, pin) ? '' : ` (${pinLost(pin)} since)`;
+      const lost = placePin(block, pin) ? '' : ` (${pinLost(pin, block)} since)`;
       return `- ${pinPart(pin, block)}${lost} in ${blockLabel(block)} (${canvasName({ decision, task })}) [block id: ${block.id}], pinned by ${who(pin.author)}`;
     }),
   ];
 }
 
-// Where a pinned box or diagram part is, for agents to find it: the box's
+// Where a pinned part is, for agents to find it, as its kind says: a box's
 // fractions of the image, a spot's point on a 3D scene, the ids the Mermaid
-// source gives a node or arrow.
-export function pinWhere(pin: Pin): string {
-  const { anchor } = pin;
-  const at = (v: number) => String(Math.round(v * 1000) / 1000);
-  if (anchor.kind === 'box') return ` (x ${at(anchor.x)}, y ${at(anchor.y)}, w ${at(anchor.w)}, h ${at(anchor.h)})`;
-  if (anchor.kind === 'spot') {
-    const short = (v: number) => String(Number(v.toPrecision(3)) + 0); // 3 significant figures; + 0 turns -0 into 0
-    const at = `x ${short(anchor.x)}, y ${short(anchor.y)}, z ${short(anchor.z)}`;
-    return anchor.name ? ` (at ${at} on the object${anchor.object ? `, uuid ${anchor.object}` : ''})` : ` (at ${at} in the scene)`;
-  }
-  if (anchor.kind === 'node') return ` (id ${anchor.nodeId})`;
-  if (anchor.kind === 'arrow') {
-    const which = anchor.n ? `, occurrence ${anchor.n + 1}` : ''; // as the pin tool counts them
-    return ` (${anchor.from} --> ${anchor.to}${anchor.label ? `, text "${anchor.label}"` : ''}${which})`;
-  }
-  if (anchor.kind === 'line') return pin.quote ? ` ("${clip(pin.quote, 80)}")` : ' (a blank line)';
-  return partWords(anchor.kind)?.where?.(pin) ?? '';
+// source gives a node or arrow, a line's text.
+export function pinWhere(pin: Pin, block?: Block): string {
+  return partHooks(pin.anchor.kind, block)?.where?.(pin) ?? '';
 }
 
 // The pins on a block, as get_canvas lists them under it. A board context
@@ -534,15 +520,16 @@ export function pinLines(board: Board, canvas: Canvas, block: Block): string[] {
   return canvas.pins
     .filter((pin) => pin.blockId === block.id)
     .map((pin) => {
-      const lost = placePin(block, pin) ? '' : ` (${pinLost(pin)})`;
-      const pinned = `pinned ${pinPart(pin, block)}${pinWhere(pin)}${lost}`;
+      const lost = placePin(block, pin) ? '' : ` (${pinLost(pin, block)})`;
+      const pinned = `pinned ${pinPart(pin, block)}${pinWhere(pin, block)}${lost}`;
       if (pin.discussion) {
         const comments = pinComments(pin, owner);
         const count = `${comments.length} comment${comments.length === 1 ? '' : 's'}`;
-        // A diff's or code block's line reads with what people said about it, wherever it was said.
+        // A part agents answer on reads with what people said about it, wherever it was said (a diff's or code block's line).
+        const answeredOn = partHooks(pin.anchor.kind, block)?.answeredOn;
         const said =
-          pin.anchor.kind === 'line'
-            ? `; answer on the line with comment(pin_id)${comments.map((c) => `\n    - ${who(c.author)} at ${c.createdAt}: ${c.body.replace(/\n/g, '\n      ')}`).join('')}`
+          answeredOn
+            ? `; answer on ${answeredOn} with comment(pin_id)${comments.map((c) => `\n    - ${who(c.author)} at ${c.createdAt}: ${c.body.replace(/\n/g, '\n      ')}`).join('')}`
             : '';
         // A person asking agents to edit a doc's paragraph, change a website's element or a code block's lines…: work, until an agent answers.
         const ask = pinAsk(comments);

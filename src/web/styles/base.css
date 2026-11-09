@@ -8,6 +8,7 @@
      theme gets them. */
   --pin-draft: var(--open);
   --pin-draft-bg: var(--open-bg);
+  --pin-draft-text: var(--open-text);
   --pin: var(--exploring);
   --pin-bg: var(--exploring-bg);
   --pin-ink: var(--exploring-ink);

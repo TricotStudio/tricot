@@ -1,4 +1,8 @@
-/* The dark theme (themes/registry.ts): light.css says what each token is for. */
+/* The dark theme (themes/registry.ts): light.css says what each token is for.
+   A neutral near-black: the palette's warm paper and violet-black ink are
+   the light theme's. A status's tint is its yarn mixed 9% into the surface,
+   the most that keeps --faint at 4.5:1 on it, and its ink is the yarn itself.
+   Danger is the coral yarn, its tint coral mixed the same way. */
 :root[data-theme='dark'] {
   --bg: #121211;
   --surface: #1a1a19;
@@ -7,29 +11,30 @@
   --border-strong: #42423e;
   --text: #ececea;
   --muted: #a6a6a0;
-  --faint: #8a8a84;
+  --faint: #919191; /* the dimmest grey that keeps 4.5:1 on surface-2 and every status tint */
   --primary: #ececea;
   --primary-text: #121211;
   --focus: #7aa2f0;
-  --danger: #ec8a77;
-  --danger-bg: #381f19;
+  --danger: #f2968a;
+  --danger-bg: #2d2523;
   --mark-tile: #deded9;
 
   --open: #e3a83e;
-  --open-bg: #33290f;
-  --open-ink: #e3a83e;
+  --open-bg: #2d2920;
+  --open-ink: #ecbf63;
+  --open-text: #121211;
   --exploring: #7aa2f0;
-  --exploring-bg: #1c2740;
-  --exploring-ink: #7aa2f0;
+  --exploring-bg: #26282c;
+  --exploring-ink: #9fb8ef;
   --provisional: #a988e6;
-  --provisional-bg: #2a2140;
-  --provisional-ink: #a988e6;
+  --provisional-bg: #28262d;
+  --provisional-ink: #b8a2f4;
   --decided: #5cc08a;
-  --decided-bg: #17301f;
-  --decided-ink: #5cc08a;
+  --decided-bg: #272a26;
+  --decided-ink: #a7cfad;
   --deferred: #85857f;
-  --deferred-bg: #242422;
-  --deferred-ink: #a6a6a0;
+  --deferred-bg: #282929;
+  --deferred-ink: #b4bdc6;
   --rose: #ec85b1;
   --rose-bg: #3b1a28;
   --rose-ink: #ec85b1;

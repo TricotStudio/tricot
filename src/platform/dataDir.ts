@@ -1,37 +1,14 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { DATABASE_FILE } from '../core/store/boardDb';
+import { DATABASE_FILE } from '../core/store/databaseFile';
+import { lockFile } from './lock';
 import { isWindows } from './os';
 import { dataDirIn, osHome } from './paths';
+import { tokenFile } from './token';
 
-// Boards live in ~/.tricot. Under the tool's earlier names they lived in
-// ~/.openboard, ~/.kybern or ~/.brainstorm-board, so the first of those found
-// (the most recent name first) is moved over once, the first time the server
-// starts.
-const EARLIER = ['.openboard', '.kybern', '.brainstorm-board'];
-
-export function defaultDataDir(home = osHome()): string {
-  const dir = dataDirIn(home);
-  const old = EARLIER.map((name) => path.join(home, name)).find((p) => existsSync(p));
-  if (!existsSync(dir) && old) {
-    renameSync(old, dir);
-    console.log(`Moved your boards from ${old} to ${dir}.`);
-  }
-  return dir;
-}
-
-// Does this folder already hold Tricot's data: the database, a board file, the lock or the token?
+// Does this folder already hold Tricot's data: the database, the lock or the token?
 function looksLikeTricot(dir: string): boolean {
-  if (existsSync(path.join(dir, DATABASE_FILE)) || existsSync(path.join(dir, 'server.lock')) || existsSync(path.join(dir, 'token'))) return true;
-  return readdirSync(dir).some((name) => {
-    if (!name.endsWith('.json')) return false;
-    try {
-      const board = JSON.parse(readFileSync(path.join(dir, name), 'utf8'));
-      return typeof board?.id === 'string' && Array.isArray(board.decisions);
-    } catch {
-      return false;
-    }
-  });
+  return existsSync(path.join(dir, DATABASE_FILE)) || existsSync(lockFile(dir)) || existsSync(tokenFile(dir));
 }
 
 // Boards are for you alone, not for the other accounts on this computer. Make
@@ -40,9 +17,9 @@ function looksLikeTricot(dir: string): boolean {
 // their own modes. Files Tricot writes are 600 from the start.
 //
 // Only a folder that is clearly Tricot's is tightened: ~/.tricot, one made on
-// this start, or one that already holds a board, the lock or the token. Any
-// other folder, say one shared on purpose, keeps its mode, with a line saying
-// how to close it. A folder that isn't yours is never changed.
+// this start, or one that already holds the database, the lock or the token.
+// Any other folder, say one shared on purpose, keeps its mode, with a line
+// saying how to close it. A folder that isn't yours is never changed.
 export function securePrivateDir(dir: string, home = osHome()): void {
   const created = !existsSync(dir);
   mkdirSync(dir, { recursive: true, mode: 0o700 });

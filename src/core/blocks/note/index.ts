@@ -2,6 +2,7 @@
 // what a checklist was: people tick its boxes in place (#83).
 
 import type { BlockKind } from '../kind';
+import { blockIs } from '../../canvas';
 import { clip } from '../../format';
 import { findWords, noteText } from '../../pins';
 import type { TaskInput } from '../../taskList';
@@ -26,6 +27,17 @@ export const note: BlockKind<NoteTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    parts: {
+      // Words people select in a note, or an agent names.
+      text: {
+        name: (pin) => `"${clip(pin.quote, 80)}"`,
+        quote: (pin) => `“${pin.quote}”`,
+        lost: 'text changed',
+        words: true,
+        askedTo: "rewrite the note's text",
+        missing: (block) => `Words are pinned in notes; ${blockIs(block)}.`,
+      },
+    },
     place(block, pin) {
       if (pin.anchor.kind !== 'text') return undefined;
       const at = findWords(noteText(block.text), pin.quote, pin.anchor);

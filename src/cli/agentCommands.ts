@@ -1,12 +1,12 @@
 // `tricot claude`, `tricot codex` and the rest: one entry in the table of commands (commands.ts)
 // for each agent in the registry (core/agents/registry.ts, through AGENTS in agentCommand.ts).
 // Those the registry says Tricot can start, start the board and the agent together (agentCommand.ts);
-// the others only show how to connect the agent. Which are which, and the words of each
+// the others help the agent join the running board, starting nothing (joinBoard.ts). Which are which, and the words of each
 // one's help, come from the registry, not from a list here.
 import path from 'node:path';
 import { levelList } from '../core/agentRules';
 import { listNames } from '../core/format';
-import { authHeaders, isLoopbackHost, readToken } from '../server/access';
+import { authHeaders, isLoopbackHost, readToken } from '../platform/token';
 import { findRunning, pidAlive } from '../platform/lock';
 import { agentCommand, AGENTS, isAgentCommand, type AgentEnv, type RunningLock } from './agentCommand';
 import { chosenOnCommandLine } from './agentRules';
@@ -46,19 +46,24 @@ async function waitUntilGone(pid: number): Promise<boolean> {
 // What `tricot claude` shares with `tricot` (agentCommand.ts): the board
 // started or found the same way, opened the same way, the same first-run question.
 function agentEnv(env: Env): AgentEnv {
-  const { ctx, host, dataDir } = env;
+  const { ctx, host, dataDir, port } = env;
   // The board this command needs, and its lease when an agent command started that board.
   let held: { lock: RunningLock; lease?: Lease } | undefined;
   let parted: Promise<string> | undefined;
+  const running = async (): Promise<RunningLock | undefined> => {
+    const found = await findRunning(dataDir);
+    return found?.url && found.mcpUrl ? (found as RunningLock) : undefined;
+  };
   return {
     ctx,
     values: env.values,
     dataDir,
+    port,
+    running,
     async ensureRunning() {
       // Twice: a board found just as it stops for want of agents is waited out, then started again.
       for (let attempt = 0; attempt < 2; attempt++) {
-        const found = await findRunning(dataDir);
-        const joined = found?.url && found.mcpUrl ? (found as RunningLock) : undefined;
+        const joined = await running();
         const lock = joined ?? (await startDetached(env, true));
         if (!lock) {
           ctx.err(`Tricot didn't start; see ${path.join(dataDir, 'server.log')}. Nothing else was started.`);
@@ -97,11 +102,12 @@ function agentEnv(env: Env): AgentEnv {
       return { needed, token: needed ? readToken(dataDir) : undefined };
     },
     openBoard(lock, board, options) {
-      openBoard({ ...env, values: { ...env.values, board, ...(options?.always && { 'no-open': false }) }, token: tokenFor(env, lock.host ?? host) }, lock.url);
+      openBoard({ ...env, values: { ...env.values, board, ...(options?.always && { 'no-open': false }) }, token: tokenFor(env, lock.host ?? host) }, lock.url, options?.page);
     },
     firstRun: (lock) => askOnFirstRun(hooksEnv(env, lock)),
-    // Only shows the instructions: a command that can't start the agent says how to connect it.
-    connect: (agent) => connect({ ...env, values: { ...env.values, print: true } }, agent),
+    // A command that can't start the agent says how to connect it, or connects it after asking
+    // (joinBoard.ts), and says the board itself once it is picked. Never as --yes would.
+    connect: (agent, ask = false) => connect({ ...env, values: { ...env.values, board: undefined, yes: undefined, print: !ask } }, agent),
   };
 }
 
@@ -123,7 +129,7 @@ function runAgents(env: Env, { positionals, passthrough, placed }: Words): Promi
 }
 
 // One text for every agent command. Which of them start the agent, and which only
-// show how to connect it, comes from the AGENTS table.
+// help it join the board, comes from the AGENTS table.
 function agentHelp(id: string): { help: Help; options: Option[] } {
   const agent = AGENTS[id];
   const starts = startable();
@@ -131,14 +137,14 @@ function agentHelp(id: string): { help: Help; options: Option[] } {
   if (!agent.session) {
     return {
       help: {
-        title: `tricot ${id}: show how to connect ${agent.name}, which Tricot can't start with the board yet`,
+        title: `tricot ${id}: help ${agent.name} join the running board, as Tricot can't start it yet`,
         usage: [`tricot ${id} [options]`],
         about: [
-          `Tricot can't start ${agent.name} with the board yet: tricot ${id} only shows how to connect it, as tricot connect ${id} --print does, and starts nothing. Connect it once, then start it yourself.`,
+          `Tricot can't start ${agent.name} with the board yet, so tricot ${id} starts nothing. With a board running on this data, it offers to connect ${agent.name} as tricot connect ${id} does, asks which board unless --board, and prints the sentence to tell ${agent.name} once you start it. With none running, or without a terminal, it shows how to connect it, as tricot connect ${id} --print does.`,
           ...(starts.length ? [`Tricot starts ${listNames(starts)} with the board, in this terminal: see tricot ${starts[0]} --help.`] : []),
         ],
       },
-      options: [said(BOARD, 'Name this board in the connect instructions'), NAME, PORT, DATA],
+      options: [said(BOARD, 'Give this board, instead of asking which'), NAME, PORT, DATA],
     };
   }
   const also = starts.find((other) => other !== id);
@@ -158,7 +164,8 @@ function agentHelp(id: string): { help: Help; options: Option[] } {
     );
   }
   if (shown.length) {
-    about.push(`${listNames(shown)} can't take the board for one session yet: tricot ${shown[0]} only shows how to connect ${shown.length === 1 ? 'it' : 'them'}, as tricot connect ${shown[0]} --print does, and starts nothing.`);
+    const them = shown.length === 1 ? 'it' : 'them';
+    about.push(`${listNames(shown)} can't take the board for one session yet: tricot ${shown[0]} starts nothing, and helps ${them} join the running board instead (it offers to connect ${them}, asks which board, and says what to tell ${them}).`);
   }
   const suggested = takes?.models.map((model) => model.id) ?? [];
   const ruleOptions = takes
@@ -188,7 +195,7 @@ function agentHelp(id: string): { help: Help; options: Option[] } {
 }
 
 // The line `tricot --help` has for the agent commands: one for the first that starts an agent
-// (which names the others that do) and one for the first that only shows how to connect; the
+// (which names the others that do) and one for the first that only helps it join; the
 // other agents are in those lines.
 function agentSummary(id: string): string | undefined {
   const [first, ...others] = startable();
@@ -197,7 +204,7 @@ function agentSummary(id: string): string | undefined {
     return `Start the board and ${AGENTS[first].name} on it, in this terminal.${others.length ? ` Also ${listNames(others)}; several at once: tricot ${first} ${others[0]}` : ''} A board this starts stops when the last agent command quits; one already running is left alone`;
   }
   if (id === shown) {
-    return `Show how to connect ${AGENTS[shown].name}${alsoShown.length ? ` (also ${listNames(alsoShown)})` : ''}: Tricot can't start ${alsoShown.length ? 'these' : 'it'} with the board yet`;
+    return `Help ${AGENTS[shown].name}${alsoShown.length ? ` (also ${listNames(alsoShown)})` : ''} join the running board: Tricot can't start ${alsoShown.length ? 'these' : 'it'} yet`;
   }
   return undefined;
 }

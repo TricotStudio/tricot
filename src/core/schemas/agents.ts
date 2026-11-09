@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { skillsWords } from '../agents/registry';
 import { addFields, agentTypes, pinFields, updateFields } from '../blocks/agent';
 import { fields, askNames } from './fields';
 import { searchKind } from './people';
@@ -298,7 +299,7 @@ export const tools = {
   },
   report_skills: {
     skills: sized(newSkill, { max: [LIMITS.skills, `Report at most ${LIMITS.skills} skills.`] }).describe(
-      'Every skill you have (Claude Code skills, Codex prompts, Pi or OMP skills, Gemini CLI or OpenCode skills and commands); [] clears them',
+      `Every skill you have (${skillsWords()}); [] clears them`,
     ),
   },
   finish_sync: {

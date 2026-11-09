@@ -42,7 +42,7 @@ const part: PartWords = {
 };
 
 const ask: AskWords = {
-  part: ({ pin, block }) => `${pin.quote}${pinWhere(pin).replace(/\)$/, ', as fractions of the picture from its top left)')} on ${blockNamed(block, 'image')}`,
+  part: ({ pin, block }) => `${pin.quote}${pinWhere(pin, block).replace(/\)$/, ', as fractions of the picture from its top left)')} on ${blockNamed(block, 'image')}`,
   how: ({ block }) =>
     `Make a new version of the picture and send it with update_block (block_id: ${block.id}, image_path or image_base64): the one it replaces stays in the block's history, and boxes stay where they were drawn`,
   view: 'the image',
@@ -100,6 +100,8 @@ export const agent: AgentHalf<ImageTypes> = {
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('image'), assetId: z.string(), caption: z.string().optional() }),
   patch: { caption: z.string().optional() },
+  // A box drawn on it, as fractions of the picture.
+  parts: { box: z.object({ kind: z.literal('box'), x: z.number(), y: z.number(), w: z.number(), h: z.number() }) },
 };
 
 export const server: ServerHalf<ImageTypes> = {

@@ -109,18 +109,71 @@ export interface PinHooks<T extends KindTypes> {
   place?(block: BlockOf<T>, pin: Pin): PinPlace | null | undefined;
   // A card people pin whole, like a link, as against a block (the words they use).
   whole?: { word: 'card'; quote(block: BlockOf<T>): string };
+  // How each kind of part it has reads and behaves, by its anchor's kind: a
+  // scene's spots, a diagram's nodes and arrows. Shared code asks these
+  // (core/parts.ts, partHooks) and switches on no part's kind.
+  parts?: PartsHooks;
   // Its parts that people comment on and may ask agents to act on (a
   // website's elements, a code block's lines): what agents are told of them,
   // said as a connector says it of its parts (core/parts.ts). Server-only.
   part?: PartWords;
 }
 
+// A pinned part, or a part about to be pinned (a person's prompt names it
+// before it is checked, with the fields it has so far), and its quote.
+export type PartLike<A extends { kind: string } = PinAnchor> = {
+  anchor: A extends unknown ? Partial<A> & Pick<A, 'kind'> : never;
+  quote: string;
+};
+
+// How one kind of pinned part reads and behaves, wherever the board names it:
+// in digests, pin prompts, chips and threads, and agents' tool text. A
+// kind's pins say it for each kind of part it has (pins.parts), and a
+// connector's pins for its own (a Google Doc's paragraph). Each is said once
+// here, and nothing else switches on the part's kind. What isn't said is the
+// default given beside it.
+export interface PartHooks<A extends PinAnchor = PinAnchor> {
+  // The part in a phrase: node "Retry", box 1, line 12 of a.ts. The quote if not said.
+  name?(pin: PartLike<A>): string;
+  // The part as a prompt or a comment quotes it: the words in quotes,
+  // a.ts:12 · “code”. If not said, its block's name · its phrase.
+  quote?(pin: PartLike<A>): string;
+  // What a task's detail or a question's context quotes of it, after
+  // "Pinned from …:". The pin's quote if not said.
+  detail?(pin: PartLike<A>): string;
+  // What its pin no longer finding it means: "object removed". "text changed" if not said.
+  lost?: string;
+  // Whether two of its anchors are the same part: a box is, whatever number
+  // it was given. Anchors that are equal if not said.
+  same?(a: A, b: A): boolean;
+  // Drawn on its block (tinted cells, a box, a spot): its pins' chips go in
+  // the strip under the block, naming it.
+  drawn?: true;
+  // Words people selected, which work pinned from them quotes whole.
+  words?: true;
+  // What agents do with a request on it, as its thread tells the person who
+  // asked: "change the scene". "act on it" if not said.
+  askedTo?: string;
+  // A part agents answer on, by its pin (a diff's or code block's line), as
+  // they are told to: "the line". Where they read the canvas, it reads with
+  // what people said about it, wherever it was said.
+  answeredOn?: string;
+  // What agents read after it to find it: " (id Retry)". Nothing if not said.
+  where?(pin: Omit<Pin, 'anchor'> & { anchor: A }): string;
+  // Said when a block isn't one that has it: "Spots are pinned on 3D scenes; …".
+  missing?(block: Block): string;
+}
+
+// A kind's parts' hooks, by their anchor's kind.
+export type PartsHooks = { readonly [K in Exclude<PinAnchor['kind'], 'block'>]?: PartHooks<Extract<PinAnchor, { kind: K }>> };
+
 // What a kind of part says of itself, as a connector's pins do. `kind` names
 // the part where a request or a pairing session says which (a comment's
 // askPart, a session's part). Its pins are anchored by that name ('site'),
 // or, for parts pinned with anchors other kinds share (a code block's lines
-// are 'line' anchors, as a diff's are), by `anchors`.
-export type PartWords = Pick<ConnectorPins, 'kind' | 'where' | 'label' | 'missing' | 'seen' | 'ask'> & { anchors?: readonly PinAnchor['kind'][] };
+// are 'line' anchors, as a diff's are), by `anchors`. Where agents find one
+// and what a block without it says are its part's hooks (pins.parts).
+export type PartWords = Pick<ConnectorPins, 'kind' | 'label' | 'seen' | 'ask'> & { anchors?: readonly PinAnchor['kind'][] };
 
 // ---- what agents send ------------------------------------------------------------
 
@@ -191,10 +244,13 @@ export interface Derive<T extends KindTypes> {
 }
 
 // What people send: how the browser makes one (a zod object with the type
-// literal, as the REST body has it) and what a change to one may name.
+// literal, as the REST body has it), what a change to one may name, and the
+// parts of it they pin, by their anchor's kind (a zod object each with the
+// kind literal, as a pin's part is in the REST body).
 export interface PeopleHalf {
   create?: z.ZodObject;
   patch?: Shape;
+  parts?: { readonly [K in Exclude<PinPart['kind'], 'block'>]?: z.ZodObject };
 }
 
 // ---- the kind --------------------------------------------------------------------

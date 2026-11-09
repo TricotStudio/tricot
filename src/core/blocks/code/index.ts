@@ -4,6 +4,7 @@
 
 import { type CodeFields, type CodeInput, codeBlockSize, codeLines, findCodeLine, shortPath } from './code';
 import type { BlockKind } from '../kind';
+import { lineParts } from '../diff/lines';
 import { server } from './server';
 
 export interface CodeTypes {
@@ -31,6 +32,9 @@ export const code: BlockKind<CodeTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    // Its lines read as a diff's do (diff/lines.ts, whose kind also says what a
+    // block without lines is told), and take requests to change them.
+    parts: { line: { ...lineParts, askedTo: 'change the code' } },
     // Found again by its (first) line's text; a range keeps its length, within the lines the block has.
     place(block, pin) {
       if (pin.anchor.kind !== 'line') return undefined;

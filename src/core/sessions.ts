@@ -19,6 +19,15 @@
 // entry, token and all, lives in its environment alone. `--prompt` is the
 // first message.
 //
+// Copilot CLI: `--additional-mcp-config` adds MCP servers for this session
+// only, as JSON in the shape of its mcp-config.json, over a server of the same
+// name in its settings. `--enable-mcp-server` turns the server on for this
+// run should the person have turned their own tricot off (which, tried with
+// Copilot CLI 1.0.107, keeps the session's off too), and `-i` is the first
+// message of an interactive session. The token stays out of the arguments:
+// the header names TRICOT_TOKEN, which Copilot fills in from its environment
+// (tried with 1.0.107), set there alone.
+//
 // Pi: `-e <file>` loads an extension for one run, and the extension adds the
 // board as an MCP server for that session (`pi.registerMcpServer`), so Pi's
 // own settings are left alone. OMP: `-e <folder>` loads an extension package
@@ -29,9 +38,12 @@
 // Tricot's own tools run without asking in a session Tricot starts, as the
 // person started it to work on the board: Claude Code gets
 // `--allowedTools mcp__tricot__*` (its permission rules: every tool of one
-// server), and Codex `mcp_servers.tricot.default_tools_approval_mode`
-// "approve" (its MCP docs' per-server setting). `--allowedTools` is variadic
-// like `--mcp-config`, so it goes just before it, which ends it.
+// server), Codex `mcp_servers.tricot.default_tools_approval_mode`
+// "approve" (its MCP docs' per-server setting), and Copilot CLI
+// `--allow-tool=tricot` (its permission patterns: a server's name alone is
+// every tool of it). `--allowedTools` is variadic like `--mcp-config`, so it
+// goes just before it, which ends it; Copilot's `--allow-tool` is variadic
+// too, so it is given its one value after `=`, and an option follows it.
 //
 // Claude Code also gets Tricot's hooks for the session (`--settings`, which
 // adds to its own settings): its permission prompts on the board, and its
@@ -43,11 +55,12 @@
 // hooks recognise its tools (mcp__tricot__…). When the person already has a
 // tricot server of their own: Codex's overrides and OpenCode's inline config
 // win key by key over it, as their docs say (their other keys still apply,
-// but for Codex's approval mode, set above). Claude Code's docs don't say whether --mcp-config
+// but for Codex's approval mode, set above), and Copilot CLI's takes its place
+// whole, as its docs say. Claude Code's docs don't say whether --mcp-config
 // or a configured server of the same name wins, so the session has one
 // tricot server either way, theirs or this one; `-- --strict-mcp-config`
 // makes it this one alone.
-import { mcpJsonEntry, OMP_TIMEOUT_MS, shellCommand, TOKEN_ENV } from './connect';
+import { copilotEntry, mcpJsonEntry, OMP_TIMEOUT_MS, shellCommand, TOKEN_ENV } from './connect';
 
 export const SESSION_SERVER = 'tricot';
 
@@ -106,6 +119,24 @@ export function codexSession({ url, token, message, passthrough }: SessionSetup)
   ];
   return {
     args: [...overrides.flatMap((override) => ['-c', override]), ...passthrough, message],
+    env: token ? { [TOKEN_ENV]: token } : {},
+  };
+}
+
+// What goes before the first message comes first (the rule's flags, what came
+// after `--`), so a variadic option there is ended by the options below.
+export function copilotSession({ url, token, message, passthrough }: SessionSetup): SessionLaunch {
+  const config = { mcpServers: { [SESSION_SERVER]: copilotEntry(url, token) } };
+  return {
+    args: [
+      ...passthrough,
+      '--additional-mcp-config',
+      JSON.stringify(config),
+      `--enable-mcp-server=${SESSION_SERVER}`,
+      `--allow-tool=${SESSION_SERVER}`,
+      '-i',
+      message,
+    ],
     env: token ? { [TOKEN_ENV]: token } : {},
   };
 }

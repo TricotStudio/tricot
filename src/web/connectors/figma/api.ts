@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { ConnectorStatus } from '../../../core/connectors';
 import type { Block } from '../../../core/types';
-import { routes } from '../../../core/routes';
+import { figmaRoutes } from '../../../core/connectors/figma/routes';
 import { get, post } from '../../shared/api';
 import { forgetFiles } from '../live';
 
-// Figma's calls to the server (server/connectors/figma/routes.ts).
+// Figma's calls to the server: its routes (core/connectors/figma/routes.ts), served
+// by server/connectors/figma/routes.ts.
 
 // What a link card shows of a file or frame.
 export interface FigmaCard {
@@ -38,18 +39,18 @@ export const figmaApi = {
   card(fileId: string): Promise<CardAnswer> {
     const known = answers.get(fileId);
     if (known && Date.now() - known.at < FRESH) return known.answer;
-    const answer = get(routes.figmaFile)<CardAnswer>({ fileId });
+    const answer = get(figmaRoutes.file)<CardAnswer>({ fileId });
     answers.set(fileId, { at: Date.now(), answer });
     answer.catch(() => answers.delete(fileId));
     return answer;
   },
 
   // A token pasted: checked with Figma and kept, or why not.
-  connect: (token: string) => post(routes.figmaToken)<{ connector: ConnectorStatus }>({ token }),
+  connect: (token: string) => post(figmaRoutes.token)<{ connector: ConnectorStatus }>({ token }),
 
   // "Bring in this frame", from the link card's block; "Refresh", on an image brought in.
-  bringIn: (blockId: string, actor: string) => post(routes.figmaBringIn)<{ block: Block }>({ actor, blockId }),
-  refresh: (blockId: string, actor: string) => post(routes.figmaRefresh)<{ block: Block; changed: boolean }>({ actor }, { blockId }),
+  bringIn: (blockId: string, actor: string) => post(figmaRoutes.bringIn)<{ block: Block }>({ actor, blockId }),
+  refresh: (blockId: string, actor: string) => post(figmaRoutes.refresh)<{ block: Block; changed: boolean }>({ actor }, { blockId }),
 };
 
 // A link's card, looked up through the server: null while it loads.

@@ -18,6 +18,7 @@
 // What a person does in a thread from the Tricot tab (threadsSend.ts) goes the
 // same way, as `act`: key, signature once a seat, the person's name in the body.
 import type { ApprovalReply } from '../../core/approvals';
+import { routes, routeUrl } from '../../core/routes';
 import { SEAT_GONE, SEAT_NEEDED, type AdmissionView, type SeatView } from '../../core/seats';
 import { HOST_KEY_HEADER } from '../../server/access';
 import { TerminalSeat, type SeatAsked, type SeatEnd } from '../terminalSeat';
@@ -103,7 +104,7 @@ export function holdAnswers(options: AnswersOptions): Answers {
   const heartbeat = async () => {
     if (!key || released) return;
     try {
-      const { status } = await post('/api/approvals/hosts/heartbeat', {}, key);
+      const { status } = await post(routeUrl(routes.hostHeartbeat), {}, key);
       if (status === 404) {
         key = undefined; // the board forgot it (a restart): take another
         void register();
@@ -117,7 +118,7 @@ export function holdAnswers(options: AnswersOptions): Answers {
     if (released) return Promise.resolve(undefined);
     registering ??= (async () => {
       try {
-        const { status, json } = await post('/api/approvals/hosts');
+        const { status, json } = await post(routeUrl(routes.registerHost));
         if (status !== 201 || typeof json.key !== 'string') return undefined;
         if (released) return json.key; // for release(), which waits for it, to let go of
         key = json.key;
@@ -139,7 +140,7 @@ export function holdAnswers(options: AnswersOptions): Answers {
     const now = key;
     if (now) {
       try {
-        const { status } = await post('/api/approvals/hosts/heartbeat', {}, now);
+        const { status } = await post(routeUrl(routes.hostHeartbeat), {}, now);
         if (status !== 404) return now;
         if (key === now) key = undefined; // the board forgot it: take another
       } catch {
@@ -220,17 +221,17 @@ export function holdAnswers(options: AnswersOptions): Answers {
       const outcome = await send(route, { actor: await actor(), ...body }, true, (json) => (reply = json), 'message');
       return outcome.ok ? { ok: true, reply } : outcome;
     },
-    answer: async (id, reply) => send(`/api/approvals/${encodeURIComponent(id)}/answer`, { actor: await actor(), ...reply }, true),
+    answer: async (id, reply) => send(routeUrl(routes.answerApproval, { id }), { actor: await actor(), ...reply }, true),
     // Not a seat yet, it sends its own key too: letting the very first browser
     // in, the board lets this terminal in with it.
     admit: async (id, allow) => {
       const own = seat.seated ? {} : { terminal: { publicKey: seat.publicKey, ...(seat.label && { label: seat.label }) } };
-      return send(`/api/seats/admissions/${encodeURIComponent(id)}/answer`, { actor: await actor(), allow, ...own }, true, (json) => {
+      return send(routeUrl(routes.answerAdmission, { id }), { actor: await actor(), allow, ...own }, true, (json) => {
         if (typeof json.terminalSeat === 'string') seat.adopt(json.terminalSeat);
       });
     },
-    admissions: () => read<AdmissionView[]>('/api/seats/admissions'),
-    seats: () => read<SeatView[]>('/api/seats'),
+    admissions: () => read<AdmissionView[]>(routeUrl(routes.admissions)),
+    seats: () => read<SeatView[]>(routeUrl(routes.seats)),
     askSeat: () => seat.ask(),
     seatEnded: () => seat.wait(),
     get seated() {
@@ -249,7 +250,7 @@ export function holdAnswers(options: AnswersOptions): Answers {
       key = undefined;
       if (!was) return;
       try {
-        await post('/api/approvals/hosts/release', {}, was);
+        await post(routeUrl(routes.hostRelease), {}, was);
       } catch {
         // Gone already: the board lets it go once its heartbeat stops.
       }

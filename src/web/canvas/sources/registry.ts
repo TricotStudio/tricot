@@ -17,7 +17,7 @@ const registered = (): readonly WebSource[] => [figma, youtube, loom, github];
 let marks: Record<string, Mark> | undefined;
 
 // A plain tile for a link whose mark nobody has drawn.
-const PLAIN: Mark = { tile: '#5c5c57', glyph: null };
+const PLAIN: Mark = { tile: '#5d5866', glyph: null }; // the light theme's muted ink
 
 export function sourceMark(mark: string): Mark {
   marks ??= Object.assign({}, ...webConnectors().map((c) => c.marks ?? {}), ...registered().map((s) => s.marks));

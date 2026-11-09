@@ -16,7 +16,7 @@ function Page({ name }: { name: string }) {
   // A board's stream and Home's carry the agents waiting for your OK; any other page listens for them itself.
   useApprovalsStream(route.page !== 'board' && route.page !== 'home');
   if (route.page === 'board') {
-    return <BoardView boardId={route.boardId} view={route.view} decisionId={route.decisionId} taskId={route.taskId} name={name} />;
+    return <BoardView boardId={route.boardId} view={route.view} decisionId={route.decisionId} taskId={route.taskId} pinId={route.pinId} name={name} />;
   }
   if (route.page === 'connectors') return <ConnectorsPage from={route.from} />;
   return <Home name={name} />;

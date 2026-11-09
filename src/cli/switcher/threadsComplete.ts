@@ -5,7 +5,7 @@
 // list the page's / offers, routes.agents), written as the page writes it,
 // "@Claude /review ", at the front of the message. Several fits are cycled
 // through with each Tab (Shift+Tab goes back one), and listed on a row above
-// the line. At the start of a message, / also lists local navigation
+// the line. At the start of a message, / also lists the tab's own commands
 // (tabCommands.ts), labelled as Tricot commands, before the skills. An
 // addressed / is always an agent's.
 //

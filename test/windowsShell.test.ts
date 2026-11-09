@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { CommandToRun } from '../src/cli/connectAgent';
 import { runCli, type CliContext } from '../src/cli/main';
-import { claudeCommand, codexLines, exportToken, geminiLines, grokLines, opencode2Lines, piLines, setEnvironment, shellChain, shellCommand, shellFor, shellQuote } from '../src/core/connect';
+import { claudeCommand, codexLines, copilotLines, exportToken, geminiLines, grokLines, opencode2Lines, piLines, setEnvironment, shellChain, shellCommand, shellFor, shellQuote } from '../src/core/connect';
 import { agentKinds, findAgent, installHints, panelTexts } from '../src/core/agents/registry';
 import { howToUpdate, restartCommand } from '../src/install/handoff';
 import { shellPath } from '../src/server/hooks/installer';
@@ -55,6 +55,7 @@ describe('Commands shown for PowerShell', () => {
     assert.deepEqual(geminiLines(codexUrl, TOKEN, 'powershell').at(-1), `gemini mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot '${codexUrl}'`);
     assert.deepEqual(grokLines(codexUrl, TOKEN, 'powershell'), [`$env:TRICOT_TOKEN = '${TOKEN}'`, `grok mcp add --scope user --transport http --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot '${codexUrl}'`]);
     assert.deepEqual(opencode2Lines(codexUrl, TOKEN, 'powershell'), [`$env:TRICOT_TOKEN = '${TOKEN}'`, `opencode mcp add tricot --url '${codexUrl}' --global --header 'Authorization=Bearer {env:TRICOT_TOKEN}'`]);
+    assert.deepEqual(copilotLines(codexUrl, TOKEN, 'powershell'), [`$env:TRICOT_TOKEN = '${TOKEN}'`, `copilot mcp add --transport http --timeout 300000 --header 'Authorization: Bearer \${TRICOT_TOKEN}' tricot '${codexUrl}'`]);
   });
 
   it('shows the same text as before on macOS and Linux, whether the shell is said or not', () => {
@@ -122,6 +123,9 @@ describe('Where an agent is installed from, on Windows', () => {
     // Gemini CLI's docs name no Windows command beyond npm's: the same list shows.
     assert.equal(findAgent('gemini')!.install.windows, undefined);
     assert.deepEqual(installHints(findAgent('gemini')!, true).commands, findAgent('gemini')!.install.commands);
+    // Copilot CLI: WinGet, as GitHub's install page gives it first for Windows.
+    assert.equal(first('copilot', true), 'winget install GitHub.Copilot');
+    assert.equal(first('copilot', false), 'npm install -g @github/copilot');
     // Grok Build's install guide has its own PowerShell installer.
     assert.equal(first('grok', true), 'irm https://x.ai/cli/install.ps1 | iex');
     assert.equal(first('grok', false), 'curl -fsSL https://x.ai/cli/install.sh | bash');
@@ -208,7 +212,7 @@ describe('tricot connect, on Windows', () => {
     const url = (name: string) => `http://127.0.0.1:${port}/mcp?agent=${name}`;
     assert.match(said(), new RegExp(`^  \\$env:TRICOT_TOKEN = '${TOKEN}'$`, 'm'));
     assert.match(said(), new RegExp(`^  codex mcp add tricot --url '${url('Codex').replace(/[?]/g, '\\?')}' --bearer-token-env-var TRICOT_TOKEN$`, 'm'));
-    assert.match(said(), /Codex, Pi, Gemini CLI and Grok Build read the token from TRICOT_TOKEN: run the \$env:TRICOT_TOKEN line in the PowerShell each runs from\./);
+    assert.match(said(), /Codex, Pi, Gemini CLI, Grok Build and Copilot CLI read the token from TRICOT_TOKEN: run the \$env:TRICOT_TOKEN line in the PowerShell each runs from\./);
     assert.doesNotMatch(said(), /export TRICOT_TOKEN/);
   });
 
@@ -216,7 +220,7 @@ describe('tricot connect, on Windows', () => {
     withToken();
     await runCli(['connect', '--host', '0.0.0.0'], ctx('darwin'));
     assert.match(said(), new RegExp(`^  export TRICOT_TOKEN=${TOKEN}$`, 'm'));
-    assert.match(said(), /Codex, Pi, Gemini CLI and Grok Build read the token from TRICOT_TOKEN: run the export in the shell each runs from\./);
+    assert.match(said(), /Codex, Pi, Gemini CLI, Grok Build and Copilot CLI read the token from TRICOT_TOKEN: run the export in the shell each runs from\./);
   });
 
   it("says what it would run for Codex with the token in PowerShell: set the variable, then the command, and runs it with the token in its environment", async () => {

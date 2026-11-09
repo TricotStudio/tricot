@@ -1,10 +1,11 @@
 // Live steps, as people see them: for each agent Tricot shows steps for
-// (Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode), whether it is on this machine and whether
+// (every agent in the registry), whether it is on this machine and whether
 // its steps hook is set up, in words, and what turning it on or off would
 // write. The server works it out from the hook installers (server/hooks); the
 // `tricot steps` command, an agent's panel and the Connect panel show it.
 // Types and words only: the browser imports this.
 
+import { agentKinds, defaultAgent } from './agents/registry';
 import { samePerson } from './format';
 
 export type LiveStepsAction = 'on' | 'off';
@@ -93,6 +94,14 @@ export function liveStepsLabel(agent: LiveStepsAgent): string {
 
 // The command that turns one agent's steps on, for a hint.
 export const liveStepsCommand = (agent: Pick<LiveStepsAgent, 'id'>) => `tricot steps on --agent ${agent.id}`;
+
+// For an agent on the board whose tool Tricot can't tell: the command that
+// turns steps on under its name from a terminal, for the registry's default
+// agent, and the other agents that can take its place there, by id.
+export function stepsCommandUnder(name: string): { command: string; others: string[] } {
+  const first = defaultAgent();
+  return { command: `${liveStepsCommand(first)} --name "${name}"`, others: agentKinds().flatMap((kind) => (kind === first ? [] : [kind.id])) };
+}
 
 // Which agent an agent on the board runs in: the one whose hook sends steps
 // under its name, else the one whose usual name it has ("Claude", or

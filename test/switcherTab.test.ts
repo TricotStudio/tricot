@@ -318,7 +318,9 @@ describe("the Tricot tab's keys", () => {
     const reader = new TabKeyReader();
     const keys = (s: string | Buffer) => reader.read(typeof s === 'string' ? Buffer.from(s, 'latin1') : s);
     assert.deepEqual(keys('y'), [{ kind: 'text', text: 'y' }]);
-    assert.deepEqual(keys('\r\x1b\x7f\x15\x0c\x03'), [{ kind: 'enter' }, { kind: 'escape' }, { kind: 'backspace' }, { kind: 'clear' }, { kind: 'lens' }, { kind: 'interrupt' }]);
+    assert.deepEqual(keys('\r\x1b\x15\x7f\x0c\x03'), [{ kind: 'enter' }, { kind: 'escape' }, { kind: 'clear' }, { kind: 'backspace' }, { kind: 'lens' }, { kind: 'interrupt' }]);
+    assert.deepEqual(keys('\x1b\r\n'), [{ kind: 'newline' }, { kind: 'newline' }], 'Option+Enter and Ctrl+J: a new line (T37)');
+    assert.deepEqual(keys('\x1bb\x1bf\x1b\x7f\x17\x01\x05'), [{ kind: 'wordleft' }, { kind: 'wordright' }, { kind: 'deleteword' }, { kind: 'deleteword' }, { kind: 'home' }, { kind: 'end' }], 'Option+← → and Option+Backspace as macOS terminals send them, Ctrl+W, Ctrl+A and Ctrl+E');
     assert.deepEqual(keys('\x1b[A\x1bOB'), [{ kind: 'up' }, { kind: 'down' }]);
     assert.deepEqual(keys('\x1b[C\x1bOC\x1b[D\x1bOD'), [{ kind: 'right' }, { kind: 'right' }, { kind: 'left' }, { kind: 'left' }]);
     assert.deepEqual(keys('\x1b[H\x1bOH\x1b[1~\x1b[7~'), [{ kind: 'home' }, { kind: 'home' }, { kind: 'home' }, { kind: 'home' }]);
@@ -326,7 +328,8 @@ describe("the Tricot tab's keys", () => {
     assert.deepEqual(keys('\x1b[15~\x1b[5~\x1b[6~'), [{ kind: 'other' }, { kind: 'pageup' }, { kind: 'pagedown' }], 'F5 is not Page Up');
     assert.deepEqual(keys('\x1b[5;1:2~\x1b[5;1:3~\x1b[6;1:1~'), [{ kind: 'pageup' }, { kind: 'pagedown' }], 'Page Up and Page Down in the kitty protocol’s form');
     assert.deepEqual(keys('\x1b[1;5H'), [{ kind: 'other' }], 'Ctrl+Home: a key it has no use for');
-    assert.deepEqual(keys('\x1b[1;5C'), [{ kind: 'other' }], 'a key it has no use for');
+    assert.deepEqual(keys('\x1b[1;5C\x1b[1;5D\x1b[1;3C\x1b[1;3D'), [{ kind: 'wordright' }, { kind: 'wordleft' }, { kind: 'wordright' }, { kind: 'wordleft' }], 'Ctrl or Alt with an arrow: a word at a time');
+    assert.deepEqual(keys('\x1b[1;2C'), [{ kind: 'other' }], 'a key it has no use for');
     const e = Buffer.from('é', 'utf8');
     assert.deepEqual(keys(e.subarray(0, 1)), []);
     assert.deepEqual(keys(e.subarray(1)), [{ kind: 'text', text: 'é' }]);
@@ -361,7 +364,8 @@ describe("the Tricot tab's keys", () => {
     assert.deepEqual(keys('\x1b[13u\x1b[13;2u\x1b[27u\x1b[127u\x1b[127;1:3u'), [{ kind: 'enter' }, { kind: 'enter' }, { kind: 'escape' }, { kind: 'backspace' }]);
     assert.deepEqual(keys('\x1b[1;1:2A\x1b[1;1:3A\x1b[1;1:1B'), [{ kind: 'up' }, { kind: 'down' }], 'an arrow held down, let go, and another');
     assert.deepEqual(keys('\x1b[1;1:2C\x1b[1;1:3C\x1b[1;1:1D\x1b[1;1:2D\x1b[1;1:3D'), [{ kind: 'right' }, { kind: 'left' }, { kind: 'left' }], 'an arrow held down, let go, and another');
-    assert.deepEqual(keys('\x1b[1;2C\x1b[1;3D'), [{ kind: 'other' }, { kind: 'other' }], 'with Shift or Alt: a key it has no use for');
+    assert.deepEqual(keys('\x1b[1;2C\x1b[1;3D'), [{ kind: 'other' }, { kind: 'wordleft' }], 'with Shift, a key it has no use for; with Alt, a word left');
+    assert.deepEqual(keys('\x1b[127;3u\x1b[13;3u'), [{ kind: 'deleteword' }, { kind: 'newline' }], 'Alt+Backspace and Alt+Enter');
     assert.deepEqual(keys('y\x1b[Dn'), [{ kind: 'text', text: 'y' }, { kind: 'left' }, { kind: 'text', text: 'n' }], 'in order with what is typed');
     assert.deepEqual(keys('\x1b[1;1:1H\x1b[1;1:2F\x1b[1;1:3H\x1b[1;1:1~\x1b[4;1:2~\x1b[4;1:3~'), [{ kind: 'home' }, { kind: 'end' }, { kind: 'home' }, { kind: 'end' }], 'Home and End, pressed, held down and let go');
     assert.deepEqual(keys('\x1b[99;5u\x1b[117;5u\x1b[108;5u\x1b[27;5;99~'), [{ kind: 'interrupt' }, { kind: 'clear' }, { kind: 'lens' }, { kind: 'interrupt' }]);
@@ -397,6 +401,8 @@ interface Stand {
   screen(): string[];
   answered: { id: string; reply: ApprovalReply }[];
   opened: number;
+  pages: string[];
+  links: string[];
   quits: number;
   added: string[];
   stopped: number[];
@@ -419,6 +425,8 @@ function stand(more: { answers?: boolean; choices?: AddChoice[]; add?: (id: stri
     live: { board: 'roadmap-1', steps: [], approvals: [], presence: [], title: 'Roadmap', activity: [] } as BoardLive,
     answered: [] as { id: string; reply: ApprovalReply }[],
     opened: 0,
+    pages: [] as string[],
+    links: [] as string[],
     quits: 0,
     added: [] as string[],
     stopped: [] as number[],
@@ -432,7 +440,8 @@ function stand(more: { answers?: boolean; choices?: AddChoice[]; add?: (id: stri
     live: () => s.live,
     now: () => NOW,
     changed: () => {},
-    open: () => void s.opened++,
+    open: (page) => void (page ? s.pages.push(page) : s.opened++),
+    openLink: (url) => void s.links.push(url),
     quit: () => void s.quits++,
     choices: () => more.choices ?? [{ id: 'opencode', name: 'OpenCode' }],
     add: (id) => {
@@ -483,6 +492,16 @@ function stand(more: { answers?: boolean; choices?: AddChoice[]; add?: (id: stri
   s.settle = () => new Promise((resolve) => setImmediate(resolve));
   return s;
 }
+
+describe('a link clicked in the Tricot tab (T36)', () => {
+  it('opens the board for its own address, a card for its page, and any other address as it is', () => {
+    const s = stand();
+    s.tab.link('http://127.0.0.1:5113');
+    s.tab.link('#/b/roadmap-1/t/abc');
+    s.tab.link('https://example.com/x');
+    assert.deepEqual([s.opened, s.pages, s.links], [1, ['#/b/roadmap-1/t/abc'], ['https://example.com/x']]);
+  });
+});
 
 describe('the Tricot tab, live and answering', () => {
   it("shows each agent's step and for how long, listening, ended and stopped, from the board's stream", () => {

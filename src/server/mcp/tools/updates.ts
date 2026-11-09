@@ -1,3 +1,4 @@
+import { skillsWords } from '../../../core/agents/registry';
 import { tools } from '../../../core/schemas';
 import { TAGGED, WHOLE } from '../wording';
 import { defineTool, text, type Tool } from '../tool';
@@ -49,7 +50,7 @@ export function updateTools({ store, getActor, session }: ToolContext): Tool[] {
       guide: {
         topic: 'conversation',
         text: [
-          'Skills are Claude Code skills, Codex prompts, Pi or OMP skills, Gemini CLI or OpenCode skills and commands.',
+          `Skills are ${skillsWords()}.`,
           'People then call them from a card comment or a thread message by typing "/". A message that starts with one of your skills reaches your updates as "asks you to run /name", with the rest of their text as its arguments: run it, then reply on that card or thread as usual, and your reply shows it was made via the skill.',
         ].join(' '),
       },

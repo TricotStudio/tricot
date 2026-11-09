@@ -9,9 +9,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { routes, routeUrl } from '../core/routes';
 import { LIMITS } from '../core/schemas/limits';
 import type { BoardSummary } from '../core/types';
-import { authHeaders } from '../server/access';
+import { authHeaders } from '../platform/token';
 import { pickBoard, type PickerBoard, type TerminalKeys } from './boardPicker';
 import { asThisTerminal } from './terminalKey';
 
@@ -43,7 +44,7 @@ export async function chooseBoard(options: ChooseOptions): Promise<Choice> {
 }
 
 async function namedBoard(url: string, dataDir: string, board: string): Promise<Choice> {
-  const res = await call(url, dataDir, `/api/boards/${encodeURIComponent(board)}`);
+  const res = await call(url, dataDir, routeUrl(routes.board, { boardId: board }));
   if (res.status === 404) return { problem: `There's no board "${board}" on this Tricot. Leave out --board to pick one in the terminal.` };
   if (!res.ok) return { problem: `Tricot didn't give the board "${board}": ${res.error}` };
   const found = res.body as { id: string; title: string };
@@ -53,7 +54,7 @@ async function namedBoard(url: string, dataDir: string, board: string): Promise<
 async function picked(options: ChooseOptions): Promise<Choice> {
   const { url, dataDir, folder, keys } = options;
   if (!keys) return { problem: 'Name the board to work on: add --board <id>. Without it, Tricot asks in a terminal.' };
-  const list = await call(url, dataDir, '/api/boards');
+  const list = await call(url, dataDir, routeUrl(routes.boards));
   if (!list.ok) return { problem: `Tricot didn't list its boards: ${list.error}` };
   const lastHere = boardUsedIn(dataDir, folder);
   const boards = recentBoards(list.body as BoardSummary[], lastHere);
@@ -69,7 +70,7 @@ async function picked(options: ChooseOptions): Promise<Choice> {
   if ('board' in pick) return { board: { id: pick.board.id, title: pick.board.title } };
   // Making a board is a person's, so it goes as this terminal's (terminalKey.ts).
   const actor = await personName(url, dataDir, boards);
-  const made = await asThisTerminal(url, authHeaders(dataDir), (headers) => call(url, dataDir, '/api/boards', { title: pick.title, actor }, headers));
+  const made = await asThisTerminal(url, authHeaders(dataDir), (headers) => call(url, dataDir, routeUrl(routes.createBoard), { title: pick.title, actor }, headers));
   if (!made.ok) return { problem: `Tricot didn't make the board "${pick.title}": ${made.error}` };
   const board = made.body as { id: string; title: string };
   return { board: { id: board.id, title: board.title } };
@@ -96,7 +97,7 @@ async function personName(url: string, dataDir: string, boards: PickerBoard[]): 
 // It names who answers from the Tricot tab (switcher/tricotTab.ts) too.
 export async function personOn(url: string, dataDir: string, board: string | undefined): Promise<string> {
   if (board) {
-    const res = await call(url, dataDir, `/api/boards/${encodeURIComponent(board)}`);
+    const res = await call(url, dataDir, routeUrl(routes.board, { boardId: board }));
     const actors = res.ok ? ((res.body as { activity?: { actors?: { actor: { kind: string; name: string } }[] } }).activity?.actors ?? []) : [];
     const person = actors.find((seen) => seen.actor.kind === 'human');
     if (person) return person.actor.name;

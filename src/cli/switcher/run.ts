@@ -9,7 +9,7 @@
 // agent, as quitting from the strip does; the terminal is put back even when
 // the process ends some other way, and while it is stopped (SIGTSTP), until
 // it continues (SIGCONT).
-import { authHeaders } from '../../server/access';
+import { authHeaders } from '../../platform/token';
 import { holdAnswers } from './answers';
 import type { SwitchKey } from './keys';
 import { watchBoard } from './live';

@@ -4,6 +4,7 @@
 import { DEFAULT_IMAGE_SIZE, imageBlockSize } from './image';
 import type { BlockKind } from '../kind';
 import type { PinAnchor } from '../../types';
+import { blockIs } from '../../canvas';
 import { clip } from '../../format';
 import { server } from './server';
 
@@ -28,6 +29,9 @@ export interface ImageTypes {
 
 type BoxAnchor = Extract<PinAnchor, { kind: 'box' }>;
 
+// A fraction of the picture, as agents read it.
+const fraction = (v: number) => String(Math.round(v * 1000) / 1000);
+
 export const image: BlockKind<ImageTypes> = {
   type: 'image',
   label: 'Image',
@@ -45,6 +49,18 @@ export const image: BlockKind<ImageTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    parts: {
+      // A box drawn on the picture, named by its number (box 1).
+      box: {
+        lost: 'image changed',
+        // The same box whatever number it would be given.
+        same: (a, b) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h,
+        drawn: true,
+        askedTo: 'make a new version of the image',
+        where: ({ anchor }) => ` (x ${fraction(anchor.x)}, y ${fraction(anchor.y)}, w ${fraction(anchor.w)}, h ${fraction(anchor.h)})`,
+        missing: (block) => `Boxes are drawn on images; ${blockIs(block)}.`,
+      },
+    },
     place: (_block, pin): BoxAnchor | undefined => (pin.anchor.kind === 'box' ? { ...pin.anchor } : undefined),
   },
 

@@ -20,8 +20,10 @@
 // What it holds (a host key, a seat's private key) lives in this process
 // alone, as the switcher's do (switcher/answers.ts).
 import { existsSync } from 'node:fs';
+import { routes, routeUrl } from '../core/routes';
 import { admissionWords, type AdmissionView } from '../core/seats';
-import { authHeaders, HOST_KEY_HEADER } from '../server/access';
+import { authHeaders } from '../platform/token';
+import { HOST_KEY_HEADER } from '../server/access';
 import { pidAlive, readLock, findRunning } from '../platform/lock';
 import { Seats, seatsFile } from '../server/seats';
 import type { TerminalKeys } from './boardPicker';
@@ -62,7 +64,7 @@ export function watchAdmissions(options: {
   fetch?: typeof fetch;
 }): AdmissionsFeed {
   const doFetch = options.fetch ?? fetch;
-  const path = '/api/approvals/stream';
+  const path = routeUrl(routes.approvalsStream);
   let stopped = false;
   let streaming = false;
   let abort: AbortController | undefined;
@@ -127,7 +129,7 @@ export function watchAdmissions(options: {
 export async function personHere(url: string, dataDir: string): Promise<string> {
   let latest: string | undefined;
   try {
-    const res = await fetch(`${url}/api/boards`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(5_000) });
+    const res = await fetch(`${url}${routeUrl(routes.boards)}`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(5_000) });
     const boards = res.ok ? ((await res.json()) as { id: string; updatedAt: string; archived?: boolean }[]) : [];
     latest = boards.filter((b) => !b.archived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id;
   } catch {

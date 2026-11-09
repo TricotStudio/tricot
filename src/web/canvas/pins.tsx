@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type
 import type { ExtraProps } from 'react-markdown';
 import { kindOf } from '../../core/blocks/registry';
 import { blockLabel } from '../../core/canvas';
+import { partHooks } from '../../core/parts';
 import {
   canvasName,
   partQuote,
@@ -12,11 +13,13 @@ import {
   pinTarget,
   placePin,
   quoteAt,
+  samePart,
   type PinPlace,
 } from '../../core/pins';
 import type { Block, Board, Comment, Pin } from '../../core/types';
 import { api, type PinPart } from '../shared/api';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
+import { askToUnpin } from '../shared/confirm';
 import { AsksYou, CommentText, MentionTextarea } from '../shared/mentions';
 import { Reactions, showComments } from '../conversation';
 import { go, linkTo } from '../shared/pages';
@@ -89,7 +92,7 @@ export function PinChip({ pin, part, lost }: { pin: Pin; part?: string; lost?: s
         type="button"
         className="pin-chip-open"
         onClick={open}
-        title={`${target.ref}: ${target.title}${lost ? ` (pinned ${lost === 'text changed' ? 'words' : 'part'} changed since)` : ''}`}
+        title={`${target.ref}: ${target.title}${lost ? ` (pinned ${partHooks(pin.anchor.kind)?.words ? 'words' : 'part'} changed since)` : ''}`}
       >
         <span className="pin-chip-dot" aria-hidden />
         {part && (
@@ -145,8 +148,8 @@ function CommentChip({ pin, part, lost }: { pin: Pin; part?: string; lost?: stri
   const title = thread
     ? `${plural(comments.length, 'comment')} on this part${resolved ? `, resolved by ${resolved.by.name}` : ''}`
     : `${plural(comments.length, 'comment')} on this part in the discussion`;
-  const unpin = () => {
-    if (thread && comments.length && !window.confirm(`Unpin this part and remove its thread of ${plural(comments.length, 'comment')}?`)) return;
+  const unpin = async () => {
+    if (thread && comments.length && !(await askToUnpin('this part', comments.length))) return;
     removeItem(pin.id);
   };
   return (
@@ -197,22 +200,19 @@ export interface PlacedPin {
   place: PinPlace | null; // null: its part has changed past finding
 }
 
-// Pins whose chips go in the strip under their block, naming the part: those
-// drawn on it (tinted cells, boxes on an image, a diagram's nodes and arrows,
-// spots on a 3D scene).
-const STRIPPED = new Set<Pin['anchor']['kind']>(['cells', 'box', 'node', 'arrow', 'point', 'spot']);
-
-// The pins a block shows apart from its content: those whose part changed,
-// those drawn on it, and whole blocks.
+// The pins a block shows apart from its content, their chips in the strip
+// under it naming the part: those whose part changed, those drawn on it
+// (tinted cells, boxes on an image, a diagram's nodes and arrows, spots on a
+// 3D scene: as the part's kind says), and whole blocks.
 export function PinStrip({ block, placed }: { block: Block; placed: PlacedPin[] }) {
   const apart = placed.filter(
-    ({ pin, place }) => !place || STRIPPED.has(pin.anchor.kind) || (pin.anchor.kind === 'block' && !kindOf(block.type).pins?.whole),
+    ({ pin, place }) => !place || partHooks(pin.anchor.kind, block)?.drawn || (pin.anchor.kind === 'block' && !kindOf(block.type).pins?.whole),
   );
   if (apart.length === 0) return null;
   return (
     <div className="pin-strip" data-pin-skip="">
       {apart.map(({ pin, place }) => (
-        <PinChip key={pin.id} pin={pin} part={pinPart(pin, block)} lost={place ? undefined : pinLost(pin)} />
+        <PinChip key={pin.id} pin={pin} part={pinPart(pin, block)} lost={place ? undefined : pinLost(pin, block)} />
       ))}
     </div>
   );
@@ -252,6 +252,28 @@ export function selectedWords(container: HTMLElement, range: Range): (PinPart & 
   const end = offsetOf(nodes, range.endContainer, range.endOffset);
   const words = end > start ? quoteAt(text, start, end) : null;
   return words && { kind: 'text', ...words };
+}
+
+// The words of a block on the canvas a press began in (a note's), or null for
+// a press anywhere else: on the empty canvas, another part of a block, or a
+// note's full view, which picks words its own way (noteView.tsx). A press
+// with ⇧, ⌘ or Ctrl adds blocks to the selection or draws a box from
+// anywhere, so it never begins words to pin.
+export function wordsPressed(event: Pick<MouseEvent, 'target' | 'shiftKey' | 'metaKey' | 'ctrlKey'>): HTMLElement | null {
+  if (event.shiftKey || event.metaKey || event.ctrlKey) return null;
+  return (event.target as Element | null)?.closest?.<HTMLElement>('[data-pin-text][data-block-id]') ?? null;
+}
+
+// The words to pin as the button comes up: those selected in the words the
+// press began in. Null for a press that began anywhere else, whatever the
+// browser holds selected then: words left selected in some block earlier,
+// or words it selected itself as a selection box was drawn from the empty
+// canvas (it starts a selection in the first words on the canvas, which can
+// be in any block).
+export function wordsReleased(pressed: HTMLElement | null, selection: Selection | null): (PinPart & { kind: 'text' }) | null {
+  if (!pressed?.isConnected || !selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  return range.intersectsNode(pressed) ? selectedWords(pressed, range) : null;
 }
 
 // The text of a pinnable element as people read it, and where a point in it
@@ -444,28 +466,6 @@ export function PinPrompt(props: {
 
 // ---- a part's comment thread, on the board context ------------------------------------
 
-// What agents do with a request on a part, by its kind.
-const ASKED_TO: Record<string, string> = {
-  doc: 'edit the draft',
-  site: "change the site's file",
-  line: 'change the code',
-  text: "rewrite the note's text",
-  node: "change the diagram's source",
-  arrow: "change the diagram's source",
-  box: 'make a new version of the image',
-  cells: 'change the table',
-  point: "change the chart's data",
-  spot: 'change the scene',
-};
-
-// Whether two pins are on the same part, e.g. a thread and the decision an
-// agent posted from it. A website's element is its page's, whatever it read.
-function samePart(a: Pin, b: Pin): boolean {
-  if (a.blockId !== b.blockId) return false;
-  if (a.anchor.kind === 'site' && b.anchor.kind === 'site') return a.anchor.page === b.anchor.page && a.anchor.selector === b.anchor.selector;
-  return JSON.stringify(a.anchor) === JSON.stringify(b.anchor);
-}
-
 // A board context pin's thread, opened from its chip: the part, its comments,
 // a reply, and resolving it. Work pinned to the same part shows here too.
 // `inline` draws it in place, under what it's about (a doc's paragraph),
@@ -497,7 +497,10 @@ export function PinThread(props: {
   const comments = pinComments(pin, { decision: canvas.decision, task: canvas.task });
   const threaded = Boolean(pin.discussion?.thread); // the board context's own thread, which can be resolved
   const resolved = pin.discussion?.resolved;
-  const alongside = (pins.get(pin.blockId) ?? []).filter((p) => p !== pin && !p.discussion && samePart(p, pin));
+  // Work pinned to the same part, e.g. the decision an agent posted from this
+  // thread: the same as its kind says (a box whatever its number, a website's
+  // element whatever it reads).
+  const alongside = (pins.get(pin.blockId) ?? []).filter((p) => p !== pin && !p.discussion && samePart(p.anchor, pin.anchor, block));
   const waiting = !resolved && comments.at(-1)?.author.kind === 'human';
   const asked = comments.some((c) => c.ask);
 
@@ -578,7 +581,7 @@ export function PinThread(props: {
       {(() => {
         const note = waiting && (
           <p className="pin-thread-note">
-            {asked ? `Agents see this request in their updates, ${ASKED_TO[pin.anchor.kind] ?? 'act on it'} and reply here.` : 'Agents see this in their updates and reply here.'}
+            {asked ? `Agents see this request in their updates, ${partHooks(pin.anchor.kind, block)?.askedTo ?? 'act on it'} and reply here.` : 'Agents see this in their updates and reply here.'}
           </p>
         );
         return live ? live(note) : note;
@@ -667,8 +670,8 @@ export function PinnedFrom({ board, taskId, decisionId }: { board: Board; taskId
       <h3>Pinned from</h3>
       <ul className="pinned-from">
         {pins.map(({ pin, block, decision, task }) => {
-          const lost = placePin(block, pin) ? null : pinLost(pin);
-          const words = pin.anchor.kind === 'text';
+          const lost = placePin(block, pin) ? null : pinLost(pin, block);
+          const words = partHooks(pin.anchor.kind, block)?.words; // words people selected, quoted whole
           const where = canvasName({ decision, task });
           return (
             <li key={pin.id}>

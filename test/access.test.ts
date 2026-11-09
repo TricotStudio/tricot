@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { loadToken, NOT_A_PERSON, tokenFile } from '../src/server/access';
+import { openDatabase } from '../src/core/store/migrations';
 import { securePrivateDir } from '../src/platform/dataDir';
 import { lockFile } from '../src/platform/lock';
 import { startServer, type RunningServer } from '../src/server/start';
@@ -139,21 +140,15 @@ describe('Access', () => {
       mkdirSync(dir, { recursive: true, mode: 0o755 });
       chmodSync(dir, 0o755);
     };
-    const boardFile = JSON.stringify({ id: 'plan', decisions: [] });
 
-    it('is tightened from 755 to 700 on start when it holds a board, with one line saying so', async () => {
+    it('is tightened from 755 to 700 on start when it holds the database, with one line saying so', async () => {
+      openDatabase(path.join(dataDir, 'tricot.db')).close();
       open(dataDir);
-      const board = path.join(dataDir, 'plan.json');
-      writeFileSync(board, boardFile, { mode: 0o644 });
       const lines = await logged(() => start());
       assert.equal(modeOf(dataDir), 0o700);
       assert.equal(lines.filter((l) => l.includes('private to you')).length, 1);
       assert.match(lines.join('\n'), /was 755, now 700/);
-      assert.equal(readdirSync(dataDir).filter((f) => f.endsWith('.json')).length, 0, 'the board moved into the database');
       assert.equal(modeOf(path.join(dataDir, 'tricot.db')), 0o600);
-      const [backup] = readdirSync(dataDir).filter((f) => f.startsWith('backup-json-'));
-      assert.equal(modeOf(path.join(dataDir, backup)), 0o700);
-      assert.equal(modeOf(path.join(dataDir, backup, 'plan.json')), 0o600, 'the kept copy is private too');
     });
 
     it('is tightened when it holds the lock or the token, though no board yet', async () => {

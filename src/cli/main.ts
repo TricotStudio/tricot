@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { githubRepo, sourceLink } from '../install/updates';
-import { defaultDataDir } from '../platform/dataDir';
+import { defaultDataPath } from '../platform/paths';
 import { parsePlan, runUpdater, withoutLegacyStartFlag, type Command } from '../install/handoff';
 import type { RunningServer } from '../server/start';
 import type { TerminalKeys } from './boardPicker';
@@ -158,7 +158,7 @@ export async function runCli(argv: string[], ctx: CliContext): Promise<CliResult
     return { exitCode: 1 };
   }
   const host = values.host ?? ctx.env.HOST ?? '127.0.0.1';
-  const dataDir = path.resolve(values.data ?? ctx.env.TRICOT_DATA_DIR ?? defaultDataDir());
+  const dataDir = path.resolve(values.data ?? ctx.env.TRICOT_DATA_DIR ?? defaultDataPath());
   const env = { values, ctx, version, source: sourceLink(pkg.repository), repo: githubRepo(pkg.repository), port, host, dataDir };
 
   const [command = 'start', arg] = positionals;

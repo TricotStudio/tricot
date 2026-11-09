@@ -40,3 +40,8 @@ export function fromHermes(event: unknown): Record<string, unknown> | undefined;
 export const GROK_LONG_TOOLS: string[];
 export function isGrokEvent(event: unknown): boolean;
 export function fromGrok(event: unknown): Record<string, unknown> | undefined;
+
+// Copilot CLI's hook events, read as Claude Code's (docs.github.com/copilot/reference/hooks-reference):
+// its hook's command says --copilot, as its events can't be told from Claude Code's by their fields.
+export const COPILOT_LONG_TOOLS: string[];
+export function fromCopilot(event: unknown): Record<string, unknown> | undefined;

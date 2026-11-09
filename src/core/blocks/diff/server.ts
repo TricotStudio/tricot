@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import type { DiffTypes } from './index';
 import { type DiffSide, diffAdvice, DiffError, type DiffFile, countText, diffDigest, diffTotals, lineAt, lineQuote, matchFocus, readPatch, shownLines } from './diff';
-import type { AgentHalf, AgentIo, ServerHalf } from '../kind';
+import type { AgentHalf, AgentIo, PeopleHalf, ServerHalf } from '../kind';
 import { missing } from '../shared';
 import { BoardError } from '../../store/errors';
 import { blockLabel } from '../../canvas';
@@ -96,6 +96,15 @@ export const agent: AgentHalf<DiffTypes> = {
   },
 };
 
+// People pin its lines, though they don't add diffs: a line, on its new side
+// unless said. A code block's lines are the same (its path as the file, and
+// `last` for a range).
+export const people: PeopleHalf = {
+  parts: {
+    line: z.object({ kind: z.literal('line'), file: z.string(), line: z.number().int().min(1), side: z.enum(['new', 'old']).optional(), last: z.number().int().min(1).optional() }),
+  },
+};
+
 export const server: ServerHalf<DiffTypes> = {
   patchFields: ['patch', 'focus'],
 
@@ -165,4 +174,5 @@ export const server: ServerHalf<DiffTypes> = {
   },
 
   agent,
+  people,
 };

@@ -3,15 +3,15 @@ import { BoardError } from './errors';
 import type { Located, PinPart, PinTarget } from './inputs';
 import { where } from './labels';
 import type { People } from './people';
-import { pinAnchor, pinIn, pinRef, samePart } from './pinParts';
+import { pinAnchor, pinIn, pinRef } from './pinParts';
 import { type BoardRepository, refOf } from './repository';
 import type { Tasks } from './tasks';
 import { LIMITS, commentText, guardArchived, limited, randomId, required } from './validate';
 import { blockLabel } from '../canvas';
-import { askRefusal, partOf } from '../parts';
+import { askRefusal, partHooks, partOf } from '../parts';
 import { clip } from '../format';
 import { agentsIn, peopleIn, withoutLeadingMentions } from '../mentions';
-import { canvasName, cleanQuote, partQuote, pinPart } from '../pins';
+import { canvasName, cleanQuote, partQuote, pinPart, samePart } from '../pins';
 import type { Actor, Block, Comment, Decision, Pin, PinAnchor, PinDiscussion, Task } from '../types';
 
 // Pins: parts of a block that link to work, or carry a comment.
@@ -35,7 +35,7 @@ export class Pins {
     const { first, rest } = promptLines(assignee ? withoutLeadingMentions(input.text, [assignee]) : input.text);
     const decision = located.decision;
     const decisionIds = decision && (decision.status === 'decided' || decision.status === 'provisional') ? [decision.id] : [];
-    const detail = [rest, pinnedFrom(located, block, anchor.kind === 'line' ? partQuote({ anchor, quote }) : quote)].filter(Boolean).join('\n\n');
+    const detail = [rest, pinnedFrom(located, block, { anchor, quote })].filter(Boolean).join('\n\n');
     const [task] = this.tasks.planTasks(located.board.id, [{ title: first, detail, decisionIds, assignee }], actor, { ready: input.ready });
     return { pin: this.commitPin(located, block, anchor, quote, { taskId: task.id }, actor), task };
   }
@@ -51,7 +51,7 @@ export class Pins {
     const { board } = located;
     const mentions = this.people.mentionsIn(board, input.text, actor);
     const { first, rest } = promptLines(withoutLeadingMentions(input.text, mentions));
-    const context = [rest, pinnedFrom(located, block, anchor.kind === 'line' ? partQuote({ anchor, quote }) : quote)].filter(Boolean).join('\n\n');
+    const context = [rest, pinnedFrom(located, block, { anchor, quote })].filter(Boolean).join('\n\n');
     const people = peopleIn(board, mentions);
     const decision = this.decisions.postDecision(board.id, { question: first, context, ask: people }, actor);
     const pin = this.commitPin(located, block, anchor, quote, { decisionId: decision.id }, actor);
@@ -73,7 +73,7 @@ export class Pins {
     const { located, block, anchor, quote } = this.preparePin(blockId, part);
     const text = commentText(body);
     if (options.ask && !partOf(block, anchor.kind)?.ask) throw new BoardError(askRefusal());
-    const same = located.canvas.pins.find((p) => p.blockId === block.id && p.discussion && samePart(p.anchor, anchor));
+    const same = located.canvas.pins.find((p) => p.blockId === block.id && p.discussion && samePart(p.anchor, anchor, block));
     const discussion: PinDiscussion = located.task || located.decision ? {} : { thread: [] };
     // Pinned quietly: the comment is what's worth telling, and it says where.
     const pin = same ?? this.commitPin(located, block, anchor, quote, { discussion }, actor, true);
@@ -161,7 +161,7 @@ export class Pins {
     if (taskId && !board.tasks.some((t) => t.id === taskId)) throw new BoardError(`No task "${taskId}" on this board.`);
     if (decisionId && !board.decisions.some((d) => d.id === decisionId)) throw new BoardError(`No decision "${decisionId}" on this board.`);
     const same = located.canvas.pins.find(
-      (p) => p.blockId === block.id && p.taskId === taskId && p.decisionId === decisionId && samePart(p.anchor, anchor),
+      (p) => p.blockId === block.id && p.taskId === taskId && p.decisionId === decisionId && samePart(p.anchor, anchor, block),
     );
     return same ?? this.commitPin(located, block, anchor, quote, { taskId, decisionId }, actor);
   }
@@ -179,7 +179,7 @@ export class Pins {
     if (decisionId && !board.decisions.some((d) => d.id === decisionId)) throw new BoardError(`No decision "${decisionId}" on this board.`);
     if (located.canvas.pins.length >= LIMITS.pins) throw new BoardError(`A canvas can hold at most ${LIMITS.pins} pins.`);
     const same = located.canvas.pins.find(
-      (p) => p.blockId === block.id && p.taskId === taskId && p.decisionId === decisionId && samePart(p.anchor, beside.anchor),
+      (p) => p.blockId === block.id && p.taskId === taskId && p.decisionId === decisionId && samePart(p.anchor, beside.anchor, block),
     );
     return same ?? this.commitPin(located, block, structuredClone(beside.anchor), beside.quote, { taskId, decisionId }, actor);
   }
@@ -233,7 +233,9 @@ function promptLines(text: string): { first: string; rest?: string } {
   return { first, rest: rest || undefined };
 }
 
-// The quote a pinned task's detail, or a pinned question's context, carries.
-function pinnedFrom(located: Located, block: Block, quote: string): string {
+// The quote a pinned task's detail, or a pinned question's context, carries:
+// the part's quote, or what its kind quotes of it (a line's file and number).
+function pinnedFrom(located: Located, block: Block, pinned: { anchor: PinAnchor; quote: string }): string {
+  const quote = partHooks(pinned.anchor.kind, block)?.detail?.(pinned) ?? pinned.quote;
   return `Pinned from ${blockLabel(block)} ${where(located)}:\n> ${quote}`;
 }

@@ -38,7 +38,8 @@
 // release, wherever they land; the left button picks the tab under it.
 // Above the strip, the agent showing gets what it asked for and nothing more,
 // in the encoding it asked for (mouse.ts), and the wheel it didn't ask for
-// goes to the host; the rest goes nowhere. A drag the agent began that ends
+// goes to the host, as does a left press (the Tricot tab opens a link
+// clicked there, T36); the rest goes nowhere. A drag the agent began that ends
 // on the strip reaches it at its last row, as a terminal keeps a drag that
 // leaves its window at the edge. In the scroll view, no report reaches the
 // agent, and the wheel scrolls.
@@ -62,6 +63,7 @@ export type HostAction =
   | { kind: 'scroll-view' }
   | { kind: 'click'; column: number } // on the strip, from 1
   | { kind: 'wheel'; up: boolean } // a turn of it, not for the agent showing
+  | { kind: 'point'; column: number; row: number } // a left press above the strip, not for the agent showing, from 1
   | { kind: 'suspend' } // Ctrl+Z
   | { kind: 'scroll'; lines: number } // up when positive
   | { kind: 'scroll-page'; pages: number }
@@ -331,5 +333,6 @@ export class InputRouter {
       const bytes = encodeMouse(kept, wanted.encoding);
       if (bytes) pass(bytes);
     } else if (wheel) act(wheel);
+    else if (press && isLeftPress(r) && !this.options.scrolling()) act({ kind: 'point', column: r.column, row: r.row });
   }
 }

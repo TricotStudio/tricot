@@ -2,7 +2,8 @@
 // folder, started, looked at or stopped.
 import { mkdirSync, openSync } from 'node:fs';
 import path from 'node:path';
-import { authHeaders } from '../server/access';
+import { routes, routeUrl } from '../core/routes';
+import { authHeaders } from '../platform/token';
 import { STOP_WITH_AGENTS } from '../install/handoff';
 import { clearLockOf, findRunning, LockHeldError, pidAlive, type ServerLock } from '../platform/lock';
 import { runProgram } from '../platform/run';
@@ -149,7 +150,7 @@ export async function status(env: Env): Promise<CliResult> {
 
 async function boardCount(lock: ServerLock, dataDir: string): Promise<number | undefined> {
   try {
-    const res = await fetch(`${lock.url}/api/boards`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${lock.url}${routeUrl(routes.boards)}`, { headers: authHeaders(dataDir), signal: AbortSignal.timeout(2000) });
     return ((await res.json()) as unknown[]).length;
   } catch {
     return undefined;

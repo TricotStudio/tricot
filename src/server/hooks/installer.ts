@@ -1,5 +1,5 @@
 // What a live-steps hook installer is, in one contract. Each agent Tricot
-// shows steps for (Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode) has one: it tells whether the
+// shows steps for has one (its registry entry's hooks): it tells whether the
 // agent is on this machine, whether Tricot's hook is set up in it, the exact
 // files and lines it would write, and it adds them and takes them out again.
 // The rest of the app asks the registry (registry.ts) and names no agent.
@@ -11,10 +11,11 @@
 // what is already there as it would be written is not written again.
 //
 // Two kinds share the mechanics: agents that run a command on each hook event
-// (Claude Code, Codex, Gemini CLI: commandHooks.ts, with
+// from a JSON file in Claude Code's shape (commandHooks.ts, with
 // hooks/tricot-steps.mjs) and agents that load an extension or a plugin
-// (Pi, OMP, OpenCode: extensionHooks.ts, with hooks/tricot-steps-extension.ts
-// or hooks/tricot-steps-opencode.js). Server-only: it reads and writes files.
+// (extensionHooks.ts, with hooks/tricot-steps-extension.ts or
+// hooks/tricot-steps-opencode.js). An agent of neither kind writes its own,
+// with the same pieces (hermes.ts). Server-only: it reads and writes files.
 
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

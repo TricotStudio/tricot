@@ -2,7 +2,7 @@
 // updateCommand.ts): the context and the options one `tricot` call was run with, and the
 // board's address and token as they come from them.
 import { linkTo } from '../core/pages';
-import { isLoopbackHost, readToken } from '../server/access';
+import { isLoopbackHost, readToken } from '../platform/token';
 import type { ServerLock } from '../platform/lock';
 import type { CliContext } from './main';
 import type { HooksEnv } from './hooks';
@@ -47,13 +47,14 @@ export const publicHost = (host: string) => (host === '0.0.0.0' || host === '::'
 
 // The board's address. With a token it opens `/?token=…` first, which gives the
 // browser its cookie and comes back to the board without the token showing.
-export function boardUrl(env: Env, url: string): string {
+// `page`: a page on the board instead of the board (an address after #, core/pages.ts).
+export function boardUrl(env: Env, url: string, page?: string): string {
   const entry = env.token ? `/?token=${encodeURIComponent(env.token)}` : '';
-  return env.values.board ? `${url}${entry || '/'}${linkTo.board(env.values.board)}` : `${url}${entry}`;
+  return env.values.board ? `${url}${entry || '/'}${page ?? linkTo.board(env.values.board)}` : `${url}${entry}`;
 }
 
-export function openBoard(env: Env, url: string): void {
-  if (!env.values['no-open']) env.ctx.open(boardUrl(env, url));
+export function openBoard(env: Env, url: string, page?: string): void {
+  if (!env.values['no-open']) env.ctx.open(boardUrl(env, url, page));
 }
 
 // Where the steps go: the board running on this data, else where this one would listen.

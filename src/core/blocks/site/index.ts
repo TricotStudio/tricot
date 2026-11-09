@@ -6,8 +6,9 @@
 // which agents act on by editing its files. A public site is a link block.
 
 import type { BlockKind } from '../kind';
+import { blockIs } from '../../canvas';
 import { clip } from '../../format';
-import { SITE_SIZE, siteName, type SitePage } from './site';
+import { SITE_SIZE, fileLine, siteName, type SitePage } from './site';
 import { server } from './server';
 
 export interface SiteTypes {
@@ -32,6 +33,18 @@ export const site: BlockKind<SiteTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    parts: {
+      // An element on a page, named with its page.
+      site: {
+        name: (pin) => `${pin.quote} on ${pin.anchor.page === '/' ? 'the home page' : `page ${pin.anchor.page}`}`,
+        lost: 'no longer on the page',
+        // Its page's element, whatever it reads or wherever its file has it now.
+        same: (a, b) => a.page === b.page && a.selector === b.selector,
+        askedTo: "change the site's file",
+        where: ({ anchor }) => ` (${clip(anchor.selector, 100)}${anchor.file ? `; ${fileLine(clip(anchor.file, 120), anchor.line)}` : ''})`,
+        missing: (block) => `Elements are pinned on websites; ${blockIs(block)}.`,
+      },
+    },
     // An element is found again in a person's view of its page, not here:
     // the board takes it as there.
     place: (_block, pin) => (pin.anchor.kind === 'site' ? { kind: 'site', page: pin.anchor.page, selector: pin.anchor.selector } : undefined),

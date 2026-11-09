@@ -108,11 +108,24 @@ describe('Where an event leads', () => {
     assert.deepEqual(notified().place, { kind: 'thread', id: agents.id, view: 'decisions' });
   });
 
-  it('opens the Board Context for a reply on a part of it, and for a request an agent finished', () => {
+  it('opens the pin a reply on a part of the Board Context is on, and the Board Context for a request an agent finished', () => {
     const note = store.addBlock({ boardId }, { content: { type: 'note', text: 'Launch in May' } }, claude);
     const { pin } = store.pinComment(note.id, { kind: 'block' }, 'Still May?', sam);
     store.commentOnPin(pin.id, 'June now.', claude);
-    assert.deepEqual(notified().place, { kind: 'board', view: 'canvas' }, 'a reply on the board context');
+    assert.deepEqual(notified().place, { kind: 'pin', id: pin.id }, 'a reply on the board context');
+
+    // An agent pairing on a website answers on the element a person asked it to change (T258).
+    const site = store.addBlock({ boardId }, { content: { type: 'site', url: 'http://localhost:5173/' } }, sam);
+    const plans = { kind: 'site', page: '/pricing', selector: '#plans', tag: 'h2', text: 'Plans' } as const;
+    const { pin: element } = store.pinComment(site.id, plans, 'Make the plans bolder.', sam, { ask: true });
+    store.commentOnPin(element.id, 'Made them bold.', claude);
+    const answered = notified();
+    assert.equal(answered.event.itemId, element.id);
+    assert.deepEqual(answered.place, { kind: 'pin', id: element.id }, 'a reply on a website’s element');
+
+    // A pin removed since leaves the Board Context to open.
+    store.removeItem(element.id, sam);
+    assert.deepEqual(eventPlace(board(), answered.event), { kind: 'board', view: 'canvas' });
 
     const request = store.askAgents(boardId, 'Get me an architecture view', sam);
     const { group } = store.takeRequest(request.id, claude);

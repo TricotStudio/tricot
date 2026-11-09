@@ -168,7 +168,7 @@ describe('the Tricot tab has the wordmark at its top', () => {
     elapse(KNIT_MS);
     let frame = tab.render(100, 24);
     assert.ok(frame.rows[0].includes(`\x1b[0;${BOLD}mRoadmap`), JSON.stringify(frame.rows[0]));
-    assert.ok(frame.rows[1].includes(`\x1b[0;${DIM}mhttp://127.0.0.1:4545 · connecting…`), JSON.stringify(frame.rows[1]));
+    assert.ok(frame.rows[1].includes(`\x1b[0;${DIM};4mhttp://127.0.0.1:4545\x1b[0;${DIM}m · connecting…`), JSON.stringify(frame.rows[1]));
     s.live = { board: 'roadmap', steps: [], approvals: [], presence: [], title: 'Roadmap for spring' };
     frame = tab.render(100, 24);
     assert.deepEqual(

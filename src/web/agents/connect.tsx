@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Rich } from '../../core/agents/agent';
-import { agentKinds, findAgent, PANEL_OTHER, panelTexts, type PanelTool } from '../../core/agents/registry';
+import { agentKinds, defaultAgent, findAgent, PANEL_OTHER, panelTexts, type PanelTool } from '../../core/agents/registry';
 import { shellFor } from '../../core/connect';
 import { sessionCommand } from '../../core/sessions';
 import { api } from '../shared/api';
@@ -31,9 +31,9 @@ export function ConnectAgent({ boardId }: { boardId?: string }) {
   const [tool, setTool] = useState<PanelTool>(() => {
     try {
       const saved = localStorage.getItem(TOOL_KEY);
-      return isTool(saved) ? saved : 'claude';
+      return isTool(saved) ? saved : defaultAgent().id;
     } catch {
-      return 'claude';
+      return defaultAgent().id;
     }
   });
   useEffect(() => {

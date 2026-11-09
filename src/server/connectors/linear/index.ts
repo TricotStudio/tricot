@@ -6,7 +6,7 @@ import type { Router } from 'express';
 import type { ConnectorTool, ServerConnector, ServerConnectorKind } from '../connector';
 import { LinearConnector, type LinearOptions } from './connector';
 import { LinearReader } from './reader';
-import { linearRoutes } from './routes';
+import { linearRouter } from './routes';
 import { linearTools } from './tools';
 
 export { BUILT_IN_LINEAR, builtInLinearClientId, LINEAR_ENDPOINTS, type BuiltInLinear, type LinearEndpoints } from './config';
@@ -20,7 +20,7 @@ class LinearServer extends LinearConnector implements ServerConnector {
   private readonly reader = new LinearReader(this);
 
   routes(): Router {
-    return linearRoutes(this, this.reader);
+    return linearRouter(this, this.reader);
   }
 
   tools(): ConnectorTool[] {

@@ -50,7 +50,7 @@ This starts the board (or finds the one already running), opens it in your brows
 Or start the board and your agent together, in one command:
 
 ```sh
-tricot claude      # or: tricot codex, tricot opencode, tricot pi, tricot omp
+tricot claude      # or: tricot codex, tricot opencode, tricot pi, tricot omp, tricot copilot
 ```
 
 It asks which board to work on (`--board <id>` skips the question), opens it, and starts the agent in this terminal with the board for this session only, so the agent's own settings stay as they are. Anything after `--` goes to the agent, and when the agent quits the board stops with it, unless another agent still needs it. A board you started with `tricot` or `tricot start` keeps running; `tricot stop` ends any board.
@@ -59,7 +59,7 @@ Even one agent runs beside Tricot's own tab, with a strip at the bottom that say
 
 ## Connect an agent
 
-Tricot works with any agent that speaks MCP. `tricot connect claude` (or `codex`, `pi`, `gemini`, `grok`) shows the agent's own command, asks, and runs it; `--print` only shows it. Or run the line for yours yourself, once, then start a new session:
+Tricot works with any agent that speaks MCP. `tricot connect claude` (or `codex`, `pi`, `gemini`, `grok`, `copilot`) shows the agent's own command, asks, and runs it; `--print` only shows it. Or run the line for yours yourself, once, then start a new session:
 
 ```sh
 # Claude Code
@@ -76,6 +76,9 @@ pi mcp add tricot --url "http://127.0.0.1:4545/mcp?agent=Pi"
 
 # Grok Build
 grok mcp add --scope user --transport http tricot "http://127.0.0.1:4545/mcp?agent=Grok"
+
+# GitHub Copilot CLI
+copilot mcp add --transport http --timeout 300000 tricot "http://127.0.0.1:4545/mcp?agent=Copilot"
 ```
 
 OMP, OpenCode, Goose and Hermes Agent take it in their settings file. For OMP, in `~/.omp/agent/mcp.json`:

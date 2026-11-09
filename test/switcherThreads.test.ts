@@ -21,7 +21,7 @@ import { threadsAccess, threadsSender, type CommentOn, type CommentSent, type Th
 import { bandOf, panelGeometry, WIDE_FROM } from '../src/cli/switcher/threadsView';
 import { chatGeometry, chatLines } from '../src/cli/switcher/chatView';
 import { chatStream } from '../src/core/chatStream';
-import { TricotTab, type TabAgent, type TabHost } from '../src/cli/switcher/tricotTab';
+import { TricotTab, type AddChoice, type TabAgent, type TabHost } from '../src/cli/switcher/tricotTab';
 import { createApp } from '../src/server/app';
 import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT } from '../src/core/threads';
 import { removeScratch } from './platform';
@@ -81,6 +81,10 @@ interface Stand {
   reads: number;
   failing?: string; // the board's answer to a read, when it is not the threads
   quits: number;
+  opened: number; // how many times the board was opened in the browser
+  choices: AddChoice[]; // the agents the tab can add
+  added: string[]; // and those it asked the host to start, by id
+  stopped: number[]; // the agents it asked the host to stop, by number
   seatAsked: number; // how many times this terminal asked to be let in
   agents: TabAgent[]; // those this terminal runs
   skills: AgentSkills[]; // what the board says each agent can be asked to run
@@ -97,7 +101,7 @@ interface Stand {
 }
 
 function stand(threads: Thread[], more: { threads?: boolean; chat?: boolean; wordmark?: 'whole' } = {}): Stand {
-  const s = { threads, more: {}, reads: 0, quits: 0, seatAsked: 0, skills: [] as AgentSkills[], sent: [] as Stand['sent'], now: NOW } as Stand;
+  const s = { threads, more: {}, reads: 0, quits: 0, opened: 0, choices: [] as AddChoice[], added: [] as string[], stopped: [] as number[], seatAsked: 0, skills: [] as AgentSkills[], sent: [] as Stand['sent'], now: NOW } as Stand;
   s.live = { board: 'roadmap-1', steps: [], approvals: [], presence: [{ name: 'Claude', lastSeen: ago(0), state: 'listening' }], title: 'Roadmap', activity: [], chatVer: 1 };
   s.agents = [{ number: 1, name: 'Claude', state: 'running', lastOutput: NOW }];
   const host: TabHost = {
@@ -105,11 +109,11 @@ function stand(threads: Thread[], more: { threads?: boolean; chat?: boolean; wor
     live: () => s.live,
     now: () => s.now,
     changed: () => {},
-    open: () => {},
+    open: () => void s.opened++,
     quit: () => void s.quits++,
-    choices: () => [],
-    add: () => undefined,
-    stop: () => {},
+    choices: () => s.choices,
+    add: (id) => void s.added.push(id),
+    stop: (n) => void s.stopped.push(n),
   };
   // The board takes a message as the real one does: it is in its thread, and the stream says so.
   const take = async (kind: 'start' | 'reply', text: string, id?: string, lens?: ThreadLens): Promise<ThreadSent> => {
@@ -988,27 +992,71 @@ describe("the Tricot tab's threads: writing", () => {
       assert.equal(s.screen(80, 14).at(-5), '    line 30', 'End is the latest again');
     });
 
-    it('takes a paste whole, as one line: newlines and tabs as spaces, control characters out, at the cursor', async () => {
+    it('takes a paste whole, its lines kept, tabs as spaces and control characters out, at the cursor (T37)', async () => {
       const s = await reading();
       s.type('A  B');
       s.type(keys.left + keys.left + keys.left);
       s.type(paste('one\r\ntwo\tthree\x07\nfour'));
-      assert.equal(lineRow(s.screen()), ' › Aone two three four  B');
+      assert.deepEqual(s.screen().slice(-5, -2), [' › Aone', '   two three', '   four  B']);
       assert.equal(s.sent.length, 0, 'a newline in a paste does not send it');
       s.type(keys.end);
       s.type(paste('\n\n'));
-      assert.equal(s.tab.render(80, 20).cursor!.x, 3 + 'Aone two three four  B '.length, 'the newlines are a space');
+      const frame = s.tab.render(80, 20);
+      assert.deepEqual(frame.cursor, { x: 3, y: 17 }, 'two new lines, the cursor at the start of the last');
+      assert.equal(frame.plain[13].trimEnd(), ' › Aone');
     });
 
-    it('stops at what a message may hold, the rest of a paste cut off, and shows the end of a long line', async () => {
+    it('adds a new line with Option+Enter or Ctrl+J, Enter sending them all, and moves between its rows with ↑ ↓ (T37)', async () => {
+      const s = await reading();
+      s.type('first');
+      s.type('\x1b\r');
+      s.type('second');
+      s.type('\n');
+      s.type('third');
+      assert.deepEqual(s.screen().slice(-5, -2), [' › first', '   second', '   third']);
+      s.type(keys.up);
+      s.type('!');
+      assert.deepEqual(s.screen().slice(-5, -2), [' › first', '   secon!d', '   third'], '↑ keeps the column, or the end of a shorter row');
+      s.type(keys.up + keys.up + keys.down + keys.down + keys.down);
+      s.type('?');
+      assert.equal(s.screen().at(-3), '   third?', 'from the last row, ↓ goes no further');
+      s.type('\r');
+      assert.equal(s.sent[0].text, 'first\nsecon!d\nthird?');
+    });
+
+    it('moves a word at a time with Option+← → in each form a terminal sends them, and deletes one with Option+Backspace or Ctrl+W (T37)', async () => {
+      const s = await reading();
+      s.type('one two  three');
+      for (const [left, right] of [['\x1bb', '\x1bf'], ['\x1b[1;3D', '\x1b[1;3C'], ['\x1b[1;5D', '\x1b[1;5C']]) {
+        s.type(left + left);
+        s.type('^');
+        assert.equal(lineRow(s.screen()), ' › one ^two  three', JSON.stringify(left));
+        s.type(keys.backspace + right);
+        s.type('$');
+        assert.equal(lineRow(s.screen()), ' › one two$  three', JSON.stringify(right));
+        s.type(keys.backspace + '\x05');
+      }
+      s.type('\x1b\x7f');
+      assert.equal(lineRow(s.screen()), ' › one two');
+      s.type('\x17');
+      assert.equal(lineRow(s.screen()), ' › one');
+      s.type('\x01!');
+      assert.equal(lineRow(s.screen()), ' › !one', 'Ctrl+A to the start');
+      s.type('\r');
+      assert.equal(s.sent[0].text, '!one', 'what is left, sent');
+    });
+
+    it('wraps a long text onto rows, up to eight, those around the cursor shown, and sends it whole', async () => {
       const s = await reading();
       s.type(paste('x'.repeat(THREAD_TEXT_LIMIT - 3)));
       s.type(paste('abcdef'));
       s.type('Z');
       const frame = s.tab.render(80, 20);
-      assert.ok(frame.plain[17].startsWith(' › …'), frame.plain[17]);
-      assert.ok(frame.plain[17].trimEnd().endsWith('xabc'), 'the end of what was typed, the cursor in view: ' + frame.plain[17]);
-      assert.equal(frame.cursor!.x, columns(frame.plain[17].trimEnd()));
+      const foot = frame.plain.slice(10, 18);
+      assert.ok(foot[0].startsWith(' ↑ x'), 'more above: ' + foot[0]);
+      assert.ok(foot.slice(1).every((l) => l.startsWith('   x') || l.startsWith('   ')), foot.join('\n'));
+      assert.ok(foot[7].trimEnd().endsWith('xabc'), 'the end of what was typed, the cursor in view: ' + foot[7]);
+      assert.deepEqual(frame.cursor, { x: columns(foot[7].trimEnd()), y: 17 });
       s.type('\r');
       assert.equal(s.sent[0].text!.length, THREAD_TEXT_LIMIT, 'sent as long as a message may be');
       assert.ok(s.sent[0].text!.endsWith('xxxabc'));
@@ -1114,7 +1162,7 @@ describe("the Tricot tab's threads: writing", () => {
     it('completes an @ and the start of a name to the one it fits, with a space after', async () => {
       const s = await reading();
       s.type('Is @Sa');
-      assert.equal(listRow(s.screen()), ' Tab @Sam');
+      assert.equal(listRow(s.screen()), ' ❯ @Sam  person', 'a row each, as the / list has (T39)');
       s.type('\t');
       assert.equal(lineRow(s.screen()), ' › Is @Sam');
       assert.deepEqual(s.tab.render(80, 20).cursor, { x: 3 + 'Is @Sam '.length, y: 17 }, 'the cursor after it');
@@ -1125,7 +1173,7 @@ describe("the Tricot tab's threads: writing", () => {
     it('lists those that fit, agents before people and those here first, and cycles through them with each Tab', async () => {
       const s = await reading();
       s.type('@C');
-      assert.equal(listRow(s.screen()), ' Tab @Claude  @Claude Code  @Codex');
+      assert.deepEqual(s.screen().slice(-6, -3), [' ❯ @Claude       listening', '   @Claude Code  not connected', '   @Codex        not connected'], 'a row each, an agent with what it is doing (T39)');
       assert.equal(lineRow(s.screen()), ' › @C');
       s.type('\t');
       assert.equal(lineRow(s.screen()), ' › @Claude');
@@ -1135,20 +1183,34 @@ describe("the Tricot tab's threads: writing", () => {
       assert.equal(lineRow(s.screen()), ' › @Codex');
       s.type('\t');
       assert.equal(lineRow(s.screen()), ' › @Claude', 'and round again');
-      assert.equal(listRow(s.screen()), ' Tab @Claude  @Claude Code  @Codex', 'the list stays while cycling');
-      const bold = (at: number) => s.tab.render(80, 20).rows.at(-4)!.includes(`\x1b[0;1;${BAND}m${['@Claude', '@Claude Code', '@Codex'][at]}`);
-      assert.ok(bold(0), 'the one written is bold');
+      assert.deepEqual(s.screen().slice(-6, -3).map((l) => l.slice(3, 15).trimEnd()), ['@Claude', '@Claude Code', '@Codex'], 'the list stays while cycling');
+      const marked = (at: number) => s.screen()[s.screen().length - 6 + at].startsWith(' ❯ ');
+      assert.ok(marked(0), 'the one written is marked');
       s.type('\t');
-      assert.ok(bold(1));
+      assert.ok(marked(1));
       s.type('x');
       assert.equal(lineRow(s.screen()), ' › @Claude Code x', 'a letter ends the cycle');
       assert.equal(s.screen().at(-4)!.trim(), '', 'and the list with it, there being nothing to complete');
     });
 
+    it('moves through the @ list with ↑ ↓ rather than scrolling, wrapping at the ends (T39)', async () => {
+      const s = await reading();
+      s.type('@C');
+      s.type(keys.down);
+      assert.equal(lineRow(s.screen()), ' › @Claude');
+      s.type(keys.down);
+      assert.equal(lineRow(s.screen()), ' › @Claude Code');
+      assert.ok(s.screen().at(-5)!.startsWith(' ❯ @Claude Code'));
+      s.type(keys.up + keys.up);
+      assert.equal(lineRow(s.screen()), ' › @Codex', 'up from the first goes round to the last');
+      s.type('x' + keys.clear + 'plain words');
+      assert.equal(keysRow(s.screen()), ' Enter send · ↑↓ PgUp PgDn scroll · Tab complete · Esc clear', 'with no list, the arrows scroll again');
+    });
+
     it('completes a name with a space in it, typed in part, and in the middle of a message', async () => {
       const s = await reading();
       s.type('Hi @Claude C');
-      assert.equal(listRow(s.screen()), ' Tab @Claude Code');
+      assert.equal(listRow(s.screen()), ' ❯ @Claude Code  not connected');
       s.type('\t');
       assert.equal(lineRow(s.screen()), ' › Hi @Claude Code');
       s.type(keys.clear);
@@ -1178,7 +1240,11 @@ describe("the Tricot tab's threads: writing", () => {
       const s = await reading({ skills: [{ name: 'Claude', state: 'listening', present: true, skills: [{ name: 'review', description: 'Review a diff' }, { name: 'release', description: 'Cut a release' }, { name: 'plan', description: 'Plan work' }] }, { name: 'Codex', state: 'idle', present: false, skills: [{ name: 'review', description: 'Review it, Codex’s way' }] }] });
       s.type('please /re');
       await s.settle();
-      assert.equal(listRow(s.screen()), ' Tab /review Claude  /release Claude  /review Codex');
+      assert.deepEqual(s.screen().slice(-6, -3).map((l) => l.trimEnd()), [
+        ' ❯ /review   Review a diff · Claude',
+        '   /release  Cut a release · Claude',
+        '   /review   Review it, Codex’s way · Codex',
+      ], 'a row each, with what it does and whose it is');
       s.type('\t');
       assert.equal(lineRow(s.screen()), ' › @Claude /review please');
       s.type('\t');
@@ -1420,13 +1486,13 @@ describe("the Tricot tab's threads: writing", () => {
       s.type('@C');
       for (const [cols, light] of [[120, false], [70, true]] as const) {
         const frame = s.tab.render(cols, 14, light);
-        assert.equal(frame.plain.at(-4)!.trimEnd(), ' Tab @Claude  @Claude Code  @Codex');
-        for (const y of [-4, -3, -2]) {
+        assert.deepEqual(frame.plain.slice(-6, -3).map((l) => l.trimEnd()), [' ❯ @Claude       listening', '   @Claude Code  not connected', '   @Codex        not connected']);
+        for (const y of [-6, -5, -4, -3, -2]) {
           const codes = frame.rows.at(y)!.replace(/\x1b\[0m(?:\x1b\[K)?$/, '').match(/\x1b\[[0-9;]*m/g)!;
           assert.ok(codes.every((code) => code.endsWith(`;${bandOf(light)}m`)), `${cols}: row ${y}, every part on the band`);
           assert.equal(columns(frame.plain.at(y)!), cols, `${cols}: row ${y}, across the window`);
         }
-        assert.ok(!frame.rows.at(-5)!.includes('48;'), 'the thread above it on the terminal’s own background');
+        assert.ok(!frame.rows.at(-7)!.includes('48;'), 'the thread above it on the terminal’s own background');
         assert.ok(!frame.rows.at(-1)!.includes('48;'), 'and the keys under it');
         assert.deepEqual(frame.cursor, { x: 5, y: 11 }, 'the cursor after what is typed, on the line');
       }
@@ -1441,7 +1507,7 @@ describe("the Tricot tab's threads: writing", () => {
         assert.ok(frame.plain.every((l) => columns(l) <= cols), `${cols}×${rows}:\n${frame.plain.join('\n')}`);
         if (frame.cursor) {
           assert.ok(frame.cursor.x < cols && frame.cursor.y < rows, `${cols}×${rows}: ${JSON.stringify(frame.cursor)}`);
-          assert.ok(frame.plain[frame.cursor.y].startsWith(' › '), `the cursor is on the line at ${cols}×${rows}`);
+          assert.match(frame.plain[frame.cursor.y], /^ [ ›↑↓] /, `the cursor is on the line at ${cols}×${rows}`);
         }
       }
       const sgr = new Set(s.tab.render(120, 14).rows.join('').match(/\x1b\[[0-9;]*m/g));
@@ -1462,9 +1528,9 @@ describe("the Tricot tab's threads: writing", () => {
       const s = await reading();
       s.type('@C');
       const short = s.screen(80, 7);
-      assert.equal(short.at(-3), ' Tab @Claude  @Claude Code  @Codex', 'the list from six rows');
+      assert.equal(short.at(-3), ' ❯ @Claude  listening', 'the list from six rows, a row of it');
       assert.equal(short.at(-2), ' › @C');
-      assert.equal(keysRow(short), ' Enter send · ↑↓ PgUp PgDn scroll · Tab complete · Esc clear');
+      assert.equal(keysRow(short), ' Enter send · ↑↓ pick · Tab complete · Esc clear', 'the arrows pick in the list (T39)');
       const tiny = s.screen(80, 5);
       assert.equal(tiny.at(-2), ' › @C');
       s.live = { ...s.live!, presence: [] };
@@ -2604,7 +2670,6 @@ describe("the Tricot tab's chat: the stream", () => {
 
   describe('answering', () => {
     const inner = (s: Stand) => s.tab as unknown as { threads: { list(): void } };
-    const choiceRow = (screen: string[]) => screen.at(-4)!;
     const at = (screen: string[], head: string) => assert.ok(screen.includes(head), `no row ${JSON.stringify(head)} in:\n${screen.join('\n')}`);
     const chosen = (screen: string[]) => screen.filter((row) => row.startsWith('❯ '));
 
@@ -2656,10 +2721,14 @@ describe("the Tricot tab's chat: the stream", () => {
       const s = await chatting(undefined, { tasks: [backlog, t19], decisions: [decided], pins: [beta], actors: [codex, sam] });
       s.type('>T1');
       const listing = s.screen(120, 20);
-      assert.equal(choiceRow(listing), ' Tab >T17 Keep backlog quiet  >T19 Stopped agents leave the strip');
+      assert.deepEqual(listing.slice(-5, -3), [' ❯ >T17  Keep backlog quiet', '   >T19  Stopped agents leave the strip'], 'a row each, with its title (T39)');
       assert.equal(statusRow(listing), " Where to? T19, #7 or part of a thread's title: Tab chooses.");
-      s.type('\t');
-      assert.equal(lineRow(s.screen(120, 20)), ' › >T17');
+      s.type(keys.down);
+      assert.equal(lineRow(s.screen(120, 20)), ' › >T17', '↓ picks in the list, as Tab does (T39)');
+      s.type(keys.up);
+      assert.equal(lineRow(s.screen(120, 20)), ' › >T19', '↑ from the first goes round to the last');
+      s.type(keys.down);
+      assert.equal(lineRow(s.screen(120, 20)), ' › >T17', 'and ↓ round to the first');
       s.type('\t');
       assert.equal(lineRow(s.screen(120, 20)), ' › >T19', 'Tab again: the next');
       assert.equal(statusRow(s.screen(120, 20)), ' to T19 Stopped agents leave the strip · Claude hears it');
@@ -2957,7 +3026,7 @@ describe('the Tricot tab starts on chat', () => {
     await s.settle();
     s.type('/');
     await s.settle();
-    assert.ok(s.screen().some((l) => l.includes('/status Tricot command')));
+    assert.ok(s.screen().some((l) => l.includes('/status   Agents, approvals and board activity · Tricot command')));
     s.type('\t');
     assert.ok(s.screen().some((l) => l.includes('› /status')));
     s.type('\x15@Claude /status\r');
@@ -2971,11 +3040,35 @@ describe('the Tricot tab starts on chat', () => {
     await s.settle();
     s.type('/\x1b[B\r');
     assert.ok(s.screen().some((l) => l.includes('Your agents')));
-    s.type('/\x1b[A\r');
-    assert.ok(onStream(s.screen()), 'the last command is /new');
+    s.type('/\x1b[A');
+    assert.equal(s.screen().at(-3), ' › /quit', 'up from the first goes round to the last command');
+    assert.equal(s.screen().at(-2), ' Quit, closing every agent; no message is sent.', 'and the row under the line says what Enter runs');
+    s.type('\x1b[A\x1b[A\x1b[A\x1b[A\r');
+    assert.ok(onStream(s.screen()), 'up four more is /new');
+    assert.equal(s.quits, 0);
     assert.equal(s.sent.length, 0);
     s.type('/th\r');
     assert.equal(s.screen()[0], ' Threads', 'Enter accepts the matching local command');
+  });
+
+  it('keeps moving through the / list with ↑ ↓ on an agent’s skill, rather than scrolling', async () => {
+    const s = stand([], { chat: true });
+    s.skills = [{ name: 'Claude', state: 'listening', present: true, skills: [{ name: 'review', description: 'Review the change' }, { name: 'ship', description: 'Ship it' }] }];
+    s.screen();
+    await s.settle();
+    s.type('/');
+    await s.settle();
+    s.type('\x1b[A');
+    assert.ok(s.screen().some((l) => l.includes('› @Claude /ship')), 'up from the first goes round to the last skill');
+    s.type('\x1b[A');
+    assert.ok(s.screen().some((l) => l.includes('› @Claude /review')), 'up again is the skill before it');
+    s.type('\x1b[A');
+    assert.ok(s.screen().some((l) => l.includes('› /quit')), 'and then the last command');
+    s.type('\x1b[B\x1b[B');
+    assert.ok(s.screen().some((l) => l.includes('› @Claude /ship')), 'down goes forward through the skills too');
+    s.type('\x1b[B');
+    assert.ok(s.screen().some((l) => l.includes('› /status')), 'and round to the first');
+    assert.equal(s.sent.length, 0);
   });
 
   it('keeps a conversation draft when opening and cancelling the local palette', async () => {
@@ -2988,7 +3081,7 @@ describe('the Tricot tab starts on chat', () => {
     s.type('/');
     assert.equal(s.screen()[0], ' Threads', 'the panel stays');
     assert.equal(s.screen().at(-3), ' › /', 'the commands’ line at its foot');
-    assert.equal(s.screen().at(-2), ' Navigate in Tricot; no message is sent.');
+    assert.equal(s.screen().at(-2), ' Agents, approvals and board activity; no message is sent.', 'what Enter runs: the first command');
     s.type('\x1b');
     assert.equal(s.screen()[0], ' Threads');
     assert.equal(s.screen().at(-1), ' ↑↓ pick · Enter read · n new · Esc close', 'the keys back with the panel');
@@ -3036,6 +3129,190 @@ describe('the Tricot tab starts on chat', () => {
     for (const [cols, rows] of [[120, 24], [80, 10], [40, 6], [30, 3], [10, 1]]) {
       const frame = s.tab.render(cols, rows);
       assert.equal(frame.rows.length, rows);
+      assert.ok(frame.plain.every((l) => columns(l) <= cols));
+      if (frame.cursor) assert.ok(frame.cursor.y >= 0 && frame.cursor.y < rows && frame.cursor.x < cols);
+    }
+  });
+});
+
+// T257: the status view's a, x, o and q as /add, /stop, /open and /quit in
+// the chat. The list or question shows at the chat's foot, in place of its
+// keys, with the status view's keys; the host is asked as the keys ask it;
+// and nothing typed as a command goes to the board.
+describe("the Tricot tab's chat: the status view's keys as commands", () => {
+  // The chat's line, empty, answering Claude in the stream, and the row under it.
+  const LINE = ' › Reply to Claude…';
+  const AIM = ' to Flaky test, the latest · Claude hears it';
+  const CHAT_KEYS = ' Enter send · @ new thread · > elsewhere · Tab an earlier one · Esc threads';
+  const onChat = (screen: string[]) => screen.slice(-3).join('\n') === [LINE, AIM, CHAT_KEYS].join('\n');
+  const three: AddChoice[] = [
+    { id: 'opencode', name: 'OpenCode' },
+    { id: 'gemini', name: 'Gemini CLI', note: 'not installed', problem: "Gemini CLI isn't installed here." },
+    { id: 'pi', name: 'Pi' },
+  ];
+  // On the chat, with a conversation in its stream and two agents running.
+  async function chat(): Promise<Stand> {
+    const s = stand([thread('a', 'Flaky test', [message(claude, 'It fails under load.', MIN)])], { chat: true });
+    s.agents.push({ number: 2, name: 'Codex', state: 'running', lastOutput: NOW });
+    s.choices = three;
+    s.screen();
+    await s.settle();
+    return s;
+  }
+
+  it('lists them after /status, /threads and /new as Tricot commands, the row under the line saying what Enter runs', async () => {
+    const s = await chat();
+    s.type('/');
+    const all = s.screen(200, 20);
+    assert.deepEqual(all.slice(-9, -3).map((l) => l.trimEnd()), [
+      ' ❯ /status   Agents, approvals and board activity · Tricot command',
+      '   /threads  Browse conversations · Tricot command',
+      '   /new      Start a new thread · Tricot command',
+      "   /add      Add an agent that isn't running · Tricot command",
+      '   /stop     Stop a running agent · Tricot command',
+      ' ↓ /open     Open the board in your browser · Tricot command',
+    ], 'a row each with what it does, six at most');
+    assert.equal(all.at(-2), ' Agents, approvals and board activity; no message is sent.');
+    for (const [typed, words] of [['/add', "Add an agent that isn't running"], ['/sto', 'Stop a running agent'], ['/o', 'Open the board in your browser'], ['/quit', 'Quit, closing every agent'], ['/st', 'Agents, approvals and board activity']]) {
+      s.type(`\x15${typed}`);
+      assert.equal(s.screen().at(-2), ` ${words}; no message is sent.`, typed);
+    }
+    s.type('\x15/add claude');
+    assert.equal(s.screen().at(-2), AIM, 'with more after it, a message, as before');
+    assert.deepEqual([s.opened, s.quits, s.added, s.stopped, s.sent], [0, 0, [], [], []], 'nothing is run or sent while typing');
+  });
+
+  it('/add lists the agents not running at the chat’s foot, as a does; Esc goes back to the chat as it was', async () => {
+    const s = await chat();
+    s.type('/add\r');
+    let screen = s.screen();
+    assert.deepEqual(screen.slice(-4), [' Add which agent?   ↑↓ move · Enter pick · Esc cancel', ' ❯ 1  OpenCode', '   2  Gemini CLI  not installed', '   3  Pi'], 'in place of the chat’s keys');
+    assert.ok(screen.some((l) => l.includes('It fails under load.')), 'the chat above it');
+    assert.deepEqual(screen.slice(-6, -4), [LINE, AIM], 'its line above it, empty: the command is not kept');
+    assert.equal(s.tab.render(80, 20).cursor, undefined, 'the list has the keys, not the line');
+    assert.equal(s.tab.typing, false);
+    s.type('jz');
+    assert.equal(s.screen().at(-2), ' ❯ 2  Gemini CLI  not installed', 'its keys are the list’s, and other letters do nothing');
+    assert.ok(!s.screen().some((l) => l.includes('› jz') || l.includes('› z')));
+    s.type('\x1b');
+    assert.ok(onChat(s.screen()), 'back on the chat, as it was');
+    assert.deepEqual([s.added, s.sent], [[], []], 'Esc: nothing added, nothing sent');
+    s.type('/add\r\r');
+    assert.deepEqual(s.added, ['opencode'], 'Enter picks the highlighted one, as in the status view');
+    assert.ok(onChat(s.screen()));
+    s.type('/add\r3');
+    assert.deepEqual(s.added, ['opencode', 'pi'], 'and a digit its row');
+    assert.equal(s.sent.length, 0);
+  });
+
+  it('/add says why an agent that can’t start didn’t, at the chat’s foot, until the next key', async () => {
+    const s = await chat();
+    s.type('/add\r2');
+    let screen = s.screen();
+    assert.deepEqual(screen.slice(-4), [LINE, AIM, " Gemini CLI isn't installed here.", CHAT_KEYS], 'above the chat’s keys');
+    assert.deepEqual(s.added, []);
+    s.type('h');
+    screen = s.screen();
+    assert.ok(!screen.some((l) => l.includes("isn't installed")), 'gone with the next key');
+    assert.equal(screen.at(-3), ' › h', 'which is typed as ever');
+    s.choices = [];
+    s.type('\x15/add\r');
+    assert.equal(s.screen().at(-1), ' Every agent is running. Esc back');
+    s.type('x');
+    assert.ok(onChat(s.screen()), 'any key goes back from an empty list, and is not typed');
+  });
+
+  it('/stop lists the agents running, asks "Stop it?" as x does, and goes back to the chat on Esc or No', async () => {
+    const s = await chat();
+    s.type('/stop\r');
+    assert.deepEqual(s.screen().slice(-3), [' Stop which agent?  ↑↓ move · Enter pick · Esc cancel', ' ❯ 1  Claude', '   2  Codex']);
+    s.type('2');
+    assert.match(s.screen().at(-1)!, /^ Stop Codex\? {4}Yes {2}❯ No {2}\(←→ Enter, or y\/n\)$/);
+    s.type('\x1b');
+    assert.deepEqual(s.screen().slice(-4), [LINE, AIM, ' Codex keeps running.', CHAT_KEYS], 'Esc is No, back on the chat');
+    assert.deepEqual(s.stopped, []);
+    s.type('/stop\r\x1b');
+    assert.ok(onChat(s.screen()), 'Esc from the list goes back too');
+    assert.deepEqual(s.stopped, []);
+    s.type('/stop\r\x1b[B\r\x1b[D\r');
+    assert.deepEqual(s.stopped, [2], 'Enter on Yes stops it, as in the status view');
+    assert.deepEqual(s.screen().slice(-2), [' Stopped Codex.', CHAT_KEYS]);
+    s.type('/stop\r1y');
+    assert.deepEqual(s.stopped, [2, 1], 'y answers at once');
+    assert.equal(s.sent.length, 0);
+  });
+
+  it('/open opens the board and says so at the chat’s foot; /quit quits', async () => {
+    const s = await chat();
+    s.type('/open\r');
+    assert.equal(s.opened, 1);
+    assert.deepEqual(s.screen().slice(-4), [LINE, AIM, ' Opened the board in your browser.', CHAT_KEYS], 'still on the chat');
+    s.type('/o\r');
+    assert.equal(s.opened, 2, 'from the start of its name, as /th is /threads');
+    assert.equal(s.quits, 0);
+    s.type('/quit\r');
+    assert.equal(s.quits, 1);
+    assert.equal(s.sent.length, 0, 'none went to the board');
+  });
+
+  it('acts in the status view when picked on the line of commands its / opens, and Esc stays there', async () => {
+    const s = await chat();
+    s.type('/status\r/add\r');
+    let screen = s.screen();
+    assert.ok(screen.some((l) => l.includes('Your agents')), 'the status view, its list at its foot');
+    assert.equal(screen.at(-4), ' Add which agent?   ↑↓ move · Enter pick · Esc cancel');
+    s.type('\x1b');
+    screen = s.screen();
+    assert.ok(screen.some((l) => l.includes('Your agents')));
+    assert.equal(screen.at(-1), ' o open the board · t threads · a add an agent · x stop one · q quit');
+    s.type('/open\r');
+    assert.equal(s.opened, 1);
+    shows(s.screen(), ' Opened the board in your browser.');
+    s.type('\x1b');
+    assert.ok(onChat(s.screen()), 'Esc there goes back to the chat');
+    assert.ok(!s.screen().some((l) => l.includes('Opened the board')), 'what was said in the status view stays there');
+  });
+
+  it('opens its list over the threads’ panel too, and Esc gives the panel its keys back', async () => {
+    const s = await chat();
+    s.type('/threads\r');
+    assert.equal(s.screen()[0], ' Threads');
+    s.type('/stop\r');
+    assert.equal(s.screen()[0], ' Threads');
+    assert.equal(s.screen().at(-3), ' Stop which agent?  ↑↓ move · Enter pick · Esc cancel');
+    s.type('\x1b');
+    assert.equal(s.screen()[0], ' Threads');
+    assert.equal(s.screen().at(-1), PANEL_KEYS);
+  });
+
+  it('keeps the status view’s keys as they were', async () => {
+    const s = await chat();
+    s.type('/status\r');
+    s.type('a1x2yo');
+    assert.deepEqual([s.added, s.stopped, s.opened], [['opencode'], [2], 1]);
+    s.type('q');
+    assert.equal(s.quits, 1);
+  });
+
+  it('fits its list at the chat’s foot at narrow and short sizes', async () => {
+    const s = stand([], { chat: true, wordmark: 'whole' });
+    s.choices = three;
+    s.screen();
+    await s.settle();
+    for (const typed of ['/add\r', '/stop\r', '/stop\r1']) {
+      s.type(typed);
+      for (const [cols, rows] of [[120, 24], [80, 10], [40, 6], [30, 3], [10, 1]]) {
+        const frame = s.tab.render(cols, rows);
+        assert.equal(frame.rows.length, rows, `${typed} ${cols}×${rows}`);
+        assert.ok(frame.plain.every((l) => columns(l) <= cols));
+        assert.equal(frame.cursor, undefined);
+      }
+      s.type('\x1b');
+    }
+    s.type('/open\r');
+    for (const [cols, rows] of [[120, 24], [80, 10], [40, 6], [30, 3], [10, 1]]) {
+      const frame = s.tab.render(cols, rows);
+      assert.equal(frame.rows.length, rows, `${cols}×${rows}`);
       assert.ok(frame.plain.every((l) => columns(l) <= cols));
       if (frame.cursor) assert.ok(frame.cursor.y >= 0 && frame.cursor.y < rows && frame.cursor.x < cols);
     }
@@ -3449,7 +3726,8 @@ describe('the Tricot tab’s threads, on a real board', () => {
     assert.ok(await waitUntil(() => feed.now() !== undefined));
     const answers = holdAnswers({ url: base, actor: 'Wassim' });
     try {
-      const host: TabHost = { agents: () => [], live: () => feed.now(), now: Date.now, changed: () => {}, open: () => {}, quit: () => {}, choices: () => [], add: () => undefined, stop: () => {} };
+      const asked: string[] = []; // what the tab asked of the host
+      const host: TabHost = { agents: () => [{ number: 1, name: 'Claude', state: 'running', lastOutput: Date.now() }], live: () => feed.now(), now: Date.now, changed: () => {}, open: () => void asked.push('open'), quit: () => void asked.push('quit'), choices: () => [{ id: 'codex', name: 'Codex' }], add: (id) => void asked.push(`add ${id}`), stop: (n) => void asked.push(`stop ${n}`) };
       const tab = new TricotTab(host, { url: base, title: 'Roadmap', answers, wordmark: 'whole', threads: threadsAccess({ url: base, board, me: 'Wassim', answers }) });
       const screen = () => tab.render(80, 18).plain;
       const press = (keys: string) => tab.key(Buffer.from(keys));
@@ -3465,6 +3743,9 @@ describe('the Tricot tab’s threads, on a real board', () => {
       assert.ok(screen().some((l) => l.includes('check the licence')));
       press('/new\r');
       assert.ok(screen().some((l) => l.includes('What do you want to work through?')));
+      press('/add\r1/stop\r1y/open\r/quit\r'); // T257: the status view's a, x, o and q
+      assert.deepEqual(asked, ['add codex', 'stop 1', 'open', 'quit']);
+      await new Promise((resolve) => setTimeout(resolve, 100));
       assert.equal((store.getBoard(board).threads ?? []).length, 1);
       assert.deepEqual(store.getThread(started.id).thread.messages.map((m) => m.body), ['@Claude check the licence', 'The licence allows it.']);
     } finally {

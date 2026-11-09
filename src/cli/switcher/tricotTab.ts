@@ -5,7 +5,9 @@
 // it; /threads opens the threads in a panel beside it, a thread picked there
 // showing alone in the stream, and /new comes back to the whole stream, its
 // line starting a new thread; the mouse's wheel scrolls the chat (the host
-// hands each turn on, T30), and no click above the strip is the tab's.
+// hands each turn on, T30), and a click on a link (underlined) opens it in
+// the browser, the header's address the board (T36); any other click above
+// the strip does nothing.
 // /status shows the board, its agents, requests for permission and activity (tabView.ts), live
 // from the board's stream. The following shortcuts act in that status view;
 // in chat, their letters are message text. TabKeyReader reads both. The
@@ -42,6 +44,25 @@
 //                agent of that number in the stop list), Esc goes back
 //   q            quit, as the switch key then q does
 //
+// In the chat, the tab's own commands (tabCommands.ts), typed alone on its
+// line or picked from its "/" list, do what those keys do, and none is sent
+// to the board:
+//
+//   /add         a: the same list, drawn at the chat's foot in place of its
+//                keys, with the same keys; an agent picked starts as with a,
+//                and Esc goes back to the chat as it was
+//   /stop        x: the same list and its "Stop it?" at the chat's foot, the
+//                same way; Esc, or No, goes back to the chat
+//   /open        o: the board in the browser
+//   /quit        q: quits, closing every agent
+//   /status      this view; /threads and /new are the chat's (threadsTab.ts)
+//
+// What they did (the agent stopped, why one can't start, the board opened)
+// shows at the chat's foot, above its keys, until the next key or a few
+// seconds. Picked on the line of commands that / opens in this view, they
+// act here, the list at this view's foot. The answers to a request (y, s,
+// n, ← →, Enter) have no command: they answer the request picked here.
+//
 // A browser or terminal asking to act for the person comes first, when this
 // terminal is to answer it (a seat, or any Tricot terminal for the very first
 // browser): "A browser wants to act for you (Chrome on macOS, code 4271).
@@ -57,10 +78,10 @@ import type { Approval, ApprovalReply } from '../../core/approvals';
 import { APPROVAL_REASON_LIMIT } from '../../core/approvals';
 import type { AdmissionView } from '../../core/seats';
 import type { Answers } from './answers';
-import { agentDoing, type AgentNow, type BoardLive, type Rgb, type Tone } from './strip';
+import { agentDoing, workingNow, type AgentNow, type BoardLive, type Rgb, type Tone } from './strip';
 import { TabKeyReader, type TabKey } from './tabKeys';
 import { KNIT_MS, wordmarkFits, wordmarkNext, wordmarkRows } from './wordmark';
-import { alertOf, choicesOf, paint, renderTab, tabHeader, type ApprovalChoice, type Part, type TabFrame, type TabPrompt } from './tabView';
+import { alertOf, choicesOf, noteRows, paint, promptRows, renderTab, tabHeader, type ApprovalChoice, type Part, type TabFrame, type TabPrompt } from './tabView';
 import { ThreadsTab, type ThreadsAccess } from './threadsTab';
 import type { TabCommand } from './tabCommands';
 
@@ -84,7 +105,8 @@ export interface TabHost {
   live(): BoardLive | undefined;
   now(): number;
   changed(): void; // draw it again
-  open(): void; // the board, in the browser
+  open(page?: string): void; // the board, in the browser, or a page on it (an address after #, core/pages.ts)
+  openLink?(url: string): void; // any other web address, in the browser
   quit(): void;
   choices(): AddChoice[]; // every agent but those running, some with a note on why not now
   add(id: string): string | undefined | Promise<string | undefined>; // starts it in a tab of its own (soon, when it waits on the board); a problem, if it can't
@@ -122,7 +144,7 @@ export class TricotTab {
   private denying: { id: string; reason: string } | undefined;
   private sending: { id: string; behavior: 'allow' | 'deny' } | undefined;
   private answeredHere = new Set<string>(); // gone from here at once, as the stream catches up
-  private note: { text: string; tone: Tone; until: number } | undefined;
+  private note: { text: string; tone: Tone; until: number; chat?: boolean } | undefined; // `chat`: what a command typed in the chat did, shown there too
   private quitting = false;
   private admissionsLater = new Set<string>(); // left for now with Esc
   private admitting: string | undefined; // an answer to one is on its way
@@ -143,6 +165,7 @@ export class TricotTab {
       askSeat: () => void this.askSeat(),
       seatWords: () => (this.asking ? `Waiting for you to let this terminal in${options.answers?.seatCode ? `: code ${options.answers.seatCode}` : ''}.` : undefined),
       navigate: (command) => this.navigate(command),
+      working: () => workingNow(host.agents(), host.live(), host.now()),
     });
     if (options.threads) this.threads.start();
   }
@@ -150,7 +173,34 @@ export class TricotTab {
   private navigate(command: TabCommand): void {
     if (command === 'status') this.threads.hide();
     else if (command === 'threads') this.threads.list();
-    else this.threads.start(true); // /new: the stream, its line starting a new thread
+    else if (command === 'new') this.threads.start(true); // the stream, its line starting a new thread
+    else {
+      // What o, a, x and q do, where the person was: the chat as it was, or
+      // this view when its / opened the line of commands.
+      this.threads.closeCommands();
+      this.note = undefined; // what was said last gives way, as it does to a key here
+      this.act(command);
+    }
+  }
+
+  // What o, a, x and q do here, and /open, /add, /stop and /quit wherever
+  // they are typed: the list asked for shows at the foot of what shows, the
+  // chat or this view, and its keys are the same in both.
+  private act(command: 'open' | 'add' | 'stop' | 'quit'): void {
+    switch (command) {
+      case 'open':
+        this.host.open();
+        return this.say('Opened the board in your browser.', 'normal', true);
+      case 'add':
+        this.addChoices = this.host.choices();
+        this.prompt = { kind: 'add', choices: this.addChoices.map((c) => ({ name: c.name, ...(c.note && { note: c.note }) })), at: Math.max(0, this.addChoices.findIndex((c) => !c.problem)) };
+        return;
+      case 'stop':
+        this.prompt = { kind: 'stop', choices: this.running().map((a) => ({ number: a.number, name: a.name })), at: 0 };
+        return;
+      case 'quit':
+        this.host.quit();
+    }
   }
 
   // The requests the tab shows, oldest first.
@@ -160,7 +210,7 @@ export class TricotTab {
   }
 
   get typing(): boolean {
-    return this.denying !== undefined || this.threads.typing;
+    return this.denying !== undefined || (this.prompt.kind === 'keys' && this.threads.typing);
   }
 
   // The browser or terminal asking to act for the person that this terminal answers now.
@@ -216,22 +266,27 @@ export class TricotTab {
 
   // Whether the time alone changes what the tab shows, for the host's tick to
   // draw it again: in chat, only once a time it says would change
-  // (threadsTab.ts due); in the status view, each time.
+  // (threadsTab.ts due), or once what a command said at its foot has had its
+  // time; in the status view, each time.
   due(now: number): boolean {
-    return !this.threads.showing || this.quitting || this.threads.due(now);
+    if (!this.threads.showing || this.quitting) return true;
+    const said = this.note?.chat === true && this.note.until <= now;
+    if (said) this.note = undefined;
+    return said || this.threads.due(now);
+  }
+
+  // A link clicked (T36): the header's address opens the board, as /open
+  // does (the board's own address, signed in), and a card a message names
+  // its page on it; any other, as it is.
+  link(url: string): void {
+    if (url === this.options.url) this.host.open();
+    else if (url.startsWith('#/')) this.host.open(url);
+    else this.host.openLink?.(url);
   }
 
   // `tintFrom`: the terminal's background, where it draws 24-bit colour, for the chat's tints (chatView.ts chatTints).
   render(cols: number, rows: number, light = false, tintFrom?: Rgb): TabFrame {
-    if (this.threads.showing && !this.quitting) {
-      const live = this.host.live();
-      const header = this.options.wordmark && rows >= 6 ? [...tabHeader({ title: live?.title ?? this.options.title, url: this.options.url, connected: live !== undefined, wordmark: this.wordmark(cols, rows) }, cols, rows - 4), []] : [];
-      const notice = this.elsewhere();
-      const prefix: Part[][] = [...header, ...(notice && this.threads.typing && rows >= 5 ? [[[` ${notice}`, alertOf(light)]] as Part[]] : [])];
-      const frame = this.threads.render(cols, rows - prefix.length, light, prefix.length > header.length ? undefined : notice, tintFrom);
-      const drawn = prefix.map((parts) => paint(parts, cols));
-      return { rows: [...drawn.map((row) => row.line), ...frame.rows], plain: [...drawn.map((row) => row.plain), ...frame.plain], ...(frame.cursor && { cursor: { x: frame.cursor.x, y: frame.cursor.y + prefix.length } }) };
-    }
+    if (this.threads.showing && !this.quitting) return this.renderChat(cols, rows, light, tintFrom);
     const now = this.host.now();
     const live = this.host.live();
     const waiting = this.settle();
@@ -264,6 +319,31 @@ export class TricotTab {
     );
   }
 
+  // The chat (threadsTab.ts) under the header. What a command typed there
+  // did shows at its foot, above its keys (the chat's last row); the list or
+  // question /add or /stop asks takes the place of those keys while it has
+  // them, as at this view's foot. A window too short for it all loses its top rows first.
+  private renderChat(cols: number, rows: number, light: boolean, tintFrom?: Rgb): TabFrame {
+    const live = this.host.live();
+    const header = this.options.wordmark && rows >= 6 ? [...tabHeader({ title: live?.title ?? this.options.title, url: this.options.url, connected: live !== undefined, wordmark: this.wordmark(cols, rows) }, cols, rows - 4), []] : [];
+    const notice = this.elsewhere();
+    const prefix: Part[][] = [...header, ...(notice && this.threads.typing && rows >= 5 ? [[[` ${notice}`, alertOf(light)]] as Part[]] : [])];
+    const said = this.note?.chat && this.note.until > this.host.now() ? noteRows(this.note, cols, light) : [];
+    const asked = this.prompt.kind === 'keys' ? [] : promptRows({ prompt: this.prompt }, Math.max(2, rows - prefix.length - said.length), cols);
+    const foot = [...said, ...asked].map((parts) => paint(parts, cols));
+    const replaced = asked.length ? 1 : 0; // the chat's rows the list or question takes the place of: its keys
+    const frame = this.threads.render(cols, Math.max(1, rows - prefix.length - foot.length + replaced), light, prefix.length > header.length ? undefined : notice, tintFrom);
+    const keysAt = frame.rows.length - 1;
+    const drawn = prefix.map((parts) => paint(parts, cols));
+    const lines = [...drawn.map((row) => row.line), ...frame.rows.slice(0, keysAt), ...foot.map((row) => row.line), ...frame.rows.slice(keysAt + replaced)];
+    const plain = [...drawn.map((row) => row.plain), ...frame.plain.slice(0, keysAt), ...foot.map((row) => row.plain), ...frame.plain.slice(keysAt + replaced)];
+    const chatLinks = frame.links ?? frame.rows.map(() => []);
+    const links = [...drawn.map((row) => row.links), ...chatLinks.slice(0, keysAt), ...foot.map((row) => row.links), ...chatLinks.slice(keysAt + replaced)];
+    const cut = Math.max(0, lines.length - rows); // a window too short for it all: from the top
+    const y = frame.cursor && !asked.length ? frame.cursor.y + prefix.length + (frame.cursor.y >= keysAt ? foot.length : 0) - cut : -1;
+    return { rows: lines.slice(cut), plain: plain.slice(cut), links: links.slice(cut), ...(frame.cursor && y >= 0 && { cursor: { x: frame.cursor.x, y } }) };
+  }
+
   // What waits on the person in the tab's own view, for the threads to say on their last row.
   private elsewhere(): string | undefined {
     const count = this.waiting().length + (this.admission() ? 1 : 0);
@@ -282,8 +362,11 @@ export class TricotTab {
     return waiting;
   }
 
-  private say(text: string, tone: Tone = 'normal'): void {
-    this.note = { text, tone, until: this.host.now() + NOTE_MS };
+  // What the last key did, shown in this view; `inChat`: what a command or
+  // its list did, shown at the chat's foot too while the chat shows. (What
+  // else is said here, as of answers and seats, isn't the chat's.)
+  private say(text: string, tone: Tone = 'normal', inChat = false): void {
+    this.note = { text, tone, until: this.host.now() + NOTE_MS, ...(inChat && this.threads.showing && { chat: true }) };
     this.host.changed();
   }
 
@@ -309,12 +392,7 @@ export class TricotTab {
 
   private one(key: TabKey): void {
     if (this.quitting) return;
-    if (this.threads.showing) return this.threads.key(key);
-    if (this.denying) return this.reasonKey(key);
-    if (this.prompt.kind === 'keys' && this.options.threads) {
-      if (key.kind === 'text' && key.text === '/') return this.threads.commands(true);
-      if (key.kind === 'escape') return this.threads.chat();
-    }
+    // A list or question asked has the keys, at the foot of the chat or of this view.
     switch (this.prompt.kind) {
       case 'add':
         return this.addKey(this.prompt, key);
@@ -322,6 +400,15 @@ export class TricotTab {
         return this.stopKey(this.prompt, key);
       case 'confirm-stop':
         return this.confirmKey(this.prompt, key);
+    }
+    if (this.threads.showing) {
+      if (this.note?.chat) this.note = undefined; // what a command said there gives way to the next key
+      return this.threads.key(key);
+    }
+    if (this.denying) return this.reasonKey(key);
+    if (this.options.threads) {
+      if (key.kind === 'text' && key.text === '/') return this.threads.commands(true);
+      if (key.kind === 'escape') return this.threads.chat();
     }
     const asking = this.admission();
     if (asking && this.admissionKey(asking, key)) return;
@@ -362,21 +449,16 @@ export class TricotTab {
           if (picked.sealed) return this.say('Let this terminal answer for you first: y asks.');
           return this.decide(picked, 'deny');
         case 'o':
-          this.host.open();
-          return this.say('Opened the board in your browser.');
+          return this.act('open');
         case 't':
           this.threads.list();
           return;
         case 'a':
-          this.addChoices = this.host.choices();
-          this.prompt = { kind: 'add', choices: this.addChoices.map((c) => ({ name: c.name, ...(c.note && { note: c.note }) })), at: Math.max(0, this.addChoices.findIndex((c) => !c.problem)) };
-          return;
+          return this.act('add');
         case 'x':
-          this.prompt = { kind: 'stop', choices: this.running().map((a) => ({ number: a.number, name: a.name })), at: 0 };
-          return;
+          return this.act('stop');
         case 'q':
-          this.host.quit();
-          return;
+          return this.act('quit');
       }
     }
   }
@@ -446,10 +528,11 @@ export class TricotTab {
     const choice = typeof row === 'number' ? this.addChoices[row] : undefined;
     if (!choice) return;
     this.prompt = { kind: 'keys' };
-    if (choice.problem) return this.say(choice.problem, 'alert');
+    if (choice.problem) return this.say(choice.problem, 'alert', true);
+    const inChat = this.threads.showing; // where it was picked: what is known later is said there
     const problem = this.host.add(choice.id);
-    if (typeof problem === 'object') void problem.then((later) => later && this.say(later, 'alert'));
-    else if (problem) this.say(problem, 'alert');
+    if (typeof problem === 'object') void problem.then((later) => later && this.say(later, 'alert', inChat));
+    else if (problem) this.say(problem, 'alert', true);
   }
 
   private stopKey(prompt: Extract<TabPrompt, { kind: 'stop' }>, key: TabKey): void {
@@ -482,8 +565,8 @@ export class TricotTab {
     if (!agent) return;
     if (yes) {
       this.host.stop(agent.number);
-      this.say(`Stopped ${agent.name}.`);
-    } else this.say(`${agent.name} keeps running.`);
+      this.say(`Stopped ${agent.name}.`, 'normal', true);
+    } else this.say(`${agent.name} keeps running.`, 'normal', true);
   }
 
   // ---- letting in ----------------------------------------------------------------------

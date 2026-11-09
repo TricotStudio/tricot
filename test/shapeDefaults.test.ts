@@ -8,7 +8,6 @@ import { Store } from '../src/core/store';
 import { DATABASE_FILE } from '../src/core/store/boardDb';
 import { readBoards } from '../src/core/store/boardTables';
 import { MIGRATIONS, openDatabase, userVersion } from '../src/core/store/migrations';
-import { wholeBoardDefaults } from '../src/core/store/shapeDefaults';
 import type { Database } from '../src/core/store/sqlite';
 import { removeScratch } from './platform';
 
@@ -113,18 +112,5 @@ describe('Data version 7: every board carries the fields it is read with', () =>
     assert.deepEqual(store.getBoard('canvas-cd34').tasks[0].canvas, empty);
     assert.equal(store.blockOf('b1').rev, 1);
     await store.flush();
-  });
-
-  it('is what a board file gets on import, so the two agree', () => {
-    const file = { id: 'x', decisions: [{ id: 'd' }], tasks: [{ id: 't' }], canvas: { blocks: [{ id: 'b' }] } };
-    wholeBoardDefaults(file);
-    const empty = { blocks: [], groups: [], links: [], pins: [] };
-    assert.deepEqual(file, {
-      id: 'x',
-      nextTaskNumber: 1,
-      decisions: [{ id: 'd', canvas: empty, history: [], asks: [], criteria: [], marks: [] }],
-      tasks: [{ id: 't', comments: [], canvas: empty }],
-      canvas: { blocks: [{ id: 'b', rev: 1 }], pins: [] },
-    });
   });
 });

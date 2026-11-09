@@ -58,6 +58,7 @@ describe("An agent's rule, as its own flags", () => {
     assert.deepEqual(ruleFlags(kind('opencode'), { model: 'anthropic/claude-sonnet-5' }), ['--model', 'anthropic/claude-sonnet-5']);
     assert.deepEqual(ruleFlags(kind('grok'), { model: 'grok-4.6' }), ['-m', 'grok-4.6']);
     assert.deepEqual(ruleFlags(kind('hermes'), { model: 'anthropic/claude-sonnet-5' }), ['--model', 'anthropic/claude-sonnet-5']);
+    assert.deepEqual(ruleFlags(kind('copilot'), both), ['--model', 'some-model', '--reasoning-effort', 'high']);
     assert.throws(() => ruleFlags(kind('goose'), { model: 'gpt-6.1-sol' }), /Tricot can't start Goose on a model of your choosing/);
   });
 
@@ -84,6 +85,7 @@ describe("An agent's rule, as its own flags", () => {
     assert.equal(ruleProblem(kind('codex'), { effort: 'ultra' }), undefined);
     assert.equal(ruleProblem(kind('pi'), { effort: 'off' }), undefined);
     assert.equal(ruleProblem(kind('omp'), { effort: 'auto' }), undefined);
+    assert.match(ruleProblem(kind('copilot'), { effort: 'ultra' })!, /^Copilot CLI's thinking level is one of low, medium, high, xhigh or max: "ultra" isn't one\.$/);
     assert.equal(ruleProblem(kind('opencode'), { effort: 'high' }), 'OpenCode has no thinking level Tricot can set: its own settings decide it.');
     assert.throws(() => ruleFlags(kind('gemini'), { effort: 'high' }), /Gemini CLI has no thinking level/);
     assert.throws(() => ruleFlags(kind('codex'), { effort: '--yolo' }), /thinking level is one of/);

@@ -1,9 +1,10 @@
 // Approvals: an agent's permission prompt ("may I run this?"), brought to
-// the board, where a person answers it, instead of the terminal. Claude Code
-// and Codex run hooks/tricot-approve.mjs on their PermissionRequest event; it
-// sends Tricot the request, waits for the person's answer, and gives it back
-// to the agent as its own decision (server/approvals.ts keeps the requests,
-// server/approvalsRoutes.ts serves them, web/approvals.tsx shows them).
+// the board, where a person answers it, instead of the terminal. The agents
+// that have it (approvals in the registry: Claude Code and Codex) run
+// hooks/tricot-approve.mjs on their PermissionRequest event; it sends Tricot
+// the request, waits for the person's answer, and gives it back to the agent
+// as its own decision (server/approvals.ts keeps the requests,
+// server/approvalsRoutes.ts serves them, web/access/approvals.tsx shows them).
 //
 // The hook never decides on its own: when Tricot can't be reached, the agent
 // asks in the terminal as it always did. Only a person answers, from a
@@ -13,10 +14,14 @@
 //
 // Types and words only: the browser imports this.
 
+import { agentKinds } from './agents/registry';
 import { clip, listNames } from './format';
 
-export type ApprovalHarness = 'claude' | 'codex';
-export const APPROVAL_HARNESSES: readonly ApprovalHarness[] = ['claude', 'codex'];
+// Which agent asks, by its id: one whose prompts come to the board
+// (AgentKind.approvals; the registry's, agents/registry.ts). Read when asked,
+// so this file can be imported before the agents have loaded.
+export type ApprovalHarness = string;
+export const approvalHarnesses = (): ApprovalHarness[] => agentKinds().filter((kind) => kind.approvals).map((kind) => kind.id);
 
 // What the hook sends: the request as the agent made it.
 export interface ApprovalRequest {

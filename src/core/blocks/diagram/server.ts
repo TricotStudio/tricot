@@ -66,7 +66,7 @@ const part: PartWords = {
 };
 
 const ask: AskWords = {
-  part: ({ pin, block }) => `${pinPart(pin, block)}${pinWhere(pin)} of ${blockNamed(block, 'diagram')}`,
+  part: ({ pin, block }) => `${pinPart(pin, block)}${pinWhere(pin, block)} of ${blockNamed(block, 'diagram')}`,
   how: ({ block }) => `Change the diagram's Mermaid source with update_block (block_id: ${block.id}, source: the whole source)`,
   view: 'the diagram',
 };
@@ -104,6 +104,11 @@ export const agent: AgentHalf<DiagramTypes> = {
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('diagram'), source: z.string() }),
   patch: { source: z.string().optional() },
+  // A flowchart's node by its id, or its arrow by the nodes it joins (the n-th between them).
+  parts: {
+    node: z.object({ kind: z.literal('node'), nodeId: z.string() }),
+    arrow: z.object({ kind: z.literal('arrow'), from: z.string(), to: z.string(), n: z.number().int().min(0).optional() }),
+  },
 };
 
 export const server: ServerHalf<DiagramTypes> = {

@@ -64,6 +64,8 @@ export const goose: AgentKind = {
     firstRunBlock: true,
   },
   usage: { shares: 'none', notShared: 'Goose keeps its usage to itself: it can show its cost in its own session (GOOSE_CLI_SHOW_COST).' },
+  // Its skills (a SKILL.md each, listed by /skills): goose-docs.ai, "Using Skills".
+  skills: 'skills',
   // No startsOn: `goose session` takes no model or thinking flag (its CLI
   // page gives --model and --provider to `goose run` alone), so it starts on
   // its own settings.

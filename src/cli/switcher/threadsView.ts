@@ -60,9 +60,10 @@ import { samePerson } from '../../core/format';
 import { reactionGroups } from '../../core/reactions';
 import type { ThreadEntry, ThreadGroups } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
+import { findRefs, type RefKind } from '../../core/refs';
 import type { Reaction } from '../../core/types';
-import { columns, columnsOf, fit, type Tone } from './strip';
-import { BOLD, DIM, ago, alertOf, asSent, cutParts, oneLine, onBand, paint, tail, yesNo, type Part, type TabFrame } from './tabView';
+import { columns, columnsOf, fit, type Tone, type Working } from './strip';
+import { BOLD, DIM, webAddresses, ago, type FrameLink, alertOf, asSent, cutParts, oneLine, onBand, paint, yesNo, type Part, type TabFrame } from './tabView';
 
 // ---- what is in the list -----------------------------------------------------------
 
@@ -98,19 +99,132 @@ export function panelGeometry(cols: number): { wide: boolean; width: number } {
 }
 
 // The rows at the foot of a window `rows` tall for the line to type on: the
-// line itself, the row under it saying who will get the message (from eight
-// rows), and the row above it listing what Tab completes to while there is
-// something to list (from six).
+// line itself, on as many rows as its text takes wrapped, to INPUT_MOST (T37),
+// fewer in a short window, the row under it saying who will get the message (from eight
+// rows), and above it what Tab completes to while there is something to list
+// (from six): one row of names, or for a / a list with a row per choice and
+// its description, as Claude Code's (choiceRows), fewer rows in a short window.
 export interface Foot {
-  candidates: boolean;
+  working: boolean; // the row above them all, saying who is working (T38)
+  candidates: number; // the rows above the line for the choices
+  input: number; // the rows the line itself takes
   status: boolean;
   rows: number;
 }
 
-export function composeFoot(rows: number, candidates: boolean): Foot {
+// The most rows the / list takes; more choices scroll in it.
+export const LISTED_MOST = 6;
+
+// Choices with a description (a / list's commands and skills) take a row each.
+export const listsRows = (choices: readonly object[]): boolean => choices.some((c) => 'description' in c && c.description !== undefined);
+
+// The rows the choices would take in a tall window: none, one, or one each up to LISTED_MOST.
+export const choiceRows = (choices: readonly object[] | undefined): number =>
+  !choices?.length ? 0 : listsRows(choices) ? Math.min(LISTED_MOST, choices.length) : 1;
+
+// The most rows the line takes; a longer text scrolls in them, the cursor's row in view.
+export const INPUT_MOST = 8;
+
+// `input`: the rows the line's text takes wrapped (inputRows); `working`:
+// an agent is working, which a row above them all says (from eight rows).
+export function composeFoot(rows: number, candidates: number, input = 1, working = false): Foot {
   const status = rows >= 8;
-  const listed = candidates && rows >= 6;
-  return { candidates: listed, status, rows: 1 + Number(status) + Number(listed) };
+  const busy = working && rows >= 8;
+  const listed = rows < 6 || !candidates ? 0 : Math.min(candidates, Math.max(1, rows - 9 - Number(busy)));
+  const lines = Math.max(1, Math.min(input, INPUT_MOST, rows - 10 - listed - Number(busy)));
+  return { working: busy, candidates: listed, input: lines, status, rows: Number(busy) + lines + Number(status) + listed };
+}
+
+// The spinner's turns, one a second as the tab is drawn again.
+const SPINNER = ['✻', '✳', '✢', '✶'];
+
+// Who is working, on one row: "✻ Claude: Running the tests · 12s · Codex: Editing tabView.ts",
+// each agent's words cut first so every name shows while it can.
+export function workingRow(working: Working[], cols: number, now: number): Part[] {
+  const spin: Part = [` ${SPINNER[Math.floor(now / 1000) % SPINNER.length]} `, BOLD];
+  const room = Math.max(1, cols - 1 - columns(spin[0]));
+  const sep = '  ·  ';
+  const names = working.reduce((sum, w, i) => sum + columns(w.name) + 2 + (i ? sep.length : 0), 0);
+  const each = Math.max(6, Math.floor((room - names) / Math.max(1, working.length)));
+  const parts: Part[] = [spin];
+  working.forEach((w, i) => {
+    if (i) parts.push([sep, DIM]);
+    const words = w.lasted ? `${w.words} · ${w.lasted}` : w.words;
+    parts.push([safe(w.name), BOLD], [`: ${fit(safe(words), each)}`, DIM]);
+  });
+  return cutParts(parts, cols - 1);
+}
+
+// ---- the line's text, wrapped ----------------------------------------------------------
+
+// The columns the line's text has beside its prompt, in a window `cols` wide.
+export const inputWidth = (cols: number): number => Math.max(1, cols - 4);
+
+// Each row of the text wrapped to `width`: where it starts and ends in the
+// text (without the newline that ends it). A row is cut after the last space
+// that fits, else inside a word; the space stays on the row it ends.
+export function inputLayout(text: string, width: number): { start: number; end: number }[] {
+  const rows: { start: number; end: number }[] = [];
+  let lineStart = 0;
+  for (const line of text.split('\n')) {
+    let start = lineStart;
+    const stop = lineStart + line.length;
+    for (;;) {
+      let used = 0;
+      let at = start;
+      let space = -1; // just after the last space that fits
+      while (at < stop) {
+        const code = text.codePointAt(at)!;
+        const size = columnsOf(code);
+        if (used + size > width) break;
+        used += size;
+        at += code > 0xffff ? 2 : 1;
+        if (code === 32) space = at;
+      }
+      if (at >= stop) {
+        rows.push({ start, end: stop });
+        break;
+      }
+      const cut = space > start ? space : at > start ? at : start + (text.codePointAt(start)! > 0xffff ? 2 : 1);
+      rows.push({ start, end: cut });
+      start = cut;
+    }
+    lineStart = stop + 1;
+  }
+  return rows;
+}
+
+// The row the cursor is on: the one it is inside, or at the end of; at the
+// end of a row cut from the next, the next one's start.
+export function cursorRow(rows: { start: number; end: number }[], cursor: number): number {
+  const at = rows.findIndex((row, i) => cursor >= row.start && (cursor < row.end || (cursor === row.end && rows[i + 1]?.start !== row.end)));
+  return at < 0 ? rows.length - 1 : at;
+}
+
+// The rows a text takes wrapped beside the prompt, in a window `cols` wide.
+export const inputRows = (text: string, cols: number): number => (text ? inputLayout(text, inputWidth(cols)).length : 1);
+
+// The cursor one row up (-1) or down (1) in the text wrapped to `width`, at
+// the same column or the end of a shorter row; none from the first row up or
+// the last down.
+export function cursorAcross(text: string, cursor: number, width: number, step: -1 | 1): number | undefined {
+  const rows = inputLayout(text, width);
+  const here = cursorRow(rows, cursor);
+  const there = rows[here + step];
+  if (!there) return undefined;
+  const column = columns(text.slice(rows[here].start, cursor));
+  let at = there.start;
+  let used = 0;
+  // A row cut from the next ends before its last character, which is the next's start.
+  const end = rows[here + step + 1]?.start === there.end ? there.end - 1 : there.end;
+  while (at < Math.max(there.start, end)) {
+    const code = text.codePointAt(at)!;
+    const size = columnsOf(code);
+    if (used + size > column) break;
+    used += size;
+    at += code > 0xffff ? 2 : 1;
+  }
+  return at;
 }
 
 // The first row lines can be scrolled to and still fill the rows: showing the latest.
@@ -188,13 +302,54 @@ function reactionsLine(reactions: Reaction[] | undefined, me: string, width: num
   return cutParts(parts, width);
 }
 
+// Where a card a message names opens (T36): its page on the board, as an
+// address after # (core/pages.ts), or none for a number the board hasn't.
+export type CardLink = (kind: RefKind, number: number) => string | undefined;
+
+// The links in a line of text: its web addresses, and the cards it names (#12, T5).
+export function linksIn(text: string, card?: CardLink): FrameLink[] {
+  const addresses = webAddresses(text);
+  if (!card) return addresses;
+  const refs = findRefs(text, (kind, number) => card(kind, number) !== undefined)
+    .filter((ref) => !addresses.some((a) => ref.start < a.to && ref.end > a.from))
+    .map((ref): FrameLink => ({ from: ref.start, to: ref.end, url: card(ref.kind, ref.number)! }));
+  return [...addresses, ...refs].sort((a, b) => a.from - b.from);
+}
+
+// A line of a message wrapped and indented, its links (linksIn) as links: an
+// address cut onto two rows is one on each, going to the whole of it.
+function linkedRows(text: string, room: number, card?: CardLink): Part[][] {
+  const wrapped = wrapLine(text, room);
+  const addresses = linksIn(text, card);
+  if (!addresses.length) return wrapped.map((row) => (row ? [[' '.repeat(INDENT) + row]] : []));
+  let at = 0; // where in the text the row before ended
+  return wrapped.map((row): Part[] => {
+    if (!row) return [];
+    const shown = row.trimStart();
+    const from = text.indexOf(shown, at);
+    at = from + shown.length;
+    const parts: Part[] = [[' '.repeat(INDENT) + row.slice(0, row.length - shown.length)]];
+    let i = from;
+    for (const { from: start, to, url } of addresses) {
+      const a = Math.max(start, from);
+      const b = Math.min(to, at);
+      if (a >= b) continue;
+      if (a > i) parts.push([text.slice(i, a)]);
+      parts.push([text.slice(a, b), undefined, url]);
+      i = b;
+    }
+    if (i < at) parts.push([text.slice(i, at)]);
+    return parts;
+  });
+}
+
 // A message's text under who wrote it, wrapped to `width` and indented, a
 // control character as its picture (asSent), and the line of its reactions
 // under it, if it has any: the chat's stream draws its items so (chatView.ts).
-export function messageRows(body: string, reactions: Reaction[] | undefined, width: number, me: string): Part[][] {
+export function messageRows(body: string, reactions: Reaction[] | undefined, width: number, me: string, card?: CardLink): Part[][] {
   const rows: Part[][] = [];
   const room = Math.max(1, width - INDENT - 1);
-  for (const text of body.split(/\r\n|\r|\n/)) for (const row of wrapLine(asSent(text), room)) rows.push(row ? [[' '.repeat(INDENT) + row]] : []);
+  for (const text of body.split(/\r\n|\r|\n/)) rows.push(...linkedRows(asSent(text), room, card));
   const reacted = reactionsLine(reactions, me, Math.max(1, width - 1));
   if (reacted) rows.push(reacted);
   return rows;
@@ -245,8 +400,10 @@ export interface Compose {
   // Who will get it, or why it did not go: the row under the line.
   status?: { text: string; tone: Tone };
   // What Tab completes to, one of them the next (or the one just written).
-  choices?: { label: string; note?: string }[];
+  choices?: { label: string; note?: string; description?: string }[];
   at?: number;
+  picking?: boolean; // ↑ ↓ move through the choices, not the stream (T39)
+  working?: Working[]; // the agents working now, said on the row above it all (T38)
 }
 
 // A line cut or padded to exactly `width` columns.
@@ -392,17 +549,43 @@ function choicesRow(compose: Compose, cols: number): Part[] {
   return [lead, ...(first > 0 ? ([['… ', DIM]] as Part[]) : []), ...cells.slice(first).flat()];
 }
 
-// The line itself: a prompt, then what is typed (or what to type) cut to the
-// width around the cursor, which is the column it stands at.
-function lineRow(compose: Compose, cols: number): { parts: Part[]; x: number } {
+// The / list: a row per choice, its name, then what it does and whose it is,
+// the one Tab writes next marked, scrolled so it is in view.
+function choiceListRows(compose: Compose, room: number, cols: number): Part[][] {
+  const choices = compose.choices ?? [];
+  const at = Math.min(compose.at ?? 0, choices.length - 1);
+  const first = Math.min(Math.max(0, at - room + 1), Math.max(0, choices.length - room));
+  // The descriptions line up after the longest name shown, unless a name is long.
+  const shown = choices.slice(first, first + room);
+  const named = Math.min(18, Math.max(...shown.map((c) => columns(safe(c.label)))));
+  return shown.map(({ label, note, description }, i): Part[] => {
+    const here = first + i === at;
+    const name = safe(label);
+    const more = (i === 0 && first > 0) || (i === shown.length - 1 && first + room < choices.length);
+    const lead: Part = [` ${here ? '❯' : more ? (i === 0 ? '↑' : '↓') : ' '} `, here ? BOLD : DIM];
+    const words = [description?.trim() ? safe(description) : '', note ? safe(note) : ''].filter(Boolean).join(' · ');
+    const gap = ' '.repeat(Math.max(0, named - columns(name)) + 2);
+    return cutParts([lead, [name, here ? BOLD : undefined], ...(words ? ([[gap], [words, DIM]] as Part[]) : [])], Math.max(1, cols - 1));
+  });
+}
+
+// The line itself: a prompt, then what is typed wrapped onto `count` rows at
+// most, those around the cursor (or what to type, on one), and where the
+// cursor stands among them: its column and row.
+function lineRows(compose: Compose, cols: number, count: number): { rows: Part[][]; x: number; y: number } {
   const prompt: Part = [' › ', BOLD];
-  const room = Math.max(1, cols - columns(prompt[0]) - 1);
-  if (!compose.text) return { parts: [prompt, [fit(safe(compose.placeholder), room), DIM]], x: columns(prompt[0]) };
-  const before = asSent(compose.text.slice(0, compose.cursor));
-  const after = asSent(compose.text.slice(compose.cursor));
-  const near = columns(before) < room ? before : `…${tail(before, room - 2)}`;
-  const rest = fit(after, Math.max(0, room - columns(near)));
-  return { parts: [prompt, [near], [rest]], x: columns(prompt[0]) + columns(near) };
+  const lead = columns(prompt[0]);
+  const room = inputWidth(cols);
+  if (!compose.text) return { rows: [[prompt, [fit(safe(compose.placeholder), room), DIM]]], x: lead, y: 0 };
+  const layout = inputLayout(compose.text, room);
+  const here = cursorRow(layout, compose.cursor);
+  const first = Math.min(Math.max(0, here - count + 1), Math.max(0, layout.length - count));
+  const rows = layout.slice(first, first + count).map(({ start, end }, i): Part[] => {
+    const words = asSent(compose.text.slice(start, end));
+    const more = (i === 0 && first > 0) || (i === count - 1 && first + count < layout.length);
+    return [i === 0 && first === 0 ? prompt : [more ? (i === 0 ? ' ↑ ' : ' ↓ ') : '   ', DIM], [fit(words, room)]];
+  });
+  return { rows, x: lead + columns(asSent(compose.text.slice(layout[here].start, compose.cursor))), y: here - first };
 }
 
 // The band the line to type on sits on, from the 256 colours: a shade off the
@@ -414,16 +597,18 @@ export const bandOf = (light: boolean) => (light ? '48;5;253' : '48;5;237');
 // drawn on its band across the window: what Tab completes to above it, the
 // line, and who will get it under it. `cursor` is where it stands: its
 // column, and the line's row among these.
-export function composeRows(compose: Compose, foot: Foot, cols: number, light = false): { rows: Part[][]; cursor: { x: number; y: number } } {
+export function composeRows(compose: Compose, foot: Foot, cols: number, light = false, now = 0): { rows: Part[][]; cursor: { x: number; y: number } } {
   const alert = alertOf(light);
   const rows: Part[][] = [];
-  if (foot.candidates) rows.push(choicesRow(compose, cols));
-  const typing = lineRow(compose, cols);
-  const cursor = { x: typing.x, y: rows.length };
-  rows.push(typing.parts);
+  if (foot.candidates && listsRows(compose.choices ?? [])) rows.push(...choiceListRows(compose, foot.candidates, cols));
+  else if (foot.candidates) rows.push(choicesRow(compose, cols));
+  const typing = lineRows(compose, cols, foot.input);
+  const cursor = { x: Math.min(cols - 1, typing.x), y: rows.length + typing.y + Number(foot.working) };
+  rows.push(...typing.rows);
   if (foot.status && compose.status) rows.push([[` ${safe(compose.status.text)}`, compose.status.tone === 'alert' ? alert : DIM]]);
   else if (foot.status) rows.push([]);
-  return { rows: rows.map((row) => onBand(row, bandOf(light), cols)), cursor };
+  const busy: Part[][] = foot.working ? [workingRow(compose.working ?? [], cols, now)] : [];
+  return { rows: [...busy, ...rows.map((row) => onBand(row, bandOf(light), cols))], cursor };
 }
 
 // The last row: the keys, and what waits on the person elsewhere at its right.
@@ -448,11 +633,12 @@ export function lastRow(keysRow: (lens: boolean, compact: boolean) => Part[], co
 // line's, among the rows, and is kept while it shows.
 export function framed(parts: Part[][], rows: number, cols: number, cursor?: { x: number; y: number }): TabFrame {
   const cut = Math.max(0, parts.length - rows);
-  const out: TabFrame = { rows: [], plain: [] };
+  const out: TabFrame = { rows: [], plain: [], links: [] };
   for (const row of parts.slice(cut)) {
-    const { line, plain } = paint(row, cols);
+    const { line, plain, links } = paint(row, cols);
     out.rows.push(line);
     out.plain.push(plain);
+    out.links!.push(links);
   }
   if (cursor && cursor.y >= cut) out.cursor = { x: Math.min(cols - 1, cursor.x), y: cursor.y - cut };
   return out;

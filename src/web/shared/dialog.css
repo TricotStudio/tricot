@@ -1,6 +1,7 @@
 /* A small dialog, centred over a veil of the page: deleting a board or a card
    for good (board/deleteBoard.tsx, cards/cardActions.tsx), sharing a decision
-   to Slack (connectors/slack/share.tsx). */
+   to Slack (connectors/slack/share.tsx), and the page's own "Are you sure?"
+   (shared/confirm.tsx). */
 .delete-scrim {
   position: fixed;
   inset: 0;
@@ -61,7 +62,7 @@
 .btn.btn-danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--primary-text); /* white on the light theme's coral, the near-black on dark's coral */
 }
 .btn.btn-danger:hover:not(:disabled) {
   background: var(--danger);

@@ -5,6 +5,7 @@
 
 import { type ChartContent, type ChartInput, findPoint, findSeries } from './chart';
 import type { BlockKind } from '../kind';
+import { blockIs } from '../../canvas';
 import { server } from './server';
 
 export interface ChartTypes {
@@ -28,6 +29,15 @@ export const chart: BlockKind<ChartTypes> = {
   pins: {
     anchor: server.anchor,
     part: server.part,
+    parts: {
+      // A bar, point or slice, or a whole series, marked on the chart and named by its quote.
+      point: {
+        lost: 'no longer there',
+        drawn: true,
+        askedTo: "change the chart's data",
+        missing: (block) => `Points are pinned in charts; ${blockIs(block)}.`,
+      },
+    },
     // Found again by its category's and series' names, whatever their numbers now; a whole series by its name.
     place(block, pin) {
       if (pin.anchor.kind !== 'point') return undefined;

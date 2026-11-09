@@ -2,14 +2,15 @@
 // folder (core/agents/<id>/: index.ts and server.ts) and an import and an
 // entry here; everything that handles agents asks this list (the commands
 // `tricot <agent>` and `tricot connect`, the Connect panel, first run, usage,
-// the live-steps installers), and none names an agent. Internal: nothing is
-// loaded from outside this repository.
+// the live-steps installers, approvals, what report_skills says), and none
+// names an agent. Internal: nothing is loaded from outside this repository.
 
 import { agentUrl, type Shell } from '../connect';
-import { samePerson } from '../format';
+import { orNames, samePerson } from '../format';
 import type { AgentKind } from './agent';
 import { claude } from './claude';
 import { codex } from './codex';
+import { copilot } from './copilot';
 import { gemini } from './gemini';
 import { goose } from './goose';
 import { grok } from './grok';
@@ -21,7 +22,7 @@ import { pi } from './pi';
 // Their order is the Connect panel's, and the live-steps installers'. It is a
 // function so the agents are read once they have all loaded, however the
 // modules happen to be imported.
-const registered = (): readonly AgentKind[] => [claude, codex, pi, omp, gemini, opencode, goose, hermes, grok];
+const registered = (): readonly AgentKind[] => [claude, codex, pi, omp, gemini, opencode, goose, hermes, grok, copilot];
 
 let all: readonly AgentKind[] | undefined;
 
@@ -31,6 +32,23 @@ export function agentKinds(): readonly AgentKind[] {
 
 export function findAgent(id: string): AgentKind | undefined {
   return agentKinds().find((kind) => kind.id === id);
+}
+
+// The agent offered when none is found or chosen (first run, the Connect
+// panel's first tab, the example in a hint): the first in the list.
+export const defaultAgent = (): AgentKind => agentKinds()[0];
+
+// What every agent calls what a person asks of it with "/", in one phrase
+// for report_skills: those next to each other that call it the same are
+// named together ("Claude Code skills, Codex prompts, Pi or OMP skills, …").
+export function skillsWords(kinds: readonly Pick<AgentKind, 'name' | 'skills'>[] = agentKinds()): string {
+  const groups: { names: string[]; skills: string }[] = [];
+  for (const { name, skills } of kinds) {
+    const last = groups.at(-1);
+    if (last?.skills === skills) last.names.push(name);
+    else groups.push({ names: [name], skills });
+  }
+  return groups.map(({ names, skills }) => `${orNames(names)} ${skills}`).join(', ');
 }
 
 // The agent whose MCP client calls itself this when it connects (clientInfo.name).

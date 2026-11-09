@@ -3,6 +3,7 @@ import {
   liveStepsAgentFor,
   liveStepsCommand,
   liveStepsLabel,
+  stepsCommandUnder,
   type LiveStepsAgent,
   type LiveStepsFile,
   type LiveStepsPreview,
@@ -56,6 +57,7 @@ export function AgentLiveSteps({ name, person, steps }: { name: string; person: 
   const agent = liveStepsAgentFor(name, report.agents);
 
   if (!agent) {
+    const { command, others } = stepsCommandUnder(name);
     return (
       <section className="live-steps" aria-labelledby={titleId}>
         <div className="live-steps-text">
@@ -65,7 +67,7 @@ export function AgentLiveSteps({ name, person, steps }: { name: string; person: 
           <span className="live-steps-state">Tricot can't tell which tool {name} runs in, so there is no switch here.</span>
         </div>
         <p className="live-steps-line">
-          From a terminal: <code>tricot steps on --agent claude --name "{name}"</code> (or codex, pi, omp, gemini, opencode, goose, hermes, grok).
+          From a terminal: <code>{command}</code> (or {others.join(', ')}).
         </p>
       </section>
     );

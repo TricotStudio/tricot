@@ -3,6 +3,7 @@ import { pinComments } from '../../../core/pins';
 import type { Block, Pin } from '../../../core/types';
 import { useCanvas } from '../../canvas/context';
 import { Icon } from '../../shared/components';
+import { askToUnpin } from '../../shared/confirm';
 import { MentionTextarea } from '../../shared/mentions';
 import type { DocWords } from './api';
 
@@ -113,8 +114,8 @@ export function DocPinChip(props: { pin: Pin; open: boolean; part?: string; lost
   const classes = ['pin-chip', 'is-comment', 'doc-pin-chip', asked && 'is-ask', resolved && 'is-done', lost && 'is-lost', fresh && 'is-new', open && 'is-open'];
   const what = asked ? 'Asked agents to edit' : 'Comments on';
   const state = resolved ? `, resolved by ${resolved.by.name}` : asked && waiting ? ', waiting for an agent' : '';
-  const unpin = () => {
-    if (comments.length && !window.confirm(`Unpin these words and remove their thread of ${plural(comments.length, 'comment')}?`)) return;
+  const unpin = async () => {
+    if (comments.length && !(await askToUnpin('these words', comments.length))) return;
     canvas.removeItem(pin.id);
   };
   return (

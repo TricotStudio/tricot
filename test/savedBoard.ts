@@ -1,5 +1,3 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { DATABASE_FILE } from '../src/core/store/boardDb';
 import { readBoards } from '../src/core/store/boardTables';
@@ -17,12 +15,4 @@ export function savedBoard(dir: string, id: string): Board {
   } finally {
     db.close();
   }
-}
-
-// A data folder as an earlier Tricot left it: boards as JSON files, no
-// database yet. Whatever is shaped into the boards is what the first start imports.
-export function jsonFolder(...boards: unknown[]): string {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-json-'));
-  for (const board of boards) writeFileSync(path.join(dir, `${(board as { id: string }).id}.json`), JSON.stringify(board, null, 2));
-  return dir;
 }

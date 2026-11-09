@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultDataDir } from '../platform/dataDir';
+import { defaultDataPath } from '../platform/paths';
 import { stopSignals } from '../platform/stop';
 import { startServer } from './start';
 import { sourceLink } from '../install/updates';
@@ -13,7 +13,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 4545);
   const host = process.env.HOST ?? '127.0.0.1';
-  const dataDir = process.env.TRICOT_DATA_DIR ?? defaultDataDir();
+  const dataDir = process.env.TRICOT_DATA_DIR ?? defaultDataPath();
   const dev = process.argv.includes('--dev');
   const pkg = JSON.parse(readFileSync(path.join(projectRoot, 'package.json'), 'utf8')) as { version: string; repository?: unknown };
 

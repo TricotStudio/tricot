@@ -5,6 +5,7 @@
 // list, and none names a service. Internal: nothing is loaded from outside
 // this repository.
 
+import type { Route } from '../route';
 import type { ConnectorKind } from './connector';
 import { figma } from './figma';
 import { github } from './github';
@@ -28,4 +29,11 @@ export function findConnector(id: string): ConnectorKind | undefined {
 // The connector whose pins have this kind of anchor ("doc"), if any.
 export function connectorPinning(anchorKind: string): ConnectorKind | undefined {
   return connectorKinds().find((kind) => kind.pins?.kind === anchorKind);
+}
+
+// Every connector's own REST routes (its routes.ts), named "<id>.<name>"
+// ("github.card"), in the registry's order: with the app's own
+// (core/routes.ts), every route the server serves.
+export function connectorRoutes(): [name: string, route: Route][] {
+  return connectorKinds().flatMap((kind) => Object.entries(kind.routes ?? {}).map(([name, route]): [string, Route] => [`${kind.id}.${name}`, route]));
 }

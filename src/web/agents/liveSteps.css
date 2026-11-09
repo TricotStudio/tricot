@@ -109,7 +109,7 @@
 }
 .live-switch[aria-checked='true'] .live-switch-thumb {
   translate: 14px 0;
-  background: #fff;
+  background: var(--primary-text); /* white on the light theme's green, the near-black on dark's */
 }
 .live-switch:hover:not(:disabled) {
   border-color: var(--muted);

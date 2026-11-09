@@ -142,7 +142,7 @@ function pinnedSection(board: Board, task: Task): string[] {
     '',
     '## Pinned to this task',
     ...pins.map(({ pin, block, decision, task: owner }) => {
-      const lost = placePin(block, pin) ? '' : ` (${pinLost(pin)} since)`;
+      const lost = placePin(block, pin) ? '' : ` (${pinLost(pin, block)} since)`;
       return `- ${partQuote(pin, block)}${lost} in ${blockLabel(block)} (${canvasName({ decision, task: owner })}), pinned by ${who(pin.author)}`;
     }),
   ];

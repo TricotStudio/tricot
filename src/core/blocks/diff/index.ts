@@ -2,7 +2,9 @@
 // parsed (diff.ts). People see it file by file and comment on its lines.
 
 import { type DiffFile, findLine } from './diff';
+import { lineParts } from './lines';
 import type { BlockKind } from '../kind';
+import { blockIs } from '../../canvas';
 import { server } from './server';
 
 export interface DiffTypes {
@@ -25,6 +27,8 @@ export const diff: BlockKind<DiffTypes> = {
   fromSnapshot: (version) => ({ patch: version.patch, files: version.files, focus: version.focus }),
   pins: {
     anchor: server.anchor,
+    // Its lines, on either side of the change (lines.ts); they take no requests.
+    parts: { line: { ...lineParts, missing: (block) => `Lines are pinned in diffs and code blocks; ${blockIs(block)}.` } },
     place(block, pin) {
       if (pin.anchor.kind !== 'line') return undefined;
       const at = findLine(block.files, pin.anchor.file, pin.anchor.side, pin.anchor.line, pin.quote);

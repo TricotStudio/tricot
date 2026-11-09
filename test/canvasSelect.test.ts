@@ -13,8 +13,14 @@ import { removeScratch } from './platform';
 // board's own CanvasView with the pointer, mouse and key events a browser
 // sends it. A plain drag on the empty canvas draws a selection box; the canvas
 // is moved with Space held and a drag, or with the middle or right button; a
-// quiet hint says so. Chrome here has no real mouse, so a drag is the events a
-// mouse makes: pointer events for the box, mouse events for panning.
+// quiet hint says so. Words selected in a note open the prompt to pin them,
+// and nothing on the empty canvas does (T255). A press, a click or a box on
+// the empty canvas leaves every block it doesn't pick alone (T264): Safari's
+// text selection, which T255 stops, lit up words in notes across the canvas
+// as a box was drawn, and looked like blocks flickering. Chrome here has no
+// real mouse, so a drag is the events a mouse makes: pointer events for the
+// box, mouse events for panning; and the text a browser selects as the mouse
+// moves is selected by the page, as it would be then.
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const root = path.resolve(import.meta.dirname, '..');
@@ -173,7 +179,70 @@ const closeOverlay = async () => {
   await wait(100);
 };
 
-const results = { hint: {}, box: {}, frames: {}, modifiers: {}, move: {}, space: {}, readOnly: {} };
+// ---- words in a note (T255) ----
+// The words of a note on the canvas, some of them selected as a mouse would, and what the prompt quotes.
+const wordsOf = (word) => node(word).querySelector('[data-pin-text]');
+const select = (words, from, to) => {
+  const text = document.createTreeWalker(words, NodeFilter.SHOW_TEXT).nextNode();
+  const range = document.createRange();
+  range.setStart(text, from);
+  range.setEnd(text, to);
+  getSelection().removeAllRanges();
+  getSelection().addRange(range);
+};
+const quoted = () => document.querySelector('.pin-prompt:not(.pin-thread) .pin-prompt-quote')?.textContent ?? null;
+const middleOf = (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + Math.min(r.height / 2, 10) };
+};
+const pressMouse = (type, at, extra = {}) =>
+  new MouseEvent(type, { bubbles: true, cancelable: true, composed: true, view: window, button: 0, buttons: type === 'mouseup' ? 0 : 1, detail: 1, clientX: at.x, clientY: at.y, ...extra });
+// A press where the mouse goes down and its release where it comes up, with
+// the text the browser selects between them (\`during\`), and what came of it:
+// the prompt's quote, if one opened, and the words left selected.
+const pressAndRelease = async (down, up, { during, extra = {} } = {}) => {
+  const from = middleOf(down);
+  down.dispatchEvent(point('pointerdown', from, extra));
+  down.dispatchEvent(pressMouse('mousedown', from, extra));
+  const start = new Event('selectstart', { bubbles: true, cancelable: true });
+  down.dispatchEvent(start); // the browser asks before it starts selecting text from the press
+  during?.();
+  const to = middleOf(up);
+  pane().dispatchEvent(point('pointermove', to, extra));
+  await wait(15);
+  up.dispatchEvent(point('pointerup', to, extra));
+  up.dispatchEvent(pressMouse('mouseup', to, extra));
+  await wait(60);
+  const shown = { quote: quoted(), selected: String(getSelection()), selectsText: !start.defaultPrevented };
+  document.querySelector('.pin-prompt-close')?.click();
+  getSelection().removeAllRanges();
+  await wait(40);
+  return shown;
+};
+
+// ---- the blocks a press on the empty canvas is far from (T264) ----
+// What a gesture changes in the blocks: those with anything in them changed
+// (an element put in or taken out, an attribute, some text), and those with an
+// element drawn anew, the one there before gone. A group is not a block.
+const blockWord = (el) => WORDS.find((w) => el.textContent.includes(w));
+const touched = async (gesture) => {
+  const blocks = [...document.querySelectorAll('.react-flow__node-block')];
+  const before = new Map(blocks.map((b) => [b, [...b.querySelectorAll('*')]]));
+  const changed = new Set();
+  const observer = new MutationObserver((records) => {
+    for (const r of records) {
+      const block = (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest('.react-flow__node-block');
+      if (block) changed.add(blockWord(block));
+    }
+  });
+  observer.observe(document.querySelector('.react-flow__nodes'), { subtree: true, childList: true, attributes: true, characterData: true });
+  const result = await gesture();
+  await wait(60);
+  observer.disconnect();
+  const redrawn = blocks.filter((b) => !b.isConnected || before.get(b).some((el) => !el.isConnected)).map(blockWord);
+  return { changed: [...changed].sort(), redrawn, ...(result ? { after: result.after } : {}) };
+};
+const results = { hint: {}, untouched: {}, box: {}, frames: {}, modifiers: {}, move: {}, space: {}, words: {}, readOnly: {} };
 (async () => {
 try {
   await show();
@@ -197,6 +266,18 @@ try {
     colour: getComputedStyle(hint).color,
     quiet: hint.className,
   };
+
+  // ---- a press, a click and a box on the empty canvas leave the blocks alone (T264) ----
+  // At the canvas's foot, clear of every block: a press held, its release, a click, and a box drawn there.
+  const foot = pane().getBoundingClientRect();
+  const empty = { x: foot.x + 30, y: foot.y + foot.height - 30 };
+  results.untouched.press = await touched(() => void pane().dispatchEvent(point('pointerdown', empty)));
+  results.untouched.release = await touched(() => void pane().dispatchEvent(point('pointerup', empty)));
+  results.untouched.click = await touched(() => click(pane()));
+  results.untouched.box = await touched(() => drag(empty, { x: empty.x + 50, y: empty.y - 20 }));
+  // A box that picks one block changes that block only.
+  results.untouched.boxOverCharlie = await touched(() => drag(bottom('Charlie'), { x: R.Charlie.x + 30, y: R.Charlie.y + R.Charlie.h - 10 }));
+  await clearByClick();
 
   // ---- a plain drag on the empty canvas draws a box ----
   results.box.plain = await drag(bottom('Charlie'), top('Bravo'));
@@ -332,8 +413,36 @@ try {
   await key('keyup', ' ', 'Space', field);
   field.remove();
 
+  // ---- words in a note (T255) ----
+  await clearByClick();
+  const alpha = () => wordsOf('Alpha').firstElementChild; // the paragraph its words are in
+  results.words.inNote = await pressAndRelease(alpha(), alpha(), { during: () => select(wordsOf('Alpha'), 0, 3) });
+  results.words.pastItsEnd = await pressAndRelease(alpha(), pane(), { during: () => select(wordsOf('Alpha'), 1, 5) });
+  // A selection box drawn from the empty canvas, as Safari selects the first words on the canvas then.
+  results.words.box = await pressAndRelease(pane(), pane(), { during: () => select(wordsOf('Alpha'), 0, 5) });
+  // Words left selected in a note, then a click on the empty canvas, or on another note's words.
+  select(wordsOf('Bravo'), 0, 5);
+  results.words.leftThenPane = await pressAndRelease(pane(), pane());
+  select(wordsOf('Bravo'), 0, 5);
+  results.words.leftThenOtherNote = await pressAndRelease(alpha(), alpha());
+  results.words.doubleClick = await pressAndRelease(alpha(), alpha(), { during: () => select(wordsOf('Alpha'), 0, 5), extra: { detail: 2 } });
+  results.words.shift = await pressAndRelease(alpha(), alpha(), { during: () => select(wordsOf('Alpha'), 0, 5), extra: { shiftKey: true } });
+  results.words.blocksSelected = selected();
+  await clearByClick();
+  // The note's full view, to read: words selected there stay selected, to copy.
+  focusOn('Alpha');
+  await key('keydown', 'Enter', 'Enter', node('Alpha'));
+  await key('keyup', 'Enter', 'Enter', node('Alpha'));
+  await wait(150);
+  const full = document.querySelector('.note-full');
+  results.words.fullView = full && (await pressAndRelease(full.firstElementChild, full.firstElementChild, { during: () => select(full, 0, 5) }));
+  await closeOverlay();
+
   // ---- a read-only canvas selects too ----
   await show(true);
+  results.readOnly.words = await pressAndRelease(alpha(), alpha(), { during: () => select(wordsOf('Alpha'), 0, 5) });
+  select(wordsOf('Bravo'), 0, 5);
+  results.readOnly.leftThenPane = await pressAndRelease(pane(), pane());
   results.readOnly.drag = await drag(bottom('Charlie'), top('Bravo'));
   results.readOnly.groupKept = (await drag({ x: R.Golf.x - 40, y: R.Golf.y + 50 }, { x: R.Golf.x + 40, y: R.Golf.y + 10 })).after;
   results.readOnly.spacePans = await (async () => {
@@ -379,6 +488,7 @@ type Drag = { during: { selected: string[]; box: boolean; hint: string | null };
 type Results = {
   error?: string;
   hint: { text: string; clearOfControls: boolean; sameFoot: boolean; insideCanvas: boolean; takesPointer: string; background: string; colour: string; quiet: string };
+  untouched: { press: Touched; release: Touched; click: Touched; box: Touched; boxOverCharlie: Touched };
   box: { plain: Drag; viewportKept: boolean; clickClears: string[]; graze: Drag; hintAfter: string; dragLeft: Drag };
   frames: { overBlock: Drag; coverAll: Drag; onlyFrame: Drag; clickSelects: string[]; shiftInside: Drag };
   move: { frame: { dx: number; dy: number; box: boolean }; inFrame: number[]; viewportKept: boolean; block: { dx: number; dy: number; box: boolean } };
@@ -407,8 +517,23 @@ type Results = {
     typingOpens: boolean;
     typingDefaultPrevented: boolean;
   };
-  readOnly: { drag: Drag; groupKept: string[]; spacePans: boolean; middlePans: boolean; hint: boolean };
+  words: {
+    inNote: Pressed;
+    pastItsEnd: Pressed;
+    box: Pressed;
+    leftThenPane: Pressed;
+    leftThenOtherNote: Pressed;
+    doubleClick: Pressed;
+    shift: Pressed;
+    blocksSelected: string[];
+    fullView: Pressed | null;
+  };
+  readOnly: { drag: Drag; groupKept: string[]; spacePans: boolean; middlePans: boolean; hint: boolean; words: Pressed; leftThenPane: Pressed };
 };
+// A press and its release: the quote of the prompt it opened, the words left selected, and whether the press could select text.
+type Pressed = { quote: string | null; selected: string; selectsText: boolean };
+// The blocks a gesture changed anything in, those it drew anew, and what a box left selected.
+type Touched = { changed: string[]; redrawn: string[]; after?: string[] };
 
 describe('Selecting with the mouse on the canvas', { skip: !CHROME && 'needs Chrome or Chromium (set CHROME_PATH)' }, () => {
   let results: Results;
@@ -419,6 +544,22 @@ describe('Selecting with the mouse on the canvas', { skip: !CHROME && 'needs Chr
 
   it('draws the canvas and takes every event the page sends it', () => {
     assert.equal(results.error, undefined);
+  });
+
+  describe('the blocks far from a press on the empty canvas (T264)', () => {
+    it('are left alone by a press, its release and a click: nothing in them changes, nothing is drawn anew', () => {
+      for (const gesture of ['press', 'release', 'click'] as const) {
+        assert.deepEqual(results.untouched[gesture], { changed: [], redrawn: [] }, gesture);
+      }
+    });
+
+    it('are left alone by a box drawn on the empty canvas, in a group or not', () => {
+      assert.deepEqual(results.untouched.box, { changed: [], redrawn: [], after: [] });
+    });
+
+    it('a box that picks a block changes that block alone', () => {
+      assert.deepEqual(results.untouched.boxOverCharlie, { changed: ['Charlie'], redrawn: [], after: ['Charlie'] });
+    });
   });
 
   describe('a plain drag on the empty canvas', () => {
@@ -544,6 +685,32 @@ describe('Selecting with the mouse on the canvas', { skip: !CHROME && 'needs Chr
     });
   });
 
+  describe("words in a note, and the prompt that pins them (T255)", () => {
+    it('opens the prompt on words selected in a note, pressed and let go there or past its end', () => {
+      assert.deepEqual(results.words.inNote, { quote: '“Alp”', selected: '', selectsText: true }, 'the words show as being pinned instead');
+      assert.equal(results.words.pastItsEnd.quote, '“lpha”');
+    });
+
+    it('never opens it from a selection box drawn on the empty canvas, which selects no text, whatever is selected', () => {
+      assert.deepEqual(results.words.box, { quote: null, selected: 'Alpha', selectsText: false });
+    });
+
+    it('never opens it from words left selected in a note, on a click on the empty canvas, which lets them go, or on another note', () => {
+      assert.deepEqual(results.words.leftThenPane, { quote: null, selected: '', selectsText: false });
+      assert.equal(results.words.leftThenOtherNote.quote, null);
+    });
+
+    it('leaves a double-click to edit, and a press with Shift to the selection of blocks', () => {
+      assert.equal(results.words.doubleClick.quote, null);
+      assert.equal(results.words.shift.quote, null);
+    });
+
+    it("leaves words selected in a note's full view, to copy, alone", () => {
+      assert.ok(results.words.fullView, 'the full view opened');
+      assert.deepEqual(results.words.fullView, { quote: null, selected: 'Alpha', selectsText: true });
+    });
+  });
+
   describe('a read-only canvas', () => {
     it('selects with a drag, and moves with Space or the middle button, but not a plain drag; it has the hint too', () => {
       assert.deepEqual(results.readOnly.drag.after, ['Alpha', 'Bravo', 'Charlie', 'Oscar']);
@@ -551,6 +718,11 @@ describe('Selecting with the mouse on the canvas', { skip: !CHROME && 'needs Chr
       assert.equal(results.readOnly.spacePans, true);
       assert.equal(results.readOnly.middlePans, true);
       assert.equal(results.readOnly.hint, true);
+    });
+
+    it('lets words be selected in a note, to copy, and pins none; a click on the empty canvas lets them go', () => {
+      assert.deepEqual(results.readOnly.words, { quote: null, selected: 'Alpha', selectsText: true });
+      assert.equal(results.readOnly.leftThenPane.selected, '');
     });
   });
 
