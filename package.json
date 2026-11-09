@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A shared planning board where humans and agents make decisions together, over MCP",
-  "releaseNotes": "The terminal's Tricot tab opens on a chat with the whole board, and a click on the strip switches tabs. Pick an agent's model and thinking for one message, as @Claude:opus:high or from the @ menu. Grok Build, Goose and Hermes Agent join, and blocks copy between canvases.",
+  "releaseNotes": "GitHub Copilot CLI joins the agents. The Tricot tab's chat takes /add, /stop, /open and /quit, its line wraps as you type, and a click opens links and cards. The light theme takes Tricot's warm paper and ink, and a reply on a website's pinned element now opens it.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
