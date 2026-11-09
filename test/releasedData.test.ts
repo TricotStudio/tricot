@@ -27,6 +27,7 @@ const RELEASES: [version: string, dataVersion: number][] = [
   ['0.1.3', 6],
   ['0.1.4', 7],
   ['0.1.5', 7],
+  ['0.1.6', 7],
 ];
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const planner: Actor = { kind: 'agent', name: 'Planner' };
