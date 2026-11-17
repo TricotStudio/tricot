@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A shared board of canvases, threads and files where humans and agents work together, over MCP",
-  "releaseNotes": "Tricot Canvas is a shared board where you and your agents work side by side on canvases of notes, tables, diagrams, code and websites. Pin any part of a block and talk it through in a thread; agents connect over MCP and answer on the board.",
+  "releaseNotes": "Search inside your project's files from Files, or with Cmd+Shift+F. A bell beside search lists what needs you and turns on sound and desktop notifications. tricot connect asks one short question, Claude Code's questions are answered on the board, and waiting agents stay online.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
