@@ -34,6 +34,7 @@ import type { Route } from '../core/routes';
 import type { Reacted, ReactionPlace, Store } from '../core/store';
 import type { Actor, Board, BoardEvent } from '../core/types';
 import type { Tier } from './access';
+import type { Connectors } from './connectors';
 import type { Presence } from './presence';
 import { tableRouteOf, type RouteHandler } from './routing';
 
@@ -42,6 +43,9 @@ import { tableRouteOf, type RouteHandler } from './routing';
 export interface ApiKit {
   store: Store;
   presence?: Presence;
+  // The connectors on this machine (connectors/index.ts), when the app has them: for a part's route that acts through
+  // one as the person who signed in to it. Their own routes are the connectors' (connectors/routes.ts).
+  connectors?: Pick<Connectors, 'get'>;
   // Registers a route of a table on the router, as the core's handlers are
   // (routing.ts routesOn). Handlers run in the order they are given.
   on<Path extends string>(route: Route<Path>, ...handlers: RouteHandler<Path>[]): void;

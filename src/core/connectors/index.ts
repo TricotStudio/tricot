@@ -12,7 +12,7 @@ import type { Sayer } from '../words';
 import type { ConnectorAccess, ConnectorStatus } from './connector';
 import { connectorKinds, findConnector } from './registry';
 
-export type { ConnectorAccess, ConnectorId, ConnectorKind, ConnectorState, ConnectorStatus, SharedDecision } from './connector';
+export type { ConnectorAccess, ConnectorId, ConnectorKind, ConnectorState, ConnectorStatus } from './connector';
 export { connectorKinds, connectorPinning, connectorRoutes, findConnector } from './registry';
 
 // Plain words for the scopes any connector may ask for. Scopes are the

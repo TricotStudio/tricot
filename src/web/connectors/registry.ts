@@ -6,7 +6,7 @@
 // this repository.
 
 import type { LinkSource } from '../../core/sources';
-import type { WebConnector } from './connector';
+import type { ConnectorShare, WebConnector } from './connector';
 import { figma } from './figma';
 import { github } from './github';
 import { google } from './google';
@@ -29,4 +29,22 @@ export function webConnector(id: string): WebConnector | undefined {
 // The connector a recognised link belongs to, if it comes from one.
 export function connectorOfLink(source: LinkSource | null): WebConnector | undefined {
   return source?.connector ? webConnector(source.connector) : undefined;
+}
+
+let shares: Readonly<Record<string, ConnectorShare>> = {};
+
+// Adds what a part of Tricot lets a person do with its cards through a connector (its Share to Slack), by the connector's
+// id, for the page that registers them where it starts: a page that registers none has none (Canvas's). It returns what
+// puts back the ones that were there before.
+export function useConnectorShares(added: Readonly<Record<string, ConnectorShare<never>>>): () => void {
+  const before = shares;
+  shares = { ...before, ...added };
+  return () => {
+    shares = before;
+  };
+}
+
+// The shares the page has for the connectors there are, each with the connector's id; the card that asks says what its card is.
+export function connectorShares<Card>(): { id: string; share: ConnectorShare<Card> }[] {
+  return webConnectors().flatMap((c) => (Object.hasOwn(shares, c.id) ? [{ id: c.id, share: shares[c.id] as ConnectorShare<Card> }] : []));
 }

@@ -4,8 +4,8 @@
 // service. A connector's web folder (web/connectors/<id>/) is the whole of it
 // here. Internal: connectors are code in this repository.
 
-import type { ComponentType } from 'react';
-import type { ConnectorStatus, SharedDecision } from '../../core/connectors';
+import type { ComponentType, ReactNode } from 'react';
+import type { ConnectorStatus } from '../../core/connectors';
 import type { LinkSource } from '../../core/sources';
 import type { Block, BlockVersion, Board, Pin } from '../../core/types';
 import type { Mark } from '../canvas/sources/mark';
@@ -46,13 +46,15 @@ export interface ConnectorEditor {
   opensPin(pin: Pin): boolean; // whether showing this pin's comment opens the editor there
 }
 
-// What a person can do with a card once signed in: send it to the service
-// (Slack's Share to Slack). It is a choice in the card's ⋯ menu, which
-// opens `Dialog`; what goes out is the person's own action, from their page.
-export interface ConnectorShare {
-  label: string; // "Share to Slack…"
+// What a person can do with a card once signed in, which a part of Tricot
+// that has such cards adds to a connector (registry.ts useConnectorShares):
+// send it to the service. It is a choice in the card's ⋯ menu, which opens
+// `Dialog`; what goes out is the person's own action, from their page. The
+// connector itself has none, so a page whose part registers none offers none.
+export interface ConnectorShare<Card = never> {
+  label: string; // the choice's words
   note: string; // under it in the menu
-  Dialog: ComponentType<{ board: Board; decision: SharedDecision; onClose(): void }>;
+  Dialog(props: { board: Board; card: Card; onClose(): void }): ReactNode; // a component: a function, so a share of one kind of card is kept among the rest
 }
 
 export interface WebConnector {
@@ -75,8 +77,6 @@ export interface WebConnector {
   readonly editor?: ConnectorEditor;
   // More on the card of a link it recognises, under its title (a frame's thumbnail and what to do with it).
   LinkCard?: ComponentType<{ block: LinkBlock; source: LinkSource }>;
-  // A card can be shared to it, once it is connected.
-  readonly share?: ConnectorShare;
   // In the toolbar of an image block that came from it (see ImageOrigin in core/blocks/image).
   ImageTools?: ComponentType<{ block: ImageBlock; viewing: BlockVersion | null }>;
 }

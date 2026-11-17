@@ -196,7 +196,7 @@ export function createApp(
   app.use('/api', createApprovalsRouter(store, approvals, { ...options.approvals, hosts, seats, person }));
   // The routes of the parts of Tricot, which the core's router mounts as it is built (api.ts): the edition's, or none.
   const parts = options.parts ?? new ApiParts();
-  app.use('/api', createApiRouter(store, { mcpUrl: options.mcpUrl, version: options.version, ...(options.source && { source: options.source }), ...(options.folder && { folder: options.folder }), ...(options.chooseFolder && { chooseFolder: options.chooseFolder }) }, presence, steps, pairing, approvals, person, seats, parts));
+  app.use('/api', createApiRouter(store, { mcpUrl: options.mcpUrl, version: options.version, ...(options.source && { source: options.source }), ...(options.folder && { folder: options.folder }), ...(options.chooseFolder && { chooseFolder: options.chooseFolder }) }, presence, steps, pairing, approvals, person, seats, parts, options.connectors));
   // Beyond this computer, no repository on it is read for an area's files.
   const commitFiles = loopback ? options.commitFiles : undefined;
   // A Codex connected on its own is woken through Codex itself, which runs on this computer (codexWake.ts).

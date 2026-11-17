@@ -67,30 +67,3 @@
   flex: 1;
   min-width: 0;
 }
-
-/* The dialog on a card's ⋯: the message as it will be posted. */
-.slack-share {
-  width: min(520px, 100%);
-}
-.slack-share-preview {
-  margin: 0;
-  padding: 10px 12px;
-  max-height: 220px;
-  overflow: auto;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.delete-dialog .slack-share-line {
-  min-height: 1.5em;
-  margin: 0;
-  font-size: 13px;
-  color: var(--text);
-}
-.slack-share-link {
-  color: var(--exploring-ink);
-}

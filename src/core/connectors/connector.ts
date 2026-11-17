@@ -31,15 +31,6 @@ import type { Sayer } from '../words';
 
 export type ConnectorId = string;
 
-// What of a card a connector reads to share it (Slack's Share to Slack): the card's own record has all of it.
-export interface SharedDecision {
-  id: string;
-  number: number;
-  question: string;
-  options: { id: string; label: string; description?: string; outdated?: object }[];
-  recommendation?: { optionId?: string };
-}
-
 // not_set_up: no OAuth client to sign in with yet (the setup steps say how).
 // ready: a client is there; nobody has signed in.
 // connected: signed in, as account.email.

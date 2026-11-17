@@ -13,6 +13,7 @@ import { canvasBody, cardIdsOf, projectFileParams, projectSearchParams, agentSte
 import { asPerson, fromThisComputer, peopleChange, personOnly, readerOf, type PersonGate, type PersonVerdict } from './access';
 import { osHome } from '../platform/paths';
 import type { Approvals } from './approvals';
+import type { Connectors } from './connectors';
 import { openStepsStream, openStream, type Reader } from './live';
 import type { PairingSessions } from './pairing';
 import type { Presence } from './presence';
@@ -76,6 +77,7 @@ export function createApiRouter(
   person: PersonGate = (req, tier) => asPerson(req, tier), // who is a person, and at which tier (access.ts); the app's, with its terminals and seats
   seats?: Seats, // the person's seats (seats.ts): their streams' tickets, and the admissions they answer
   parts: ApiParts = new ApiParts(), // the routes a part of Tricot adds (apiParts.ts): a part's, which createApp registers; none, the canvas alone
+  connectors?: Pick<Connectors, 'get'>, // the app's connectors, which a part's route may act through (apiParts.ts)
 ): Router {
   const api = Router();
   const on = routesOn(api, '/api');
@@ -708,7 +710,7 @@ export function createApiRouter(
   // What a part of Tricot adds (apiParts.ts), here and nowhere else: after the
   // gate above, so a part's changes are a person's and its tiers are its own,
   // and before the 404 and the error handler below, which are its too.
-  const kit: ApiKit = { store, presence, on, seated, personOnly: (tier) => personOnly(person, tier), human, param, react, onApprovalAnswered: (listener) => void approvals?.onAnswered(listener) };
+  const kit: ApiKit = { store, presence, ...(connectors && { connectors }), on, seated, personOnly: (tier) => personOnly(person, tier), human, param, react, onApprovalAnswered: (listener) => void approvals?.onAnswered(listener) };
   needsSource = parts.needs(kit);
   parts.mount(api, kit);
 

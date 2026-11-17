@@ -1,10 +1,10 @@
 // Slack as a connector (core half, browser-safe): who it is, what it may do in
 // plain words, the links it recognises and its REST routes (routes.ts). A
 // person signs in as themselves (OAuth with PKCE, which needs no client
-// secret), Tricot reads the threads they link, and they can share a card
-// to a channel. What only the server needs is in server.ts, which the web
-// build leaves out (see vite.config.ts); signing in, reading, sharing, serving
-// its routes and its tool are in server/connectors/slack/.
+// secret) and Tricot reads the threads they link. What only the server needs
+// is in server.ts, which the web build leaves out (see vite.config.ts);
+// signing in, reading, serving its routes and its tool are in
+// server/connectors/slack/.
 
 import type { ConnectorKind } from '../connector';
 import { slackRoutes } from './routes';

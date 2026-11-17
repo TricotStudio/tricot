@@ -5,8 +5,7 @@
 // sign-in is kept in <data dir>/connectors/slack.json (0600) and its tokens go
 // only to slack.com, never into a log or a reply. Slack ends a desktop
 // sign-in's refresh token after 30 days, and the connector then says plainly
-// that the person signs in again. Reading threads is ./reader.ts, sharing a
-// card ./share.ts.
+// that the person signs in again. Reading threads is ./reader.ts.
 
 import path from 'node:path';
 import { describeAccess, type ConnectorStatus } from '../../../core/connectors';

@@ -92,9 +92,8 @@ export function createConnectorsRouter(connectors: Connectors, store: Store, per
   // What a connector adds, under its id: /api/connectors/google/files/:fileId…
   for (const { id, router: own } of connectors.routes(store, person)) router.use(`/${id}`, own);
 
-  router.use((_req, res) => {
-    res.status(404).json({ error: 'Not found' });
-  });
+  // A path it doesn't serve goes on to the API router, which answers the 404 as for any route Tricot has not got and
+  // serves the routes a part of Tricot adds under a connector's address (apiParts.ts).
 
   const errors: ErrorRequestHandler = (error, _req, res, _next) => {
     if (error instanceof ConnectorError) {

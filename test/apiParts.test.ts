@@ -13,7 +13,7 @@ import { ask, serve, type Running } from './apiPartsKit';
 // serves the canvas alone.
 
 // A part of a test's own: not a part's, so it shows what the position gives any part.
-const zooRoutes = { look: get('/api/zoo'), feed: post('/api/zoo/:animal/feed'), close: post('/api/zoo/close') };
+const zooRoutes = { look: get('/api/zoo'), feed: post('/api/zoo/:animal/feed'), close: post('/api/zoo/close'), keeper: post('/api/connectors/zoo/keeper') };
 const zoo: ApiPart = {
   id: 'zoo',
   routes: zooRoutes,
@@ -26,6 +26,9 @@ const zoo: ApiPart = {
     });
     on(zooRoutes.close, () => {
       throw new BoardError('The zoo is closed.', 'conflict');
+    });
+    on(zooRoutes.keeper, seated, (_req, res) => {
+      res.json({ keeper: 'Sam' });
     });
   },
 };
@@ -51,6 +54,13 @@ describe('An app with no parts, the canvas alone', () => {
     assert.equal((await ask(running, 'terminal', 'POST', `/api/boards/${boardId}/threads`, { actor: 'Sam', body: 'Hello' })).status, 201);
     assert.equal((await ask(running, 'seat', 'POST', `/api/boards/${boardId}/archive`)).status, 200, "a seat's change of the core's goes through its own gate");
   });
+
+  it("answers a part's route under a connector's address with the plain 404, as it does any route it has not got", async () => {
+    for (const [method, route] of [['POST', '/api/connectors/slack/zoo/any/feed'], ['POST', '/api/connectors/zoo/keeper'], ['GET', '/api/connectors/slack/nothing']] as const) {
+      const answer = await ask(running, 'seat', method, route, { channel: 'C0123ABCD' });
+      assert.deepEqual([answer.status, answer.body], [404, { error: 'Not found' }], route);
+    }
+  });
 });
 
 describe('A part mounted before the 404, whichever it is', () => {
@@ -67,5 +77,13 @@ describe('A part mounted before the 404, whichever it is', () => {
     assert.deepEqual([terminal.status, terminal.body.code], [403, SEAT_NEEDED]);
     const seat = await ask(running, 'seat', 'POST', '/api/zoo/lion/feed');
     assert.deepEqual([seat.status, seat.body], [200, { fed: 'lion', by: 'Sam' }]);
+  });
+
+  it("serves a route under a connector's address, which the connectors' router leaves to the API router, with the gate and tier it asks", async () => {
+    const terminal = await ask(running, 'terminal', 'POST', '/api/connectors/zoo/keeper');
+    assert.deepEqual([terminal.status, terminal.body.code], [403, SEAT_NEEDED]);
+    const seat = await ask(running, 'seat', 'POST', '/api/connectors/zoo/keeper');
+    assert.deepEqual([seat.status, seat.body], [200, { keeper: 'Sam' }]);
+    assert.deepEqual([(await ask(running, 'seat', 'POST', '/api/connectors/zoo/other')).status], [404]);
   });
 });

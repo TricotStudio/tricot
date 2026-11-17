@@ -1,11 +1,10 @@
-// Slack's web half: its mark and panel words on the Connectors page, the live
-// card of a linked thread on a canvas, and "Share to Slack" on a card's ⋯.
+// Slack's web half: its mark and panel words on the Connectors page and the live
+// card of a linked thread on a canvas.
 // What it is and may do is core/connectors/slack/.
 
 import { LOGOS } from '../../canvas/sources/sites';
 import type { WebConnector } from '../connector';
 import { SlackThreadCard } from './card';
-import { ShareDecisionDialog } from './share';
 import { loadThread } from './threads';
 import './slack.css';
 
@@ -25,21 +24,16 @@ function SlackMark() {
 export const slack: WebConnector = {
   id: 'slack',
   Mark: SlackMark,
-  serves: 'Threads you link, and what you share',
+  serves: 'Threads you link',
   setup: {
     intro: "Tricot Studio's Slack app isn't built into this copy of Tricot yet. To use Slack now, make an app of your own, once:",
     files: ['slack-client.json'],
   },
   signOutHint: "remove Tricot from your workspace's apps in Slack.",
   accessNote: () =>
-    "It signs in as you. It reads the threads you link, and posts only when you choose Share to Slack. Agents can read a linked thread; they can't post to Slack.",
+    "It signs in as you and reads the threads you link. It posts only when you choose to share something, never for an agent: agents can read a linked thread; they can't post to Slack.",
   LinkCard: SlackThreadCard,
   marks: { slack: LOGOS.slack },
-  share: {
-    label: 'Share to Slack…',
-    note: 'Post the question, the options and a link back to a channel, as you.',
-    Dialog: ShareDecisionDialog,
-  },
   // Who started the thread names the link until a person titles it; what they said is on the card under it.
   fileInfo: async (key) => {
     const answer = await loadThread(key);

@@ -17,10 +17,4 @@ export interface SlackProblem {
   message: string;
 }
 
-// What a share to Slack came to.
-export interface SlackShared {
-  channel: string;
-  ts: string;
-}
-
 export const repliesText = (count: number): string => (count === 0 ? 'No replies' : count === 1 ? '1 reply' : `${count} replies`);
