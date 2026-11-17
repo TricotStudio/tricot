@@ -317,7 +317,7 @@ async function published(version) {
       ok(`The GitHub release ${tag} has ${bottleAsset}, the Homebrew bottle.`);
       bottleDigest = typeof bottle.digest === 'string' ? bottle.digest.replace(/^sha256:/, '') : undefined;
     } else {
-      left(`The GitHub release ${tag} has no ${bottleAsset} yet. The Release workflow's bottle job makes it, and Homebrew needs it (without it, brew builds from source and wants a recent Xcode). If that job failed, the person runs the Bottle workflow again:\n! gh workflow run bottle.yml --repo ${slug} -f tag=${tag}`);
+      left(`The GitHub release ${tag} has no ${bottleAsset} yet. It is made on this Mac, once the Release workflow has attached ${asset}, and Homebrew needs it (without it, brew builds from source and wants a recent Xcode). The person runs the script, with Tricot not installed with Homebrew (brew uninstall tricot first):\n! bash scripts/bottle-on-this-mac.sh ${version}`);
     }
     if (info.isDraft) warn(`The GitHub release ${tag} is still a draft.`);
   }

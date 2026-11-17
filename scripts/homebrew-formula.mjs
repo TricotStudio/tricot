@@ -4,7 +4,7 @@
 // RELEASING.md says when.
 //
 //   node scripts/homebrew-formula.mjs [version]                 once the GitHub release v<version> is out, with its bottle (default: package.json's version)
-//   node scripts/homebrew-formula.mjs [version] --no-bottle     the formula without its bottle block: what the bottle is built from (.github/workflows/bottle.yml)
+//   node scripts/homebrew-formula.mjs [version] --no-bottle     the formula without its bottle block: what the bottle is built from (scripts/bottle-on-this-mac.sh)
 //   node scripts/homebrew-formula.mjs --tarball tricot-x.y.z.tgz [--bottle tricot-x.y.z.all.bottle.tar.gz]
 //                                                               to try it on a local npm pack and bottle (paths or file:// URLs)
 //
@@ -22,13 +22,13 @@
 // The formula also names a bottle, tricot-<version>.all.bottle.tar.gz on the
 // same release, so that `brew install` unpacks a file instead of building
 // from source, which makes Homebrew check that Xcode or the Command Line Tools
-// are recent for a package that has nothing to compile. The bottle
-// workflow builds it from the formula this writes with --no-bottle, and
-// attaches it to the release. This fetches it too, checks its sha256 against
-// GitHub's digest, and checks that the package inside is the release's file:
-// every file the same byte for byte, but for the node line Homebrew puts at the
-// top of the scripts that start with one, and the scripts that build the
-// package, which it takes out of package.json. A release without its bottle
+// are recent for a package that has nothing to compile. The release's Mac
+// builds it, with scripts/bottle-on-this-mac.sh, from the formula this writes
+// with --no-bottle, and attaches it to the release. This fetches it too,
+// checks its sha256 against GitHub's digest, and checks that the package
+// inside is the release's file: every file the same byte for byte, but for the
+// node line Homebrew puts at the top of the scripts that start with one, and
+// the scripts that build the package, which it takes out of package.json. A release without its bottle
 // stops here, unless --no-bottle says to write the formula without it, which
 // makes Homebrew build from source (and need a recent Xcode or Command Line
 // Tools). The GITHUB_TOKEN or GH_TOKEN of the environment, when there is one,
@@ -84,7 +84,7 @@ const releaseUrl = (version) => `${releaseDir(version)}/${asset(version)}`;
 const noRelease = (version) =>
   `There's no GitHub release v${version} with ${asset(version)} yet. Push the tag and let the release workflow finish (RELEASING.md), then run this again.`;
 const noBottle = (version) =>
-  `The GitHub release v${version} has no ${bottleAsset(version)} yet. The release workflow's bottle job makes it: let that finish and run this again. If it failed, the Bottle workflow can be run on its own for this tag (RELEASING.md). Without a bottle, Homebrew builds from source and stops on an Xcode or Command Line Tools that aren't recent, so only pass --no-bottle to write the formula that way on purpose.`;
+  `The GitHub release v${version} has no ${bottleAsset(version)} yet. It is made on the Mac the release is made on, once the release workflow has attached the package: run: bash scripts/bottle-on-this-mac.sh ${version} (RELEASING.md), then this again. Without a bottle, Homebrew builds from source and stops on an Xcode or Command Line Tools that aren't recent, so only pass --no-bottle to write the formula that way on purpose.`;
 
 // The package.json inside a tarball.
 function packageJsonIn(tarball) {
@@ -304,5 +304,5 @@ mkdirSync(path.dirname(values.out), { recursive: true });
 writeFileSync(values.out, formula);
 console.log(`Wrote the formula for tricot ${version} (sha256 ${sha256}${bottle ? `, bottle sha256 ${bottleSha256}` : ', no bottle'}) to ${path.relative(root, values.out)}.`);
 if (local) console.log(`From local files: run this again once the GitHub release v${version} is out.`);
-else if (!bottle) console.log('No bottle: Homebrew builds this from source, and stops on an Xcode or Command Line Tools that are not recent. Run the Bottle workflow for this tag, then this script again, to fix that.');
+else if (!bottle) console.log('No bottle: Homebrew builds this from source, and stops on an Xcode or Command Line Tools that are not recent. Run scripts/bottle-on-this-mac.sh for this tag, then this script again, to fix that.');
 else console.log('Next: copy it to Formula/tricot.rb in TricotStudio/homebrew-tap, commit and push (RELEASING.md).');

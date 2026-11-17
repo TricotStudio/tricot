@@ -1,23 +1,23 @@
 ---
 name: release
-description: Stages a new Tricot release with the person, step by step. Checks main is clean, up to date and green on CI, proposes the next version from the commits since the last tag, writes the update notice's release notes, makes the "Tricot x.y.z" commit and its tag, hands over the push, watches the Release workflow, walks the person through approving on npm, and updates the Homebrew formula and tap. Use when someone asks to release, ship, cut or stage a new version of Tricot.
+description: Stages a new Tricot release with the person, step by step. Checks main is clean, up to date and green on CI, proposes the next version from the commits since the last tag, writes the update notice's release notes, makes the "Tricot x.y.z" commit and its tag, hands over the push, watches the Release workflow, hands over the Homebrew bottle's script, walks the person through approving on npm, and updates the Homebrew formula and tap. Use when someone asks to release, ship, cut or stage a new version of Tricot.
 argument-hint: "[x.y.z | patch | minor | major]"
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/release.mjs *) Bash(git status *) Bash(git log *) Bash(git diff *) Bash(git show *) Bash(git fetch *) Bash(git ls-remote *) Bash(gh run list *) Bash(gh run view *) Bash(gh run watch *) Bash(gh release view *) Bash(npm run typecheck) Bash(npm test)
 ---
 
 # Release Tricot
 
-You are staging a release of Tricot with the person, in nine steps. The arguments may give a version (0.2.0) or a kind of bump (patch, minor or major). With no version, suggest one. Arguments: $ARGUMENTS
+You are staging a release of Tricot with the person, in ten steps. The arguments may give a version (0.2.0) or a kind of bump (patch, minor or major). With no version, suggest one. Arguments: $ARGUMENTS
 
 RELEASING.md explains the machinery. The helper beside this file, `node ${CLAUDE_SKILL_DIR}/release.mjs`, does the checks, with one command for each step below. Every line it prints starts with `ok`, `warn`, `stop` or `left` (still to do).
 
 ## Rules
 
-- **Never** run `git push`, `npm publish`, `npm stage approve`, `npm login`, `npm adduser`, `npm dist-tag`, `gh release create|edit|upload|delete`, `gh run rerun`, `gh workflow run`, or any `brew` command (even `brew audit` turns on Homebrew's developer mode for the whole machine). When one of these is needed, show the exact command for the person to run with the `!` prefix, which runs it in their session (in a terminal, without the `!`), and wait for them.
+- **Never** run `git push`, `npm publish`, `npm stage approve`, `npm login`, `npm adduser`, `npm dist-tag`, `gh release create|edit|upload|delete`, `gh run rerun`, `gh workflow run`, `bash scripts/bottle-on-this-mac.sh`, or any `brew` command (even `brew audit` turns on Homebrew's developer mode for the whole machine). When one of these is needed, show the exact command for the person to run with the `!` prefix, which runs it in their session (in a terminal, without the `!`), and wait for them.
 - **Ask first** before every step that changes something: writing the notes, setting the version, the commit, the tag, the formula and the tap. Say what will happen and that nothing leaves the machine, then wait for a yes.
 - **A `stop` line ends the release there.** Tell the person in plain words what is wrong and what fixes it, and don't work around it. Show each `warn` line to the person and go on only if they say so.
 - Work in the repository's main checkout, on `main`, from its top folder. In an agent worktree, stop and say the release is made from the main checkout.
-- Write to the person as a colleague would: what it means for them first, full sentences, no commit hashes. Keep a short list of the nine steps and say where you are.
+- Write to the person as a colleague would: what it means for them first, full sentences, no commit hashes. Keep a short list of the ten steps and say where you are.
 - If you stop partway, say exactly what is done and how to undo it (see "Stopping partway" at the end).
 
 ## 1. Check that main is ready (read-only)
@@ -122,13 +122,36 @@ gh run watch <id> --repo TricotStudio/tricot --exit-status
 
 The workflow takes several minutes, so run the watch in the background if you can.
 
-- **It passed:** the GitHub release is out with `tricot-x.y.z.tgz` and `tricot-x.y.z.all.bottle.tar.gz`, the Homebrew bottle (https://github.com/TricotStudio/tricot/releases/tag/vx.y.z). Go on to steps 7 and 8.
-- **Only its bottle job failed** (the jobs are `release`, `bottle` and `npm`; the other two passed): the release and npm are fine, and the tag stays where it is. Only the formula in step 8 has to wait for the bottle, because without one Homebrew builds from source and stops on an Xcode or Command Line Tools that aren't recent. Look at why (`--log-failed`, as below). When it was by chance, the person runs the job again with `! gh run rerun <id> --failed --repo TricotStudio/tricot`, or makes the bottle on its own with `! gh workflow run bottle.yml --repo TricotStudio/tricot -f tag=vx.y.z`. Go on with step 7 meanwhile. When it fails the same way again, it is a problem in `.github/workflows/bottle.yml` or `scripts/homebrew-formula.mjs` to fix on `main`, and the bottle is made again with that workflow (not by moving the tag).
-- **Another job failed:** run `gh run view <id> --repo TricotStudio/tricot --log-failed | tail -n 80`. Show the person the few lines that matter, say which step failed and what it means, and stop with a suggestion:
+- **It passed:** the GitHub release is out with `tricot-x.y.z.tgz` (https://github.com/TricotStudio/tricot/releases/tag/vx.y.z), and npm has the version staged. The workflow's jobs are `release` and `npm`; none makes the Homebrew bottle, which needs a Mac and is made on this one in step 7. Go on to step 7.
+- **A job failed:** run `gh run view <id> --repo TricotStudio/tricot --log-failed | tail -n 80`. Show the person the few lines that matter, say which step failed and what it means, and stop with a suggestion:
   - **A failure by chance** (network, runner): the person re-runs it, with `! gh run rerun <id> --failed --repo TricotStudio/tricot`, or from the run's page.
   - **A real problem:** it needs a fix on `main`. The tag can move onto the fix only while npm doesn't have x.y.z. Check with `release.mjs published x.y.z`. With the person's yes, run `git tag -fa vx.y.z -m "Tricot x.y.z"` on the fixed commit, and hand over `! git push origin main && git push -f origin vx.y.z`. If npm already has x.y.z, release the next patch version instead.
 
-## 7. The npm approval (the person's)
+## 7. The Homebrew bottle (the person's, on this Mac)
+
+Homebrew installs a bottle: Tricot already installed, attached to the release as `tricot-x.y.z.all.bottle.tar.gz`. Without it, brew builds Tricot from source, and stops with "Your Xcode is too outdated" on a Mac whose Xcode or Command Line Tools aren't recent. No workflow makes it, because it needs a Mac and GitHub's often don't turn up. `scripts/bottle-on-this-mac.sh` makes it here, from the release's own package, so it needs the Release workflow to have attached `tricot-x.y.z.tgz` (step 6; npm needn't have the version yet).
+
+The script runs `brew`, so it is the person's, never yours. Tell them what it needs and does:
+
+- Tricot must not be installed with Homebrew while it runs, because it installs a Tricot of its own from a throwaway tap, and refuses otherwise. If it is, `brew uninstall tricot` first, and `brew install tricotstudio/tap/tricot` once the tap has the new formula (step 9).
+- It builds, tests, bottles and pours the bottle, checks that it holds the release's package, attaches it to the GitHub release, and takes its throwaway tap and Tricot away again, whatever happens. It takes a few minutes.
+- `brew bottle` may turn on Homebrew's developer mode for the whole machine; `brew developer off` turns it off again.
+
+Hand over:
+
+```
+! bash scripts/bottle-on-this-mac.sh x.y.z
+```
+
+When it fails, show the person the last lines it printed, and say what they mean. A failure by chance (network) is run again, and it replaces a bottle already on the release. A real problem is in `scripts/bottle-on-this-mac.sh` or `scripts/homebrew-formula.mjs`, to fix on `main` before running it again; the tag stays where it is. Confirm afterwards that the release has it:
+
+```sh
+gh release view vx.y.z --repo TricotStudio/tricot --json assets --jq '.assets[].name'
+```
+
+The npm approval (step 8) can be done while the script runs.
+
+## 8. The npm approval (the person's)
 
 npm releases a version only when a person approves it, with two-factor authentication. Look at the run's steps (`gh run view <id> --repo TricotStudio/tricot`).
 
@@ -143,17 +166,17 @@ You may run `npm stage list tricot` for them, because it changes nothing. Never 
 
 **If no step staged it** (an older workflow), the person publishes the GitHub release's file by hand, as RELEASING.md's "Publish to npm" section says. Point them there.
 
-Homebrew doesn't wait for npm, so go on with step 8 while they approve. `release.mjs published x.y.z` says when npm has it.
+Homebrew doesn't wait for npm, so go on with step 9 (once the bottle is on the release) while they approve. `release.mjs published x.y.z` says when npm has it.
 
-## 8. Homebrew
+## 9. Homebrew
 
-Homebrew installs a bottle, made by the workflow's `bottle` job on a Mac and attached to the release as `tricot-x.y.z.all.bottle.tar.gz`. Without it, brew builds Tricot from source, and stops with "Your Xcode is too outdated" on a Mac whose Xcode or Command Line Tools aren't recent. So the formula waits for the bottle. Check that the release has it:
+The formula names the bottle that step 7 attached to the release, so it waits for it: without a bottle, brew builds Tricot from source and stops on an Xcode that isn't recent. Check that the release has it:
 
 ```sh
 gh release view vx.y.z --repo TricotStudio/tricot --json assets --jq '.assets[].name'
 ```
 
-When it isn't there, the bottle job is still running or has failed (step 6 says what to do): wait, and never write the formula with `--no-bottle` unless the person asks for that on purpose. Then ask, and write the formula from the GitHub release's files:
+When it isn't there, step 7 isn't done: have the person run its script, and never write the formula with `--no-bottle` unless the person asks for that on purpose. Then ask, and write the formula from the GitHub release's files:
 
 ```sh
 node scripts/homebrew-formula.mjs x.y.z
@@ -184,9 +207,9 @@ Hand over both pushes:
 ! git -C <tap> push origin main
 ```
 
-Don't run `brew`. The person can try it afterwards with `brew upgrade tricotstudio/tap/tricot` and `brew test tricot`; the install should say "Pouring tricot-x.y.z.all.bottle.tar.gz".
+Don't run `brew`. Once both pushes are done, the person can try it with `brew install tricotstudio/tap/tricot` (or `brew upgrade` where it was kept) and `brew test tricot`; the install should say "Pouring tricot-x.y.z.all.bottle.tar.gz".
 
-## 9. Check that it's out
+## 10. Check that it's out
 
 ```sh
 node ${CLAUDE_SKILL_DIR}/release.mjs published x.y.z --tap <tap>
@@ -217,5 +240,6 @@ It starts the tagged release from source in a temporary worktree, with a tempora
 | After `npm version` in step 4 | `git restore package.json package-lock.json` |
 | After step 4 (commit and tag, not pushed) | `git tag -d vx.y.z && git reset --keep HEAD~1` |
 | After the push | Nothing locally. Never delete a pushed tag or a GitHub release yourself; step 6 says what to do when the workflow fails. |
+| After the bottle's script (step 7) | Nothing to undo: it removes its throwaway tap and Tricot itself. The bottle on the release stays, and the script replaces it when run again. If the person uninstalled Tricot from Homebrew for it, they install it again with `brew install tricotstudio/tap/tricot` once the tap has the new formula. |
 
-To pick a release up again, run `release.mjs verify x.y.z`. If it passes, the release is tagged, so go on from step 5. If `origin` has the tag already, go on from step 6, and `release.mjs published x.y.z` shows what's left.
+To pick a release up again, run `release.mjs verify x.y.z`. If it passes, the release is tagged, so go on from step 5. If `origin` has the tag already, go on from step 6, and `release.mjs published x.y.z` shows what's left (the bottle on the release is step 7).
