@@ -8,7 +8,7 @@ import { ToolbarMenu, type ToolbarMenuApi } from './toolbarMenu';
 export type AddForm = { type: string; initial?: string };
 
 interface Props {
-  owner?: string; // the kind of card whose canvas this is: the kinds that only its canvas takes (a decision's comparison) can be added too
+  owner?: string; // the kind of card whose canvas this is: the kinds that only its canvas takes can be added too
   context: AddContext;
   toggleOf(type: string): RefObject<HTMLButtonElement | null>; // the menu item that opens a kind's form
   setForm: Dispatch<SetStateAction<AddForm | null>>;

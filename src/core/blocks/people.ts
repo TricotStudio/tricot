@@ -22,8 +22,16 @@ export function pinParts(): z.ZodType<PinPart> {
   return union as unknown as z.ZodType<PinPart>; // the kinds' own parts make up PinPart, but a connector's (a doc's), which its own routes take
 }
 
-// The content of a block people add: one object for each kind people can add.
+// The content of a block people add: one object for each kind people can add, as the kinds registered when it is first read
+// (the schemas that hold it are made before a part registers its kinds, so they read the registry each time they parse, in a transform, never cached).
+let content: { among: readonly unknown[]; schema: z.ZodType<BlockContent> } | undefined;
 export function createContent(): z.ZodType<BlockContent> {
+  const among = kinds();
+  if (content?.among !== among) content = { among, schema: makeContent() };
+  return content.schema;
+}
+
+function makeContent(): z.ZodType<BlockContent> {
   const objects = kinds().flatMap((kind) => (kind.people?.create ? [kind.people.create] : []));
   const types = kinds().flatMap((kind) => (kind.people?.create ? [kind.type] : []));
   const union = z.discriminatedUnion('type', objects as [(typeof objects)[number], ...typeof objects], {

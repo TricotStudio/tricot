@@ -58,6 +58,12 @@ type EachKind<K, Make extends 'block' | 'snapshot' | 'input'> =
     : never;
 type Intersection<U> = (U extends unknown ? (member: U) => void : never) extends (member: infer I) => void ? I : never;
 
+// The kinds a part adds, by type, each as its KindTypes: a part declares them by augmenting this interface (as it does the
+// other open sets of the core's types), so Block and what is made from it name them where the part is, and the core's types
+// alone have none. A kind is still only in the registry once the part registers it (`useBlockKinds`, registry.ts).
+export interface AddedBlockKinds {}
+export type AddedKinds = { [T in keyof AddedBlockKinds]: { readonly types?: AddedBlockKinds[T] } }[keyof AddedBlockKinds];
+
 export type BlocksOf<K> = EachKind<K, 'block'>;
 export type SnapshotsOf<K> = EachKind<K, 'snapshot'>;
 export type InputsOf<K> = EachKind<K, 'input'>;
@@ -275,6 +281,10 @@ export interface BlockKind<T extends KindTypes = any> {
   // a note's text, a table's cells, a picture's caption. Where a card is
   // mentioned is read from these; a kind without them mentions no card.
   refText?(block: BlockOf<T>): (string | undefined)[];
+  // For a kind a part adds (`useBlockKinds`): the kinds it comes after in each listing, by type: as the registry lists the
+  // kinds (`registry`), as add_block lists the types an agent may name (`types`) and as the fields by type are told (`docs`).
+  // A listing it says nothing of has it after the kinds the core lists.
+  readonly follows?: { readonly registry?: string; readonly types?: string; readonly docs?: string };
   // The size of a new one: from its content, and the width and height asked for.
   sizeFor?(fields: T['fields'], asked: { w?: number; h?: number }): Size;
 

@@ -21,7 +21,7 @@ const registered = () => [note, table, image, diagram, link, diff, code, chart, 
 let all: readonly WebBlockKind[] | undefined;
 let added: readonly WebBlockKind[] = [];
 
-// Adds kinds a feature of the page has (a part's comparison), for the page that registers them where it starts: a page that
+// Adds kinds a feature of the page has (a block only a part's cards take), for the page that registers them where it starts: a page that
 // registers none has only the kinds above. They come after those, and the Add menu orders them (below). It returns what puts
 // back the kinds that were there before.
 export function useWebBlockKinds(kinds: readonly WebBlockKind[]): () => void {
@@ -45,7 +45,7 @@ export function webKindOf(type: string): WebBlockKind {
 }
 
 // The Add menu lists them in the order it always has; a kind not named here comes after.
-const MENU = ['note', 'table', 'diagram', 'code', 'chart', 'image', 'link', 'comparison'];
+const MENU = ['note', 'table', 'diagram', 'code', 'chart', 'image', 'link'];
 
 export function menuKinds(): WebBlockKind[] {
   return ordered(webKinds().filter((kind) => kind.menu), MENU, (kind) => kind.type);

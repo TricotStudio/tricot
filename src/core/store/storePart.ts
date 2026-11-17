@@ -6,7 +6,7 @@
 // `new Store(dir, { parts })`, and composes them in order: a name, list, row kind, owner or kind of card that two parts
 // both have is refused, naming the part that came second. A Store given no parts is a canvas alone, as `parts: []` is.
 //
-// A part gives thirteen things today, each optional:
+// A part gives fourteen things today, each optional:
 // - `lists`: the lists of cards whose rows the store reads and writes;
 // - `owners`: the owners of canvases, the prefix of `decision:<id>`, which a canvas is found by (`locate`);
 // - `modules`: what the part's kinds of card work over, built by the Store from its own modules (`CoreModules`) once, and
@@ -24,6 +24,8 @@
 // - `reading`: how agents read the part's cards, which the Store sets for the process (cardReading.ts);
 // - `boardCards`: what each of the part's kinds of card says of itself to a reader that has only a board (core/cards.ts),
 //   which the Store sets for the process, as it does the reading;
+// - `blockKinds`: the kinds of block only the part's cards take (core/blocks/registry.ts), which the Store registers for the
+//   process, as it does the board cards;
 // - `header`: the keys the part adds to the header of a board a Store makes (store/boards.ts), by position;
 // - `activityStart`: the keys the part's activity notes keep in a board's activity, as they start;
 // - `summary`: the keys the part adds to each board's entry in the list of boards (store/boards.ts listBoards).
@@ -31,6 +33,7 @@
 // owners, kinds of card, board cards, tables, event subjects, activity rules and header keys are not registered, so its rows are foreign and left as they are. A Store whose parts
 // give no table leaves the rows of a deleted board in every table that is not registered, as the file holds them.
 
+import type { AnyKind } from '../blocks/kind';
 import type { BoardCardKind } from '../cards';
 import type { CardReading } from '../cardReading';
 import type { Assets } from './assets';
@@ -58,7 +61,7 @@ export interface CanvasOwner {
   mark?: string;
   // Whether its cards hold the id of the board they are on (`boardId`), which renaming the board keeps right.
   holdsBoardId?: boolean;
-  // The kinds of block only a canvas of this owner takes (`comparison`), each with the words that refuse it on another
+  // The kinds of block only a canvas of this owner takes (by type, as `useBlockKinds` registers them), each with the words that refuse it on another
   // canvas. A block kind that says `cardOnly` is taken by no canvas when no owner lists it.
   takes?: Readonly<Record<string, string>>;
   // The words that refuse pinning a block to an option on a canvas whose card has none (a part's cards that have options).
@@ -131,6 +134,10 @@ export interface StorePart<Modules = never> {
   // What the part's kinds of card say of themselves to a reader that has only a board: one per kind of card the part keeps a
   // list of, named as its owner is. The Store sets them for the process (core/cards.ts).
   boardCards?: readonly BoardCardKind[];
+  // The kinds of block the part adds (block kinds that only its cards' canvases take say so, `cardOnly`, and its owners
+  // list them in `takes`). The Store registers them for the process (`useBlockKinds`, core/blocks/registry.ts) when it is
+  // built, for the readers of a block that have no Store at hand; a Store with none leaves what was registered.
+  blockKinds?: readonly AnyKind[];
   // The keys the part adds to a new board's header, by position (NewBoardHeader).
   header?: NewBoardHeader;
   // The keys its activity rules' notes keep in a board's activity, and what they start as (a part's: `done` and
@@ -238,6 +245,8 @@ export interface ComposedParts<Modules> {
   readonly reading: CardReading | undefined;
   // What the parts' kinds of card say of themselves to a reader that has only a board, in the order the parts gave them.
   readonly boardCards: readonly BoardCardKind[];
+  // The kinds of block the parts add, in the order the parts gave them.
+  readonly blockKinds: readonly AnyKind[];
   // The keys the parts add to a new board's header, the parts' in the order they were given at each place.
   readonly header: Required<NewBoardHeader>;
   // What the parts say of a board in the list of boards: each part's keys, in the order the parts were given.
@@ -270,6 +279,8 @@ export function composeParts<Modules>(parts: readonly StorePart<Modules>[]): Com
   const ruleOf = new Map<string, string>();
   let reading: { part: string; of: CardReading } | undefined;
   const boardCards: BoardCardKind[] = [];
+  const blockKinds: AnyKind[] = [];
+  const blockKindOf = new Map<string, string>();
   const headerKeys = new Map<string, string>();
   const startKeys = new Map<string, string>();
   const summaries: ((board: Board) => Record<string, unknown>)[] = [];
@@ -342,6 +353,12 @@ export function composeParts<Modules>(parts: readonly StorePart<Modules>[]): Com
       if (boardCards.some((made) => made.kind === card.kind)) throw refused(part.name, `has the board card "${card.kind}" twice.`);
       boardCards.push(card);
     }
+    for (const kind of part.blockKinds ?? []) {
+      const taken = blockKindOf.get(kind.type);
+      if (taken !== undefined) throw refused(part.name, `has the block kind "${kind.type}", which the part "${taken}" has already.`);
+      blockKindOf.set(kind.type, part.name);
+      blockKinds.push(kind);
+    }
     for (const key of Object.keys({ ...part.header?.afterSeq?.(), ...part.header?.afterCanvas?.() })) {
       const taken = headerKeys.get(key) ?? (CORE_HEADER_KEYS.has(key) ? 'the core' : undefined);
       if (taken !== undefined) throw refused(part.name, `has the header key "${key}", which ${taken === 'the core' ? taken : `the part "${taken}"`} has already.`);
@@ -367,6 +384,7 @@ export function composeParts<Modules>(parts: readonly StorePart<Modules>[]): Com
     events: new EventRegistry(subjects, rules, () => Object.assign({}, ...parts.map((part) => part.activityStart?.()))),
     reading: reading?.of,
     boardCards,
+    blockKinds,
     header: composeHeaders(parts.flatMap((part) => (part.header ? [part.header] : []))),
     summary: (board) => Object.assign({}, ...summaries.map((summary) => summary(board))),
     syncTool: syncTool?.name,

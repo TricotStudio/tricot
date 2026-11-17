@@ -773,9 +773,6 @@ page.canvas-bottom {
   color: var(--danger);
   white-space: pre-wrap;
 }
-.block-type-comparison .table-wrap {
-  border: none;
-}
 
 /* A link block is one compact row: its site's icon, its title over its host,
    and the usual badges. The whole row drags the block; only the title opens.

@@ -1,6 +1,6 @@
 {
   "dataVersion": 16,
-  "blockKinds": ["note","table","image","diagram","comparison","link","diff","code","chart","scene","site"],
+  "blockKinds": ["note","table","image","diagram","link","diff","code","chart","scene","site"],
   "enums": {
     "Actor.kind": ["agent","human"],
     "ContextRequest.status": ["cancelled","done","open","working"],

@@ -11,20 +11,39 @@ import { kinds } from './registry';
 
 const byType = (kind: AnyKind) => kind.type;
 
+// The kinds a call reads: the registry's, and any `extra` a caller names that is not registered yet (a part's own schemas are
+// made where its module loads, before its Store registers its kinds).
+const withExtra = (extra: readonly AnyKind[]): readonly AnyKind[] => {
+  const listed = kinds();
+  const more = extra.filter((kind) => !listed.some((other) => other.type === kind.type));
+  return more.length ? [...listed, ...more] : listed;
+};
+
+// A core listing of types with each kind a part adds put after the kind it says it follows there, or last.
+const placed = (list: readonly string[], where: 'types' | 'docs', among: readonly AnyKind[]): string[] =>
+  among.reduce<string[]>((order, kind) => {
+    const follows = kind.follows?.[where];
+    if (follows === undefined || order.includes(kind.type)) return order;
+    const at = order.indexOf(follows);
+    order.splice(at === -1 ? order.length : at + 1, 0, kind.type);
+    return order;
+  }, [...list]);
+
 // Whether a server offers what a kind needs agents to be offered (`offeredBy`): the core's own says none.
 export type Offers = (what: string) => boolean;
 const offersNone: Offers = () => false;
 const told = (kind: AnyKind, offers: Offers): boolean => kind.agent.offeredBy === undefined || offers(kind.agent.offeredBy);
 
 // The kinds as agents list them, with those a group has to offer left out where it offers none.
-function listed(offers: Offers = offersNone): AnyKind[] {
-  return ordered(kinds(), AGENT_KINDS, byType).filter((kind) => told(kind, offers));
+function listed(offers: Offers = offersNone, extra: readonly AnyKind[] = []): AnyKind[] {
+  const among = withExtra(extra);
+  return ordered(among, placed(AGENT_KINDS, 'types', among), byType).filter((kind) => told(kind, offers));
 }
 
 // The types add_block takes: each kind's, and those a kind still answers to.
-export function agentTypes(offers: Offers = offersNone): [string, ...string[]] {
-  const types = listed(offers).flatMap((kind) => [kind.type, ...(kind.agent.aliases ?? [])]);
-  return ordered(types, AGENT_KINDS, (type) => type) as [string, ...string[]];
+export function agentTypes(offers: Offers = offersNone, extra: readonly AnyKind[] = []): [string, ...string[]] {
+  const types = listed(offers, extra).flatMap((kind) => [kind.type, ...(kind.agent.aliases ?? [])]);
+  return ordered(types, placed(AGENT_KINDS, 'types', withExtra(extra)), (type) => type) as [string, ...string[]];
 }
 
 // The kind that makes a block of the type an agent named: its own, or the one it is now part of.
@@ -54,7 +73,7 @@ export const addFields = () => mergedShape((kind) => kind.agent.addShape, ADD_FI
 export const updateFields = () => mergedShape((kind) => kind.agent.updateShape, UPDATE_FIELDS);
 export const pinFields = () => mergedShape((kind) => kind.agent.pinShape, PIN_FIELDS);
 
-const docOrder = (offers: Offers = offersNone) => ordered(kinds(), DOC_KINDS, byType).filter((kind) => told(kind, offers));
+const docOrder = (offers: Offers = offersNone) => ordered(kinds(), placed(DOC_KINDS, 'docs', kinds()), byType).filter((kind) => told(kind, offers));
 
 // "Fields by type: note → text (Markdown); …", one entry from each kind, in
 // full for the guide (read_guide), or in brief for add_block's description,

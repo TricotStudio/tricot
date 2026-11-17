@@ -6,11 +6,10 @@
 
 // Kinds as add_block's type and the fields of each kind are listed (a
 // checklist is a type agents may still name: it makes a note).
-export const AGENT_KINDS = ['note', 'table', 'checklist', 'diagram', 'image', 'comparison', 'link', 'diff', 'code', 'chart'];
+export const AGENT_KINDS = ['note', 'table', 'checklist', 'diagram', 'image', 'link', 'diff', 'code', 'chart'];
 
-// Kinds in add_block's "Fields by type" (link before comparison) and in the
-// advice about them.
-export const DOC_KINDS = ['note', 'table', 'diagram', 'image', 'link', 'comparison', 'diff', 'code', 'chart'];
+// Kinds in add_block's "Fields by type" and in the advice about them.
+export const DOC_KINDS = ['note', 'table', 'diagram', 'image', 'link', 'diff', 'code', 'chart'];
 
 // The clauses of their own update_block's description gives a kind.
 export const UPDATE_SPECIALS = ['code', 'chart', 'image'];

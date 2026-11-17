@@ -3,7 +3,9 @@
 // keeps it next to the data version (dataShape.core.json), for the core's own types;
 // the shape with a part's types added is dataShape.json, kept by its own test.
 //
-// The kinds come from the registry. The enums are read from the source of the
+// The kinds come from the registry: the core's, and those a part adds, which it names (`added`), whatever a Store of the process registered.
+// A kind that moves from the core to a part, with the full edition's shape (dataShape.json) unchanged, stores nothing
+// new and so needs no migration: the core's snapshot is then edited by hand to leave it out, as the comparison block's was. The enums are read from the source of the
 // types that describe what is stored: a string union written out (`type Status
 // = 'open' | …`, or a property typed `'human' | 'agent'`), and the values of
 // the `kind`, `op` or `status` a union of shapes is told apart by (PinAnchor's
@@ -15,7 +17,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { kinds } from '../src/core/blocks/registry';
+import type { AnyKind } from '../src/core/blocks/kind';
+import { kinds, useBlockKinds } from '../src/core/blocks/registry';
 import { EMOJIS } from '../src/core/reactions';
 
 const src = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/core');
@@ -148,13 +151,18 @@ function enumsIn(declared: Declaration[]): Record<string, string[]> {
   return enums;
 }
 
-export function currentShape(typeFiles: readonly string[] = CORE_TYPE_FILES): DataShape {
+export function currentShape(typeFiles: readonly string[] = CORE_TYPE_FILES, added: readonly AnyKind[] = []): DataShape {
   const enums: Record<string, string[]> = {};
   const declared = typeFiles.flatMap((file) => declarations(withoutComments(readFileSync(path.join(src, file), 'utf8'))));
   Object.assign(enums, enumsIn(declared));
   enums.Emoji = [...EMOJIS].sort();
   const sorted = Object.fromEntries(Object.entries(enums).sort(([a], [b]) => a.localeCompare(b)));
-  return { blockKinds: kinds().map((kind) => kind.type), enums: sorted };
+  const restore = useBlockKinds(added);
+  try {
+    return { blockKinds: kinds().map((kind) => kind.type), enums: sorted };
+  } finally {
+    restore();
+  }
 }
 
 // ---- the snapshot, kept beside the data version -----------------------------------
@@ -192,11 +200,11 @@ export function snapshotText(dataVersion: number, shape: DataShape): string {
 }
 
 // Takes a snapshot again, once a migration has been added for what changed: it won't without one. `typeFiles` are the
-// files of types the shape is read from, and `file` the snapshot.
-export async function writeSnapshot(file: string, typeFiles: readonly string[] = CORE_TYPE_FILES): Promise<void> {
+// files of types the shape is read from, `added` the kinds of block a part adds, and `file` the snapshot.
+export async function writeSnapshot(file: string, typeFiles: readonly string[] = CORE_TYPE_FILES, added: readonly AnyKind[] = []): Promise<void> {
   const { MIGRATIONS } = await import('../src/core/store/migrations');
   const was = readSnapshot(file);
-  const now = currentShape(typeFiles);
+  const now = currentShape(typeFiles, added);
   if (shapeChanges(was, now).length && MIGRATIONS.length <= was.dataVersion) {
     console.error(`The shape changed, and there is no migration after data version ${was.dataVersion} to say so. Add one to MIGRATIONS first.`);
     process.exit(1);

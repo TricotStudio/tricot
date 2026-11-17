@@ -5,6 +5,7 @@ import { doors } from '../doors';
 import { orNames } from '../format';
 import { MAX_SEARCH_QUERY } from '../projectSearch';
 import { searchKinds, type SearchKind } from '../search';
+import type { BlockContent } from '../store/inputs';
 import type { ThreadDoor } from '../types';
 import { USAGE_SOURCES } from '../usage';
 import { fields } from './fields';
@@ -38,6 +39,15 @@ const door = z.unknown().transform((value, ctx): ThreadDoor => {
     ctx.issues.push({ code: 'invalid_value', values: known, input: value, message: `Invalid option: expected one of ${known.map((name) => `"${name}"`).join('|')}` });
   }
   return value as ThreadDoor;
+});
+
+// The content of a block people add, of one of the kinds registered when it is sent (core/blocks/people.ts): these schemas are
+// made before a part registers its kinds, so it is checked as it comes, with the issues its own schema found.
+const blockContent = z.unknown().transform((value, ctx): BlockContent => {
+  const checked = createContent().safeParse(value);
+  if (checked.success) return checked.data;
+  ctx.issues.push(...(checked.error.issues as unknown as z.core.$ZodRawIssue[]));
+  return z.NEVER;
 });
 
 // A thread's lens: a preset's name, or one's own with a brief; null or General takes it off.
@@ -118,7 +128,7 @@ export const canvas = {
     title: z.string().optional(),
     groupId: z.string().optional(),
     optionId: z.string().optional(),
-    content: createContent(),
+    content: blockContent,
   }),
   // A change to a block: what any block takes, and the fields of each kind (core/blocks/).
   patchBlock: z.object({

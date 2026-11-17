@@ -23,6 +23,7 @@ import { Skills } from './store/skills';
 import { composeParts, partsOf, type CanvasCard, type CoreModules, type StorePart } from './store/storePart';
 import { Sync } from './store/sync';
 import { Threads, type ThreadStart } from './store/threads';
+import { useBlockKinds } from './blocks/registry';
 import { useBoardCards } from './cards';
 import { useCardReading } from './cardReading';
 import { tallyOf, type BoardChange, type LiveState } from './changes';
@@ -117,6 +118,9 @@ export class Store {
     // So do the kinds of board card (cards.ts): the readers that have only a board ask the process.
     const setsBoardCards = parts.boardCards.length > 0;
     if (setsBoardCards) useBoardCards(parts.boardCards);
+    // And the kinds of block a part adds (blocks/registry.ts), which readers of a block with no Store at hand ask.
+    const setsBlockKinds = parts.blockKinds.length > 0;
+    if (setsBlockKinds) useBlockKinds(parts.blockKinds);
     this.repo = new BoardRepository(dataDir, parts.lists, parts.owners, data, parts.tables, parts.events);
     this.repo.syncTool = parts.syncTool;
     this.assets = new Assets(dataDir, this.repo);
@@ -136,6 +140,7 @@ export class Store {
     this.repo.onPartsOff = (off) => {
       parts = parts.without(off.map(({ part }) => part));
       if (setsBoardCards) useBoardCards(parts.boardCards);
+      if (setsBlockKinds) useBlockKinds(parts.blockKinds);
       this.repo.use(parts.lists, parts.owners, parts.tables, parts.events);
       this.repo.syncTool = parts.syncTool;
       cards.replace(parts.cardKindsOver(modulesOf));
