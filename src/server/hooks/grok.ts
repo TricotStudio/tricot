@@ -7,7 +7,7 @@
 // turning steps off leaves it as `{}`, which Grok reads as no hooks. Grok sends
 // Claude Code's event names (PreToolUse, Stop) with the same snake_case fields
 // beside its own camelCase ones, but its own tool names and their arguments
-// (run_terminal_command, read_file, tricot__claim_task), which
+// (run_terminal_command, read_file, tricot__comment), which
 // tricot-describe.mjs reads as Claude Code's (fromGrok).
 //
 // Grok waits for each hook: PreToolUse, PostToolUse and Stop are gates that

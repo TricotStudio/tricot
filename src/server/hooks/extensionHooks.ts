@@ -25,8 +25,11 @@ import { DESCRIBE_MODULE, LENSES_MODULE, LENSES_WHAT, lensNote, SHOW_MODULE, SHO
 import {
   checkScope,
   displayPath,
+  hasLabels,
   isFolder,
   jsonText,
+  LABELS_FILE,
+  LABELS_WHAT,
   previewText,
   readText,
   refuseLinks,
@@ -90,6 +93,8 @@ export function extensionHookInstaller(spec: ExtensionHookSpec): HookInstaller {
       files: [entry, path.join(folder, DESCRIBE_MODULE), path.join(folder, EXTENSION_SETTINGS), ...(spec.lenses ? [path.join(folder, LENSES_MODULE), path.join(folder, SHOW_MODULE)] : [])],
       // Where it is, as a person reads it: its folder, or the file and the folder.
       places: spec.file ? [entry, folder] : [folder],
+      // The labels of a part's tools come after them, when the package has any.
+      labels: path.join(folder, LABELS_FILE),
     };
   };
   const source = spec.file?.source ?? EXTENSION_SOURCE;
@@ -99,24 +104,26 @@ export function extensionHookInstaller(spec: ExtensionHookSpec): HookInstaller {
   const scopes = ['user'] as const;
   const user = (scope: HookScope) => checkScope({ name: spec.name, scopes }, scope);
 
-  // Its folder and files, when none is a link: Tricot doesn't write through links.
-  const notLinked = (target: HookTarget) => {
+  // Its folder and files (and its labels, with `labels`), when none is a link: Tricot doesn't write through links.
+  const notLinked = (target: HookTarget, labels = true) => {
     const where = paths(target);
-    refuseLinks([where.folder, ...where.files], (file) => displayPath(file, target, 'user'));
-    return where;
+    const files = labels ? [...where.files, where.labels] : where.files;
+    refuseLinks([where.folder, ...files], (file) => displayPath(file, target, 'user'));
+    return { ...where, files, whats: labels ? [...whats, LABELS_WHAT] : whats };
   };
 
   const plan = (target: HookTarget, setup: { url: string; source: string; name?: string }) => {
-    const where = notLinked(target);
+    const withLabels = hasLabels(setup.source);
+    const where = notLinked(target, withLabels);
     const settings = jsonText({ name: setup.name ?? spec.agentName, url: setup.url });
     // What each file is written from: Tricot's file in hooks/, or the settings.
-    const sources = [source, DESCRIBE_MODULE, undefined, ...(spec.lenses ? [LENSES_MODULE, SHOW_MODULE] : [])].map((file) => file && path.join(setup.source, file));
+    const sources = [source, DESCRIBE_MODULE, undefined, ...(spec.lenses ? [LENSES_MODULE, SHOW_MODULE] : []), ...(withLabels ? [LABELS_FILE] : [])].map((file) => file && path.join(setup.source, file));
     for (const file of sources) if (file && !existsSync(file)) throw new Error(`Tricot's ${path.basename(file)} isn't in ${setup.source}.`);
     const contents = sources.map((file) => (file ? readText(file) : settings));
     const changes: HookChange[] = where.files.map((file, i) => ({
       path: file,
       does: 'write',
-      what: whats[i],
+      what: where.whats[i],
       ...(sources[i] === undefined && { lines: settings }),
       same: readText(file) === contents[i],
     }));
@@ -154,8 +161,8 @@ export function extensionHookInstaller(spec: ExtensionHookSpec): HookInstaller {
 
     previewUninstall(target, scope = 'user'): HookPreview {
       user(scope);
-      const { files } = notLinked(target);
-      const changes: HookChange[] = files.flatMap((file, i) => (existsSync(file) ? [{ path: file, does: 'delete' as const, what: whats[i], same: false }] : []));
+      const { files, whats: what } = notLinked(target);
+      const changes: HookChange[] = files.flatMap((file, i) => (existsSync(file) ? [{ path: file, does: 'delete' as const, what: what[i], same: false }] : []));
       return { changes, notes: [], text: previewText(changes, [], target, 'user'), unchanged: changes.length === 0 };
     },
 

@@ -4,7 +4,7 @@
 // plugin's hooks/hooks.json, so it runs the same script as Claude Code's,
 // Codex's and Gemini CLI's, from the plugin's own hooks/ folder. Goose sends
 // its own event fields and tool names (event, working_dir, shell,
-// tricot__claim_task), which tricot-describe.mjs reads as Claude Code's
+// tricot__comment), which tricot-describe.mjs reads as Claude Code's
 // (fromGoose). The plugin has no manifest: Goose names a plugin that only has
 // hooks after its folder, and the whole of hooks.json is Tricot's, so it never
 // merges into hooks of the person's.

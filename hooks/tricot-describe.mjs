@@ -12,8 +12,13 @@
 // A step describes what the agent does, never what it read or wrote: no file
 // contents, no command output, no prompt text, no query strings. A command is
 // cut to its first words, so arguments that might hold a secret stay behind.
-// No dependencies but node:path, so it runs under Node, Bun and jiti alike.
+// A part of Tricot that adds tools of its own says them in words in a file of
+// its own beside this one (tricot-labels.json), which is read if it is there
+// and ignored if it isn't or can't be read: its tools then read as any other
+// MCP tool does. No dependencies but node:fs and node:path, so it runs under
+// Node, Bun and jiti alike.
 
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const MAX_TEXT = 120;
@@ -68,24 +73,13 @@ function host(url) {
   }
 }
 
-// Tricot's own tools, in words, and the card they name.
+// Tricot's own tools, in words.
 const TRICOT_SERVER = 'tricot';
 const TRICOT = {
-  claim_task: 'Claiming the task',
-  brief_task: 'Reading the task brief',
-  get_task: 'Reading the task',
-  update_task: 'Updating the task',
   comment: 'Writing a comment',
   add_block: 'Adding to the canvas',
   update_block: 'Updating the canvas',
-  attach_finding: 'Attaching a finding',
-  post_decision: 'Posting a decision',
-  update_decision: 'Updating a decision',
-  get_decision: 'Reading a decision',
-  plan_tasks: 'Planning tasks',
   get_board: 'Reading the board',
-  ask_people: 'Asking people on the board',
-  take_first_look: 'Taking a first look',
   get_thread: 'Reading the thread',
   reply_in_thread: 'Replying in the thread',
   start_thread: 'Starting a thread',
@@ -93,12 +87,8 @@ const TRICOT = {
   create_board: 'Creating a board',
   set_project_folder: 'Setting the project folder',
   search: 'Searching the board',
-  log_decision: 'Logging a decision',
-  propose_criteria: 'Proposing criteria',
   react: 'Reacting to a comment',
   report_skills: 'Telling Tricot its skills',
-  set_status: 'Updating the status',
-  finish_sync: 'Finishing a sync',
   take_request: 'Taking a request',
   finish_request: 'Finishing a request',
   get_canvas: 'Reading the canvas',
@@ -107,7 +97,6 @@ const TRICOT = {
   add_page: 'Adding a Sketchbook page',
   update_page: 'Renaming a Sketchbook page',
   link: 'Linking blocks',
-  pin: 'Pinning work to a block',
   remove_item: 'Removing from the canvas',
   restore_item: 'Restoring to the canvas',
   read_guide: 'Reading the guide',
@@ -120,6 +109,26 @@ const TRICOT = {
   read_linear_issue: 'Reading a Linear issue',
   search_linear_issues: 'Searching Linear issues',
 };
+
+// What a part adds, from tricot-labels.json beside this file: { "tools": { <tool>: <words> }, "cards": { <argument>: <field> } }.
+// `tools` says each tool of the part in words, as TRICOT does the board's own. `cards` names the arguments of a
+// call that name one of the part's cards, and the field of the step each goes on as (the first one a call has).
+// With no file, or one that is not that, a part's tools read as any other MCP tool. The server, which does not
+// run beside the file, gives the same words as describe's `labels` option.
+const strings = (value) =>
+  new Map(Object.entries(value && typeof value === 'object' && !Array.isArray(value) ? value : {}).filter(([, words]) => typeof words === 'string' && words !== ''));
+const labelsFrom = (found) => ({ tools: strings(found?.tools), cards: strings(found?.cards) });
+
+function readLabels() {
+  try {
+    return labelsFrom(JSON.parse(readFileSync(new URL('./tricot-labels.json', import.meta.url), 'utf8')));
+  } catch {
+    return labelsFrom(undefined);
+  }
+}
+
+const LABELS = readLabels();
+const labelOf = (tool, labels) => (Object.hasOwn(TRICOT, tool) ? TRICOT[tool] : labels.tools.get(tool));
 const QUIET_TRICOT = new Set(['wait_for_updates', 'get_updates']); // presence already says it is listening
 
 // Tools that can run a while: their step stays live until they end. A
@@ -205,10 +214,10 @@ function toolStep(tool, input, cwd) {
 }
 
 // The Tricot card or thread a Tricot call names, for the step to go on.
-function named(input) {
+function named(input, labels) {
+  const card = [...labels.cards].find(([argument]) => typeof input[argument] === 'string');
   return {
-    ...(typeof input.task_id === 'string' && { task: input.task_id.slice(0, 120) }),
-    ...(typeof input.decision_id === 'string' && !input.task_id && { decision: input.decision_id.slice(0, 120) }),
+    ...(card && { [card[1]]: input[card[0]].slice(0, 120) }),
     ...(typeof input.thread_id === 'string' && { thread: input.thread_id.slice(0, 120) }),
   };
 }
@@ -255,9 +264,11 @@ const GEMINI_TOOLS = {
 // The subagents that can run a while, for the hook's AfterTool matcher.
 export const GEMINI_LONG_TOOLS = ['run_shell_command', 'codebase_investigator', 'cli_help', 'generalist', 'browser_agent'];
 
-// Of an MCP call, only what names a Tricot card or thread.
-const NAMING = ['task_id', 'decision_id', 'thread_id'];
-const naming = (input) => Object.fromEntries(NAMING.filter((key) => typeof input[key] === 'string').map((key) => [key, input[key]]));
+// Of an MCP call, only what names a Tricot card or thread: the arguments the
+// steps of Tricot's tools go on (a part's cards as its labels name them), for
+// what turns an agent's own events into this one's.
+export const naming = (input) =>
+  Object.fromEntries(['thread_id', ...LABELS.cards.keys()].filter((key) => typeof input[key] === 'string').map((key) => [key, input[key]]));
 
 // An MCP tool as Claude Code names it (mcp__<server>__<tool>). Gemini CLI
 // calls it mcp_<server>_<tool> (its docs advise server names without
@@ -652,7 +663,9 @@ export function fromCopilot(event) {
 // One hook event as a step, or nothing to show. With `narration` (off unless
 // a person asked for it), a message Claude shows in the terminal
 // (MessageDisplay) sends its first line: only what the terminal shows, never
-// Claude's thinking. Gemini CLI's, Goose's, Hermes's and Grok Build's events are read as Claude Code's
+// Claude's thinking. With `labels`, a part's words for its tools (the shape of
+// tricot-labels.json) stand in for that file's, for the server, which says a
+// step as the hook does. Gemini CLI's, Goose's, Hermes's and Grok Build's events are read as Claude Code's
 // (fromGemini, fromGoose, fromHermes, fromGrok). The four tell their events apart by their own fields, so
 // none claims another's; Grok Build's marker (the camelCase hookEventName) is tested first.
 export function describe(event, options = {}) {
@@ -662,6 +675,7 @@ export function describe(event, options = {}) {
   if (isHermesEvent(event)) return describe(fromHermes(event), options);
   if (!event || typeof event !== 'object') return undefined;
   const cwd = typeof event.cwd === 'string' ? event.cwd : undefined;
+  const labels = options.labels ? labelsFrom(options.labels) : LABELS;
   const who = {
     ...(typeof event.session_id === 'string' && { session: event.session_id.slice(0, 120) }),
     ...(typeof event.agent_id === 'string' && { worker: event.agent_id.slice(0, 120) }),
@@ -675,7 +689,7 @@ export function describe(event, options = {}) {
       const mcp = /^mcp__(.+?)__(.+)$/.exec(tool);
       if (mcp && mcp[1] === TRICOT_SERVER) {
         if (QUIET_TRICOT.has(mcp[2])) return undefined;
-        return { text: TRICOT[mcp[2]] ?? `Using Tricot: ${mcp[2].replace(/_/g, ' ')}`, ...named(input), ...who };
+        return { text: labelOf(mcp[2], labels) ?? `Using Tricot: ${mcp[2].replace(/_/g, ' ')}`, ...named(input, labels), ...who };
       }
       if (mcp) return { text: clip(`Using ${mcp[1]}: ${mcp[2].replace(/_/g, ' ')}`), ...who };
       const text = tool && toolStep(tool, input, cwd);

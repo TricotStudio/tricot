@@ -42,8 +42,11 @@ import {
   checkScope,
   displayPath,
   eventsWithOurs,
+  hasLabels,
   isFolder,
   jsonText,
+  LABELS_FILE,
+  LABELS_WHAT,
   linkTarget,
   nameInCommand,
   ourEntries,
@@ -250,6 +253,9 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
       usageScript,
       scripts: scripts.map((script) => script.file),
       scriptWhats: scripts.map((script) => script.what),
+      // The labels of a part's tools, which only a package with one has: written when it does, taken out with the rest.
+      owned: [...scripts.map((script) => script.file), path.join(hooks, LABELS_FILE)],
+      ownedWhats: [...scripts.map((script) => script.what), LABELS_WHAT],
       // What the person's status line was, beside Tricot's.
       config: usage === 'statusLine' ? path.join(hooks, USAGE_CONFIG) : undefined,
     };
@@ -284,11 +290,15 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
   // What installing would do, read from what is there now.
   const plan = (target: HookTarget, setup: HookSetup, scope: HookScope) => {
     const where = paths(target, scope);
+    // What is written: the labels too, when the package has them.
+    const withLabels = hasLabels(setup.source);
+    const written = withLabels ? where.owned : where.scripts;
+    const writtenWhats = withLabels ? where.ownedWhats : where.scriptWhats;
     // Nothing is written through a link (a project's .claude/hooks/tricot-steps.mjs linked to ~/.zshrc).
-    refuseLinks([...where.scripts, ...(where.config ? [where.config] : [])], (file) => displayPath(file, target, scope));
+    refuseLinks([...written, ...(where.config ? [where.config] : [])], (file) => displayPath(file, target, scope));
     const settings = settingsOf(where, target, scope, 'adds its lines');
     const current = readHookSettings(settings.file);
-    const sources = where.scripts.map((script) => path.join(setup.source, path.basename(script)));
+    const sources = written.map((script) => path.join(setup.source, path.basename(script)));
     for (const source of sources) if (!existsSync(source)) throw new Error(`Tricot's ${path.basename(source)} isn't in ${setup.source}.`);
     const name = setup.name ?? spec.agentName;
     const command = spec.run(where.steps, { ...setup, name }, scope);
@@ -310,7 +320,7 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
       configText = jsonText(kept);
     }
     const had = eventsWithOurs(current, isTricotHook).length > 0 || isUsageLine(current.statusLine);
-    const scripts: HookChange[] = where.scripts.map((script, i) => ({ path: script, does: 'write', what: where.scriptWhats[i], same: readText(script) === readText(sources[i]) }));
+    const scripts: HookChange[] = written.map((script, i) => ({ path: script, does: 'write', what: writtenWhats[i], same: readText(script) === readText(sources[i]) }));
     const config: HookChange[] = where.config ? [{ path: where.config, does: 'write', what: CONFIG_WHAT, lines: configText, same: readText(where.config) === configText }] : [];
     const settingsChange: HookChange = {
       path: where.settings,
@@ -326,7 +336,7 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
       ...(kept ? statusLineNotes(kept) : []),
       ...(spec.notes?.(target, where.folder) ?? []),
     ];
-    return { ...where, settingsFile: settings.file, sources, next, configText, scriptChanges: scripts, configChanges: config, settingsChange, changes: [...scripts, ...config, settingsChange], notes };
+    return { ...where, scripts: written, settingsFile: settings.file, sources, next, configText, scriptChanges: scripts, configChanges: config, settingsChange, changes: [...scripts, ...config, settingsChange], notes };
   };
 
   const shown = (files: string[], target: HookTarget, scope: HookScope) => listNames(files.map((f) => displayPath(f, target, scope)));
@@ -427,8 +437,8 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
         const out = { ...(Object.keys(ours).length && { hooks: ours }), ...(lineOurs && { statusLine: current.statusLine }) };
         changes.push({ path: where.settings, does: 'remove', what: `Tricot's ${lineOurs ? 'hooks and status line' : 'hooks'}; every other setting stays`, lines: jsonText(out), same: false });
       }
-      where.scripts.forEach((script, i) => {
-        if (existsSync(script)) changes.push({ path: script, does: 'delete', what: where.scriptWhats[i], same: false });
+      where.owned.forEach((script, i) => {
+        if (existsSync(script)) changes.push({ path: script, does: 'delete', what: where.ownedWhats[i], same: false });
       });
       if (where.config && existsSync(where.config)) {
         changes.push({ path: where.config, does: 'delete', what: CONFIG_WHAT, same: false });
@@ -476,7 +486,7 @@ export function commandHookInstaller(spec: CommandHookSpec): HookInstaller {
         writeFileAtomic(settingsOf(where, target, scope, 'takes its lines out').file, jsonText(next));
         files.push(where.settings);
       }
-      for (const file of [...where.scripts, ...(where.config ? [where.config] : [])]) {
+      for (const file of [...where.owned, ...(where.config ? [where.config] : [])]) {
         if (!existsSync(file)) continue;
         rmSync(file);
         files.push(file);

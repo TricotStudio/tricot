@@ -46,7 +46,7 @@
 // so it goes as typed. No dependencies.
 
 import { readFileSync } from 'node:fs';
-import { describe } from './tricot-describe.mjs';
+import { describe, naming } from './tricot-describe.mjs';
 import { lensAsked, lensContext, unknownLensLine } from './tricot-lenses.mjs';
 import { showContextFor } from './tricot-show.mjs';
 import type { BoardConnect, BoardFetch, ShowRun } from './tricot-show.mjs';
@@ -98,7 +98,7 @@ const TOOLS: Record<string, (a: Args) => [string, Args]> = {
 };
 
 // An MCP tool's name as Claude Code writes it, mcp__<server>__<tool>. Pi
-// already does; OMP joins the two with one underscore (mcp__tricot_claim_task).
+// already does; OMP joins the two with one underscore (mcp__tricot_comment).
 function mcpName(name: string): string {
   const rest = name.slice('mcp__'.length);
   if (rest.includes('__')) return name;
@@ -106,13 +106,10 @@ function mcpName(name: string): string {
   return at > 0 ? `mcp__${rest.slice(0, at)}__${rest.slice(at + 1)}` : name;
 }
 
-// Of an MCP call, only what names a Tricot card or thread.
-const NAMING = ['task_id', 'decision_id', 'thread_id'];
-
 function tool(name: unknown, args: unknown): [string, Args] {
   const input = args && typeof args === 'object' ? (args as Args) : {};
   const id = text(name) ?? '';
-  if (id.startsWith('mcp__')) return [mcpName(id), Object.fromEntries(NAMING.filter((key) => key in input).map((key) => [key, input[key]]))];
+  if (id.startsWith('mcp__')) return [mcpName(id), naming(input)]; // of the call, only what names a Tricot card or thread
   const known = TOOLS[id];
   return known ? known(input) : [id, {}];
 }

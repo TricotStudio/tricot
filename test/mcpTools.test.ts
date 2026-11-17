@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Connectors } from '../src/server/connectors';
@@ -73,6 +74,38 @@ describe('the MCP server and its tools', () => {
     }
     const refused = (await client.callTool({ name: 'read_guide', arguments: { topic: 'everything' } })) as { isError?: boolean };
     assert.equal(refused.isError, true);
+  });
+
+  // The live steps hook (hooks/tricot-describe.mjs) as a package without a part has it: copied alone into a folder, where the
+  // part's own labels file (tricot-labels.json) is only there when the test puts it.
+  const hookIn = async (name: string, labels?: string) => {
+    const folder = path.join(dir, name);
+    mkdirSync(folder, { recursive: true });
+    copyFileSync(path.join(import.meta.dirname, '..', 'hooks', 'tricot-describe.mjs'), path.join(folder, 'tricot-describe.mjs'));
+    if (labels !== undefined) writeFileSync(path.join(folder, 'tricot-labels.json'), labels);
+    const { describe: step } = await import(pathToFileURL(path.join(folder, 'tricot-describe.mjs')).href);
+    return (tool: string, input: object = {}, labels?: object) =>
+      step({ hook_event_name: 'PreToolUse', tool_name: `mcp__tricot__${tool}`, tool_input: input }, labels && { labels }) as { text: string } | undefined;
+  };
+
+  it("puts each tool it lists in words in a live step, a part's tools in the part's own file if it has one", async () => {
+    const plain = await hookIn('hook-plain');
+    const quiet = ['get_updates', 'wait_for_updates'];
+    for (const { name } of tools) {
+      if (quiet.includes(name)) assert.equal(plain(name), undefined, `${name} says nothing`);
+      else assert.ok(!plain(name)!.text.startsWith('Using Tricot:'), `${name} needs a step label in hooks/tricot-describe.mjs`);
+    }
+    const generic = { text: 'Using Tricot: claim work' };
+    assert.deepEqual(plain('claim_work', { work_id: 'w_1' }), generic, 'a tool the hook does not know reads as any other, with no card named');
+    const labelled = await hookIn('hook-labelled', JSON.stringify({ tools: { claim_work: 'Claiming the work', bad: 5 }, cards: { work_id: 'work' } }));
+    assert.deepEqual(labelled('claim_work', { work_id: 'w_1', thread_id: 'th_1' }), { text: 'Claiming the work', work: 'w_1', thread: 'th_1' });
+    assert.equal(labelled('bad')!.text, 'Using Tricot: bad', 'a label that is not words is left out');
+    assert.equal(labelled('comment')!.text, plain('comment')!.text, "a part's file does not say the board's own tools");
+    assert.deepEqual((await hookIn('hook-broken', '{ not json'))('claim_work'), generic, 'a file that cannot be read is as none');
+    // The server does not run beside the file: it says the same words from its tool groups' (ToolGroup.stepLabels), and only those.
+    const given = { tools: { claim_work: 'Claiming the work' }, cards: { work_id: 'work' } };
+    assert.deepEqual(plain('claim_work', { work_id: 'w_1' }, given), { text: 'Claiming the work', work: 'w_1' });
+    assert.deepEqual(labelled('claim_work', {}, {}), generic, 'none given, none said, whatever the file has');
   });
 
   it('marks what reads and what removes, and nothing else', () => {

@@ -77,14 +77,13 @@ const TOOLS = {
 
 // An MCP server's tools are <server>_<tool>: Tricot's are known by its name.
 const TRICOT_PREFIX = 'tricot_';
-const NAMING = ['task_id', 'decision_id', 'thread_id'];
 
-function tool(name, args) {
+// Of an MCP call, only what names a Tricot card or thread (the describe's `naming`).
+function tool(name, args, naming) {
   const input = record(args);
   const id = text(name) ?? '';
   if (id.startsWith(TRICOT_PREFIX)) {
-    const named = Object.fromEntries(NAMING.filter((key) => typeof input[key] === 'string').map((key) => [key, input[key]]));
-    return [`mcp__tricot__${id.slice(TRICOT_PREFIX.length)}`, named];
+    return [`mcp__tricot__${id.slice(TRICOT_PREFIX.length)}`, naming(input)];
   }
   return Object.hasOwn(TOOLS, id) ? TOOLS[id](input) : [id, {}];
 }
@@ -99,7 +98,7 @@ function keep(map, key, value) {
 // What OpenCode tells it, as the hook events Claude Code would send, each
 // turned into a step and sent. `cwd` is the project's folder, which paths
 // are shown from; `send` is the fetch it sends with.
-function observer(describe, settings, cwd, send = globalThis.fetch) {
+function observer({ describe, naming }, settings, cwd, send = globalThis.fetch) {
   const url = (text(settings.url) ?? DEFAULT_URL).replace(/\/+$/, '');
   const name = text(settings.name) ?? DEFAULT_NAME;
   const open = new Map(); // a call's tool and the fields the describe reads, and when it started: an end carries neither
@@ -183,7 +182,7 @@ function observer(describe, settings, cwd, send = globalThis.fetch) {
 
   return {
     before(toolName, session, call, args) {
-      const [id, input] = tool(toolName, args);
+      const [id, input] = tool(toolName, args, naming);
       if (!id) return;
       if (call) keep(open, call, { id, input, at: Date.now() });
       if (text(session)) idle.delete(session); // at work again: its next idle is a turn's end
@@ -192,7 +191,7 @@ function observer(describe, settings, cwd, send = globalThis.fetch) {
     after(toolName, session, call, args, failed) {
       const started = call && open.get(call);
       if (call) open.delete(call);
-      const [id, input] = started ? [started.id, started.input] : tool(toolName, args);
+      const [id, input] = started ? [started.id, started.input] : tool(toolName, args, naming);
       if (!id) return;
       tell({
         hook_event_name: failed ? 'PostToolUseFailure' : 'PostToolUse',
@@ -255,15 +254,15 @@ function observer(describe, settings, cwd, send = globalThis.fetch) {
 // when the describe isn't there (half taken out): then it does nothing.
 async function load(folder, cwd) {
   try {
-    const { describe } = await import(new URL('tricot-describe.mjs', folder).href);
-    if (typeof describe !== 'function') return undefined;
+    const { describe, naming } = await import(new URL('tricot-describe.mjs', folder).href);
+    if (typeof describe !== 'function' || typeof naming !== 'function') return undefined;
     let settings = {};
     try {
       settings = record(JSON.parse(readFileSync(new URL('tricot-steps.json', folder), 'utf8')));
     } catch {
       // the defaults: OpenCode, on this machine's Tricot
     }
-    return observer(describe, settings, cwd);
+    return observer({ describe, naming }, settings, cwd);
   } catch {
     return undefined;
   }

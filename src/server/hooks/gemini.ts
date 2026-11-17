@@ -1,7 +1,7 @@
 // Gemini CLI's steps: a command hook (https://geminicli.com/docs/hooks/) in
 // ~/.gemini/settings.json (or $GEMINI_CLI_HOME/.gemini's), running the same
 // script as Claude Code's and Codex's. Gemini CLI sends its own event and
-// tool names (BeforeTool, run_shell_command, mcp_tricot_claim_task), which
+// tool names (BeforeTool, run_shell_command, mcp_tricot_comment), which
 // tricot-describe.mjs reads as Claude Code's (fromGemini).
 //
 // Gemini CLI has no async hooks: it waits for each one. The script gives up

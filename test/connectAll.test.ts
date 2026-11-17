@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -12,6 +12,7 @@ import { BACKUP_SUFFIX } from '../src/cli/connectFile';
 import { SKILL_ANSWER_FILE } from '../src/cli/connectSkill';
 import { ANSWER_FILE } from '../src/cli/hooks';
 import { runCli, type CliContext, type CliResult } from '../src/cli/main';
+import { hookInstallers, UnreadableSettings } from '../src/server/hooks';
 import { removeScratch, WINDOWS } from './platform';
 
 // Plain `tricot connect` (connectAll.ts), and `tricot connect <agent>` for an
@@ -235,6 +236,41 @@ describe('tricot connect, for every agent on this computer', () => {
       assert.match(said(), /^Each also gets live steps \(all but .*\) and a skill \(/m);
       assert.match(said(), /tricot connect --print shows what changes/);
       assert.match(said(), /--yes never switches an agent on another board/);
+    });
+  });
+
+  describe('live steps', () => {
+    it("copy a part's labels beside the describe when the package has them, and take them out with the rest", () => {
+      const source = path.join(root, 'hooks');
+      rmSync(path.join(source, 'tricot-labels.json'), { force: true }); // the package of a part has one: this one has none until the test makes it
+      const target = { home, env: { PATH: bin } };
+      const setup = { url: 'http://127.0.0.1:4545', source };
+      let tried = 0;
+      for (const installer of hookInstallers()) {
+        try {
+          installer.preview(target, setup);
+        } catch (error) {
+          if (error instanceof UnreadableSettings) continue; // settings the agent makes itself the first time it runs
+          throw error;
+        }
+        tried++;
+        const describeAt = installer.status(target).where.find((file) => path.basename(file) === 'tricot-describe.mjs')!;
+        const labels = path.join(path.dirname(describeAt), 'tricot-labels.json');
+        installer.install(target, setup);
+        assert.equal(installer.status(target).state, 'on', installer.id);
+        assert.ok(!existsSync(labels), `${installer.id}: no labels in the package, none written`);
+        writeFileSync(path.join(source, 'tricot-labels.json'), '{"tools":{}}\n');
+        assert.deepEqual(installer.preview(target, setup).changes.filter((change) => change.path === labels).map((change) => [change.does, change.same]), [['write', false]], installer.id);
+        installer.install(target, setup);
+        assert.equal(readFileSync(labels, 'utf8'), '{"tools":{}}\n', `${installer.id}: copied beside the describe`);
+        assert.equal(installer.status(target).state, 'on', installer.id);
+        assert.ok(installer.previewUninstall(target).changes.some((change) => change.path === labels && change.does === 'delete'), installer.id);
+        installer.uninstall(target);
+        assert.ok(!existsSync(labels), `${installer.id}: taken out with the rest`);
+        assert.equal(installer.status(target).state, 'off', installer.id);
+        rmSync(path.join(source, 'tricot-labels.json'));
+      }
+      assert.ok(tried >= hookInstallers().length - 1, `${tried} of ${hookInstallers().length} agents tried`);
     });
   });
 

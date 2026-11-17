@@ -8,8 +8,6 @@ export interface HookStep {
   session?: string;
   worker?: string;
   role?: string;
-  task?: string;
-  decision?: string;
   thread?: string;
   done?: boolean;
   running?: boolean;
@@ -17,9 +15,21 @@ export interface HookStep {
   tool?: string;
   ms?: number;
   narration?: boolean;
+  // The card a call names, on the field the part's labels (tricot-labels.json) give it.
+  [card: string]: string | number | boolean | undefined;
 }
 
-export function describe(event: unknown, options?: { narration?: boolean }): HookStep | undefined;
+// A part's words for its tools, as hooks/tricot-labels.json says them: `tools` by tool name, and `cards`, the arguments that
+// name one of its cards, each with the field of the step it goes on as.
+export interface StepLabels {
+  tools?: Record<string, string>;
+  cards?: Record<string, string>;
+}
+
+export function describe(event: unknown, options?: { narration?: boolean; labels?: StepLabels }): HookStep | undefined;
+
+// Of an MCP call's arguments, only those that name a Tricot card or thread.
+export function naming(input: Record<string, unknown>): Record<string, string>;
 
 // Gemini CLI's hook events, read as Claude Code's (https://geminicli.com/docs/hooks/reference/).
 export const GEMINI_LONG_TOOLS: string[];

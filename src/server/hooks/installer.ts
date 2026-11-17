@@ -279,6 +279,16 @@ export const isFolder = (folder: string) => {
 
 // ---- words -----------------------------------------------------------------------
 
+// What a part of Tricot adds to the words of the steps (its tools said in
+// words, and the cards they name): hooks/tricot-labels.json, which the
+// package has when it has such a part and the describe reads beside itself
+// when it is there. Written beside the describe when the package has it, and
+// taken out with the rest; never part of what makes steps "on", as a package
+// with no part has none. (The server has the same words from its tool group.)
+export const LABELS_FILE = 'tricot-labels.json';
+export const LABELS_WHAT = "puts the steps of a part's tools in words";
+export const hasLabels = (source: string) => existsSync(path.join(source, LABELS_FILE));
+
 // The name a hook's command sends steps as: its --name word, unquoted.
 export function nameInCommand(command: string): string | undefined {
   const match = /--name\s+('(?:[^']|'\\'')*'|[^\s]+)/.exec(command);

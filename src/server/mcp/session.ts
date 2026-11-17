@@ -18,7 +18,7 @@ import { agentOfMcpClient } from '../../core/agents/registry';
 import { BoardError, type Store } from '../../core/store';
 import { boardKey, type Actor, type Board, type BoardEvent } from '../../core/types';
 import { compareVersions } from '../../core/version';
-import { describe as hookStep } from '../../../hooks/tricot-describe.mjs';
+import { describe as hookStep, type StepLabels } from '../../../hooks/tricot-describe.mjs';
 import { CODEX_WAIT_WORDS, type CodexWakes } from '../codexWake';
 import type { CommitFiles } from '../commitFiles';
 import type { ConnectorTool } from '../connectors/connector';
@@ -199,9 +199,10 @@ function updatesPage(read: BoardEvent[], boardSeq: number): { events: BoardEvent
 
 // The step a hook in the agent's harness sends for a Tricot call, in its words
 // and naming the card or thread the call does (hooks/tricot-describe.mjs):
-// "Writing a comment" on the task it names. None for a call it keeps quiet.
-const stepOfCall = (name: string, args: Record<string, unknown>) =>
-  hookStep({ hook_event_name: 'PreToolUse', tool_name: `mcp__tricot__${name}`, tool_input: args });
+// "Writing a comment" on the card it names. None for a call it keeps quiet. The words of a part's
+// tools are the part's (its group's `stepLabels`), as the file its hook reads beside itself is.
+const stepOfCall = (name: string, args: Record<string, unknown>, labels: StepLabels) =>
+  hookStep({ hook_event_name: 'PreToolUse', tool_name: `mcp__tricot__${name}`, tool_input: args }, { labels });
 
 // The board a tool call is about, from whichever id it was given.
 function boardOf(store: Store, args: Record<string, unknown>): Board | undefined {
@@ -284,6 +285,7 @@ export interface Session {
 export function createSession(store: Store, getActor: () => Actor, options: McpOptions, connection: Connection = { clientName: () => undefined }): Session {
   // What the tool groups say of the board in what an agent reads (core/words.ts Told): the board context's parts of its updates.
   const said = options.groups?.phrases() ?? new Phrases();
+  const stepLabels = options.groups?.stepLabels() ?? {};
   // MCP can't push to an agent, so every call is a chance to tell it what it
   // hasn't seen: other people's activity since it last caught up on a board.
   // The same calls tell people which agents are here, and what they're doing.
@@ -638,7 +640,7 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
       if (writes && !result.isError) {
         // What it wrote is on the board: the step its hook sent for this
         // call ("Writing a comment") is over, as no end comes for it.
-        const step = stepOfCall(tool.name, args);
+        const step = stepOfCall(tool.name, args, stepLabels);
         if (step) options.steps?.wrote(key, agent, step);
       }
       if (!key || result.isError) return result;

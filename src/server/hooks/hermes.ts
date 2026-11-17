@@ -5,7 +5,7 @@
 // module into ~/.hermes/agent-hooks/, the folder Hermes's docs keep such
 // scripts in (its hooks/ folder is for its gateway's own kind of hook).
 // Hermes sends its own event and tool names (pre_tool_call, terminal,
-// mcp__tricot__claim_task), which tricot-describe.mjs reads as Claude Code's
+// mcp__tricot__comment), which tricot-describe.mjs reads as Claude Code's
 // (fromHermes).
 //
 // Hermes keeps hooks in the one file that holds all its settings, a YAML file
@@ -42,7 +42,10 @@ import { DESCRIBE_MODULE, LENSES_MODULE, LENSES_WHAT, lensNote, PROMPT_SCRIPT, p
 import {
   checkScope,
   displayPath,
+  hasLabels,
   isFolder,
+  LABELS_FILE,
+  LABELS_WHAT,
   nameInCommand,
   previewText,
   readText,
@@ -197,6 +200,9 @@ export const hermes: HookInstaller = (() => {
       prompt,
       scripts: [steps, path.join(hooks, DESCRIBE_MODULE), prompt, path.join(hooks, LENSES_MODULE), path.join(hooks, SHOW_MODULE)],
       scriptWhats: ['sends each step to Tricot', 'puts each step in words', promptWhat('Hermes'), LENSES_WHAT, SHOW_WHAT],
+      // The labels of a part's tools, which only a package with one has: written when it does, taken out with the rest.
+      owned: [steps, path.join(hooks, DESCRIBE_MODULE), prompt, path.join(hooks, LENSES_MODULE), path.join(hooks, SHOW_MODULE), path.join(hooks, LABELS_FILE)],
+      ownedWhats: ['sends each step to Tricot', 'puts each step in words', promptWhat('Hermes'), LENSES_WHAT, SHOW_WHAT, LABELS_WHAT],
       allowlist: path.join(folder, HERMES_ALLOWLIST),
     };
   };
@@ -204,16 +210,19 @@ export const hermes: HookInstaller = (() => {
   const plan = (target: HookTarget, setup: HookSetup, scope: HookScope) => {
     const where = paths(target, scope);
     const shownAt = (file: string) => displayPath(file, target, scope);
-    refuseLinks([...where.scripts, where.config], shownAt);
+    const withLabels = hasLabels(setup.source);
+    const written = withLabels ? where.owned : where.scripts;
+    const writtenWhats = withLabels ? where.ownedWhats : where.scriptWhats;
+    refuseLinks([...written, where.config], shownAt);
     const text = readText(where.config);
     if (text === undefined) throw new UnreadableSettings(shownAt(where.config), "isn't there yet (Hermes makes it the first time it runs, with its defaults in it)");
     refuseOwnHooks(linesOf(text), locate(linesOf(text), shownAt(where.config)), shownAt(where.config));
-    const sources = where.scripts.map((script) => path.join(setup.source, path.basename(script)));
+    const sources = written.map((script) => path.join(setup.source, path.basename(script)));
     for (const source of sources) if (!existsSync(source)) throw new Error(`Tricot's ${path.basename(source)} isn't in ${setup.source}.`);
     const command = scriptCommand(shellPath(where.steps), setup.url, setup.name ?? 'Hermes');
     const block = [HERMES_BEGIN, yamlText(hermesHooks(command, promptCommand(shellPath(where.prompt), setup.url))), HERMES_END].join('\n');
     const next = withHermesLines(text, block, shownAt(where.config));
-    const scripts: HookChange[] = where.scripts.map((script, i) => ({ path: script, does: 'write', what: where.scriptWhats[i], same: readText(script) === readText(sources[i]) }));
+    const scripts: HookChange[] = written.map((script, i) => ({ path: script, does: 'write', what: writtenWhats[i], same: readText(script) === readText(sources[i]) }));
     const config: HookChange = {
       path: where.config,
       does: hasHermesLines(text) ? 'replace' : 'add',
@@ -222,7 +231,7 @@ export const hermes: HookInstaller = (() => {
       same: next === text,
     };
     const notes = [HERMES_OWN_LINES, HERMES_APPROVAL, lensNote(name, 'Hermes'), HERMES_WAITS];
-    return { ...where, sources, text, next, scriptChanges: scripts, configChange: config, changes: [...scripts, config], notes };
+    return { ...where, scripts: written, sources, text, next, scriptChanges: scripts, configChange: config, changes: [...scripts, config], notes };
   };
 
   const shown = (files: string[], target: HookTarget, scope: HookScope) => listNames(files.map((f) => displayPath(f, target, scope)));
@@ -288,8 +297,8 @@ export const hermes: HookInstaller = (() => {
         const found = locate(lines, displayPath(where.config, target, scope))!;
         changes.push({ path: where.config, does: 'remove', what: "Tricot's hooks and their two comment lines; every other line stays", lines: lines.slice(found.start, found.end + 1).join('\n'), same: false });
       }
-      where.scripts.forEach((script, i) => {
-        if (existsSync(script)) changes.push({ path: script, does: 'delete', what: where.scriptWhats[i], same: false });
+      where.owned.forEach((script, i) => {
+        if (existsSync(script)) changes.push({ path: script, does: 'delete', what: where.ownedWhats[i], same: false });
       });
       return { changes, notes: [], text: previewText(changes, [], target, scope), unchanged: changes.length === 0 };
     },
@@ -321,7 +330,7 @@ export const hermes: HookInstaller = (() => {
         writeFileAtomic(where.config, withoutHermesLines(text, displayPath(where.config, target, scope)));
         files.push(where.config);
       }
-      for (const file of where.scripts) {
+      for (const file of where.owned) {
         if (!existsSync(file)) continue;
         refuseLinks([file], (f) => displayPath(f, target, scope));
         rmSync(file);

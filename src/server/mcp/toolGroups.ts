@@ -1,4 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { StepLabels } from '../../../hooks/tricot-describe.mjs';
 import { CORE_TOPICS, type GuideTopic } from './guide';
 import type { Contribution, InstructionLine } from './instructions';
 import { wordedBy, type Extra, type Tool } from './tool';
@@ -14,7 +15,7 @@ import { Phrases, type Phrasing } from './words';
 // a group nobody registered is not there to call, and asking for it by name gets
 // the answer any unknown tool gets.
 //
-// A group gives the server up to six things:
+// A group gives the server up to seven things:
 // - `tools`: the tools it adds, built for each session as an area's are
 //   (server/mcp/tools/), from the same context;
 // - `topics`: the topics of the guide it adds, each with what it covers as
@@ -36,7 +37,12 @@ import { Phrases, type Phrasing } from './words';
 //   true without it, and a server with the group reads as it did before;
 // - `answers`: what it answers of a board tool's call that carries an argument
 //   it added (get_board's area), built for each session as `tools` is. The
-//   board's own handler answers every other call.
+//   board's own handler answers every other call;
+// - `stepLabels`: how a live step says its tools in words, and which arguments of
+//   a call name its cards (hooks/tricot-labels.json, the file that is copied
+//   beside the hook where the group's part is installed). The server asks for
+//   it to end the step the hook sent for a call, whose words it must say as the
+//   hook does.
 //
 // The registry is each server's own, not a list every server shares: nothing is
 // registered by loading a module, so a test, or another Tricot, builds the
@@ -58,6 +64,7 @@ export interface ToolGroup {
   instructions?(): InstructionLine[];
   // Built for each session, as `instructions` is.
   phrasing?(): Phrasing;
+  stepLabels?: StepLabels;
 }
 
 // What a session lists: the board's tools with each group's among them, and the topics those groups add.
@@ -94,6 +101,13 @@ export class ToolGroups {
   private say(key: string, message: string, error: unknown): void {
     if (!this.said.has(key)) console.error(message, error);
     this.said.add(key);
+  }
+
+  // What the groups' tools are said as in a live step, together: the words of one group's tool and the card arguments of
+  // each, in the order the groups were added.
+  stepLabels(): StepLabels {
+    const of = (part: 'tools' | 'cards') => Object.assign({}, ...this.all.map((group) => group.stepLabels?.[part]));
+    return { tools: of('tools'), cards: of('cards') };
   }
 
   // The lines the groups add to the instructions, in the order the groups were added (composeInstructions puts them
