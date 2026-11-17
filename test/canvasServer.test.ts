@@ -9,6 +9,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { partsOf, type BoardInfo } from '../src/core/protocol';
 import { canvasEdition } from '../src/server/canvasEdition';
 import { startServer, type RunningServer } from '../src/server/start';
+import { BOARD_TOOLS, CONNECTOR_TOOLS } from './canvasAgentKit';
 import { removeScratch } from './platform';
 
 // Tricot Canvas on the server: the same server made of less. canvasEdition() builds the
@@ -54,7 +55,7 @@ describe('Tricot Canvas, started as the entry starts it', () => {
     const info = (await (await fetch(`${server.url}/api/info`)).json()) as BoardInfo;
     assert.deepEqual(info.parts, []);
     assert.deepEqual(partsOf(info), [], 'a command or the page knows it is Canvas, and not an older Tricot that said nothing');
-    for (const address of ['/api/decisions/anything/links', '/api/not-a-route-of-tricot']) {
+    for (const address of ['/api/not-a-route-of-tricot']) {
       const answer = await fetch(`${server.url}${address}`);
       assert.equal(answer.status, 404, address);
       assert.deepEqual(await answer.json(), { error: 'Not found' }, address);
@@ -63,15 +64,13 @@ describe('Tricot Canvas, started as the entry starts it', () => {
     assert.equal(core.status, 200, "and the core's own routes are served");
   });
 
-  it("lists the board's 26 tools over MCP, and none for a card", async () => {
+  it("lists the board's 26 tools over MCP, and no tool of a part", async () => {
     const server = await start();
     const client = new Client({ name: 'test-client', version: '1.0.0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${server.mcpUrl}?agent=Planner`)));
     try {
       const names = (await client.listTools()).tools.map((tool) => tool.name);
-      assert.equal(names.length, 26 + 7, "the board's 26, and the connectors' 7, which the server gives every app");
-      assert.deepEqual(['post_decision', 'plan_tasks', 'claim_task', 'get_task', 'get_decision', 'update_task', 'pin'].filter((name) => names.includes(name)), [], "none of the decisions' and tasks' tools");
-      assert.ok(['get_board', 'start_thread', 'reply_in_thread', 'add_block'].every((name) => names.includes(name)));
+      assert.deepEqual([...names].sort(), [...BOARD_TOOLS, ...CONNECTOR_TOOLS].sort(), "the board's 26, and the connectors' 7, which the server gives every app: no tool of a part");
     } finally {
       await client.close();
     }

@@ -58,6 +58,11 @@ export interface CanvasOwner {
   mark?: string;
   // Whether its cards hold the id of the board they are on (`boardId`), which renaming the board keeps right.
   holdsBoardId?: boolean;
+  // The kinds of block only a canvas of this owner takes (`comparison`), each with the words that refuse it on another
+  // canvas. A block kind that says `cardOnly` is taken by no canvas when no owner lists it.
+  takes?: Readonly<Record<string, string>>;
+  // The words that refuse pinning a block to an option on a canvas whose card has none (a part's cards that have options).
+  noOptions?: string;
 }
 
 // What an owner's card gives the canvas: its id, its canvas, and when it last changed.
@@ -134,6 +139,9 @@ export interface StorePart<Modules = never> {
   // What the part says of a board in the list of boards, beyond the core's id, title, goal, archived and updatedAt: its keys
   // are added to the entry (a part's counts of its decisions).
   summary?: (board: Board) => Record<string, unknown>;
+  // The name of the agent tool that finishes a person's sync of the board context, which the store's refusals send an agent
+  // to; with none, they say it in plain words. One part gives it.
+  syncTool?: string;
 }
 
 // The owners the Store knows, in the order the parts gave them.
@@ -142,6 +150,16 @@ export class CanvasOwners {
 
   find(owner: string): CanvasOwner | undefined {
     return this.registered.find((entry) => entry.owner === owner);
+  }
+
+  // The owner whose canvases take this kind of block, when a block kind is only for a card's canvas.
+  taking(blockType: string): CanvasOwner | undefined {
+    return this.registered.find((owner) => owner.takes?.[blockType] !== undefined);
+  }
+
+  // The words that refuse pinning a block to an option where there are none, from the owner of the cards that have them.
+  noOptions(): string | undefined {
+    return this.registered.find((owner) => owner.noOptions !== undefined)?.noOptions;
   }
 
   // The registered owner a ref names, with the card's id.
@@ -224,6 +242,8 @@ export interface ComposedParts<Modules> {
   readonly header: Required<NewBoardHeader>;
   // What the parts say of a board in the list of boards: each part's keys, in the order the parts were given.
   readonly summary: (board: Board) => Record<string, unknown>;
+  // The tool that finishes a sync, if a part gives one.
+  readonly syncTool: string | undefined;
   // The same parts without those whose data part is one of these names (the ones the file holds newer data of): what
   // the Store registers once it finds a part off.
   without(dataPartNames: readonly string[]): ComposedParts<Modules>;
@@ -253,6 +273,7 @@ export function composeParts<Modules>(parts: readonly StorePart<Modules>[]): Com
   const headerKeys = new Map<string, string>();
   const startKeys = new Map<string, string>();
   const summaries: ((board: Board) => Record<string, unknown>)[] = [];
+  let syncTool: { part: string; name: string } | undefined;
   for (const part of parts) {
     if (!part.name) throw new Error('A part of the store needs a name.');
     if (names.has(part.name)) throw refused(part.name, 'is registered twice.');
@@ -332,6 +353,10 @@ export function composeParts<Modules>(parts: readonly StorePart<Modules>[]): Com
       startKeys.set(key, part.name);
     }
     if (part.summary) summaries.push(part.summary);
+    if (part.syncTool !== undefined) {
+      if (syncTool) throw refused(part.name, `has a tool that finishes a sync, which the part "${syncTool.part}" has already.`);
+      syncTool = { part: part.name, name: part.syncTool };
+    }
   }
   return {
     parts,
@@ -344,6 +369,7 @@ export function composeParts<Modules>(parts: readonly StorePart<Modules>[]): Com
     boardCards,
     header: composeHeaders(parts.flatMap((part) => (part.header ? [part.header] : []))),
     summary: (board) => Object.assign({}, ...summaries.map((summary) => summary(board))),
+    syncTool: syncTool?.name,
     without: (dataPartNames) => composeParts(parts.filter((part) => !part.data || !dataPartNames.includes(part.data.name))),
     cardKinds: (modules) => cardKindsOver(parts, () => modules),
     cardKindsOver: (modulesOf) => cardKindsOver(parts, modulesOf),

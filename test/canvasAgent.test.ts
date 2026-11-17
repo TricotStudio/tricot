@@ -53,6 +53,27 @@ describe('What an agent is told by a server of Tricot Canvas', () => {
     assert.match(said, /type/);
   });
 
+  it("refuses a block only a card's canvas takes, a pin to an option, and a change in a sync a person asked for, in words that name no kind of card and no tool of a part", () => {
+    const sam = { kind: 'human', name: 'Sam' } as const;
+    const claude = { kind: 'agent', name: 'Claude' } as const;
+    const board = canvas.store.createBoard({ title: 'Plain' }, sam);
+    const page = canvas.store.addPage(board.id, 'Page', sam);
+    assert.throws(
+      () => canvas.store.addBlock({ pageId: page.id }, { content: { type: 'comparison' } }, sam),
+      { message: 'Comparison blocks only work on the canvas of a card that shows them.' },
+    );
+    assert.throws(
+      () => canvas.store.addBlock({ pageId: page.id }, { optionId: 'a', content: { type: 'note', text: 'Evidence' } }, sam),
+      { message: 'Only blocks on the canvas of a card with options can be pinned to an option.' },
+    );
+    canvas.store.addBlock({ boardId: board.id }, { content: { type: 'note', text: 'Goal' } }, sam);
+    canvas.store.requestSync(board.id, undefined, sam);
+    assert.throws(() => canvas.store.cancelSync(board.id, claude), { message: 'Only people cancel a sync; finish it instead.' });
+    const note = canvas.store.getBoard(board.id).canvas.blocks[0];
+    canvas.store.updateBlock(note.id, { text: 'Edited by a person' }, sam);
+    assert.throws(() => canvas.store.updateBlock(note.id, { text: 'Edited by an agent' }, claude), /say so in your note when you finish the sync\.$/);
+  });
+
   it("tells the core's short neutral instructions, in full as the golden has them", () => {
     const golden = parseGolden(read(CANVAS_FILE));
     assert.equal(client.getInstructions(), golden.plain.text);

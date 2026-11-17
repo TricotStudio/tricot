@@ -37,7 +37,7 @@ export class Deletions {
     const group = canvas.groups.find((g) => g.id === itemId);
     const pin = canvas.pins.find((p) => p.id === itemId);
     if (block) {
-      guardSync(located, block, actor, 'remove');
+      guardSync(this.repo, located, block, actor, 'remove');
       const dropped = canvas.links.filter((l) => l.from === itemId || l.to === itemId);
       const unpinned = canvas.pins.filter((p) => p.blockId === itemId);
       canvas.links = canvas.links.filter((l) => !dropped.includes(l));
@@ -143,7 +143,7 @@ export class Deletions {
     if (this.repo.hasItem(itemId)) throw new BoardError(`Can't restore ${deletion.label}: something on a canvas has its id "${itemId}" now.`);
     if (deletion.kind === 'block') {
       if (canvas.blocks.length >= LIMITS.blocks) throw new BoardError(`A canvas can hold at most ${LIMITS.blocks} blocks.`);
-      guardSync(located, deletion.kept!.block, actor, 'restore');
+      guardSync(this.repo, located, deletion.kept!.block, actor, 'restore');
     }
     if (deletion.kind === 'pin' && canvas.pins.length >= LIMITS.pins) throw new BoardError(`A canvas can hold at most ${LIMITS.pins} pins.`);
 

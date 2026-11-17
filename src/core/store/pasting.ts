@@ -51,7 +51,7 @@ export class Pasting {
   paste(ref: CanvasRef, input: Paste, actor: Actor): Pasted {
     const target = this.repo.locate(ref);
     guardArchived(target.board);
-    guardSync(target, undefined, actor, 'add');
+    guardSync(this.repo, target, undefined, actor, 'add');
     const source = this.sourceOf(input.ids);
     const { canvas } = target;
     if (canvas.blocks.length + source.blocks.length > LIMITS.blocks) {
@@ -117,7 +117,7 @@ export class Pasting {
     const { board, page } = this.repo.getPage(pageId);
     guardArchived(board);
     const target: Located = { board, canvas: board.canvas };
-    guardSync(target, undefined, actor, 'add');
+    guardSync(this.repo, target, undefined, actor, 'add');
     const wanted = new Set(blockIds);
     const blocks = page.canvas.blocks.filter((b) => wanted.has(b.id));
     if (blocks.length === 0) throw new BoardError(`Select blocks on ${pageName(page)} to keep.`);

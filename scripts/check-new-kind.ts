@@ -210,6 +210,16 @@ function pageMode(): string[] {
   return existsSync(path.join(root, 'src/web/main.tsx')) ? [] : ['--mode', 'canvas'];
 }
 
+// What a tree with cards adds to the end-to-end check (scripts/check-new-kind-cards.mjs): none where the file is not.
+type CardsCheck = Record<'whole' | 'parts' | 'reworded', (context: Record<string, unknown>) => Promise<any>>;
+async function cardsCheck(): Promise<CardsCheck | undefined> {
+  const file = './check-new-kind-cards.mjs'; // by a name held apart, so a tree without the file still typechecks
+  return import(file).then(
+    (module) => module.default as CardsCheck,
+    (error) => (error?.code === 'ERR_MODULE_NOT_FOUND' ? undefined : Promise.reject(error)),
+  );
+}
+
 async function endToEnd(): Promise<void> {
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
   const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
@@ -270,15 +280,10 @@ async function endToEnd(): Promise<void> {
   assert.match((await call('update_block', { block_id: id, rev: 2, restore_rev: 1 })).text, /^Restored v1 of quote "Be kind"/);
   ok('update_block, its versions in the words the kind gives, and restore');
 
-  // a whole-block pin works on any kind, with nothing from it (where the server has the pin tool)
-  const pins = tools.some((t) => t.name === 'pin');
-  let task = '';
-  if (pins) {
-    const planned = (await call('plan_tasks', { board_id: board, tasks: [{ title: 'Use it' }] })).text;
-    task = planned.match(/\[id: ([^\]]+)\]/)![1];
-    assert.match((await call('pin', { block_id: id, task_id: task })).text, /^Pinned the whole block in quote "Be kind" to T1/);
-    ok('pins the whole block');
-  }
+  // a whole-block pin works on any kind, with nothing from it (where a tree adds the cards that take a pin: scripts/check-new-kind-cards.mjs)
+  const cards = await cardsCheck();
+  const task = await cards?.whole({ call, board, id });
+  if (cards) ok('pins the whole block');
 
   // fields that are not its own are refused, in both directions
   assert.match((await call('update_block', { block_id: id, rev: 3, rows: [['x']] })).text, /A quote block has no columns or rows\./);
@@ -300,26 +305,17 @@ async function endToEnd(): Promise<void> {
   ok('REST create, change and its refusals; what people did shows in agents\' updates');
 
   // a part of it is pinned as its pin hooks say: words in the quote, named, found again and lost in its own words (where the server has the pin tool)
-  if (pins) {
-    const pinned = (await call('pin', { block_id: id, task_id: task, text: 'kind' })).text;
-    assert.match(pinned, /^Pinned words “kind” of the quote in quote "Be kind" to T1 \[pin id: \w+\]/);
-    const pinId = pinned.match(/\[pin id: (\w+)\]/)![1];
-    assert.ok((await call('pin', { block_id: id, task_id: task, text: 'kind' })).text.includes(`[pin id: ${pinId}]`), 'the same words again are the same part');
-    assert.match((await call('get_canvas', { page_id: page })).text, /\n {2}pinned words “kind” of the quote \(in its words\) → T1 \(to do\)/);
-  }
+  await cards?.parts({ call, page, id, task });
   // a person rewords it, which loses the words a pin kept: agents are told, and read the pin as lost
   assert.equal((await rest('POST', `/canvas/blocks/${id}`, { actor: 'Sam', quote: 'Be gentle', rev: 3 })).status, 200);
-  if (pins) {
-    assert.match((await call('get_updates', { board_id: board, since: 0 })).text, /Sam \(human\) updated quote "Be gentle" on Sketchbook page "Quotes": reworded the quote; words “kind” of the quote, pinned to T1, is no longer there/);
-    assert.match((await call('get_canvas', { page_id: page })).text, /\n {2}pinned words “kind” of the quote \(in its words\) \(quote reworded\) → T1 \(to do\)/);
-  }
+  await cards?.reworded({ call, board, page });
   // people comment on its words over REST, and are refused a part it doesn't have, in that part's words
   const commented = await rest('POST', `/canvas/blocks/${id}/pins/comment`, { actor: 'Sam', part: { kind: 'text', quote: 'gentle', prefix: 'Be ', suffix: '' }, body: 'Softer still?' });
   assert.equal(commented.status, 201);
   assert.match((await call('get_updates', { board_id: board, since: 0 })).text, /Sam \(human\) commented on words “gentle” of the quote in quote "Be gentle"/);
   const cells = await rest('POST', `/canvas/blocks/${id}/pins/comment`, { actor: 'Sam', part: { kind: 'cells', rows: [0, 0] }, body: 'No cells here' });
   assert.deepEqual([cells.status, cells.json.error], [400, 'Only tables have cells; quote "Be gentle" is a quote.']);
-  ok(`pins words in it as its pin hooks say${pins ? ': named, the same part again, found, lost; people' : '; people'} comment on them, and are refused parts it lacks`);
+  ok(`pins words in it as its pin hooks say${cards ? ': named, the same part again, found, lost; people' : '; people'} comment on them, and are refused parts it lacks`);
 
   await client.close();
   server.closeAllConnections();

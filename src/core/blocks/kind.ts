@@ -278,6 +278,9 @@ export interface BlockKind<T extends KindTypes = any> {
   // The size of a new one: from its content, and the width and height asked for.
   sizeFor?(fields: T['fields'], asked: { w?: number; h?: number }): Size;
 
+  // Set for a kind only a card's canvas takes (a part's cards say which: `CanvasOwner.takes`): the words that refuse it on any
+  // other canvas, said when no registered kind of card takes it, so a server with none names no kind.
+  readonly cardOnly?: string;
   create(input: T['input'], context: CreateContext): T['fields'];
   // The names of the patch fields it takes; a change naming one a block's kind
   // doesn't take is refused, in those words.
@@ -315,7 +318,7 @@ export interface BlockKind<T extends KindTypes = any> {
 // (what the browser needs to name, place and show a block) is in its index.ts.
 export type ServerHalf<T extends KindTypes = any> = Pick<
   BlockKind<T>,
-  'create' | 'patchFields' | 'change' | 'describe' | 'snapshot' | 'restorePatch' | 'copy' | 'digest' | 'inline' | 'searchText' | 'briefInFull' | 'assets' | 'forPeople' | 'agent' | 'people' | 'derive'
+  'cardOnly' | 'create' | 'patchFields' | 'change' | 'describe' | 'snapshot' | 'restorePatch' | 'copy' | 'digest' | 'inline' | 'searchText' | 'briefInFull' | 'assets' | 'forPeople' | 'agent' | 'people' | 'derive'
 > & { anchor?: PinHooks<T>['anchor']; part?: PinHooks<T>['part'] };
 
 export type AnyKind = BlockKind<any>;

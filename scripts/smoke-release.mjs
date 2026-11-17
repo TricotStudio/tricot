@@ -13,13 +13,9 @@
 // is the one it was built as: a package with a page with parts (dist/web) holds
 // that edition, and one without it holds Canvas alone (see scripts/build.mjs).
 //
-// The edition with parts: in headless Chrome with a fresh profile, the name, the
-// first-run page ("What are you working on?") and the Source link at its
-// foot, a sentence sent; a stand-in agent connects through the server's own
-// MCP endpoint, finds the thread and posts the first decision on it, and the
-// page shows it. Screenshots of the first-run page and the first question go
-// to .review/smoke/shots/. Then it is stopped and `tricot canvas` is
-// started on the same data and port: it serves the Canvas page (dist/canvas),
+// The edition with parts: scripts/smoke-release-full.mjs, where the tree has it, drives its page in headless Chrome and
+// a stand-in agent over the server's own MCP endpoint, with screenshots in .review/smoke/shots/. Then it is stopped and
+// `tricot canvas` is started on the same data and port: it serves the Canvas page (dist/canvas),
 // /api/info lists no part and a route outside Canvas answers 404, `tricot status`
 // names Canvas, and `tricot start` refuses while it runs.
 //
@@ -124,6 +120,12 @@ if (!tarball) {
 }
 // A page with parts is in the package only where the build made it (scripts/build.mjs); the package is then the edition with parts.
 const fullPackage = files.includes('dist/web/index.html');
+// What checks the edition with parts is in a file of its own, where the tree has it (scripts/smoke-release-full.mjs).
+const full = fullPackage
+  ? await import('./smoke-release-full.mjs').catch((error) =>
+      error?.code === 'ERR_MODULE_NOT_FOUND' ? fail('The package holds a page with parts, and this tree has no scripts/smoke-release-full.mjs to check it.') : Promise.reject(error),
+    )
+  : undefined;
 say(fullPackage ? 'The package holds the page with parts: checking its edition, and then Canvas.' : 'The package holds Canvas alone: checking Canvas.');
 for (const file of MUST) check(files.includes(file), `the package has ${file}`);
 const leaks = files.filter((file) => NEVER.some((pattern) => pattern.test(file)));
@@ -366,62 +368,12 @@ async function main() {
   check(tricotLog.includes(`Boards in: ${dirs.data}`), 'it keeps boards in the scratch data folder');
 
   if (fullPackage) {
-    await fullEdition(base, info);
+    await full.run({ base, info, check, fail, waitFor, Agent, open: async () => (browser = await Page.open(chromePath())) });
   } else {
     await canvasServes(base, info, 'the installed tricot');
     await canvasPage(base);
   }
   await canvas(base);
-}
-
-// The edition with parts, as the plain `tricot` starts it where the package holds a page with parts.
-async function fullEdition(base, info) {
-  browser = await Page.open(chromePath());
-  await browser.send('Page.navigate', { url: `${base}/` });
-  await waitFor('the name question', () => browser.eval(`!!document.querySelector('.gate-card input')`));
-  await browser.type('.gate-card input', 'Sam');
-  await browser.eval(`document.querySelector('.gate-card button').click()`);
-  const heading = await waitFor('the first-run page', () => browser.eval(`document.querySelector('.first-run h1')?.textContent`));
-  check(heading === 'What are you working on?', `the first-run page asks "${heading}"`);
-  await waitFor('the connect line under the field', () => browser.eval(`!!document.querySelector('.first-connect, .first-agent')`));
-  check(await browser.eval(`document.querySelector('.first-connect')?.textContent.includes('No agent connected yet') ?? false`), 'it says no agent is connected yet, with the command to connect one');
-  const source = await waitFor('the Source link at the foot of Home', () => browser.eval(`document.querySelector('.home-foot-about a')?.href`));
-  check(source === info.source, `the foot of Home links to its source (${source})`);
-  await browser.shot('first-run.png');
-
-  const sentence = 'A pricing page for the Pro plan';
-  await browser.type('.first-ask-field', sentence);
-  await browser.eval(`document.querySelector('.first-ask-send').click()`);
-  const hash = await waitFor('the new project to open', () => browser.eval(`location.hash.startsWith('#/b/') && location.hash`));
-  check(Boolean(hash), `sending made the project and opened it (${hash})`);
-
-  const agent = new Agent(`${base}/mcp?agent=Stand-in`);
-  const hello = await agent.connect();
-  check(hello.serverInfo?.name !== undefined, `a stand-in agent connected over MCP (${hello.serverInfo?.name}, protocol ${hello.protocolVersion})`);
-  const boards = await agent.tool('list_boards');
-  const boardId = /\[id: ([^\]]+)\]/.exec(boards)?.[1] ?? fail(`No board in list_boards:\n${boards}`);
-  const board = await agent.tool('get_board', { board_id: boardId });
-  const threadId = /\[thread id: ([^\]]+)\]/.exec(board)?.[1] ?? fail(`No thread on the board:\n${board}`);
-  check(board.includes(sentence), `the agent finds the board and the sentence on thread ${threadId}`);
-  const question = 'Which pricing should the Pro plan page lead with?';
-  const posted = await agent.tool('post_decision', {
-    board_id: boardId,
-    thread_id: threadId,
-    question,
-    context: 'The page leads with one price; the other shows on a toggle.',
-    options: [
-      { label: 'Monthly', description: 'Lead with the monthly price.' },
-      { label: 'Yearly', description: 'Lead with the yearly price and its saving.' },
-    ],
-    recommend: 'b',
-    recommendation_reason: 'Most buyers of a Pro plan pay yearly.',
-    area: 'Pricing',
-  });
-  check(/\[id: [^\]]+\]/.test(posted), 'the agent posted the first decision on the thread');
-  await waitFor('the question on the page', () => browser.eval(`document.body.innerText.includes(${JSON.stringify(question)})`));
-  check(true, 'the page shows the question');
-  await browser.shot('first-question.png');
-  await agent.close();
 }
 
 // What a running Canvas answers, whichever command started it: /api/info with no part, the Canvas page as installed (and, where the
@@ -432,7 +384,7 @@ async function canvasServes(base, info, by) {
   const canvasHtml = readFileSync(path.join(installed, 'dist/canvas/index.html'), 'utf8');
   const other = fullPackage ? ' and not the page with parts' : '';
   check(page === canvasHtml && (!fullPackage || page !== readFileSync(path.join(installed, 'dist/web/index.html'), 'utf8')), `${by} serves the Canvas page (the installed dist/canvas${other})`);
-  const outside = await fetch(`${base}/api/decisions/anything/links`);
+  const outside = await fetch(`${base}${full?.outside ?? '/api/not-a-route/anything'}`);
   check(outside.status === 404, `a route outside Canvas answers ${outside.status}`);
 }
 

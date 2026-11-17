@@ -63,6 +63,9 @@ export class BoardRepository {
   // dev server): only while the server listens on this computer alone; the
   // server sets it (server/app.ts).
   localFiles = true;
+  // The agent tool that finishes a sync of the board context, which a part gives (StorePart.syncTool) for the refusals that
+  // send an agent to it: none, and those say it in plain words.
+  syncTool: string | undefined;
 
   // `lists` are the lists of cards the store reads and writes besides Sketchbook pages (entityLists.ts): none unless a
   // registry is given. Every other row of a board is left as the database holds it.
@@ -178,6 +181,16 @@ export class BoardRepository {
   // The kinds of card this repository keeps, by the name of their owner (`decision`, `task`), in the order they were registered.
   cardKinds(): string[] {
     return this.owners.registered.map((owner) => owner.owner);
+  }
+
+  // The owner of the cards whose canvases alone take a kind of block, if a part registered one.
+  ownerTaking(blockType: string): CanvasOwner | undefined {
+    return this.owners.taking(blockType);
+  }
+
+  // What refuses a block pinned to an option on a canvas with none, in a part's words if it has cards with options.
+  noOptionsWords(): string {
+    return this.owners.noOptions() ?? 'Only blocks on the canvas of a card with options can be pinned to an option.';
   }
 
   // The registered card with this id, whichever its kind: its kind's owner, its board and the card.

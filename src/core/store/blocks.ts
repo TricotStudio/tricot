@@ -26,7 +26,7 @@ export class Blocks {
   addBlock(ref: CanvasRef, input: NewBlock, actor: Actor): Block {
     const located = this.repo.locate(ref);
     guardArchived(located.board);
-    guardSync(located, undefined, actor, 'add', input.groupId);
+    guardSync(this.repo, located, undefined, actor, 'add', input.groupId);
     const block = this.newBlock(located, input, actor);
     located.canvas.blocks.push(block);
     this.repo.indexItem(block.id, refOf(located));
@@ -105,7 +105,7 @@ export class Blocks {
     const { canvas } = located;
     const block = canvas.blocks.find((b) => b.id === blockId);
     if (!block) throw new BoardError(`"${blockId}" is not a block.`);
-    guardSync(located, block, actor, restoring ? 'restore' : 'change');
+    guardSync(this.repo, located, block, actor, restoring ? 'restore' : 'change');
     if (expectedRev !== undefined && expectedRev !== block.rev) {
       const by = block.updatedBy;
       throw new BoardError(
@@ -156,7 +156,7 @@ export class Blocks {
   newBlock(located: Located, input: NewBlock, actor: Actor): Block {
     const { canvas } = located;
     if (canvas.blocks.length >= LIMITS.blocks) throw new BoardError(`A canvas can hold at most ${LIMITS.blocks} blocks.`);
-    const content = blockContent(this.assets, input.content, located, this.repo.localFiles);
+    const content = blockContent(this.assets, input.content, located, this.repo.localFiles, (type) => this.repo.ownerTaking(type));
     const kind = kindOf(content.type);
     // A code block is named by its path, so it has no title.
     const title = input.title !== undefined && kind.titled !== false ? optional(limited(input.title, LIMITS.title, 'A title')) : undefined;

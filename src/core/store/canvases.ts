@@ -140,7 +140,7 @@ export class Canvases {
   validOption(located: Located, optionId: string): string {
     const card = cardOwning(located);
     const options = card?.options;
-    if (!card || !options) throw new BoardError('Only blocks on a decision canvas can be pinned to an option.');
+    if (!card || !options) throw new BoardError(this.repo.noOptionsWords());
     if (!options.some((o) => o.id === optionId)) {
       throw new BoardError(`${card.named} has no option "${optionId}".`);
     }

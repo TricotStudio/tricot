@@ -118,6 +118,7 @@ export class Store {
     const setsBoardCards = parts.boardCards.length > 0;
     if (setsBoardCards) useBoardCards(parts.boardCards);
     this.repo = new BoardRepository(dataDir, parts.lists, parts.owners, data, parts.tables, parts.events);
+    this.repo.syncTool = parts.syncTool;
     this.assets = new Assets(dataDir, this.repo);
     this.people = new People(this.repo);
     this.canvases = new Canvases(this.repo);
@@ -136,6 +137,7 @@ export class Store {
       parts = parts.without(off.map(({ part }) => part));
       if (setsBoardCards) useBoardCards(parts.boardCards);
       this.repo.use(parts.lists, parts.owners, parts.tables, parts.events);
+      this.repo.syncTool = parts.syncTool;
       cards.replace(parts.cardKindsOver(modulesOf));
     };
     this.pins = new Pins(this.repo, this.people, cards);

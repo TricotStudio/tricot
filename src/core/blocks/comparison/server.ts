@@ -4,8 +4,6 @@
 import { z } from 'zod';
 import type { ComparisonTypes } from './index';
 import type { AgentHalf, PeopleHalf, ServerHalf } from '../kind';
-import { BoardError } from '../../store/errors';
-import { ownedCard } from '../../store/storePart';
 
 export const agent: AgentHalf<ComparisonTypes> = {
   // A comparison is the table of a decision's options, which a part's cards have: a server that offers none tells agents of no such block.
@@ -22,10 +20,9 @@ export const people: PeopleHalf = { create: z.object({ type: z.literal('comparis
 export const server: ServerHalf<ComparisonTypes> = {
   patchFields: [],
 
-  create(_input, { located }) {
-    if (ownedCard(located)?.owner !== 'decision') throw new BoardError('Comparison blocks only work on a decision canvas.');
-    return {};
-  },
+  cardOnly: 'Comparison blocks only work on the canvas of a card that shows them.',
+
+  create: () => ({}),
 
   describe: () => [],
   snapshot: () => ({}),

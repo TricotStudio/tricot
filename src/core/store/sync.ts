@@ -32,7 +32,7 @@ export class Sync {
 
   // Cancelling a sync that has just finished is not an error: it is over either way.
   cancelSync(boardId: string, actor: Actor): Board {
-    if (actor.kind !== 'human') throw new BoardError('Only people cancel a sync; finish it with finish_sync instead.');
+    if (actor.kind !== 'human') throw new BoardError(`Only people cancel a sync; finish it ${this.repo.syncTool ? `with ${this.repo.syncTool} ` : ''}instead.`);
     const board = this.repo.getBoard(boardId);
     guardArchived(board);
     const request = board.syncRequest;
@@ -71,20 +71,21 @@ export class Sync {
 // blocks people made or edited. A sync of selected blocks covers exactly those,
 // whoever's they are: agents can't change other blocks or add new ones.
 // `block` is the block being changed or removed; none for a new one.
-export function guardSync(located: Located, block: Block | undefined, actor: Actor, action: string, groupId = block?.groupId): void {
+export function guardSync(repo: BoardRepository, located: Located, block: Block | undefined, actor: Actor, action: string, groupId = block?.groupId): void {
   const request = located.board.syncRequest;
   if (!request || actor.kind !== 'agent' || located.page || ownedCard(located)) return;
   // An agent answering a person's request builds in its group, whatever the sync covers.
   const answering = located.board.requests?.some((r) => r.status === 'working' && r.groupId === groupId && sameActor(r.takenBy!, actor));
   if (groupId && answering) return;
-  const leave = "Leave it as it is; if it's out of date, say so in your note to finish_sync.";
+  const note = repo.syncTool ? `your note to ${repo.syncTool}` : 'your note when you finish the sync';
+  const leave = `Leave it as it is; if it's out of date, say so in ${note}.`;
   if (request.blockIds) {
     if (block && request.blockIds.includes(block.id)) return;
     const names = syncedBlocks(located.board.canvas, request.blockIds).map((b) => blockName(b));
     const covers = `${request.by.name}'s sync covers only the blocks they selected (${names.join(', ')})`;
     if (!block) {
       throw new BoardError(
-        `${covers}, so agents can't add blocks to the board context until it's finished. Refresh those, and suggest anything new in your note to finish_sync.`,
+        `${covers}, so agents can't add blocks to the board context until it's finished. Refresh those, and suggest anything new in ${note}.`,
       );
     }
     throw new BoardError(`${blockLabel(block)} in the board context isn't in this sync: ${covers}, so agents can't ${action} it. ${leave}`);
