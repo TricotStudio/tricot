@@ -1,0 +1,235 @@
+/* ---- connectors ---------------------------------------------------------
+   One page for the services Tricot reads from, a card each; a panel for
+   them on Home; and the way there in a board's ⋯ menu. */
+
+a.menu-item {
+  text-decoration: none;
+}
+
+.connectors {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 24px 64px;
+  display: grid;
+  gap: 24px;
+}
+.connectors-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.connectors-back:hover {
+  color: var(--text);
+}
+.connectors-intro h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 10px;
+}
+.connectors-intro .lede {
+  max-width: 62ch;
+}
+.connectors code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+.connector-list {
+  display: grid;
+  gap: 16px;
+}
+.connectors-next {
+  margin-top: -8px;
+}
+
+.connector-card {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.connector-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.connector-name {
+  flex: 1;
+  min-width: 0;
+}
+.connector-name h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+.connector-mark {
+  flex: none;
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--mark-tile);
+}
+.connector-mark svg {
+  display: block;
+}
+
+/* The state, as everywhere: a square marker and neutral text. Amber when it
+   waits on the person (sign in again), red when it's broken. */
+.connector-state {
+  flex: none;
+  --marker: var(--deferred);
+}
+.connector-state.is-connected {
+  --marker: var(--decided);
+}
+.connector-state.is-attention {
+  --marker: var(--open);
+  color: var(--open-ink);
+}
+.connector-state.is-error {
+  --marker: var(--danger);
+  color: var(--danger);
+}
+.connector-state.is-idle::before {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--marker);
+}
+
+.connector-account {
+  overflow-wrap: anywhere;
+}
+.connector-account strong {
+  font-weight: 500;
+}
+.connector-since {
+  white-space: nowrap;
+}
+.connector-client {
+  overflow-wrap: anywhere;
+}
+.connector-note {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.connector-note.is-attention {
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.connector-note.is-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.connector-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.connector-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.connector-access {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.connector-access li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.connector-access-icon {
+  color: var(--decided-ink);
+  transform: translateY(0.125em);
+}
+.connector-access li.is-denied {
+  color: var(--muted);
+}
+.connector-access li.is-denied .connector-access-icon {
+  color: var(--faint);
+}
+.connector-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.connector-steps li::marker {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.connector-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.connector-actions:empty {
+  display: none;
+}
+.connector-waiting,
+.connector-confirm {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.connector-confirm {
+  color: var(--text);
+}
+.connector-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--text);
+  animation: connector-spin 0.9s linear infinite;
+}
+@keyframes connector-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (max-width: 900px) {
+  .connectors {
+    padding: 16px 16px 48px;
+  }
+}
+@media (max-width: 600px) {
+  .connectors-intro h1 {
+    font-size: 24px;
+  }
+  .connector-card {
+    padding: 16px;
+  }
+}

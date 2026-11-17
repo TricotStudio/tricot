@@ -1,0 +1,100 @@
+/* Agents' skills, called from Tricot with "/": the list that opens in a
+   composer, a request's skill in a comment, and a reply's "via" tag. The list
+   shares the look of the @ menu (mentions.css). The user menu's agents and an
+   agent's panel are in agents.css. */
+
+/* ---- the "/" list ----------------------------------------------------------- */
+
+.skill-menu {
+  grid-template-columns: minmax(0, 1fr);
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.skill-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  margin: 0 -5px;
+  padding: 7px 13px 4px;
+  background: var(--surface);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.skill-agent {
+  color: var(--text);
+  font-weight: 600;
+}
+.skill-agent-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-option {
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+}
+.skill-name {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.skill-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* A Tricot skill, among an agent's own: it works with every agent. */
+.skill-tricot {
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  font-size: 11px;
+  line-height: 16px;
+}
+/* An agent that isn't here: its skills still can be picked, and run when it next connects. */
+.skill-option.is-away .skill-name,
+.skill-option.is-away .skill-desc {
+  color: var(--faint);
+}
+.skill-head.is-away .skill-agent {
+  color: var(--muted);
+}
+.skill-foot {
+  padding: 6px 8px 3px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* ---- in a comment -------------------------------------------------------------- */
+
+/* The skill a request starts with, in the same chip as a mention. */
+.md .skill-chip {
+  padding: 0 4px;
+  border-radius: 5px;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  font-family: var(--mono);
+  font-size: 0.92em;
+  font-weight: 500;
+}
+.tag-via {
+  background: none;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}

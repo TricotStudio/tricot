@@ -1,0 +1,444 @@
+/* Pointing work at one agent: @-mentions (the autocomplete and the chips in
+   comment text) and a card's assignee (its chip and picker). Both menus share
+   one look: a floating list on the page, drawn above everything. */
+
+.mention-menu,
+.assignee-menu {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  gap: 1px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  color: var(--text);
+}
+.mention-menu-head,
+.assignee-menu-head {
+  padding: 5px 8px 3px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.mention-option,
+.assignee-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mention-option.is-active,
+.assignee-option.is-active {
+  background: var(--surface-2);
+}
+.mention-option .actor,
+.assignee-option .actor {
+  gap: 8px;
+  min-width: 0;
+}
+.mention-option .actor-name,
+.assignee-option .actor-name {
+  font-size: 13px;
+  color: var(--text);
+}
+.mention-option .actor-mark,
+.assignee-option .actor-mark {
+  width: 20px;
+  height: 20px;
+  font-size: 10.5px;
+}
+.mention-state {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ---- an agent's model and thinking for one message (T23, T29) ----------------- */
+
+/* On an agent's row, what it does is said beside its state, and the cells
+   (or "its own model") take the row's end. */
+.mention-option.has-tag .mention-state {
+  margin-left: 0;
+  padding-left: 0;
+}
+.mention-tag-cells {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Each cell is a chip in the rule chip's shape (agents.css), its caret
+   saying it opens a list: faint at the agent's rule, in ink once set. */
+.mention-tag-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 112px;
+  height: 24px;
+  padding: 0 5px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--faint);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.mention-tag-cell:hover,
+.mention-tag-cell[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.mention-tag-cell.is-set {
+  color: var(--text);
+  font-weight: 500;
+}
+.mention-tag-cell.is-focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.mention-tag-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mention-tag-cell:is(:hover, [aria-expanded='true']) .assignee-caret {
+  stroke: var(--muted);
+}
+/* A cell's list: its values, the one set ticked, the rule's marked default. */
+.mention-menu.mention-tag-list {
+  width: max-content;
+  min-width: 184px;
+  padding: 4px;
+}
+.mention-tag-list .mention-menu-head {
+  padding: 4px 8px 3px;
+}
+.mention-tag-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 6px 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.mention-tag-choice:hover {
+  background: var(--surface-2);
+}
+.mention-tag-choice.is-chosen {
+  font-weight: 500;
+}
+.mention-tag-choice-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--faint);
+}
+.mention-tag-check {
+  flex: none;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--text);
+}
+.mention-tag-choice-note + .mention-tag-check {
+  margin-left: 0;
+}
+.mention-tag-check .icon {
+  width: 14px;
+  height: 14px;
+}
+.mention-tag-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+/* One line whatever it says (a long tag is cut), so the rows above keep
+   their place under the mouse as it changes. */
+.mention-tag-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  padding: 7px 8px 3px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.mention-tag-foot > span {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+}
+.mention-tag-foot > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+}
+.mention-tag-foot kbd {
+  font-family: var(--font);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  margin-right: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.mention-tag-foot code {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--exploring-ink);
+  background: var(--exploring-bg);
+}
+
+/* ---- the "#" list: the board's cards, of each kind ----------------------- */
+
+/* About eight rows, then it scrolls under its group headings. */
+.hash-menu {
+  grid-template-columns: minmax(0, 1fr);
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.hash-menu .mention-menu-head {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  margin: 0 -5px;
+  padding: 7px 13px 4px;
+  background: var(--surface);
+}
+.hash-option {
+  min-width: 0;
+  min-height: 28px;
+  gap: 10px;
+}
+/* The number, after its status marker as on a #12 or T5 chip (ref-* classes). */
+.hash-option-ref {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 46px;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.hash-option-ref::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--marker, var(--faint));
+}
+/* Hollow, as in the lanes: a card set aside, and work not ready yet. */
+.hash-option-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hash-option .mention-state {
+  padding-left: 4px;
+}
+
+/* ---- the "^" list: a lens for this one message ---------------------------- */
+
+/* The presets, then the thread's own lens, a row each: its name in its tint
+   (--lens-bg and --lens-ink come from the tone class the threads feature gives
+   it), its brief in a line, and a tick on the thread's own. */
+.lens-menu-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+.lens-option {
+  min-width: 0;
+  min-height: 32px;
+  gap: 10px;
+}
+.lens-option-name {
+  flex: none;
+  min-width: 92px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--lens-bg);
+  color: var(--lens-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
+}
+.lens-option-brief {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.lens-option-now {
+  flex: none;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--text);
+}
+.lens-option-now .icon {
+  width: 14px;
+  height: 14px;
+}
+.lens-foot {
+  padding: 6px 8px 3px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* A mention in a comment's text: a quiet chip in the pin blue, the name kept as written. */
+.md .mention {
+  padding: 0 4px;
+  border-radius: 5px;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ---- mentions in the field ------------------------------------------------- */
+
+/* A textarea's mentions show as chips through it: the field goes clear, and a
+   copy of its text behind it, invisible but for the mentions, takes its
+   background (Backdrop in mentions.tsx). */
+.mention-field {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.mention-field > textarea {
+  position: relative;
+  display: block;
+}
+.mention-field.has-marks > :is(textarea, input) {
+  background: transparent;
+}
+/* A one-line field fills its row, its text on one line, centred as the
+   input centres it. */
+.mention-field.mention-line {
+  flex: 1;
+  display: flex;
+  align-self: stretch;
+}
+.mention-line > input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.mention-line > .mention-backdrop {
+  display: flex;
+  align-items: center;
+  white-space: pre;
+}
+.mention-backdrop {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-style: solid;
+  border-color: transparent;
+  background: var(--surface);
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+.mention-backdrop mark {
+  color: transparent;
+  background: var(--exploring-bg);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--exploring-bg);
+}
+/* A ^Lens takes its lens's tint. */
+.mention-backdrop mark.lens-mark {
+  background: var(--lens-bg);
+  box-shadow: 0 0 0 2px var(--lens-bg);
+}
+
+/* ---- a card's assignee ------------------------------------------------------ */
+.assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 9px 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.assignee-chip:hover,
+.assignee-chip[aria-expanded='true'] {
+  border-color: var(--border-strong);
+}
+.assignee-chip .actor-name {
+  font-size: 12px;
+  color: var(--text);
+}
+.assignee-chip.is-any {
+  padding: 0 9px;
+  border-style: dashed;
+  color: var(--muted);
+}
+.assignee-chip.is-any:hover,
+.assignee-chip.is-any[aria-expanded='true'] {
+  color: var(--text);
+}
+.assignee-chip.is-static {
+  cursor: default;
+}
+.assignee-caret {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-right: -2px;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

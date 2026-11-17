@@ -1,0 +1,163 @@
+/* ---- board ------------------------------------------------------------- */
+
+.board-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.attention {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.attention-end {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+/* The tab, the conversation the chat bar opened docked beside it, and the
+   activity. The conversation's column is always there, empty while it's
+   closed. It takes its width at once as the panel opens or closes, and the
+   panel slides over it (chatBar.css), so the board is laid out once rather
+   than on every frame of the motion. Its width is the layout's own (not
+   inherited), so changing it restyles the layout alone, not everything on
+   the board */
+@property --dock-track {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.board-layout {
+  position: relative; /* the chat bar floats at the foot of its first column (chatBar.css) */
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--dock-track) 300px;
+  overflow-x: clip;
+  --dock-width: min(440px, 40vw);
+  --dock-track: 0px;
+}
+.board-layout-full {
+  grid-template-columns: minmax(0, 1fr) var(--dock-track);
+}
+/* A part's window takes the tab's column, its views as tabs on its
+   title line. The chat bar, placed out of the flow, ends
+   at the column's end too: without it, it would run to the layout's edge,
+   under the activity. A view other than the board context takes the
+   canvas's place, the canvas under it. */
+.board-layout-overview > :is(.board-canvas, .overview-window),
+.board-layout-overview > .chat-float {
+  grid-column: 1 / 2;
+}
+.board-layout-overview > :is(.board-canvas, .overview-window) {
+  grid-row: 1;
+}
+/* Its window is narrower than the screen, so the chat bar is too, clear of
+   the hint beside the canvas's zoom controls (canvas.css) on a 1440px
+   screen. On a narrower canvas the bar would cover the hint, which gives
+   way. */
+.board-layout-overview > .chat-float {
+  width: min(660px, calc(100% - 48px));
+}
+@container (max-width: 1050px) {
+  .board-layout-overview:has(> .chat-float > .chat-bar) .canvas-hint {
+    visibility: hidden;
+  }
+}
+.board-layout:has(> .thread-dock) {
+  --dock-track: var(--dock-width);
+}
+/* Room under the chat bar floating at the foot of the tab (chatBar.css), so
+   the end of every list and the map can be scrolled clear of it. Docked in
+   the conversation's panel, it takes none. It isn't inherited: it is set on
+   the layout and on each box that keeps room with it (padding with
+   var(--bar-room), or the map's legend lifted by it), listed here, so the
+   bar docking or floating again
+   restyles those few boxes rather than everything on the board */
+@property --bar-room {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.board-layout:has(> .chat-float > .chat-bar) {
+  --bar-room: 88px;
+}
+.board-layout:has(> .chat-float > .chat-threads-only) {
+  --bar-room: 64px;
+}
+.board-layout > .thread-dock {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  width: var(--dock-width);
+}
+/* The activity stays over the panel as it comes in from under it. */
+.board-layout > .activity {
+  grid-column: -2;
+  grid-row: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  --lane: var(--faint);
+}
+.lane-open { --lane: var(--open); }
+/* Dropped cards stay out of sight: Dropped (n) at the end of the bar, as
+   Home's Archived is, folds them in at the foot of Done, under a hairline. */
+
+.card {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px 10px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.card:hover {
+  box-shadow: var(--shadow);
+  border-color: var(--border-strong);
+}
+/* An agent's change washes the card in its lane colour, then settles. */
+.card-flash {
+  animation: flash 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes flash {
+  0% {
+    border-color: var(--lane);
+    background: color-mix(in srgb, var(--lane) var(--flash-strength, 10%), var(--surface));
+  }
+}
+.star {
+  display: inline-flex;
+  color: var(--open);
+  font-size: 12px;
+}
+.card-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.card-arrow {
+  color: var(--lane);
+  align-self: center;
+}

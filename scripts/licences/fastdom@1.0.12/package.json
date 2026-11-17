@@ -1,0 +1,10 @@
+{
+  "name": "fastdom",
+  "version": "1.0.12",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/wilsonpage/fastdom.git"
+  },
+  "homepage": "https://github.com/wilsonpage/fastdom"
+}

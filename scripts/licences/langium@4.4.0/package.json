@@ -1,0 +1,11 @@
+{
+  "name": "langium",
+  "version": "4.4.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eclipse-langium/langium.git",
+    "directory": "packages/langium"
+  },
+  "homepage": "https://langium.org"
+}

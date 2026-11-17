@@ -1,0 +1,46 @@
+/* Words for screen readers only, such as the agent's name where its mark says it. */
+.step-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* A path in a step gives way in its middle (StepText): the folders shrink
+   first, then what follows the path, then the file's name down to an
+   ellipsis before its end, which stays. */
+.step-text {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.step-lead,
+.step-tail {
+  flex: none;
+  white-space: pre;
+}
+.step-dirs,
+.step-head,
+.step-after {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.step-dirs {
+  flex: 0 10000 auto;
+}
+.step-after {
+  flex: 0 1000 auto;
+}
+.step-head {
+  flex: 0 1 auto;
+  min-width: 2.2ch; /* a letter and the ellipsis */
+}
+@keyframes looking-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}

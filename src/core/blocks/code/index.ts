@@ -1,0 +1,50 @@
+// Code blocks: a source file, or part of one, as it was sent (code.ts), with
+// the lines that matter highlighted. It is named by its path, so it has no
+// title. People comment on its lines.
+
+import { type CodeFields, type CodeInput, codeBlockSize, codeLines, findCodeLine, shortPath } from './code';
+import type { BlockKind } from '../kind';
+import { lineParts } from '../diff/lines';
+import { server } from './server';
+
+export interface CodeTypes {
+  type: 'code';
+  // Lines are numbered from `start` (1 unless it's an excerpt) out of `total`;
+  // `highlight` is ranges of those numbers.
+  fields: CodeFields;
+  snapshot: CodeFields;
+  input: CodeInput; // a source file, or part of one, as sent
+  patch: CodeInput; // what changes it, as code.ts reads it; its title is its path
+}
+
+export const code: BlockKind<CodeTypes> = {
+  type: 'code',
+  label: 'Code',
+  defaultSize: { w: 640, h: 420 }, // new ones are sized to their lines (codeBlockSize)
+  titled: false,
+  named: (block) => (block.path ? `code "${shortPath(block.path)}"` : 'untitled code'),
+  sizeFor: (fields) => codeBlockSize(fields),
+
+  fromSnapshot: (version) => {
+    const { path, text, language, start, total, highlight, commit } = version;
+    return { path, text, language, start, total, highlight, commit };
+  },
+  pins: {
+    anchor: server.anchor,
+    part: server.part,
+    // Its lines read as a diff's do (diff/lines.ts, whose kind also says what a
+    // block without lines is told), and take requests to change them.
+    parts: { line: { ...lineParts, askedTo: 'change the code' } },
+    // Found again by its (first) line's text; a range keeps its length, within the lines the block has.
+    place(block, pin) {
+      if (pin.anchor.kind !== 'line') return undefined;
+      const line = findCodeLine(block, pin.anchor.line, pin.quote);
+      if (line === null) return null;
+      const { last } = pin.anchor;
+      const end = (block.start ?? 1) + codeLines(block.text).length - 1;
+      return { kind: 'line', file: block.path, line, side: 'new', ...(last && last > pin.anchor.line ? { last: Math.min(end, line + last - pin.anchor.line) } : {}) };
+    },
+  },
+
+  ...server,
+};

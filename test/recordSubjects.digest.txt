@@ -1,0 +1,149 @@
+event types 22: board_archived board_created board_unarchived board_updated canvas_changed comment_added comment_reacted pairing_ended pairing_started request_asked request_cancelled request_finished request_taken seats_changed sync_cancelled sync_finished sync_requested thread_deleted thread_lens_changed thread_replied thread_restored thread_started
+key orders 6:
+  seq,at,actor,type,itemId,summary
+  seq,at,actor,type,itemId,summary,commentId
+  seq,at,actor,type,itemId,summary,commentId,forAgent
+  seq,at,actor,type,itemId,summary,forAgent
+  seq,at,actor,type,itemId,summary,mentions
+  seq,at,actor,type,summary
+
+full elsewhere-32i4:1 board_created 1eedc0347479
+full elsewhere-32i4:2 board_archived d4c56d1c8e2a
+full elsewhere-32i4:3 board_unarchived c47050988e2d
+full elsewhere-32i4:4 seats_changed 7d13f2d61fa3
+full elsewhere-32i4:5 canvas_changed abb59d32d6e7
+full shop-a6ex:1 board_created 21fa3820bf9f
+full shop-a6ex:2 board_updated 7b0d94679447
+full shop-a6ex:3 board_updated 05dbe567c2ee
+full shop-a6ex:4 seats_changed 7d13f2d61fa3
+full shop-a6ex:5 canvas_changed fb6097bd2039
+full shop-a6ex:6 canvas_changed 15bf6bf60c5a
+full shop-a6ex:7 comment_added 9366d88e6dd5
+full shop-a6ex:8 comment_added 1d39f042d899
+full shop-a6ex:9 canvas_changed a3f501641bf1
+full shop-a6ex:10 canvas_changed 8831190ca096
+full shop-a6ex:11 canvas_changed d3f1c5bb9385
+full shop-a6ex:12 canvas_changed e045f2f3d2c0
+full shop-a6ex:13 canvas_changed c81d37f0e55e
+full shop-a6ex:14 canvas_changed 5792d2d4fa3e
+full shop-a6ex:15 canvas_changed b1ff607545d8
+full shop-a6ex:16 canvas_changed bc8a5e2e6a51
+full shop-a6ex:17 canvas_changed 3ded3544bb4c
+full shop-a6ex:18 canvas_changed aa570f2fa1ff
+full shop-a6ex:19 sync_requested 23ee45ab8aef
+full shop-a6ex:20 sync_cancelled d12b31e77134
+full shop-a6ex:21 sync_requested a8f968bb46a6
+full shop-a6ex:22 sync_finished 79e198ad8eeb
+full shop-a6ex:23 request_asked 5e01b277b155
+full shop-a6ex:24 request_asked 1571dd7bfa8f
+full shop-a6ex:25 request_taken c00114475fbf
+full shop-a6ex:26 canvas_changed 97debe339736
+full shop-a6ex:27 request_finished 700be1faa1e2
+full shop-a6ex:28 request_taken 00756fb5aa88
+full shop-a6ex:29 request_cancelled 911379fcb055
+full shop-a6ex:30 canvas_changed da127bcde0d4
+full shop-a6ex:31 canvas_changed d3200d27534c
+full shop-a6ex:32 comment_added fdadc3f49efa
+full shop-a6ex:33 comment_added a797aeb3d400
+full shop-a6ex:34 comment_added bce1964bbd46
+full shop-a6ex:35 comment_added b6514ff241b4
+full shop-a6ex:36 canvas_changed 23d0d03d5c7a
+full shop-a6ex:37 canvas_changed f6906165a778
+full shop-a6ex:38 canvas_changed 65caf51a31df
+full shop-a6ex:39 canvas_changed 2b2b9db8d3b6
+full shop-a6ex:40 comment_added d456b6d925df
+full shop-a6ex:41 comment_added 69e8bbcd8c2e
+full shop-a6ex:42 comment_added 4e7bd9ecdb53
+full shop-a6ex:43 canvas_changed 63ee9ecaaf72
+full shop-a6ex:44 canvas_changed 77c292660f3d
+full shop-a6ex:45 canvas_changed dafad3adc8b8
+full shop-a6ex:46 canvas_changed ba2af6f34fea
+full shop-a6ex:47 canvas_changed de4f7513347b
+full shop-a6ex:48 canvas_changed 5a0e1d48e81d
+full shop-a6ex:49 canvas_changed 1b842fa68ff9
+full shop-a6ex:50 canvas_changed 8890f3677486
+full shop-a6ex:51 canvas_changed 25677dcf878c
+full shop-a6ex:52 canvas_changed 7c6c35a33932
+full shop-a6ex:53 comment_added 0accd78f375f
+full shop-a6ex:54 comment_added 04b05a92085e
+full shop-a6ex:55 comment_added 7b4375ec71a9
+full shop-a6ex:56 request_asked a891a41e44c7
+full shop-a6ex:57 request_taken 1ccb6e1c481c
+full shop-a6ex:58 canvas_changed 7ed25ec5cb2d
+full shop-a6ex:59 request_finished 44d186518e08
+full shop-a6ex:60 pairing_started ab4f675eda30
+full shop-a6ex:61 pairing_ended 9792f5a87dcd
+full shop-a6ex:62 canvas_changed cabcff7bb3ab
+full shop-a6ex:63 pairing_started ef10c1000f37
+full shop-a6ex:64 pairing_ended 91a94ab6a61e
+full shop-a6ex:65 thread_started d98206c31d85
+full shop-a6ex:66 thread_replied 3de5fc7add75
+full shop-a6ex:67 thread_replied 50eaf80378fd
+full shop-a6ex:68 thread_lens_changed 5cea7c9773b2
+full shop-a6ex:69 thread_lens_changed 6f6639ba475c
+full shop-a6ex:70 canvas_changed 55f2a31cee83
+full shop-a6ex:71 thread_started dd94bc665834
+full shop-a6ex:72 thread_replied 5e24aaf9b342
+full shop-a6ex:73 thread_started 3b08fab13f17
+full shop-a6ex:74 thread_replied d885dfbe4ef5
+full shop-a6ex:75 thread_started 4de4ab663922
+full shop-a6ex:76 thread_deleted 28ebf53a24db
+full shop-a6ex:77 thread_restored 640490708628
+full shop-a6ex:78 comment_reacted 7c95e90bb316
+full shop-a6ex:79 canvas_changed 4620d1c37303
+full shop-a6ex:80 canvas_changed aaa830d42415
+full shop-a6ex:81 canvas_changed 9f07cbd3ab0d
+full shop-a6ex:82 canvas_changed 05a53711b903
+full shop-a6ex:83 canvas_changed cd4d2f86f9d1
+full shop-a6ex:84 canvas_changed 366f8652a549
+full shop-a6ex:85 canvas_changed ee6dd23fc6ba
+full shop-a6ex:86 canvas_changed cd608177ebcd
+full shop-a6ex:87 canvas_changed e26b80035d1d
+full shop-a6ex:88 canvas_changed 20d66fc5381a
+full shop-a6ex:89 canvas_changed 3afb3dae4ffa
+full shop-a6ex:90 canvas_changed 0832bd112171
+full shop-a6ex:91 canvas_changed 142fd557287b
+full shop-a6ex:92 canvas_changed 7678c5ae9493
+full shop-a6ex:93 canvas_changed b54b4905d73a
+full shop-a6ex:94 canvas_changed 162f35274976
+full shop-a6ex:95 canvas_changed f02eb6f351c4
+full shop-a6ex:96 canvas_changed 66e334c3cded
+full shop-a6ex:97 canvas_changed 9d134e3faead
+full shop-a6ex:98 canvas_changed a4a177a56954
+full rows 103 0de67f0bb8b7bffb
+full returned 0ea04e85856794de
+full reloaded 2db8f42171243795
+lists lists-hsz8:1 board_created 5c49e5eec45c
+lists lists-hsz8:2 canvas_changed 9440edb725e8
+lists lists-hsz8:3 comment_added 2c3f76821960
+lists lists-hsz8:4 canvas_changed ecad1f8da162
+lists lists-hsz8:5 canvas_changed 229b0f2f1c1a
+lists lists-hsz8:6 canvas_changed 5601acdfa169
+lists lists-hsz8:7 canvas_changed 9a31ef229488
+lists lists-hsz8:8 thread_started dc85d9b89dde
+lists rows 8 aa954d3ff631aa0a
+lists returned bd855d5118149d07
+lists reloaded 816830d5ff653eae
+bare bare-ds46:1 board_created df71760b37da
+bare bare-ds46:2 board_updated f8747cf55b54
+bare bare-ds46:3 board_updated 688ffff3965a
+bare bare-ds46:4 canvas_changed 0efe952270bb
+bare bare-ds46:5 canvas_changed 38ae6fcd63a1
+bare bare-ds46:6 canvas_changed 36404d34adab
+bare bare-ds46:7 comment_added 76a1304559f6
+bare bare-ds46:8 canvas_changed 3fbd40c2b09e
+bare bare-ds46:9 thread_started 1e42e702463a
+bare bare-ds46:10 thread_replied edeb5279fe0e
+bare bare-ds46:11 request_asked 779c32f0f528
+bare bare-ds46:12 sync_requested 240640cf83aa
+bare bare-ds46:13 sync_cancelled 5bc01075b5ca
+bare bare-ds46:14 canvas_changed 68d86bb64a9e
+bare bare-ds46:15 canvas_changed 08843cba416f
+bare bare-ds46:16 board_archived c706e2c1db0c
+bare bare-ds46:17 board_unarchived 86e03e45930d
+bare bare-ds46:18 seats_changed 5852041a9ea5
+bare rows 18 2b0529b7b58870be
+bare returned 97920c59687ea3d7
+bare reloaded e113864c4534c40b
+
+total a36cb1b94ec38244

@@ -1,0 +1,111 @@
+/* ---- Linear: an issue's live details on its link card, and the panel on Connectors ---- */
+
+/* Under a link card's title: status, who, priority, then the identifier. */
+.lin-details {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 9px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.lin-who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lin-priority,
+.lin-id {
+  flex: none;
+  white-space: nowrap;
+}
+.lin-id {
+  font-family: var(--mono);
+}
+.lin-spacer {
+  flex: 1;
+}
+.lin-state {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--deferred-bg);
+  color: var(--deferred-ink);
+}
+.lin-state.is-started {
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.lin-state.is-completed {
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+}
+.lin-state.is-canceled {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.lin-refresh {
+  padding-inline: 6px;
+}
+.lin-problem {
+  line-height: 1.35;
+}
+.lin-problem-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lin-problem.is-needs_sign_in {
+  color: var(--open-ink);
+}
+
+/* On the Connectors page: signing in, or the key. */
+.lin-signin {
+  display: grid;
+  gap: 12px;
+}
+.lin-connect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.lin-key {
+  display: grid;
+  gap: 8px;
+}
+.lin-key p {
+  margin: 0;
+}
+.lin-key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.lin-key-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.lin-details-key {
+  display: grid;
+  gap: 8px;
+}
+.lin-details-key summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}

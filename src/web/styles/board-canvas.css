@@ -1,0 +1,6 @@
+/* While dragging, the canvas doesn't catch the pointer or select text. */
+.board-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}

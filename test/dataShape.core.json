@@ -1,0 +1,18 @@
+{
+  "dataVersion": 16,
+  "blockKinds": ["note","table","image","diagram","comparison","link","diff","code","chart","scene","site"],
+  "enums": {
+    "Actor.kind": ["agent","human"],
+    "ContextRequest.status": ["cancelled","done","open","working"],
+    "DeletedCard.kind": [],
+    "DeletedKind": ["block","group","link","pin","thread","version"],
+    "DocEdit.op": ["add","delete","edit"],
+    "Emoji": ["👀","👍","👎"],
+    "EventType": ["board_archived","board_created","board_unarchived","board_updated","canvas_changed","comment_added","comment_reacted","pairing_ended","pairing_started","request_asked","request_cancelled","request_finished","request_taken","seats_changed","sync_cancelled","sync_finished","sync_requested","thread_deleted","thread_lens_changed","thread_replied","thread_restored","thread_started"],
+    "PinAnchor.kind": ["arrow","block","box","cells","doc","line","node","point","site","spot","text"],
+    "RequestKind": [],
+    "Status": ["decided","deferred","exploring","open","provisional","retired"],
+    "ThreadDoor": ["canvas","threads"],
+    "ThreadRef.kind": ["block","comment"]
+  }
+}

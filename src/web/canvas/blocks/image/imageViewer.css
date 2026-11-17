@@ -1,0 +1,89 @@
+/* ---- an image block's picture at full size, in the pairing shell -------------
+   The shell draws the bar (canvas/pairing/pairing.css), and the zoom its
+   stage (canvas/pairing/zoom.css); here, the stage's paper and the picture,
+   drawn at its size on screen, with no transform, so the browser rasters
+   it afresh and it stays sharp at any zoom. */
+
+.image-viewer-stage {
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--border-strong));
+}
+.image-viewer-sheet {
+  box-shadow: 0 0 0 1px var(--border), var(--shadow);
+  background: var(--surface);
+}
+.image-viewer-sheet img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  image-rendering: auto;
+  pointer-events: none;
+}
+
+/* Image blocks' own menu: Natural size, when it already is, can't be pressed. */
+.node-toolbar button:disabled {
+  color: var(--faint);
+  background: none;
+  cursor: default;
+}
+
+/* ---- in the pairing shell (imageViewer.tsx) -----------------------------------------
+   The stage fills the piece; while pairing, the pointer draws boxes. A box's
+   number opens what was said about it; the markers of its boxes sit in a row
+   under the picture. */
+
+.image-full {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.image-full .image-viewer-stage {
+  flex: 1;
+}
+.image-viewer-stage.is-pointing {
+  cursor: crosshair;
+}
+.image-full-box .pin-box-n {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+}
+.image-full-box button.pin-box-n {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.image-full-box button.pin-box-n:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.image-full-box.is-open {
+  border-style: solid;
+  border-width: 2px;
+  background: color-mix(in srgb, var(--pin) 14%, transparent);
+}
+.image-full-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.image-full-chips .pin-chip {
+  margin-left: 0;
+}
+/* Editing its caption: the picture, captioned as it is typed. */
+.image-edit-figure {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.image-edit-figure figcaption {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}

@@ -1,0 +1,14 @@
+/* The live dot of an agent that is working, or away. */
+.live-working {
+  color: var(--exploring-ink);
+}
+.live-working .live-dot {
+  background: var(--exploring);
+}
+.live-away {
+  color: var(--open-ink);
+}
+.live-away .live-dot {
+  background: var(--open);
+  box-shadow: 0 0 0 3px var(--open-bg);
+}

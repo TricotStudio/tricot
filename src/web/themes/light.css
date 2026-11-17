@@ -1,0 +1,101 @@
+/* The light theme (themes/registry.ts), and the default before any theme is
+   applied. Every theme defines each token here, so the components draw with
+   tokens only and none is written for one theme.
+
+   The base colours are Tricot's palette (DESIGN.md): undyed-wool paper and
+   its violet-black ink, with the steps between them in the same warm family.
+   Status colours come in three strengths: the marker (dots, icons, rules),
+   a tint for backgrounds, and an ink for text that must stay readable. The
+   tint is the status's yarn (brand/README.md) mixed 30% into the surface, and
+   the ink is the yarn's deep colour; the markers keep their stronger colours.
+   Danger comes from coral: its deep colour, and its tint mixed the same way. */
+:root {
+  --bg: #edeae4; /* the paper */
+  --surface: #f8f6f2;
+  --surface-2: #e4e0d8; /* the panel */
+  --border: #dcd7ce;
+  --border-strong: #ccc6bc; /* the rule */
+  --text: #1d1828; /* the ink */
+  --muted: #5d5866;
+  --faint: #65606d;
+  --primary: #1d1828;
+  --primary-text: #ffffff; /* white, not the paper: it also sits on the blue pin marker */
+  --focus: #2c58b8;
+  --danger: #a3392c;
+  --danger-bg: #f6d9d3;
+  --mark-tile: #e4e0d8; /* the light tile under a mark drawn in many colours (Google's G) or in black */
+  --brand-warp: #7a4fc9; /* Tricot's mark, woven: its threads one way violet, at a marker's strength on paper */
+  --brand-weft: #a3392c; /* and the other way coral */
+
+  --open: #d08c12;
+  --open-bg: #f4e6c7;
+  --open-ink: #7a580a;
+  --open-text: #1d1828; /* text on the amber marker as a fill (a draft pin's number): dark in every theme, as the amber is light */
+  --exploring: #3b6fd6;
+  --exploring-bg: #dde3f1;
+  --exploring-ink: #2c55ad;
+  --provisional: #7a4fc9;
+  --provisional-bg: #e5ddf3;
+  --provisional-ink: #5a37c8;
+  --decided: #2f8a57;
+  --decided-bg: #e0eadd;
+  --decided-ink: #2b693d;
+  --deferred: #9a9a93;
+  --deferred-bg: #e4e5e5;
+  --deferred-ink: #4a5764;
+  /* Rose: a tint no status takes, between the danger red and the provisional
+     purple, for the Marketing lens's chip (threads/threads.css). */
+  --rose: #d4458b;
+  --rose-bg: #fce6ee;
+  --rose-ink: #a52d6a;
+
+  --shadow-sm: 0 1px 2px rgb(29 24 40 / 0.05);
+  --shadow: 0 1px 2px rgb(29 24 40 / 0.05), 0 4px 12px rgb(29 24 40 / 0.06);
+  --shadow-lg: 0 12px 32px rgb(29 24 40 / 0.14);
+  /* A wide, faint shadow for what floats over the canvas (the Add menu, its
+     button lifted), and the light along the top edge of a raised surface. */
+  --shadow-ambient: 0 1px 2px rgb(29 24 40 / 0.04), 0 10px 30px -6px rgb(29 24 40 / 0.12), 0 24px 56px -16px rgb(29 24 40 / 0.1);
+  --highlight: rgb(255 255 255 / 0.8);
+  /* A floating menu in two layers: the tray it sits in, and the plate in it. */
+  --float-shell: var(--surface-2);
+  --float-core: var(--surface);
+
+  /* The veil over the page behind a palette, panel or dialog, and the deeper
+     one behind a picture shown at full size. */
+  --scrim: rgb(29 24 40 / 0.16);
+  --scrim-strong: rgb(29 24 40 / 0.5);
+  /* A person's initials, on their own hue: saturation and lightness only. */
+  --person-mark-bg: 55% 88%;
+  --person-mark-ink: 45% 30%;
+  /* The edge a near-black tile (a link's source mark) keeps on a dark surface. */
+  --dark-tile-edge: transparent;
+  /* A merged pull request (GitHub). */
+  --merged-bg: #ece4f7;
+  --merged-ink: #6240a0;
+
+  /* Charts: the series take the reference categorical palette in its fixed
+     order (it is validated in that order, for colour-blind readers too),
+     stepped for each surface. Receding marks keep --chart-faded of their
+     opacity. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+  --chart-grid: #e7e3dc;
+  --chart-axis: #ccc6bc;
+  --chart-faded: 0.38;
+  /* The Activity grid's five steps, fewer moved to more, light to dark: one
+     hue, the charts' green, from the panel through the series colour to past
+     it toward the ink. */
+  --heat-0: color-mix(in srgb, var(--surface-2) 72%, var(--surface));
+  --heat-1: color-mix(in srgb, var(--series-3) 30%, var(--surface));
+  --heat-2: color-mix(in srgb, var(--series-3) 58%, var(--surface));
+  --heat-3: var(--series-3);
+  --heat-4: color-mix(in srgb, var(--series-3) 68%, var(--text));
+
+  color-scheme: light;
+}

@@ -1,0 +1,81 @@
+/* The dark theme (themes/registry.ts): light.css says what each token is for.
+   A neutral near-black: the palette's warm paper and violet-black ink are
+   the light theme's. A status's tint is its yarn mixed 9% into the surface,
+   the most that keeps --faint at 4.5:1 on it, and its ink is the yarn itself.
+   Danger is the coral yarn, its tint coral mixed the same way. */
+:root[data-theme='dark'] {
+  --bg: #121211;
+  --surface: #1a1a19;
+  --surface-2: #242422;
+  --border: #2e2e2b;
+  --border-strong: #42423e;
+  --text: #ececea;
+  --muted: #a6a6a0;
+  --faint: #919191; /* the dimmest grey that keeps 4.5:1 on surface-2 and every status tint */
+  --primary: #ececea;
+  --primary-text: #121211;
+  --focus: #7aa2f0;
+  --danger: #f2968a;
+  --danger-bg: #2d2523;
+  --brand-warp: #b8a2f4; /* Tricot's mark, woven: the violet yarn itself on night */
+  --brand-weft: #f2968a; /* and the coral yarn */
+  --mark-tile: #deded9;
+
+  --open: #e3a83e;
+  --open-bg: #2d2920;
+  --open-ink: #ecbf63;
+  --open-text: #121211;
+  --exploring: #7aa2f0;
+  --exploring-bg: #26282c;
+  --exploring-ink: #9fb8ef;
+  --provisional: #a988e6;
+  --provisional-bg: #28262d;
+  --provisional-ink: #b8a2f4;
+  --decided: #5cc08a;
+  --decided-bg: #272a26;
+  --decided-ink: #a7cfad;
+  --deferred: #85857f;
+  --deferred-bg: #282929;
+  --deferred-ink: #b4bdc6;
+  --rose: #ec85b1;
+  --rose-bg: #3b1a28;
+  --rose-ink: #ec85b1;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+  --shadow-ambient: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px -6px rgb(0 0 0 / 0.45), 0 24px 56px -16px rgb(0 0 0 / 0.4);
+  --highlight: rgb(255 255 255 / 0.06);
+  --float-shell: var(--surface); /* the plate is the lighter here, as raised surfaces are */
+  --float-core: var(--surface-2);
+
+  --scrim: rgb(0 0 0 / 0.45);
+  --scrim-strong: rgb(0 0 0 / 0.6);
+  --person-mark-bg: 30% 28%;
+  --person-mark-ink: 60% 85%;
+  --dark-tile-edge: var(--border-strong);
+  --merged-bg: #2a2040;
+  --merged-ink: #b9a1ec;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --chart-grid: #2a2a28;
+  --chart-axis: #42423e;
+  --chart-faded: 0.45; /* receding marks keep a little more of their hue */
+  /* The Activity grid's five steps, fewer moved to more, light to dark as in
+     the light theme: a pale grey-green for a quiet day down through the series
+     colour to a deep green that still stands off the surface. */
+  --heat-0: color-mix(in srgb, var(--series-3) 12%, color-mix(in srgb, var(--text) 62%, var(--surface)));
+  --heat-1: color-mix(in srgb, var(--series-3) 42%, color-mix(in srgb, var(--text) 48%, var(--surface)));
+  --heat-2: color-mix(in srgb, var(--series-3) 78%, color-mix(in srgb, var(--text) 16%, var(--surface)));
+  --heat-3: color-mix(in srgb, var(--series-3) 62%, var(--surface));
+  --heat-4: color-mix(in srgb, var(--series-3) 38%, var(--surface));
+
+  color-scheme: dark;
+}

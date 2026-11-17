@@ -1,0 +1,98 @@
+/* Each section is as wide as the panel, and so is each comment and history
+   line in it: a long line wraps, or a table or code scrolls in its own box,
+   rather than widening the whole column. */
+.comments > *,
+.history ol > * {
+  min-width: 0;
+}
+.relation {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.relation:hover {
+  border-color: var(--border-strong);
+}
+/* In a card's panel there is room to read the whole title: it wraps. */
+.relation::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--marker, var(--faint));
+}
+
+/* A card named in running text (#12, T5): a small relation chip, its status
+   marker then the number, that opens the card. It stays an inline box with no
+   vertical padding, so it never pushes the lines around it apart. */
+.ref-chip {
+  padding: 0 0.4em 0 0.35em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: inherit;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s;
+  --marker: var(--faint);
+}
+.ref-chip:hover {
+  border-color: var(--border-strong);
+}
+.ref-chip::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.35em;
+  border-radius: 2px;
+  background: var(--marker);
+  vertical-align: 0.05em;
+}
+:is(strong, b, h1, h2, h3, h4, h5, h6) .ref-chip {
+  font-weight: inherit;
+}
+/* In a row that is itself a button (a notifications list), a chip
+   steps back to its marker and number, so the row still reads as one line. */
+.ref-chip.is-inert {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.ref-chip.is-inert:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* A card deleted for good: its number stays, struck through, and leads nowhere. */
+.ref-chip.ref-deleted {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+  border-style: dashed;
+  cursor: default;
+}
+.ref-chip.ref-deleted::before {
+  display: none;
+}
+.ref-chip.ref-deleted.is-inert {
+  border: none;
+}
+.ref-chip.ref-deleted.is-inert:hover {
+  color: var(--faint);
+}

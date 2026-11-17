@@ -1,0 +1,28 @@
+/* The page's own styles, a file for each part of it (styles/), in the order
+   they apply: a later rule beats an earlier one of the same weight, so the
+   order is part of how the page looks and is not to be changed for tidiness.
+   A part's own component styles sit beside its component and are imported by
+   it. What every part shares is in base.css; narrow-screens.css overrides
+   across parts. */
+@import './styles/base.css';
+@import './styles/buttons.css';
+@import './styles/shared-bits.css';
+@import './styles/markdown.css';
+@import './styles/top-bar.css';
+@import './styles/page-text.css';
+@import './styles/home.css';
+@import './styles/board.css';
+@import './styles/activity.css';
+@import './styles/drawer.css';
+@import './styles/comments-and-options.css';
+@import './styles/tabs.css';
+@import './styles/board-canvas.css';
+@import './styles/canvas.css';
+@import './styles/unseen-changes.css';
+@import './styles/waiting.css';
+@import './styles/notifications.css';
+@import './styles/search.css';
+@import './styles/live-states.css';
+@import './styles/name-gate.css';
+@import './styles/narrow-screens.css';
+@import './styles/pins.css';

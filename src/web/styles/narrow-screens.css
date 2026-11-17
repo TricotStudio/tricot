@@ -1,0 +1,133 @@
+/* ---- narrow screens ---------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .home {
+    padding: 28px 16px 48px;
+  }
+  /* Rows stack: name and goal, then the squares and counts, then agent,
+     time and ⋯. An archived row's buttons go under its name. */
+  .project {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+  .project-name,
+  .project-work {
+    grid-column: 1 / -1;
+  }
+  .project-archived-side {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .new-project {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .new-project input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  /* A need's title wraps; why and where go under it, the button beside both. */
+  .need {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    align-items: start;
+    row-gap: 2px;
+    padding: 10px 12px 10px 14px;
+  }
+  .need > .sq {
+    margin-top: 7px;
+  }
+  .home-archived-toggle {
+    margin-left: 0;
+  }
+  .board-canvas {
+    height: 70vh;
+  }
+  /* A toolbar menu (Add, a Sketchbook page's Pages) stays inside it: the
+     toolbar's place, 15px and its height, and a margin. */
+  .menu-panel.add-menu {
+    max-height: max(120px, calc(70vh - 90px));
+  }
+  .board-page {
+    height: auto;
+  }
+  .board-layout,
+  .board-layout-full,
+  .board-layout:has(> .thread-dock) {
+    grid-template-columns: 1fr; /* the docked conversation is a sheet here (chatBar.css) */
+  }
+  .board-layout > .activity {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .board-layout > .thread-dock {
+    justify-self: normal;
+    width: auto;
+  }
+  /* The Overview's window, the board context's canvas or another view in
+     its place, and the chat bar floats across the screen as on any tab
+     (chatBar.css). */
+  .board-layout-overview > :is(.board-canvas, .thread-dock) {
+    grid-column: auto;
+  }
+  .board-layout-overview > :is(.board-canvas, .overview-window) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .board-layout-overview > .chat-float {
+    width: auto;
+  }
+  .board-layout {
+    padding-bottom: var(--bar-room);
+  }
+  .activity {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 60vh;
+  }
+  .topbar {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+  .attention,
+  .archived-bar {
+    padding: 10px 16px;
+  }
+  .board-goal {
+    white-space: normal;
+  }
+  .live {
+    display: none;
+  }
+  /* The title takes a line of its own, in full, under the back link and status. */
+}
+
+@media (max-width: 600px) {
+  /* Beside a board title on a phone the wordmark sits on the title's
+     baseline rather than centred on a wrapped goal. */
+  :is(.board-page, .card-view) .topbar-left {
+    align-items: baseline;
+  }
+  :is(.board-page, .card-view) .topbar-rule {
+    align-self: stretch;
+    height: auto;
+  }
+  /* Six controls at 14px apart run 6px past a 390px phone. */
+  :is(.board-page, .card-view) .topbar-right {
+    gap: 10px;
+  }
+  /* The controls wrap under the title here, so the notifications list opens across the
+     bar, within its gutters, rather than from the bell's right edge. */
+  .topbar {
+    position: relative;
+  }
+  .topbar .inbox {
+    position: static;
+  }
+  .topbar .inbox-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+}

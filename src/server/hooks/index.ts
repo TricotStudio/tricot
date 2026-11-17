@@ -1,0 +1,12 @@
+// Live steps for every agent: what the rest of the app asks of the hook
+// installers. What one is lives in installer.ts, the list of them in
+// registry.ts (read from the agents', core/agents/registry.ts), and turning
+// them on or off for the person in liveSteps.ts.
+
+export type { HookChange, HookDetection, HookInstaller, HookOutcome, HookPreview, HookScope, HookSetup, HookState, HookStatus, HookTarget } from './installer';
+export { displayPath, linkTarget, UnreadableSettings, writeFileAtomic } from './installer';
+export { detectedHookInstallers, findHookInstaller, hookInstallers } from './registry';
+export { applyLiveSteps, compactFiles, liveStepsAgent, liveStepsAgents, LiveStepsError, liveStepsInstaller, planLiveSteps } from './liveSteps';
+export type { LiveStepsApplied, LiveStepsContext, LiveStepsOptions, LiveStepsPlan } from './liveSteps';
+export { claudeSessionSettings, installedHooks } from './session';
+export type { InstalledHooks, SessionHooksOptions } from './session';

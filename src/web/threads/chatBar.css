@@ -1,0 +1,703 @@
+/* The chat bar (chatBar.tsx) and the conversation it opens, docked on the
+   right (threads.tsx). Floating, the bar sits at the bottom centre of the
+   tab, over its foot; docked, it is the reply box at the panel's foot. */
+
+/* Floating: placed in the board layout's first column (the tab), whatever
+   else the layout holds beside it, and centred at its foot. */
+.chat-float {
+  position: absolute;
+  grid-column: 1;
+  grid-row: 1;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  z-index: 20;
+  width: min(720px, calc(100% - 48px));
+  margin-inline: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.chat-bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 7px 0 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  font-size: 14px;
+  transition: border-color 0.12s;
+}
+.chat-bar:focus-within {
+  border-color: var(--border-strong);
+}
+/* Docked, it sits on the panel's sheet: an outlined field, no lift. */
+.chat-bar.is-docked {
+  height: 48px;
+  padding-left: 14px;
+  border-color: var(--border-strong);
+  border-radius: 12px;
+  box-shadow: none;
+}
+.chat-bar.is-docked:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent);
+}
+
+/* The spool at its left end, with how many threads have new replies. */
+.chat-threads {
+  flex: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.chat-threads .icon {
+  width: 18px;
+  height: 18px;
+}
+.chat-threads:hover,
+.chat-threads[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.chat-count,
+.dock-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--open-ink);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.chat-sep {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+}
+
+/* What goes with what's sent: blocks selected on a Sketchbook page,
+   in the ink of a selected block, its ✕ letting go of them. */
+.chat-context {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 4px 0 9px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: chat-context-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chat-context .icon {
+  width: 14px;
+  height: 14px;
+}
+.chat-context-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+}
+.chat-context-remove:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--primary-text) 16%, transparent);
+}
+.chat-context-remove:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.chat-context-remove .icon {
+  width: 12px;
+  height: 12px;
+}
+@keyframes chat-context-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+/* The field: open text on the bar, whose edge shows the focus. */
+.chat-bar .mention-line {
+  align-self: stretch;
+}
+.chat-input {
+  height: 100%;
+  padding: 0 4px;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-overflow: ellipsis;
+}
+.chat-input:focus {
+  outline: none;
+}
+.chat-bar .mention-backdrop {
+  background: transparent;
+}
+
+/* Who's listening, at the right, before Send. */
+.chat-who {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--exploring-ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.chat-who-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--exploring);
+}
+.chat-who.is-none {
+  gap: 8px;
+  font-weight: 400;
+  color: var(--faint);
+}
+.chat-connect {
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.chat-connect:hover {
+  background: var(--surface-2);
+}
+
+.chat-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--faint);
+  cursor: default;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.chat-send .icon {
+  width: 16px;
+  height: 16px;
+}
+.chat-send.is-ready {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-text);
+  cursor: pointer;
+}
+.chat-send.is-ready:hover {
+  opacity: 0.88;
+}
+
+/* What went wrong, just above the bar. */
+.chat-error {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+/* An archived board: nothing to send, the threads still there to read. */
+.chat-threads-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chat-threads-only:hover {
+  color: var(--text);
+}
+
+/* ---- the docked conversation ----------------------------------------------
+   A column of the board's layout, on the right: the board stays usable beside
+   it. Its head goes back to the threads and closes it; then the thread's
+   title, where it was started and what it made; the conversation; and the
+   bar at its foot. */
+
+.thread-dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  overflow-wrap: anywhere; /* a long link, path or name breaks rather than widening the panel */
+}
+.dock-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dock-head > :first-child {
+  margin-right: auto;
+}
+.dock-head > .dock-heading {
+  padding-left: 6px;
+}
+.dock-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dock-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.dock-back:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.dock-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dock-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.dock-title {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.dock-title .dock-heading {
+  font-size: 16px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.dock-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+/* Where a thread was started, and what it made: quiet chips, the made ones
+   in the board's link blue. */
+.dock-door,
+.dock-made {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 19px;
+  white-space: nowrap;
+}
+.dock-door {
+  background: var(--surface-2);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dock-made {
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+
+.thread-dock .threads-conversation {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 18px;
+  gap: 14px;
+}
+.thread-dock .thread-messages {
+  gap: 18px;
+}
+.thread-dock .thread-message .actor-mark {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+.thread-dock .thread-message-main {
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.thread-dock .lens-line {
+  padding: 9px 18px;
+}
+.dock-foot {
+  flex: none;
+  margin-top: auto;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- the bar docking into the panel, and letting go (dockMotion.ts) --------
+   One view transition. The bar and its Send keep their names across the
+   change, so the floating bar morphs into the panel's composer: its place,
+   width and corners in one motion, on a soft spring, setting off at once.
+   Meanwhile the panel slides in from the right edge of its column, under
+   the bar; then its contents rise, a few tens of milliseconds apart.
+   Closing, the contents fade first; the composer then travels back to the
+   bottom centre as the panel slides out, and settles with a touch of
+   overshoot. The transition draws the bar's box itself while it moves, so
+   the corners and shadow change with its size instead of stretching with a
+   picture of it; what's in the bar crossfades, anchored at its left, the
+   two pictures handing over so the bar never looks empty.
+   Only pictures move, and only by transform and opacity: the panel slides
+   as a picture of itself, and the board takes its new width at once, under
+   the panel (narrowing as it opens, widening as it closes), so the board is
+   laid out once, not on every frame of the motion.
+   The page itself is not pictured (no root snapshot): it stays live. And
+   the page's moving state (data-dock-*) is only ever read through a named
+   class on the right of a selector here, so setting it restyles those few
+   elements, not the whole page.
+   Every duration and delay of the move is written at full length and scaled
+   by --dock-pace, so its steps keep their order and overlap at any pace, and
+   the move is retimed in that one place; dockMotion.ts scales its timers by
+   it too. At 0.75 the panel slides over 255ms and the bar over 270ms. */
+
+:root {
+  --dock-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dock-settle: cubic-bezier(0.3, 1.3, 0.5, 1); /* the bar settling at the bottom, just past and back */
+  --dock-pace: 0.75;
+  --dock-panel: calc(340ms * var(--dock-pace));
+  --dock-bar: calc(360ms * var(--dock-pace));
+  --dock-lag: calc(30ms * var(--dock-pace)); /* the bar's box settles this long before the bar lands */
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-dock-move] .chat-bar {
+    view-transition-name: chat-bar;
+    transition: none;
+  }
+  :root[data-dock-move] .chat-send {
+    view-transition-name: chat-send;
+  }
+  :root[data-dock-box] .chat-bar {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  :root[data-dock-move] .thread-dock {
+    view-transition-name: thread-dock;
+  }
+
+  /* No picture of the page: it stays live under the moving pictures. */
+  :root[data-dock-move] {
+    view-transition-name: none;
+  }
+
+  /* The bar and its Send: from where they were to where they land, from
+     the first frame, and over the panel all the way (as pictures go, the
+     panel's would be drawn last, over the bar, being new). */
+  ::view-transition-group(chat-bar),
+  ::view-transition-group(chat-send) {
+    z-index: 1;
+    animation-duration: var(--dock-bar);
+    animation-timing-function: var(--dock-ease);
+  }
+  :root[data-dock-move='close']::view-transition-group(chat-bar),
+  :root[data-dock-move='close']::view-transition-group(chat-send) {
+    animation-timing-function: var(--dock-settle);
+  }
+  /* Its box, finishing a beat before the move does, when the bar's own box
+     comes back in the same place (dockMotion.ts). The picture of the bar as
+     it was still has its own box, the same as this one where they start,
+     and fades with what's in it. */
+  ::view-transition-image-pair(chat-bar) {
+    box-sizing: border-box;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: var(--surface);
+    overflow: hidden;
+    animation: bar-docks calc(var(--dock-bar) - var(--dock-lag)) var(--dock-ease) both;
+  }
+  :root[data-dock-move='close']::view-transition-image-pair(chat-bar) {
+    animation-name: bar-floats;
+    animation-timing-function: var(--dock-settle);
+  }
+  /* Let go of by a click elsewhere, which took the focus: from the field at
+     rest, with no focus ring to flash on as it leaves. */
+  :root[data-dock-move='close'][data-dock-rest]::view-transition-image-pair(chat-bar) {
+    animation-name: bar-floats-rest;
+  }
+  ::view-transition-old(chat-bar),
+  ::view-transition-new(chat-bar) {
+    height: 100%;
+    object-fit: none;
+    object-position: left center;
+    mix-blend-mode: normal;
+  }
+  /* What's in the bar crossfades as it travels: one picture hands over to
+     the other, their opacities adding up to one all along, so the bar is
+     never empty; the new one is in well before the panel lands. */
+  ::view-transition-old(chat-bar) {
+    animation: dock-fade-out calc(120ms * var(--dock-pace)) linear calc(75ms * var(--dock-pace)) both;
+  }
+  ::view-transition-new(chat-bar) {
+    animation: dock-fade-in calc(120ms * var(--dock-pace)) linear calc(75ms * var(--dock-pace)) both;
+  }
+
+  /* The panel slides in from the right edge of its column, and back out to
+     it, cut off there: from under the activity when that's open, else from
+     the window's edge. Its column has its width all along, the board beside
+     it already narrowed, or already widened again. */
+  ::view-transition-group(thread-dock) {
+    animation: none;
+    overflow: clip;
+  }
+  ::view-transition-new(thread-dock) {
+    animation: dock-panel-in var(--dock-panel) var(--dock-ease) both;
+  }
+  ::view-transition-old(thread-dock) {
+    animation: dock-panel-out var(--dock-panel) var(--dock-ease) both;
+  }
+
+  /* Closing, the panel slides out from under the bar; its contents went first. */
+  :root[data-dock-leaving] .thread-dock > :is(.dock-head, .threads-pop, .threads-error, .dock-title, .lens-line, .threads-conversation, .threads-toast) {
+    animation: dock-content-out calc(90ms * var(--dock-pace)) ease-in both; /* FADE_FIRST_MS */
+  }
+  :root[data-dock-move='close'] .thread-dock > :is(.dock-head, .threads-pop, .threads-error, .dock-title, .lens-line, .threads-conversation, .threads-toast) {
+    opacity: 0;
+  }
+
+  /* Opening, the contents rise once the panel has landed: its head, then the
+     thread's title, then the conversation. */
+  :root[data-dock-move='open'] .thread-dock > :is(.dock-head, .threads-error) {
+    animation: dock-content-in calc(110ms * var(--dock-pace)) ease-out calc(160ms * var(--dock-pace)) both;
+  }
+  :root[data-dock-move='open'] .thread-dock > :is(.dock-title, .lens-line) {
+    animation: dock-content-in calc(110ms * var(--dock-pace)) ease-out calc(195ms * var(--dock-pace)) both;
+  }
+  :root[data-dock-move='open'] .thread-dock > .threads-conversation {
+    animation: dock-content-in calc(110ms * var(--dock-pace)) ease-out calc(230ms * var(--dock-pace)) both;
+  }
+
+  /* Without view transitions: the panel itself slides in (closing, it goes
+     at once), and the bar rises in its new place. */
+  :root[data-dock-plain][data-dock-move='open'] .thread-dock {
+    animation: dock-panel-in var(--dock-panel) var(--dock-ease) both;
+  }
+  :root[data-dock-plain] .chat-bar {
+    animation: dock-content-in calc(200ms * var(--dock-pace)) ease-out calc(120ms * var(--dock-pace)) both;
+  }
+}
+
+/* Reduced motion: a quick crossfade, nothing travels, at its own pace. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 140ms;
+  }
+}
+
+@keyframes bar-docks {
+  from {
+    border-color: var(--border-strong);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+  }
+  to {
+    border-color: var(--focus);
+    border-radius: 12px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent);
+  }
+}
+@keyframes bar-floats {
+  from {
+    border-color: var(--focus);
+    border-radius: 12px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent);
+  }
+  to {
+    border-color: var(--border-strong);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+  }
+}
+@keyframes bar-floats-rest {
+  from {
+    border-color: var(--border-strong);
+    border-radius: 12px;
+    box-shadow: none;
+  }
+  to {
+    border-color: var(--border-strong);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+  }
+}
+@keyframes dock-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dock-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dock-panel-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes dock-panel-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes dock-content-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes dock-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes dock-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes dock-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* A narrow window has no room beside the board: the conversation is a sheet
+   over its lower part, and the bar floats at the window's foot. */
+@media (max-width: 900px) {
+  .chat-float {
+    position: fixed;
+    bottom: 12px;
+    width: auto;
+    left: 16px;
+    right: 16px;
+  }
+  .thread-dock {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    height: min(78vh, 640px);
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    box-shadow: var(--shadow-lg);
+  }
+}
+/* There, the sheet rises from the foot, and drops back, with its shadow. */
+@media (max-width: 900px) and (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(thread-dock) {
+    overflow: visible;
+  }
+  ::view-transition-new(thread-dock) {
+    animation-name: dock-sheet-in;
+  }
+  /* Apart: a browser without view transitions drops a rule naming them. */
+  :root[data-dock-plain][data-dock-move='open'] .thread-dock {
+    animation-name: dock-sheet-in;
+  }
+  ::view-transition-old(thread-dock) {
+    animation-name: dock-sheet-out;
+  }
+}
+@media (max-width: 600px) {
+  .chat-who.is-none .chat-who-text,
+  .chat-who .chat-who-text {
+    display: none;
+  }
+}

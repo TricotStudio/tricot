@@ -1,0 +1,10 @@
+{
+  "name": "path-browserify",
+  "version": "1.0.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/browserify/path-browserify.git"
+  },
+  "homepage": "https://github.com/browserify/path-browserify"
+}

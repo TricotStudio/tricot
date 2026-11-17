@@ -1,0 +1,305 @@
+import { randomUUID } from 'node:crypto';
+import express, { type Express, type Request } from 'express';
+import { localhostHostValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { runsOnOf } from '../core/agentRules';
+import { wokenBy } from '../core/sessions';
+import type { StartFolder } from '../core/firstRun';
+import type { Store } from '../core/store';
+import { AgentRulesStore } from './agentRules';
+import { createAgentRulesRouter } from './agentRulesRoutes';
+import { asPerson, crossSiteCheck, fromThisComputer, fromThisMachine, isLoopbackHost, keepRawBody, originCheck, requireToken, type PersonGate } from './access';
+import { createApiRouter, peoplesCopy } from './api';
+import { ApiParts } from './apiParts';
+import { AnswerHosts } from './answerHosts';
+import { APPROVAL_BODY_LIMIT, Approvals } from './approvals';
+import { createApprovalsRouter, type ApprovalsRoutesOptions } from './approvalsRoutes';
+import { CodexWakes, type CodexWakeOptions } from './codexWake';
+import type { CommitFiles } from './commitFiles';
+import type { Connectors } from './connectors';
+import { createConnectorsRouter } from './connectors/routes';
+import { securityHeaders } from './headers';
+import { createSitesRouter } from './sites/routes';
+import type { SiteServer } from './sites/siteServer';
+import { createLiveStepsRouter, type LiveStepsRoutesOptions } from './liveStepsRoutes';
+import { instanceRoute } from './instanceRoute';
+import { createMcpServer, type McpOptions } from './mcp';
+import { Hangups } from './mcp/hangups';
+import { ToolGroups } from './mcp/toolGroups';
+import { PairingSessions } from './pairing';
+import { Presence } from './presence';
+import { Seats, type SeatNews } from './seats';
+import { createLeasesRouter } from './leasesRoutes';
+import type { Leases } from './leases';
+import { createSeatsRouter } from './seatsRoutes';
+import { createStopRouter } from './stopRoutes';
+import { STEP_BODY_LIMIT, Steps } from './steps';
+import { tunnelCheck } from './tunnelCheck';
+import { ToolCosts } from './toolCosts';
+import { createUpdateRouter } from './updateRoutes';
+import type { Updates } from '../install/updates';
+import type { Command } from '../install/handoff';
+import { Usage, USAGE_BODY_LIMIT } from './usage';
+import { createUsageRouter } from './usageRoutes';
+import { routes } from '../core/routes';
+import { routesOn } from './routing';
+
+export function createApp(
+  store: Store,
+  options: {
+    host: string;
+    mcpUrl: string;
+    connectors?: Connectors;
+    // The groups of MCP tools beyond the board's own, and the guide topics they add (mcp/toolGroups.ts). None given:
+    // none, the core alone, as an empty ToolGroups is; an edition gives its own.
+    toolGroups?: ToolGroups;
+    version?: string;
+    // The repository's page (package.json), for the Source link on Home.
+    source?: string;
+    token?: string;
+    // Each agent's "Live steps" switch: where the person's agents keep their
+    // settings, and Tricot's hook files. None: the switch isn't offered.
+    liveSteps?: LiveStepsRoutesOptions;
+    // The Content-Security-Policy of the UI's pages (headers.ts).
+    pagePolicy?: () => string;
+    // The folder Tricot was started in, from ~ (startFolder.ts), for Home's first run.
+    folder?: StartFolder;
+    // The system's own "choose a folder" dialog (platform/chooseFolder.ts), for a
+    // board's project folder: startServer gives it. None: it isn't offered, so a
+    // test never opens a window on the screen.
+    chooseFolder?: () => Promise<string | undefined>;
+    // A newer Tricot, and updating to it (updates.ts). None: GET /api/update isn't served.
+    updates?: Updates;
+    // Where the board's websites are served (sites/siteServer.ts). None: on
+    // the network, or in a test that doesn't serve them; pages are told so.
+    sites?: SiteServer;
+    // Who may answer an agent's request for permission, and how long a
+    // hook's wait is held (approvalsRoutes.ts): tests set them.
+    approvals?: ApprovalsRoutesOptions;
+    // The person's seats (seats.ts), kept in the data folder:
+    // startServer gives them. None: kept in memory (tests).
+    seats?: Seats;
+    // The agent commands that need this board (leases.ts). None: no lease is served.
+    leases?: Leases;
+    // The model and thinking level each agent starts on (agentRules.ts), kept
+    // in the data folder: startServer gives them. None: kept in memory (tests).
+    agentRules?: AgentRulesStore;
+    // The files each area's done tasks changed, read from their commits
+    // (commitFiles.ts): startServer gives it. None: an area's index says
+    // where it lives is not known.
+    commitFiles?: CommitFiles;
+    // How a Codex connected on its own is woken (codexWake.ts): tests stand in for Codex's command.
+    codexWakes?: CodexWakeOptions;
+    // How to run this board's own `tricot` (start.ts): what the `tricot
+    // listen` a wait hands an agent runs as (mcp/session.ts listenCommand).
+    cli?: Command;
+    // The routes parts of Tricot add to the core's (apiParts.ts), built for this app. None: the core's alone, as
+    // `new ApiParts()` is; an edition gives its own.
+    parts?: ApiParts;
+  },
+): Express {
+  const app = express();
+  app.disable('x-powered-by');
+  const loopback = isLoopbackHost(options.host);
+  if (!loopback && !options.token) throw new Error(`Listening on ${options.host} needs an access token.`);
+  // Beyond this computer, no block names what is on it (a website's folder or dev server).
+  store.localFiles = loopback;
+  // First, so every response carries them, refusals and the UI included.
+  app.use(securityHeaders(options.pagePolicy));
+  // When local, refuse what came through a tunnel or a proxy (tunnelCheck.ts),
+  // and requests addressed to other hostnames (DNS rebinding).
+  if (loopback) app.use(tunnelCheck());
+  if (loopback) app.use(localhostHostValidation());
+  // Refuse web pages from other origins and requests from other sites, then
+  // (beyond this machine) anyone without the token. All come before every
+  // route, the UI included.
+  app.use(originCheck(loopback));
+  app.use(crossSiteCheck());
+  if (!loopback && options.token) app.use(requireToken(options.token));
+  // A step from an agent's harness is one short line: its body is read with a
+  // small limit before the large one below can take it.
+  app.use(routes.recordStep.path, express.json({ limit: STEP_BODY_LIMIT }));
+  app.use(routes.recordUsage.path, express.json({ limit: USAGE_BODY_LIMIT })); // a harness's plan usage, numbers only
+  // A request for permission: the tool's input, as sent. Its body as it came
+  // is kept: the proof says Tricot read exactly what the hook sent (proof.ts).
+  app.use(routes.requestApproval.path, express.json({ limit: APPROVAL_BODY_LIMIT, verify: keepRawBody }));
+  // Large enough for MCP calls that carry base64 images. The body as it
+  // came is kept too: a seat signs it (access.ts asPerson).
+  app.use(express.json({ limit: '15mb', verify: keepRawBody }));
+  app.set('json replacer', peoplesCopy);
+  const presence = new Presence(
+    () => {}, // pages hear of it through presence.subscribe, in live.ts
+    Date.now,
+    () => {
+      try {
+        store.sweepKinds();
+      } catch (error) {
+        console.error('Checking first looks failed:', error);
+      }
+    },
+  );
+  // Agents present on a board can be mentioned and assigned before they've written to it.
+  store.presentAgents = (key) => presence.list(key).map((a) => a.name);
+  // Who is on each board, and the agents held asleep there, for what reads
+  // them beside the routes (tests, as for the seats below).
+  app.locals.presence = presence;
+  // Who acts as a person, and at which tier (access.ts asPerson): Tricot's
+  // page, or one of the terminals registered here (answerHosts.ts); and for
+  // what is consequential, one of the person's seats (seats.ts), or on the
+  // network another device with the token. Every route that acts as a
+  // person asks it, with the same terminals and seats.
+  const hosts = options.approvals?.hosts ?? new AnswerHosts();
+  const local = options.approvals?.fromThisMachine ?? fromThisMachine;
+  const seats = options.seats ?? new Seats();
+  app.locals.seats = seats;
+  const device = loopback ? undefined : (req: Parameters<PersonGate>[0]) => !fromThisComputer(req);
+  const person: PersonGate = (req, tier) => asPerson(req, tier, { hosts, seats, local, ...(device && { device }) });
+  // Who acts for the person changed: said in the activity of every board in use.
+  seats.onNews((news) => announceSeats(store, news));
+  // Asking to be let in, answering, the person's list, a stream's ticket (seatsRoutes.ts).
+  app.use('/api/seats', createSeatsRouter(seats, person));
+  // The agent commands that need the board, which stops with the last one when they started it (leasesRoutes.ts).
+  if (options.leases) app.use('/api/leases', createLeasesRouter(options.leases));
+  // Asking the board to stop, as a person from one of their seats; `tricot stop` asks here first (stopRoutes.ts).
+  if (options.leases) app.use('/api/stop', createStopRouter(options.leases, person));
+  // Connectors are app-wide, set once for every board; their sign-in callback
+  // stays behind the Host check above. What they add (a Google Doc's draft
+  // lives on a link block) needs the store as well.
+  if (options.connectors) app.use('/api/connectors', createConnectorsRouter(options.connectors, store, person));
+  // People turn an agent's live steps on or off; agents can't (liveStepsRoutes.ts).
+  if (options.liveSteps) app.use('/api/live-steps', createLiveStepsRouter({ person, ...options.liveSteps }));
+  // Where a website block is served, and what a person's view found of its pinned elements (sites/routes.ts).
+  app.use('/api/sites', createSitesRouter(store, options.sites));
+  // What's out, and updating to it: from the page or `tricot update` (updateRoutes.ts).
+  if (options.updates) app.use('/api/update', createUpdateRouter(options.updates, { person }));
+  const steps = new Steps(store, presence);
+  // Who is pairing with which agent on which piece (pairing.ts).
+  const pairing = new PairingSessions(store);
+  // Each agent's plan usage, from its harness, for its panel (usageRoutes.ts).
+  app.use('/api/agents', createUsageRouter(store, new Usage()));
+  // The model and thinking level each agent starts on: read by the page and
+  // the terminal, set by the person alone (agentRulesRoutes.ts).
+  app.use('/api/agent-rules', createAgentRulesRouter(options.agentRules ?? new AgentRulesStore(), person));
+  // What each MCP tool call costs agents, in tokens, since this server started
+  // (toolCosts.ts). Sizes and names only, and it changes nothing, so it is a
+  // read like GET /api/agents: no person's gate (access.ts asPerson), behind
+  // the Origin check, and the token on the network.
+  const costs = new ToolCosts();
+  routesOn(app, '')(routes.toolCosts, (_req, res) => {
+    res.json(costs.report());
+  });
+  // An agent's request for permission, waiting on the board for a person to
+  // answer (approvals.ts): on the card the agent's steps are on.
+  const approvals = new Approvals((agent, session, worker) => steps.placeOfSession(agent, session, worker));
+  routesOn(app, '')(routes.instance, instanceRoute); // which run of Tricot this is, for the approval hook (instanceRoute.ts)
+  app.use('/api', createApprovalsRouter(store, approvals, { ...options.approvals, hosts, seats, person }));
+  // The routes of the parts of Tricot, which the core's router mounts as it is built (api.ts): the edition's, or none.
+  const parts = options.parts ?? new ApiParts();
+  app.use('/api', createApiRouter(store, { mcpUrl: options.mcpUrl, version: options.version, ...(options.source && { source: options.source }), ...(options.folder && { folder: options.folder }), ...(options.chooseFolder && { chooseFolder: options.chooseFolder }) }, presence, steps, pairing, approvals, person, seats, parts));
+  // Beyond this computer, no repository on it is read for an area's files.
+  const commitFiles = loopback ? options.commitFiles : undefined;
+  // A Codex connected on its own is woken through Codex itself, which runs on this computer (codexWake.ts).
+  const codexWakes = loopback ? new CodexWakes(store, presence, options.codexWakes) : undefined;
+  // On the network, each session takes the address its agent reached the board at, which is the one its person reaches it at too.
+  const address = loopback ? ownAddress(options.mcpUrl) : undefined;
+  mountMcp(app, store, { allowFilePaths: loopback, offerListen: loopback, presence, steps, pairing, connectors: options.connectors, groups: options.toolGroups ?? new ToolGroups(), version: options.version, costs, commitFiles, codexWakes, ...(address && { address }), ...(options.cli && { cli: options.cli }) });
+  return app;
+}
+
+// The board's own address, as `tricot` prints it and opens it (start.ts),
+// from the MCP endpoint's: what the links agents give people start with,
+// in the browser the person let in. None when that isn't an address
+// (tests): each session then takes the one its agent reached the board at
+// (mountMcp).
+export function ownAddress(mcpUrl: string): string | undefined {
+  return /^https?:\/\/[^/?#]+\/mcp$/.test(mcpUrl) ? mcpUrl.slice(0, -'/mcp'.length) : undefined;
+}
+
+// What the activity says when who acts for the person changes: on every
+// board in use, as the person who did it. A terminal that ends goes quietly.
+function announceSeats(store: Store, news: SeatNews): void {
+  const name = news.kind === 'removed' ? news.by?.name : news.by.name;
+  if (!name) return;
+  const summary =
+    news.kind === 'admitted'
+      ? news.by.first
+        ? `let the first browser act for them: ${news.seat.label}, by a keypress in Tricot's terminal`
+        : `let ${news.seat.label} act for them, from ${news.by.label}`
+      : news.kind === 'removed'
+        ? `removed ${news.seat.label} from the browsers and terminals that act for them`
+        : `said no to ${news.label} acting for them`;
+  store.announceSeats(summary, { kind: 'human', name });
+}
+
+function rpcError(message: string) {
+  return { jsonrpc: '2.0', error: { code: -32000, message }, id: null };
+}
+
+// One MCP session per connected agent. The agent's display name comes from
+// `?agent=` on its MCP URL, falling back to the client's own name, what
+// it runs on from `model=` and `effort=` when Tricot's terminal started it
+// (core/agentRules.ts runsOnUrl), and `wake=terminal` when that terminal
+// wakes it (core/sessions.ts wakeUrl). Each session watches its calls'
+// connections, so a wait ends when its agent hangs up (mcp/hangups.ts). One
+// from this computer, on a board that listens on it alone, may sleep by
+// `tricot listen`: the command reaches the board at the address the
+// agent's client used, which the Host check has let through already. The
+// links a session gives start with the board's own address, else with
+// that one.
+const listenAddress = (req: Request): string | undefined => {
+  const host = req.headers.host ?? '';
+  return /^[A-Za-z0-9.:[\]-]{1,100}$/.test(host) ? `http://${host}` : undefined;
+};
+
+function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; hangups: Hangups }>();
+
+  app.all('/mcp', async (req, res) => {
+    const sessionId = req.header('mcp-session-id');
+    const known = sessionId ? sessions.get(sessionId) : undefined;
+    let transport = known?.transport;
+    let hangups = known?.hangups;
+
+    if (!transport) {
+      if (sessionId) {
+        res.status(404).json(rpcError('Unknown session; send a new initialize request.'));
+        return;
+      }
+      if (req.method !== 'POST' || !isInitializeRequest(req.body)) {
+        res.status(400).json(rpcError('Start a session with an initialize request.'));
+        return;
+      }
+      const requested = typeof req.query.agent === 'string' ? req.query.agent.trim().slice(0, 60) : '';
+      const runsOn = runsOnOf(req.query);
+      const woken = wokenBy(req.query);
+      const listenAt = mcpOptions.offerListen && fromThisMachine(req) ? listenAddress(req) : undefined;
+      const watching = new Hangups();
+      const created = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => {
+          sessions.set(id, { transport: created, hangups: watching });
+        },
+      });
+      created.onclose = () => {
+        if (created.sessionId) sessions.delete(created.sessionId);
+      };
+      const address = mcpOptions.address ?? listenAddress(req);
+      const server = createMcpServer(
+        store,
+        () => ({ kind: 'agent', name: requested || server.server.getClientVersion()?.name || 'agent' }),
+        address ? { ...mcpOptions, address } : mcpOptions,
+        watching,
+        runsOn,
+        woken,
+        listenAt,
+      );
+      await server.connect(created);
+      transport = created;
+      hangups = watching;
+    }
+
+    if (req.method === 'POST') hangups?.watch(req.body, res);
+    await transport.handleRequest(req, res, req.body);
+  });
+}

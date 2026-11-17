@@ -1,0 +1,180 @@
+/* ---- the Sketchbook: a page's canvas, and its Pages button on it --------- */
+
+.scratch-pad {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Pages, first in the canvas's top-left group (pagesMenu.tsx): Add's pill
+   and menu (canvas.css), its icon a sheet over another that stays still,
+   named by the page shown, cut short past a width the canvas leaves room
+   for beside Add. */
+.toolbar-add.toolbar-pages > button:hover .toolbar-add-plus {
+  transform: none;
+}
+.toolbar-pages .toolbar-add-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.toolbar-pages-title {
+  max-width: min(240px, 36cqw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Who made the page shown, and at whose ask (pageMaker.tsx): a quiet line
+   on a row of its own after Pages and Add, as wide as the row or a short
+   sentence, cut short past it. Add's menu drops over it. */
+.scratch-maker {
+  order: 1;
+  flex-basis: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 6px;
+}
+.scratch-maker-text {
+  display: block;
+  max-width: min(480px, 100%);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scratch-maker-to {
+  color: var(--faint);
+}
+
+/* Renaming the page shown: its name a field in the pill. */
+.toolbar-add > .toolbar-pages-field {
+  gap: 4px;
+  padding-right: 3px;
+  cursor: text;
+}
+.toolbar-add > .toolbar-pages-field:focus-within {
+  border-color: var(--focus);
+}
+.toolbar-pages-field input {
+  min-width: 0;
+  max-width: min(320px, 50cqw);
+  padding: 4px 8px 4px 3px; /* the name where the button had it */
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+.toolbar-pages-field input:focus {
+  outline: none;
+}
+
+/* Its menu: a little wider than Add's, for the pages' names. A page is a row
+   of its name after a check for the one shown, a dot after it for changes
+   not seen. */
+.toolbar-pages > .menu-panel.add-menu {
+  width: min(264px, calc(100vw - 62px));
+}
+.pages-menu-row {
+  position: relative;
+  display: grid;
+}
+.pages-menu-page {
+  min-width: 0;
+}
+.add-menu .pages-menu-page .add-menu-row {
+  min-width: 0;
+}
+.add-menu .pages-menu-page :is(.pages-menu-mark, .pages-menu-title) {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+.add-menu .pages-menu-page .pages-menu-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 15px;
+  font-size: 15px;
+}
+.pages-menu-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pages-menu-page[aria-current='page'] .pages-menu-title {
+  font-weight: 600;
+}
+.pages-menu-row.is-dragged {
+  opacity: 0.5;
+}
+/* Where a dragged row would land. */
+.pages-menu-row.drop-before::before,
+.pages-menu-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--focus);
+}
+.pages-menu-row.drop-before::before {
+  top: -1.5px;
+}
+.pages-menu-row.drop-after::after {
+  bottom: -1.5px;
+}
+
+.scratch-error {
+  position: absolute;
+  top: 64px; /* under the canvas's top-left group */
+  left: 50%;
+  z-index: 5;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+/* No pages yet: what the Sketchbook is for, and a way to start. */
+.scratch-empty {
+  margin: auto;
+  max-width: 420px;
+  padding: 32px 24px 120px; /* clear of the chat bar floating at the foot */
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.scratch-empty > .icon {
+  font-size: 28px;
+  color: var(--faint);
+}
+.scratch-empty h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+}
+.scratch-empty p {
+  margin: 0;
+}
+.scratch-empty .btn {
+  margin-top: 6px;
+}

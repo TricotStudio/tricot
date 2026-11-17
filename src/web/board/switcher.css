@@ -1,0 +1,241 @@
+/* The board switcher: the board's name in its header, chevron and all, and
+   the list of boards it opens under the top bar. */
+
+/* While the name is renamed, the note under the field takes a line of its own. */
+.board-switch {
+  display: flex;
+  align-items: center;
+  column-gap: 2px;
+  min-width: 0;
+}
+.board-switch > h1 {
+  min-width: 0;
+}
+.board-switch:has(> .heading-note) {
+  flex-wrap: wrap;
+}
+.board-switch > .heading-note {
+  flex-basis: 100%;
+}
+
+/* The name and its chevron are one button, in the heading's own type. It
+   reads as the heading; pointing at it washes it, as the bar's other quiet
+   buttons do, and it is never underlined like a link. The wash reaches past
+   the text on the left, where the list's edge lines up with it. A long name
+   is cut short on one line; the chevron stays. */
+.board-switch-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% + 6px);
+  min-height: 24px;
+  margin-left: -6px;
+  padding: 0 4px 0 6px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+.board-switch-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-switch-chevron {
+  flex: none;
+  font-size: 15px;
+  color: var(--muted);
+  transition: color 0.12s;
+}
+.board-switch-button:hover,
+.board-switch-button[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+.board-switch-button:hover .board-switch-chevron,
+.board-switch-button[aria-expanded='true'] .board-switch-chevron {
+  color: var(--text);
+}
+/* A long name gives way, not the controls at the right of the bar. */
+.topbar:has(.board-switch) .topbar-right {
+  flex-shrink: 0;
+}
+
+/* Placed against the top bar, just under it, and from the title's left edge:
+   with left and right at auto, the panel keeps the place it has in the line. */
+.topbar:has(.board-switch) {
+  position: relative;
+}
+.board-switch-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 40;
+  margin-left: -6px;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(72vh, 560px);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.5;
+  animation: search-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+}
+
+.board-switch-field {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 10px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.board-switch-field > .icon {
+  font-size: 16px;
+}
+.board-switch-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+}
+.board-switch-field input:focus {
+  outline: none;
+}
+.board-switch-field input::placeholder {
+  color: var(--faint);
+}
+.board-switch-key {
+  flex: none;
+  font-family: var(--font);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+}
+
+.board-switch-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+.board-switch-label {
+  padding: 4px 10px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.board-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+  scroll-margin: 4px;
+}
+.board-switch-row.is-active {
+  background: var(--surface-2);
+}
+.board-switch-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.board-switch-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.board-switch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.board-switch-title .tag {
+  flex: none;
+}
+.tag-needs {
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.board-switch-agent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.board-switch-check {
+  font-size: 16px;
+  color: var(--muted);
+}
+.board-switch-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.board-switch-foot {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.board-switch-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 0.12s, color 0.12s;
+}
+.board-switch-link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* On a phone the list spans the bar, within its gutters. */
+@media (max-width: 600px) {
+  .board-switch-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    margin-left: 0;
+  }
+}

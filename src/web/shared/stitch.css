@@ -1,0 +1,96 @@
+/* "The agent is working on it" (stitch.tsx): a row of knit loops, 27 × 10px,
+   so the line it sits in keeps its height. Working, one dash knits the row
+   in, holds it, and pulls it through, over and over, in the working blue;
+   cast on (the agent has just picked the work up), the first loop comes in
+   one quick stroke and the knitting carries on from it; resting, it is the
+   finished row, still, in a quieter ink; leaving (the reply has landed),
+   the yarn is pulled through once more and the row is gone. Only the dash
+   moves, all of it under prefers-reduced-motion: no-preference, so with
+   reduced motion it is the row as drawn. A hidden tab pauses it.
+
+   A place can set --stitch-ink (working) and --stitch-rest (resting). */
+
+.stitch {
+  --stitch-play: running;
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: 27px;
+  height: 10px;
+  color: var(--stitch-ink, var(--exploring));
+  vertical-align: middle;
+}
+.stitch.is-resting {
+  color: var(--stitch-rest, var(--faint));
+}
+.stitch.is-paused {
+  --stitch-play: paused;
+}
+.stitch svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.stitch-yarn {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stitch.is-working .stitch-yarn {
+    animation: stitch-knit 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite var(--stitch-play);
+  }
+  /* Cast on, then knit. The cast-on draws the first loop, a third of the
+     row, in 300ms, gathering speed; the knit runs from the start too, 172ms
+     ahead, so that as the cast-on ends the knit is just there (a third of
+     the row, 472ms into its round) and at the same pace: nothing pauses or
+     jumps. Listed last, the cast-on is the one drawn while it lasts. The
+     same animations stay while the stitch knits on, so a step arriving
+     restarts nothing. */
+  .stitch.is-cast-on .stitch-yarn {
+    animation:
+      stitch-knit 2.4s cubic-bezier(0.45, 0, 0.55, 1) -172ms infinite var(--stitch-play),
+      stitch-cast 300ms cubic-bezier(0.3, 0.2, 0.7, 0.61) var(--stitch-play);
+  }
+  /* After the others: the exit wins over the knit and the cast-on. */
+  .stitch.is-leaving .stitch-yarn {
+    animation: stitch-pull 320ms cubic-bezier(0.5, 0, 0.75, 0) forwards; /* stitch.tsx STITCH_EXIT_MS */
+  }
+}
+
+/* Knitted in, held, pulled through. */
+@keyframes stitch-knit {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  48%,
+  58% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -100;
+  }
+}
+/* One loop cast on: where the knit takes it up (stroke-dashoffset 66). */
+@keyframes stitch-cast {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 66;
+  }
+}
+@keyframes stitch-pull {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}

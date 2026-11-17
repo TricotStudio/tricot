@@ -1,0 +1,20 @@
+import path from 'node:path';
+import { DATABASE_FILE } from '../src/core/store/boardDb';
+import { readBoards } from '../src/core/store/boardTables';
+import type { EntityLists } from '../src/core/store/entityLists';
+import { openDatabase } from '../src/core/store/migrations';
+import type { Board } from '../src/core/types';
+
+// A board as the database holds it in `dir` right now, untidied: what a
+// restart would read. The store holding it should have flushed. `lists` is the registry the reader has: the core's alone unless a
+// test gives the lists of a made-up kind or a part's.
+export function savedBoard(dir: string, id: string, lists?: EntityLists): Board {
+  const db = openDatabase(path.join(dir, DATABASE_FILE));
+  try {
+    const found = readBoards(db, lists).find(({ board }) => board.id === id);
+    if (!found) throw new Error(`No saved board "${id}" in ${dir}.`);
+    return found.board;
+  } finally {
+    db.close();
+  }
+}
