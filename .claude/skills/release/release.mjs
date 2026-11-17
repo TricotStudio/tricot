@@ -165,6 +165,9 @@ function check() {
   else ok(`The last release is ${tag}, and package.json says ${pkg.version}.`);
 
   if (!existsSync(path.join(root, 'node_modules'))) warn('node_modules is missing: the tests need npm ci first.');
+  // CI runs Linux and Windows only, so the tests a release runs before its tag are macOS's run.
+  if (process.platform === 'darwin') ok("This is a Mac, so the tests before the tag are macOS's run (CI has none).");
+  else warn("This isn't a Mac, and CI has no macOS: run npm test on a Mac before tagging.");
   finish(ahead ? '' : 'main is ready for a release.');
 }
 

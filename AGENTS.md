@@ -55,5 +55,5 @@ Tricot is a shared planning board for people and coding agents: a Node server (R
 
 ## Systems and running things
 
-- Code must work on macOS, Linux and Windows, or refuse with a message saying why; CI runs all three. A test that needs POSIX skips on Windows with its reason: `{ skip: WINDOWS && '…' }` from `test/platform.ts`.
+- Code must work on macOS, Linux and Windows, or refuse with a message saying why. CI runs Linux and Windows; macOS is not in CI, so run the tests on a Mac yourself when a change touches what differs there (`src/platform/`, paths, processes, the pty switcher), and each release runs the whole suite on the Mac it is made on before it is tagged. A test that needs POSIX skips on Windows with its reason: `{ skip: WINDOWS && '…' }` from `test/platform.ts`.
 - Run anything by hand on a scratch port and data folder (`PORT=4610 TRICOT_DATA_DIR=$(mktemp -d) npm start`): `~/.tricot` holds the person's own boards.

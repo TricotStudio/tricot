@@ -9,7 +9,7 @@ The GitHub release is the one source. The workflow builds and checks the package
 ## Before a release
 
 1. The version is in `package.json`. For a later release, `npm version <x.y.z>` sets it and makes the commit and its tag.
-2. `npm test` and `npm run typecheck` pass. The CI workflow (`.github/workflows/ci.yml`) runs both on Linux and Windows on every pull request and every push to `main`, and `ci-macos.yml` runs them on macOS apart, so a Mac runner GitHub can't give in time doesn't turn CI red.
+2. `npm test` and `npm run typecheck` pass. The CI workflow (`.github/workflows/ci.yml`) runs both on Linux and Windows on every pull request and every push to `main`. macOS isn't in CI: a release is made on a Mac, and the tests it runs before the tag are macOS's run.
 3. `npm run smoke:release` passes. It builds and packs the package, checks what ships (nothing private, nothing missing), installs it globally into `.review/smoke/` with a fresh home and data folder, offline, runs that `tricot` on port 5055, and in headless Chrome goes through the first run with a stand-in agent. It needs Chrome (or `CHROME_PATH`). Its screenshots are in `.review/smoke/shots/`.
 4. The build lists any library whose licence needs a look ("Licence to look at"), and stops at one that can't ship in Tricot, which is Apache-2.0: code under the GPL or the AGPL, and, for now, code under the Eclipse Public License. That is why the web page leaves out Mermaid's ELK layout and its elkjs: diagrams are drawn with Mermaid's dagre layout instead (`scripts/elkLeftOut.ts`). `THIRD_PARTY_NOTICES.md` is written by the build and ships in the package, beside `LICENSE` and `NOTICE`.
 

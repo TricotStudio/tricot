@@ -81,7 +81,7 @@ npm run typecheck
 npm test
 ```
 
-If `node_modules` is missing, ask before running `npm ci`. If the typecheck or the tests fail, stop: show what failed, and offer to undo the version change (`git restore package.json package-lock.json`, which drops the notes too; they are still in the conversation).
+These tests are also macOS's run: CI has only Linux and Windows, so a release is made on a Mac, and step 1 warns when it isn't. If `node_modules` is missing, ask before running `npm ci`. If the typecheck or the tests fail, stop: show what failed, and offer to undo the version change (`git restore package.json package-lock.json`, which drops the notes too; they are still in the conversation).
 
 Offer `npm run smoke:release`, the clean-machine check. It takes a few minutes and needs Chrome. It is optional here, because the Release workflow runs it on the tag anyway.
 
