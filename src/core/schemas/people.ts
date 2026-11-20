@@ -188,6 +188,11 @@ export const agentsParams = z.object({ board: z.string().min(1).max(200).optiona
 // how long it took (ms) when the harness says; narration is a line of what
 // the agent said, which a person chose to show.
 const stepId = z.string().trim().min(1).max(LIMITS.stepId);
+// An item of an agent's to-do list, as a step carries it.
+export const MAX_PLAN_ITEMS = 30;
+const planText = z.string().trim().min(1).max(200);
+const planItem = z.object({ text: planText, status: z.enum(['done', 'now', 'next']) });
+
 export const agentStep = z.object({
   text: text({ empty: 'text', name: 'text', max: LIMITS.step, tidy: true }).transform(tidy),
   session: stepId.optional(),
@@ -201,6 +206,15 @@ export const agentStep = z.object({
   ms: z.number().int().min(0).max(7 * 24 * 60 * 60_000).optional(),
   narration: z.boolean().optional(),
   at: z.number().int().min(0).optional(),
+  // The agent's to-do list as the step writes it, and the files it changes (hooks/tricot-describe.mjs, the peek).
+  plan: z
+    .union([
+      z.object({ set: z.array(planItem).max(MAX_PLAN_ITEMS) }),
+      z.object({ add: planText }),
+      z.object({ update: z.object({ id: z.string().trim().min(1).max(40), status: z.enum(['done', 'now', 'next', 'gone']).optional(), text: planText.optional() }) }),
+    ])
+    .optional(),
+  files: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
 });
 // The card a step's own Tricot call named, by the name of its kind (`task`, `decision`): one field for each kind of card a Store
 // keeps, read with the step's others (`store.cardKinds()`).

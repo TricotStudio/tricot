@@ -3,6 +3,7 @@ import { stepText, type BusyState } from '../../core/delivery';
 import { pathParts } from '../../core/format';
 import type { Approval } from '../../core/approvals';
 import { nextChange, phaseOf, type StepPhase } from '../../core/stepPhase';
+import type { AgentWork } from '../../core/agentWork';
 import type { AgentStep } from '../shared/api';
 import { approvalsStore } from '../shared/approvalsStore';
 import { admissionsStore, TicketedSource } from '../shared/seat';
@@ -18,8 +19,11 @@ import type { CardKindName } from '../../core/pins';
 // They are kept here, outside the board, so a step (one every few seconds
 // while an agent works) re-renders only the lines that show it.
 
+// And what each agent session is working on beyond its latest step: its plan, the files it changed, its last steps
+// (core/agentWork.ts, the peek), which the stream sends beside the steps.
 export class StepsStore {
   private steps: AgentStep[] = [];
+  private work: AgentWork[] = [];
   private readonly listeners = new Set<() => void>();
 
   set(steps: AgentStep[]): void {
@@ -27,7 +31,13 @@ export class StepsStore {
     for (const listener of this.listeners) listener();
   }
 
+  setWork(work: AgentWork[]): void {
+    this.work = work;
+    for (const listener of this.listeners) listener();
+  }
+
   get = (): AgentStep[] => this.steps;
+  getWork = (): AgentWork[] => this.work;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -39,13 +49,20 @@ const StepsContext = createContext<StepsStore | null>(null);
 export const StepsProvider = StepsContext.Provider;
 
 const none: AgentStep[] = [];
-const noStore = { get: () => none, subscribe: () => () => {} };
+const noWork: AgentWork[] = [];
+const noStore = { get: () => none, getWork: () => noWork, subscribe: () => () => {} };
 
 // Every agent's latest step on the board, for a line that looks past one card
 // (the line under a person's message, delivery.tsx).
 export function useSteps(): AgentStep[] {
   const store = useContext(StepsContext) ?? noStore;
   return useSyncExternalStore(store.subscribe, store.get);
+}
+
+// What each agent session on the board is working on, the latest first (the peek).
+export function useWork(): AgentWork[] {
+  const store = useContext(StepsContext) ?? noStore;
+  return useSyncExternalStore(store.subscribe, store.getWork);
 }
 
 // How long a step shows, live then dim (core/stepPhase.ts, shared with the

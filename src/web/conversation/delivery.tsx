@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { deliveryBusy, deliveryOf, deliveryTitle, deliveryWords, inWindow, leavesWithReply, toWake, wakeLead, wakeWords, type BusyState, type Delivery, type Said, type Where } from '../../core/delivery';
 import type { Actor, Board, MessageLens } from '../../core/types';
 import { useReadOnly } from '../shared/hooks';
-import { phaseOf, StepText, useAgents, useSteps } from '../agents';
+import { Peek, phaseOf, StepText, useAgents, useSteps } from '../agents';
 import { Stitch, STITCH_EXIT_MS } from '../shared/stitch';
 import { outbox, type Outgoing } from './outbox';
 import { SayToListen, toolOf, useConnectedAgents, useInstalledAgents } from './wake';
@@ -116,7 +116,7 @@ export function MessageFoot({ board, where, said, after, onItsWay, outgoing, onE
       shown.delivery.state === 'nobody' || shown.delivery.state === 'waiting' ? (
         <Unheard shown={shown} said={said} at={at} onHover={hover} onConnect={onConnect} />
       ) : (
-        <Line shown={shown} onHover={hover} onConnect={onConnect} />
+        <Line shown={shown} onHover={hover} onConnect={onConnect} thread={'thread' in where ? where.thread.id : undefined} />
       );
   } else if (leaving && replied) {
     line = <Line shown={leaving} leaving />;
@@ -138,14 +138,28 @@ interface Shown {
   busy?: BusyState;
 }
 
-function Line({ shown: { delivery, words, title, busy }, leaving = false, onHover, onConnect }: { shown: Shown; leaving?: boolean; onHover?: () => void; onConnect?: () => void }) {
+// While an agent is at the message (working on it, or it has seen it), its words open the peek (agents/peek.tsx): what
+// it is working on, past this one line.
+function Line({ shown: { delivery, words, title, busy }, leaving = false, onHover, onConnect, thread }: { shown: Shown; leaving?: boolean; onHover?: () => void; onConnect?: () => void; thread?: string }) {
   const working = delivery.state === 'working';
+  const peekable = !leaving && (delivery.state === 'working' || delivery.state === 'seen') ? delivery.agent : undefined;
+  const opener = useRef<HTMLButtonElement>(null);
+  const [peeking, setPeeking] = useState(false);
   return (
-    <p className={`delivery is-${delivery.state}${leaving ? ' is-leaving' : ''}`} title={title} onPointerEnter={onHover}>
+    <p className={`delivery is-${delivery.state}${leaving ? ' is-leaving' : ''}`} title={peekable ? undefined : title} onPointerEnter={onHover}>
       {/* A new state, or a new step, fades in where the last one was. */}
-      <span key={words} className="delivery-text" aria-hidden>
-        <StepText text={words} />
-      </span>
+      {peekable ? (
+        <button ref={opener} type="button" className="delivery-text delivery-peek" title={`${title}\nSee what ${peekable} is working on`} aria-expanded={peeking} onClick={() => setPeeking(!peeking)}>
+          <span key={words} aria-hidden>
+            <StepText text={words} />
+          </span>
+        </button>
+      ) : (
+        <span key={words} className="delivery-text" aria-hidden>
+          <StepText text={words} />
+        </span>
+      )}
+      {peeking && peekable && <Peek agent={peekable} thread={thread} anchor={opener} onClose={() => setPeeking(false)} />}
       {/* Not keyed by the words, and here in every state: it casts on as
           the agent sees the message and knits on through each new step. */}
       <Stitch state={busy} leaving={leaving} />

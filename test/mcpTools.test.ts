@@ -6,6 +6,7 @@ import { after, before, describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { describe as stepOf } from '../hooks/tricot-describe.mjs';
 import { Connectors } from '../src/server/connectors';
 import { canvasServer, type CanvasServer } from './canvasEdition';
 import { readGuide } from './guide';
@@ -87,6 +88,21 @@ describe('the MCP server and its tools', () => {
     return (tool: string, input: object = {}, labels?: object) =>
       step({ hook_event_name: 'PreToolUse', tool_name: `mcp__tricot__${tool}`, tool_input: input }, labels && { labels }) as { text: string } | undefined;
   };
+
+  // The peek (core/agentWork.ts): the hook sends an agent's to-do list with the step that writes it, whole or an item at
+  // a time, whichever way its harness writes it, and the files a step changes, by name.
+  it("sends an agent's to-do list and the files a step changes, whichever way its harness writes them", () => {
+    const pre = (tool: string, input: object) => stepOf({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input });
+    assert.deepEqual(pre('TodoWrite', { todos: [{ content: 'Find it', status: 'completed' }, { content: 'Fix it', status: 'in_progress' }, { content: 'Dropped', status: 'cancelled' }, { content: 'Test it', status: 'pending' }] })?.plan, {
+      set: [{ text: 'Find it', status: 'done' }, { text: 'Fix it', status: 'now' }, { text: 'Test it', status: 'next' }],
+    });
+    assert.deepEqual(pre('update_plan', { plan: [{ step: 'Read', status: 'completed' }] })?.plan, { set: [{ text: 'Read', status: 'done' }] }, "Codex's plan");
+    assert.deepEqual(pre('TaskCreate', { subject: 'Run the tests' })?.plan, { add: 'Run the tests' });
+    assert.deepEqual(pre('TaskUpdate', { taskId: '2', status: 'completed' })?.plan, { update: { id: '2', status: 'done' } });
+    assert.deepEqual(pre('TaskUpdate', { taskId: '3', status: 'deleted' })?.plan, { update: { id: '3', status: 'gone' } });
+    assert.deepEqual(pre('Edit', { file_path: 'src/a.ts', old_string: 'secret', new_string: 'other' }), { text: 'Editing src/a.ts', files: ['src/a.ts'] }, 'the file by name, never its content');
+    assert.equal(pre('Read', { file_path: 'src/a.ts' })?.files, undefined, 'reading changes nothing');
+  });
 
   it("puts each tool it lists in words in a live step, a part's tools in the part's own file if it has one", async () => {
     const plain = await hookIn('hook-plain');

@@ -287,10 +287,10 @@ function LiveStepsSheet({
     ? `${agent.name}'s steps are on for every project, so the hook ${project} got earlier isn't needed. Tricot takes out only its own lines there; every other setting stays as it is.`
     : turningOn
       ? agent.approvals
-        ? `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project${agent.usage ? ', and passes on its plan usage, numbers only, for its panel' : ''}. Its permission prompts come to the board too, with the command or change it asks about, for you to answer there. Tricot changes only what is listed here, and steps carry no file contents, command output or prompts.`
+        ? `${agent.name} then shows what it is doing, one line per step, and its to-do list, on the card it works on, in every project${agent.usage ? ', and passes on its plan usage, numbers only, for its panel' : ''}. Its permission prompts come to the board too, with the command or change it asks about, for you to answer there. Tricot changes only what is listed here, and steps carry no file contents, command output or prompts.`
         : agent.usage
-          ? `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project, and passes on its plan usage, numbers only, for its panel. Tricot changes only what is listed here, and sends no file contents, command output or prompts.`
-          : `${agent.name} then shows what it is doing, one line per step, on the card it works on, in every project. Tricot adds a small hook to ${agent.name}'s own settings and changes nothing else. It sends no file contents, command output or prompts.`
+          ? `${agent.name} then shows what it is doing, one line per step, and its to-do list, on the card it works on, in every project, and passes on its plan usage, numbers only, for its panel. Tricot changes only what is listed here, and sends no file contents, command output or prompts.`
+          : `${agent.name} then shows what it is doing, one line per step, and its to-do list, on the card it works on, in every project. Tricot adds a small hook to ${agent.name}'s own settings and changes nothing else. It sends no file contents, command output or prompts.`
       : `${agent.name} stops sending its steps${agent.approvals ? ', and its permission prompts go back to the terminal' : ''}. Tricot takes out only what it added; every other setting stays as it is.`;
   return (
     <div className="live-sheet-scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onCancel()}>

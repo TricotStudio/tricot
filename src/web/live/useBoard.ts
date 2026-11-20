@@ -22,6 +22,7 @@ export function useBoard(boardId: string) {
 
   useEffect(() => {
     steps.set([]);
+    steps.setWork([]);
     // Moving to a renamed board's new id keeps what's on screen, and goes on from its last change.
     const held = shown.current?.id === boardId ? shown.current : null;
     shown.current = held;
@@ -44,6 +45,7 @@ export function useBoard(boardId: string) {
       onLive: setLive,
       onDeleted: () => setDeleted(true),
       onSteps: (latest) => steps.set(latest),
+      onWork: (work) => steps.setWork(work),
       onApprovals: (list) => approvalsStore.set(list),
       onAdmissions: (list) => admissionsStore.set(list),
     });

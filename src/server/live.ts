@@ -118,9 +118,24 @@ export function openStream(store: Store, presence: Presence | undefined, req: Re
   write(frame('presence', presence?.list(key) ?? []));
   if (presence) unsubscribe.push(presence.subscribe(key, (agents) => write(frame('presence', agents))));
   if (steps) {
+    // What each agent session is working on (the peek, core/agentWork.ts) goes beside the steps, when it changed.
+    let workSent = '';
+    const sendWork = () => {
+      const work = steps.work(key);
+      const said = JSON.stringify(work);
+      if (said === workSent || (workSent === '' && work.length === 0)) return;
+      workSent = said;
+      write(frame('work', work));
+    };
     const now = steps.list(key);
     if (now.length > 0) write(frame('steps', now));
-    unsubscribe.push(steps.subscribe(key, (latest) => write(frame('steps', latest))));
+    sendWork();
+    unsubscribe.push(
+      steps.subscribe(key, (latest) => {
+        write(frame('steps', latest));
+        sendWork();
+      }),
+    );
   }
   unsubscribe.push(sendPersonal(store, reader, write, () => res.end()));
 

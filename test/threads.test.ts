@@ -10,8 +10,9 @@ import { concernsAgent } from '../src/core/concerns';
 import { launchesOn } from '../src/core/roles';
 import { Presence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
+import { Steps, type StepInput } from '../src/server/steps';
 import { Store } from '../src/core/store';
-import type { Actor, Thread } from '../src/core/types';
+import { boardKey, type Actor, type Thread } from '../src/core/types';
 import { askableCards } from './madeUpAsked';
 import { removeScratch } from './platform';
 import { threadsServer, type ThreadsServer, type ToolResult } from './threadsServer';
@@ -132,6 +133,62 @@ describe('Threads over MCP and REST', () => {
 });
 
 // What the bell lists besides threads (core/bell.ts): a reply to a person's comment, but not one that @-mentions other people.
+// core/agentWork.ts, the peek: what an agent session is working on, kept beside its steps and past them, and what the
+// step route takes of it.
+describe('What an agent is working on', () => {
+  let server: ThreadsServer;
+  before(async () => {
+    server = await threadsServer();
+  });
+  after(async () => {
+    await server.stop();
+  });
+
+  it('keeps its plan, the files it and its helpers changed this turn, and its last steps, and starts a turn with no file', async () => {
+    const { store, request } = server;
+    const boardId = (await request('POST', '/boards', { actor: 'Sam', title: 'Peek' })).json.id as string;
+    const thread = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Keep the button above the keyboard.' })).json as Thread;
+    const steps = new Steps(store, undefined);
+    try {
+      let at = Date.now();
+      const step = (input: StepInput) => steps.record('Claude', { session: 's1', thread: thread.id, at: (at += 10), ...input });
+      step({ text: 'Updating its to-do list', tool: 'c1', plan: { set: [{ text: 'Find it', status: 'done' }, { text: 'Fix it', status: 'now' }] } });
+      step({ text: 'Editing src/a.ts', worker: 'w1', role: 'Explore', files: ['src/a.ts'] });
+      step({ text: 'Updating its to-do list', tool: 'c2', plan: { add: 'Test it' } });
+      step({ text: 'Updating its to-do list', tool: 'c3', plan: { update: { id: '2', status: 'done' } } });
+      step({ text: 'Running npm test', running: true, tool: 't1' });
+      step({ text: 'Ran npm test', ended: true, tool: 't1', ms: 4100 });
+
+      const [work] = steps.work(boardKey(store.getBoard(boardId)));
+      assert.equal(work.agent, 'Claude');
+      assert.equal(work.thread, thread.id);
+      assert.deepEqual(work.plan, [{ text: 'Find it', status: 'done' }, { text: 'Fix it', status: 'done' }, { text: 'Test it', status: 'next' }], 'whole, an item added, an item checked off: none lost in a row');
+      assert.deepEqual(work.files, ['src/a.ts'], "a helper's file is its session's");
+      assert.deepEqual(work.trail.map((t) => [t.text, t.role, t.ms]).slice(-2), [['Updating its to-do list', undefined, undefined], ['Ran npm test', undefined, 4100]], "a step that lasted shows its end in its start's place");
+      assert.ok(work.trail.some((t) => t.role === 'Explore'));
+
+      step({ text: 'Finished its turn', done: true });
+      step({ text: 'Reading src/b.ts' });
+      const [next] = steps.work(boardKey(store.getBoard(boardId)));
+      assert.deepEqual(next.files, [], 'a new turn has changed no file yet');
+      assert.equal(next.plan?.length, 3, 'its plan stays');
+    } finally {
+      steps.close();
+    }
+  });
+
+  it('takes a plan and files with a step, and refuses a list longer than it keeps', async () => {
+    const { request } = server;
+    const boardId = (await request('POST', '/boards', { actor: 'Sam', title: 'Peek route' })).json.id as string;
+    const thread = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Hello.' })).json as Thread;
+    const items = (n: number) => Array.from({ length: n }, (_, i) => ({ text: `Item ${i + 1}`, status: 'next' }));
+    const sent = await request('POST', '/agents/Claude/steps', { text: 'Updating its to-do list', session: 's9', thread: thread.id, plan: { set: items(30) }, files: ['a.ts'] });
+    assert.equal(sent.status, 201);
+    const refused = await request('POST', '/agents/Claude/steps', { text: 'Updating its to-do list', session: 's9', thread: thread.id, plan: { set: items(31) } });
+    assert.equal(refused.status, 400);
+  });
+});
+
 // core/agentRules.ts: a role's model, set beside the agent's own, over it for those Tricot starts and told to an
 // orchestrator for the subagents it runs.
 describe('The model of each role', () => {

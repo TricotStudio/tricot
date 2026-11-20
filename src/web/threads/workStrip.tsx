@@ -3,7 +3,8 @@ import { samePerson } from '../../core/format';
 import { STATUS_WORDS } from '../../core/roles';
 import { shownTitle } from '../../core/threads';
 import type { Board, Thread } from '../../core/types';
-import { phaseOf, useSteps } from '../agents';
+import { planProgress } from '../../core/agentWork';
+import { Peek, phaseOf, useSteps, useWork } from '../agents';
 import { Icon } from '../shared/components';
 import './workStrip.css';
 
@@ -55,6 +56,10 @@ const SHOWN = 4;
 export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: string) => void; onFollow: (routed: Routed) => void; onDismiss: (id: string) => void }) {
   const { board, routed, onOpen, onFollow, onDismiss } = props;
   const steps = useSteps();
+  const work = useWork();
+  // A pill of a thread at work opens the peek over it (agents/peek.tsx); one waiting on the viewer opens the thread.
+  const [peeking, setPeeking] = useState<string | null>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
@@ -64,6 +69,8 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
   const sentTo = routed && board.threads?.find((t) => t.id === routed.to);
   if (!working.length && !sentTo) return null;
   const live = (thread: Thread) => steps.some((s) => s.thread === thread.id && phaseOf(s, now) === 'live');
+  const progressOf = (thread: Thread) => planProgress(work.find((w) => samePerson(w.agent, thread.owner!) && w.thread === thread.id)?.plan);
+  const peeked = peeking ? working.find((thread) => thread.id === peeking) : undefined;
   return (
     <div className="work-strip" role="group" aria-label="Work under way">
       {sentTo && (
@@ -82,20 +89,46 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
       )}
       {working.slice(0, SHOWN).map((thread) => {
         const waits = thread.status === 'needs-you';
+        const progress = waits ? undefined : progressOf(thread);
+        const open = peeking === thread.id;
         return (
           <button
             key={thread.id}
+            ref={open ? opener : undefined}
             type="button"
-            className={`work-pill${waits ? ' is-waiting' : ''}`}
-            title={`${shownTitle(thread)}: ${thread.owner}, ${STATUS_WORDS[thread.status!]}`}
-            onClick={() => onOpen(thread.id)}
+            className={`work-pill${waits ? ' is-waiting' : ''}${open ? ' is-open' : ''}`}
+            title={`${shownTitle(thread)}: ${thread.owner}, ${STATUS_WORDS[thread.status!]}${waits ? '' : '. See what it is doing'}`}
+            aria-expanded={waits ? undefined : open}
+            onClick={(event) => {
+              if (waits) return onOpen(thread.id);
+              opener.current = event.currentTarget;
+              setPeeking(open ? null : thread.id);
+            }}
           >
             <span className={`work-dot${waits ? '' : live(thread) ? ' is-live' : ''}`} aria-hidden />
             <span className="work-pill-title">{shownTitle(thread)}</span>
             {waits && <span className="work-pill-state">needs you</span>}
+            {progress && (
+              <span className="work-pill-count" aria-label={`${progress.done} of ${progress.total} done`}>
+                {progress.done}/{progress.total}
+              </span>
+            )}
           </button>
         );
       })}
+      {peeked && (
+        <Peek
+          agent={peeked.owner!}
+          title={shownTitle(peeked)}
+          thread={peeked.id}
+          anchor={opener}
+          onClose={() => setPeeking(null)}
+          onOpenThread={() => {
+            setPeeking(null);
+            onOpen(peeked.id);
+          }}
+        />
+      )}
       {working.length > SHOWN && <span className="work-more">+{working.length - SHOWN}</span>}
     </div>
   );

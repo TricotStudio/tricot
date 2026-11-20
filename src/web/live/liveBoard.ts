@@ -1,6 +1,7 @@
 import { applyChange, sameTally, tallyOf, type BoardChange, type LiveState } from '../../core/changes';
 import type { Approval } from '../../core/approvals';
 import type { AdmissionView } from '../../core/seats';
+import type { AgentWork } from '../../core/agentWork';
 import type { AgentPresence, AgentStep, LiveBoard } from '../shared/api';
 import type { EventFeed } from './events';
 import { routes, routeUrl } from '../../core/routes';
@@ -46,6 +47,7 @@ export interface Session {
   // What agents are doing now (steps.tsx). Kept apart from the board, so a
   // step re-renders the line that shows it, not the board.
   onSteps?: (steps: AgentStep[]) => void;
+  onWork?: (work: AgentWork[]) => void; // what each agent session is working on (core/agentWork.ts)
   // The agents waiting for a person's OK, on any board (approvals.tsx).
   onApprovals?: (approvals: Approval[]) => void;
   // Browsers and terminals asking to act for the person, to a seat (seats.tsx).
@@ -156,6 +158,7 @@ export class BoardSession {
     hear('change', (change: BoardChange) => this.change(change));
     hear('presence', (agents: AgentPresence[]) => this.presence(agents));
     hear('steps', (steps: AgentStep[]) => this.session.onSteps?.(steps));
+    hear('work', (work: AgentWork[]) => this.session.onWork?.(work));
     hear('approvals', (approvals: Approval[]) => this.session.onApprovals?.(approvals));
     hear('admissions', (admissions: AdmissionView[]) => this.session.onAdmissions?.(admissions));
     hear('ping', (state: LiveState) => this.compare(state));

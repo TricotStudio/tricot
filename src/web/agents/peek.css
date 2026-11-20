@@ -1,0 +1,248 @@
+/* ---- the peek (agents/peek.tsx) ---------------------------------------------
+   A card over what opened it, in the page's popover sheet: who, then its plan
+   as a checklist with a bar of how far along it is, then what it and its
+   helpers are doing, a line each, then the files it changed. Done items are
+   struck and faint, the one being done is bold with the open status's ring,
+   and live lines carry the live dot. */
+.peek {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.peek-head {
+  padding: 13px 16px 11px;
+  border-bottom: 1px solid var(--border);
+}
+.peek-title {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.peek-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.peek-who .actor-badge {
+  flex: none;
+}
+.peek-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.peek-faint {
+  color: var(--faint);
+  white-space: nowrap;
+}
+.peek-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.peek-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.peek-state.is-busy .peek-dot,
+.peek-dot.is-live {
+  background: var(--open);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--open) 22%, transparent);
+}
+.peek-none {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--muted);
+}
+
+.peek-sec {
+  padding: 11px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.peek-sec:last-child {
+  border-bottom: 0;
+}
+.peek-sec-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.peek-count {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.peek-bar {
+  height: 5px;
+  margin-bottom: 10px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.peek-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--decided);
+  transition: width 0.3s var(--ease-out);
+}
+
+.peek-plan {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.peek-plan li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.peek-box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+}
+.peek-plan .is-done .peek-box {
+  border-color: var(--decided);
+  background: var(--decided);
+}
+.peek-plan .is-done .peek-box::after {
+  content: '';
+  width: 6px;
+  height: 3px;
+  margin-top: -2px;
+  border: solid var(--surface);
+  border-width: 0 0 1.5px 1.5px;
+  transform: rotate(-45deg);
+}
+.peek-plan .is-done .peek-item {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.peek-plan .is-now .peek-box {
+  border-color: var(--open);
+}
+.peek-plan .is-now .peek-box::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--open);
+}
+.peek-plan .is-now .peek-item {
+  font-weight: 600;
+}
+.peek-item {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.peek-more {
+  padding-left: 23px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.peek-rows {
+  display: grid;
+  gap: 7px;
+}
+.peek-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.peek-role {
+  flex: none;
+  max-width: 110px;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.peek-role.is-own {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.peek-what {
+  flex: 1;
+  min-width: 0;
+}
+.peek-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.peek-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border);
+}
+.peek-foot:first-child {
+  border-top: 0;
+}
+.peek-files {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.peek-foot .btn {
+  flex: none;
+  gap: 5px;
+}
+.peek-foot .icon {
+  width: 13px;
+  height: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peek-bar i {
+    transition: none;
+  }
+}

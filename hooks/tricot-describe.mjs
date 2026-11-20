@@ -162,6 +162,67 @@ function plainLine(text) {
   return clip(line.replace(/^(#+|[-*+>]|\d+[.)])\s+/, '').replace(/[*_`]+/g, ''));
 }
 
+// ---- its plan, and what it changes (the peek: web/agents/peek.tsx) ------------------------------------------------
+// An agent's to-do list goes with the step that writes it, so the board can show the agent's plan and how far along it
+// is. A tool that writes the whole list (Claude Code's TodoWrite, Gemini's write_todos, OpenCode's, Codex's
+// update_plan) sends it whole (`set`); one that writes an item at a time (Claude Code's TaskCreate and TaskUpdate)
+// sends that item (`add`, `update`), and the board keeps the list. Only each item's words and where it stands go: done,
+// now (the one being done) or next; a cancelled or deleted item is left out.
+const PLAN_STATUS = { completed: 'done', complete: 'done', done: 'done', in_progress: 'now', 'in-progress': 'now', active: 'now', pending: 'next', todo: 'next', not_started: 'next' };
+const PLAN_DROPPED = new Set(['cancelled', 'canceled', 'deleted']);
+const MAX_PLAN = 30;
+const PLAN_TEXT = 160;
+const wordsOf = (...values) => values.find((value) => typeof value === 'string' && value.trim() !== '');
+
+function planItems(input) {
+  const list = [input.todos, input.plan, input.items, input.tasks].find(Array.isArray);
+  if (!list) return undefined;
+  return list
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object' || PLAN_DROPPED.has(String(item.status).toLowerCase())) return [];
+      const text = wordsOf(item.content, item.description, item.step, item.text, item.title, item.subject);
+      return text ? [{ text: clip(text, PLAN_TEXT), status: PLAN_STATUS[String(item.status).toLowerCase()] ?? 'next' }] : [];
+    })
+    .slice(0, MAX_PLAN);
+}
+
+function planOf(tool, input) {
+  if (tool === 'TodoWrite' || tool === 'update_plan') {
+    const items = planItems(input);
+    return items && { set: items };
+  }
+  if (tool === 'TaskCreate') {
+    const text = wordsOf(input.subject, input.description, input.content, input.title);
+    return text && { add: clip(text, PLAN_TEXT) };
+  }
+  if (tool === 'TaskUpdate') {
+    const id = input.taskId ?? input.task_id ?? input.id;
+    if (typeof id !== 'string' && typeof id !== 'number') return undefined;
+    const said = String(input.status).toLowerCase();
+    const status = PLAN_DROPPED.has(said) ? 'gone' : PLAN_STATUS[said];
+    const text = wordsOf(input.subject);
+    return { update: { id: String(id).slice(0, 40), ...(status && { status }), ...(text && { text: clip(text, PLAN_TEXT) }) } };
+  }
+  return undefined;
+}
+
+// The files a step changes, as the person knows them: by name, never their content.
+function changedFiles(tool, input, cwd) {
+  switch (tool) {
+    case 'Write':
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit': {
+      const file = shown(input.file_path ?? input.notebook_path ?? input.path, cwd);
+      return file ? [file] : [];
+    }
+    case 'apply_patch':
+      return patchedFiles(input.command ?? input.patch ?? input.input, cwd).slice(0, 10);
+    default:
+      return [];
+  }
+}
+
 function toolStep(tool, input, cwd) {
   const file = shown(input.file_path ?? input.notebook_path ?? input.path, cwd);
   switch (tool) {
@@ -210,6 +271,8 @@ function toolStep(tool, input, cwd) {
     case 'TaskCreate':
     case 'TaskUpdate':
       return 'Updating its to-do list';
+    case 'update_plan':
+      return 'Updating its plan';
     default:
       return `Using ${clip(tool.replace(/_/g, ' '), 40)}`;
   }
@@ -251,8 +314,8 @@ const GEMINI_TOOLS = {
   // Its web_fetch is given a prompt that holds the address: the address alone.
   web_fetch: (a) => ['WebFetch', { url: firstUrl(a.prompt) }],
   google_web_search: (a) => ['WebSearch', { query: a.query }],
-  write_todos: () => ['TodoWrite', {}],
-  tracker_create_task: () => ['TaskCreate', {}],
+  write_todos: (a) => ['TodoWrite', a],
+  tracker_create_task: (a) => ['TaskCreate', a],
   tracker_update_task: () => ['TaskUpdate', {}],
   ask_user: () => ['AskUserQuestion', {}],
   exit_plan_mode: () => ['ExitPlanMode', {}],
@@ -365,7 +428,7 @@ const GOOSE_TOOLS = {
   edit: (a) => ['Edit', { file_path: a.path }],
   tree: (a) => ['LS', { path: a.path }],
   delegate: () => ['Agent', {}],
-  todo__todo_write: () => ['TodoWrite', {}],
+  todo__todo_write: (a) => ['TodoWrite', a],
 };
 
 // The tools that last, for the hook's PostToolUse matcher: its shell and its subagents.
@@ -413,7 +476,7 @@ const HERMES_TOOLS = {
   web_search: (a) => ['WebSearch', { query: a.query }],
   web_extract: (a) => ['WebFetch', { url: Array.isArray(a.urls) ? a.urls.find((u) => typeof u === 'string') : undefined }],
   delegate_task: () => ['Agent', {}],
-  todo: () => ['TodoWrite', {}],
+  todo: (a) => ['TodoWrite', a],
   clarify: () => ['AskUserQuestion', {}],
 };
 
@@ -494,7 +557,7 @@ const GROK_TOOLS = {
   list_dir: (a) => ['LS', { path: a.target_directory ?? a.path }],
   web_fetch: (a) => ['WebFetch', { url: a.url }],
   web_search: (a) => ['WebSearch', { query: a.query }],
-  todo_write: () => ['TodoWrite', {}],
+  todo_write: (a) => ['TodoWrite', a],
   ask_user_question: () => ['AskUserQuestion', {}],
   exit_plan_mode: () => ['ExitPlanMode', {}],
   spawn_subagent: (a) => ['Agent', { subagent_type: a.subagent_type, description: a.description, run_in_background: a.run_in_background === true }],
@@ -609,8 +672,8 @@ const COPILOT_TOOLS = {
   WebSearch: copilotSearch,
   ask_user: () => ['AskUserQuestion', {}],
   AskUserQuestion: () => ['AskUserQuestion', {}],
-  update_todo: () => ['TodoWrite', {}],
-  TodoWrite: () => ['TodoWrite', {}],
+  update_todo: (a) => ['TodoWrite', a],
+  TodoWrite: (a) => ['TodoWrite', a],
   task: copilotAgent,
   Agent: copilotAgent,
   Task: copilotAgent,
@@ -696,7 +759,10 @@ export function describe(event, options = {}) {
       if (mcp) return { text: clip(`Using ${mcp[1]}: ${mcp[2].replace(/_/g, ' ')}`), ...who };
       const text = tool && toolStep(tool, input, cwd);
       if (!text) return undefined;
-      return { text: clip(text), ...who, ...(isLong(tool, input) && { running: true, ...use }) };
+      const plan = planOf(tool, input);
+      const files = changedFiles(tool, input, cwd);
+      // A step that changes the plan carries its call's id: two in a row say the same words, and the id tells them apart.
+      return { text: clip(text), ...who, ...(isLong(tool, input) && { running: true, ...use }), ...(plan && { plan, ...use }), ...(files.length && { files }) };
     }
     case 'PostToolUse':
     case 'PostToolUseFailure': {

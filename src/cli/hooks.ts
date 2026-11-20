@@ -109,7 +109,7 @@ export function liveStepsContext(h: HooksEnv): LiveStepsContext {
 export const TURN_OFF = "Turn them off any time with `tricot steps off`, or with the Live steps switch in an agent's panel.";
 
 export const WHAT_IT_SENDS =
-  "Each hook sends Tricot one line per step, never file contents, command output or your prompts, and does nothing while Tricot is closed. Claude Code's status line and Codex's hook also pass on plan usage, numbers only.";
+  "Each hook sends Tricot one line per step, the agent's to-do list as it writes it and the names of the files it changes, never file contents, command output or your prompts, and does nothing while Tricot is closed. Claude Code's status line and Codex's hook also pass on plan usage, numbers only.";
 
 // The agents whose permission prompts come to the board as well, said apart:
 // those carry the command or change the agent asks about.
@@ -378,7 +378,7 @@ async function changeProject(h: HooksEnv, action: LiveStepsAction): Promise<CliR
     return { exitCode: 0 };
   }
   out(`This shows what Claude is doing ("Reading src/web/Home.tsx", "Running npm test") on the Tricot card it works on, as ${name}.`);
-  out('A small script sends Tricot one line per step: never file contents, command output or your prompts.');
+  out("A small script sends Tricot one line per step, Claude's to-do list as it writes it and the names of the files it changes: never file contents, command output or your prompts.");
   if (narration) {
     out("With --narration it also sends the first line of each message Claude writes in the terminal, which everyone on the board sees. Never Claude's thinking.");
   }

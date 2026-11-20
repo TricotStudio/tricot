@@ -55,6 +55,28 @@
 }
 
 /* Retry, Edit, Connect one: quiet text buttons in the line. */
+/* The line's words while an agent is at the message: a quiet button that opens the peek (agents/peek.tsx). */
+.delivery-peek {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted transparent;
+  text-underline-offset: 3px;
+}
+.delivery-peek:hover,
+.delivery-peek[aria-expanded='true'] {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+.delivery-peek:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-xs);
+}
 .delivery-action {
   flex: none;
   padding: 0 2px;

@@ -95,6 +95,17 @@
 .work-pill.is-waiting .work-dot {
   background: var(--open);
 }
+.work-pill.is-open {
+  border-color: var(--text);
+  color: var(--text);
+}
+.work-pill-count {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 .work-pill-state {
   flex: none;
   font-weight: 600;

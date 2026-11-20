@@ -3,8 +3,18 @@
 // /api/agents/:name/steps reads (StepInput in src/server/steps.ts), less `at`,
 // which the sender adds.
 
+// An item of an agent's to-do list (the peek), and how a step changes the list: whole, one item added, or one item changed.
+export type PlanStatus = 'done' | 'now' | 'next';
+export interface PlanItem {
+  text: string;
+  status: PlanStatus;
+}
+export type PlanChange = { set: PlanItem[] } | { add: string } | { update: { id: string; status?: PlanStatus | 'gone'; text?: string } };
+
 export interface HookStep {
   text: string;
+  plan?: PlanChange; // the agent's to-do list, as the step writes it
+  files?: string[]; // the files the step changes, by name
   session?: string;
   worker?: string;
   role?: string;
@@ -16,7 +26,7 @@ export interface HookStep {
   ms?: number;
   narration?: boolean;
   // The card a call names, on the field the part's labels (tricot-labels.json) give it.
-  [card: string]: string | number | boolean | undefined;
+  [card: string]: string | number | boolean | PlanChange | string[] | undefined;
 }
 
 // A part's words for its tools, as hooks/tricot-labels.json says them: `tools` by tool name, and `cards`, the arguments that

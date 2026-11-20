@@ -6,4 +6,5 @@ export { ConnectAgent, pageShell } from './connect';
 export { LiveIndicator } from './liveIndicator';
 export { AgentsProvider, TakingALook, useAgents } from './looking';
 export { agentDoing, useAgentOn, whoIsOn } from './presence';
-export { busyOfPhase, latestSteps, phaseOf, rowStep, StepsByBoardProvider, StepsProvider, StepsStore, StepText, stepWords, useBoardSteps, usePhaseClock, useSteps, useStepsEverywhere, type BoardStep, type StepPhase } from './steps';
+export { busyOfPhase, latestSteps, phaseOf, rowStep, StepsByBoardProvider, StepsProvider, StepsStore, StepText, stepWords, useBoardSteps, usePhaseClock, useSteps, useStepsEverywhere, useWork, type BoardStep, type StepPhase } from './steps';
+export { Peek, useAgentWork } from './peek';

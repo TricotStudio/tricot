@@ -48,10 +48,12 @@
 
 import { EventEmitter } from 'node:events';
 import type { Store } from '../core/store';
+import { applyPlan, MAX_WORK_FILES, MAX_WORK_TRAIL, type AgentWork, type KeptPlan, type PlanChange } from '../core/agentWork';
 import { boardKey } from '../core/types';
 import type { AgentFocus, Presence } from './presence';
 
-export const STEP_BODY_LIMIT = '2kb'; // what a step's request may carry (app.ts)
+export const STEP_BODY_LIMIT = '16kb'; // what a step's request may carry (app.ts): a whole to-do list, at most
+export const WORK_KEEP_MS = 2 * 60 * 60_000; // what an agent session is working on (the peek) is kept this long after its last step
 export const STEP_KEEP_MS = 2 * 60_000; // a page opened in this time still sees the latest step
 export const RUNNING_KEEP_MS = 12 * 60_000; // a step still running (a long test run) is kept this long
 export const BINDING_KEEP_MS = 6 * 60 * 60_000; // which card a quiet session was on
@@ -99,6 +101,8 @@ export interface StepInput {
   ms?: number; // how long an ended step took, as its harness says
   narration?: boolean;
   at?: number; // ms since the epoch, when the hook fired; async hooks can arrive out of order
+  plan?: PlanChange; // its to-do list, as the step writes it (core/agentWork.ts)
+  files?: string[]; // the files the step changes, by name
 }
 
 // over: the step of a Tricot write that has landed already (wrote).
@@ -121,6 +125,20 @@ interface Line {
   named?: Place; // the card or thread the step's own Tricot call named, if it named one
   worker?: true; // a subagent's step
   over?: true; // ended by what the agent did on the board since: no longer shown
+}
+
+// What one agent session is working on (core/agentWork.ts, the peek): its plan, the files it and its helpers changed
+// this turn, and its last steps, kept past its steps, while it sleeps between turns, until WORK_KEEP_MS go by.
+interface Work {
+  board: string;
+  agent: string; // as the board knows it
+  thread?: string;
+  plan?: KeptPlan;
+  files: string[];
+  trail: { text: string; firedAt: number; role?: string; ms?: number; tool?: string }[];
+  since: number; // its first step this turn
+  at: number; // its latest step
+  turnOver: boolean; // its turn ended: the next step starts another, with no file changed yet
 }
 
 // A write an agent made over MCP whose step hasn't come yet (wrote): it comes
@@ -171,6 +189,7 @@ function agrees(step: Place | undefined, call: Place | undefined): boolean {
 export class Steps {
   private readonly viewers = new EventEmitter();
   private lines = new Map<string, Line>(); // session key -> its latest step
+  private works = new Map<string, Work>(); // agent and session (its helpers' too) -> what it is working on
   private bindings = new Map<string, Binding>(); // session key -> the card it last called about
   private buckets = new Map<string, { tokens: number; at: number }>(); // agent -> rate
   private starts = new Map<string, number>(); // session key and tool call -> when its running step came
@@ -241,13 +260,15 @@ export class Steps {
     };
     this.lines.delete(key); // re-inserted last: the map runs oldest to newest
     this.lines.set(key, { board: place.board, step, firedAt, ...(named && { named }), ...(input.worker && { worker: true }), ...(over && { over: true }) });
+    this.noteWork(agent, name, input, place, firedAt, ms);
     this.hear(key, { kind: stepKind(input), text: input.text, ...(input.tool && { tool: input.tool }), firedAt });
     if (before && !before.over && before.board !== place.board) this.announce(before.board);
     this.trim();
     // An agent sending steps is working on the board, though its MCP calls are quiet.
     this.presence?.seen(place.board, name);
     // A step that comes over changes what shows only when it takes a shown one's place.
-    if (!over || (before && !before.over)) this.announce(place.board);
+    // Its work changed too, whose frame the board's stream sends beside the steps (server/live.ts).
+    this.announce(place.board);
     if (over) return { shown: false, reason: 'over' };
     return { shown: true, board: place.board, ...(place.card && { card: place.card }), ...(place.thread && { thread: place.thread }) };
   }
@@ -325,8 +346,54 @@ export class Steps {
       .map((line) => line.step);
   }
 
+  // What each agent session on a board is working on (the peek), the latest first.
+  work(boardKey: string): AgentWork[] {
+    return [...this.works.values()]
+      .filter((work) => work.board === boardKey)
+      .sort((a, b) => b.at - a.at)
+      .map(
+        (work): AgentWork => ({
+          agent: work.agent,
+          ...(work.thread && { thread: work.thread }),
+          ...(work.plan && { plan: work.plan.map(({ text, status }) => ({ text, status })) }),
+          files: work.files,
+          trail: work.trail.map(({ text, firedAt, role, ms }) => ({ text, at: new Date(firedAt).toISOString(), ...(role && { role }), ...(ms !== undefined && { ms }) })),
+          since: new Date(work.since).toISOString(),
+          at: new Date(work.at).toISOString(),
+        }),
+      );
+  }
+
+  // A step adds to its session's work: the plan it writes, the files it changes, and itself to the trail, but for
+  // what an agent said and the end of a turn. A step after the end of a turn starts another: no file changed yet.
+  private noteWork(agent: string, name: string, input: StepInput, place: Place, firedAt: number, ms: number | undefined): void {
+    const key = [agent.toLowerCase(), input.session ?? ''].join('\u0000');
+    const before = this.works.get(key);
+    const fresh = !before || (before.turnOver && !input.done);
+    const work: Work = before && !fresh ? before : { board: place.board, agent: name, files: [], trail: before?.trail ?? [], since: firedAt, at: firedAt, turnOver: false, ...(before?.plan && { plan: before.plan }) };
+    work.board = place.board;
+    work.agent = name;
+    if (place.thread) work.thread = place.thread;
+    else if (before?.thread && !work.thread) work.thread = before.thread;
+    if (input.plan) work.plan = applyPlan(work.plan, input.plan);
+    for (const file of input.files ?? []) work.files = [...work.files.filter((f) => f !== file), file].slice(-MAX_WORK_FILES);
+    if (!input.narration && !input.done) {
+      // The end of a step that lasted takes its start's place.
+      const started = input.ended && input.tool ? work.trail.findLastIndex((t) => t.tool === input.tool) : -1;
+      if (started >= 0) work.trail.splice(started, 1);
+      work.trail.push({ text: input.text, firedAt, ...(input.role && { role: input.role }), ...(ms !== undefined && { ms }), ...(input.running && input.tool && { tool: input.tool }) });
+      work.trail = work.trail.slice(-MAX_WORK_TRAIL);
+    }
+    if (input.done && !input.worker) work.turnOver = true;
+    work.at = Math.max(work.at, firedAt);
+    this.works.delete(key); // re-inserted last: the map runs oldest to newest
+    this.works.set(key, work);
+    while (this.works.size > MAX_SESSIONS) this.works.delete(this.works.keys().next().value!);
+  }
+
   // A board deleted for good: its steps go with it.
   forget(boardKey: string): void {
+    for (const [key, work] of this.works) if (work.board === boardKey) this.works.delete(key);
     for (const [key, line] of this.lines) {
       if (line.board !== boardKey) continue;
       this.lines.delete(key);
@@ -345,6 +412,11 @@ export class Steps {
       if (!line.over) boards.add(line.board);
     }
     this.landed = this.landed.filter((l) => l.until > now);
+    for (const [key, work] of this.works) {
+      if (now - work.at <= WORK_KEEP_MS) continue;
+      this.works.delete(key);
+      boards.add(work.board);
+    }
     for (const [key, binding] of this.bindings) if (now - binding.at > BINDING_KEEP_MS) this.bindings.delete(key);
     for (const [call, began] of this.starts) if (now - began > RUNNING_KEEP_MS) this.starts.delete(call);
     for (const [key, list] of this.heard) if (now - list[list.length - 1].firedAt > RUNNING_KEEP_MS) this.heard.delete(key);
