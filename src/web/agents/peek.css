@@ -215,22 +215,18 @@
   white-space: nowrap;
 }
 
-.peek-foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 16px;
-  border-top: 1px solid var(--border);
-}
-.peek-foot:first-child {
-  border-top: 0;
-}
 .peek-files {
-  flex: 1;
-  min-width: 0;
+  margin: 0;
+  padding: 10px 16px;
   font-size: 12px;
   color: var(--faint);
   overflow-wrap: anywhere;
+}
+.peek-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border);
 }
 .peek-foot .btn {
   flex: none;
@@ -239,6 +235,41 @@
 .peek-foot .icon {
   width: 13px;
   height: 13px;
+}
+
+/* Under an agent in the live card, right away: the same sections, tighter, with no rules of their own but a hairline
+   above, so the card's rows stay its rows. */
+.peek-inline {
+  display: grid;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.peek-inline .peek-sec {
+  padding: 8px 0 0;
+  border-bottom: 0;
+}
+.peek-inline .peek-sec-head {
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.peek-inline .peek-bar {
+  margin-bottom: 7px;
+}
+.peek-inline .peek-plan {
+  gap: 3px;
+}
+.peek-inline .peek-box {
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+}
+.peek-inline .peek-rows {
+  gap: 5px;
+}
+.peek-inline .peek-files {
+  padding: 8px 0 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
