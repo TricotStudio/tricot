@@ -7,7 +7,8 @@
 // It checks the tag out in a temporary worktree outside this folder, starts
 // that version from source on a temporary data folder and a free port (its
 // HOME is a temporary folder too, so nothing of yours is read or written),
-// makes a small board through its MCP tools, stops it, and copies the database
+// makes a small board through its MCP tools (three blocks on its board context,
+// or on a Sketchbook page for a release that is Canvas), stops it, and copies the database
 // it left. Nothing in ~/.tricot, and no port you use, is touched. The worktree
 // and the folders are removed after.
 import { execFileSync, spawn } from 'node:child_process';
@@ -65,7 +66,8 @@ try {
   });
   const exited = new Promise((resolve) => server.once('exit', resolve));
   await new Promise((resolve, reject) => {
-    server.stdout.on('data', (chunk) => /Tricot on/.test(String(chunk)) && resolve());
+    // "Tricot on …", or "Tricot Canvas on …" for a release that is Canvas.
+    server.stdout.on('data', (chunk) => /Tricot (Canvas )?on /.test(String(chunk)) && resolve());
     server.once('exit', (code) => reject(new Error(`${tag} stopped with ${code} before it listened`)));
   });
 
@@ -94,9 +96,15 @@ try {
   );
   const made = await cards?.first({ call, idOf, boardId });
 
-  const noteId = idOf(await call('add_block', { board_id: boardId, type: 'note', title: 'Notes', text: 'First line\n\nSecond line' }));
-  await call('add_block', { board_id: boardId, type: 'table', title: 'Table', columns: ['A', 'B'], rows: [['1', '2']] });
-  await call('add_block', { board_id: boardId, type: 'diagram', title: 'Flow', source: 'flowchart LR\n  A --> B' });
+  // A Tricot with no part registered (Canvas, which says `parts: []`) has no board context: its blocks go on a
+  // Sketchbook page, made here. One that says no parts at all is from before them, and has a board context.
+  const { parts } = await (await fetch(`${base}/api/info`)).json();
+  const onPage = Array.isArray(parts) && parts.length === 0;
+  const pageId = onPage ? (/\[page id: ([^\]]+)\]/.exec(await call('add_page', { board_id: boardId, title: 'Fixture page' }))?.[1] ?? assertNever('add_page')) : undefined;
+  const where = onPage ? { page_id: pageId } : { board_id: boardId };
+  const noteId = idOf(await call('add_block', { ...where, type: 'note', title: 'Notes', text: 'First line\n\nSecond line' }));
+  await call('add_block', { ...where, type: 'table', title: 'Table', columns: ['A', 'B'], rows: [['1', '2']] });
+  await call('add_block', { ...where, type: 'diagram', title: 'Flow', source: 'flowchart LR\n  A --> B' });
   // A second version of a block: its first is kept in the versions table.
   await call('update_block', { block_id: noteId, rev: 1, text: 'First line\n\nSecond line, reworded' });
 

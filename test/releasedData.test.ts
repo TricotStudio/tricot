@@ -8,26 +8,29 @@ import { Store } from '../src/core/store';
 import { DATABASE_FILE } from '../src/core/store/boardDb';
 import { readBoards } from '../src/core/store/boardTables';
 import { MIGRATIONS, openDatabase, userVersion } from '../src/core/store/migrations';
-import type { Actor } from '../src/core/types';
+import type { Actor, Board, Canvas } from '../src/core/types';
 import { eventsOf, versionsOf } from './tables';
 import { removeScratch } from './platform';
 
 // The database each release left (test/fixtures/tricot-<version>.db), made by
 // starting that release from its tag and posting a board through its MCP tools
-// (scripts/db-fixture.mjs): three blocks on the board's canvas, one of them
-// reworded once (so it has a version) and a pin on it, and, where a tree has
-// them, the cards a part's tools make. Each release writes the data version it
-// names here, so each is read by the migrations since (none, for a release at
-// the latest), and by what reads the board now: the core's own, a Store that
-// has no list of a part's cards. Its counterpart for a part reads the cards.
-const RELEASES: [version: string, dataVersion: number][] = [
-  ['0.1.0', 6],
-  ['0.1.1', 6],
-  ['0.1.2', 6],
-  ['0.1.3', 6],
-  ['0.1.4', 7],
-  ['0.1.5', 7],
-  ['0.1.6', 7],
+// (scripts/db-fixture.mjs): three blocks, one of them reworded once (so it
+// has a version), on the board's canvas with a pin on it for the releases
+// before Canvas (`board`), and on a Sketchbook page for Canvas's (`page`, no
+// pin: Canvas has no tool that makes one); and, where a tree has them, the
+// cards a part's tools make. Each release writes the data version it names
+// here, so each is read by the migrations since (none, for a release at the
+// latest), and by what reads the board now: the core's own, a Store that has
+// no list of a part's cards. Its counterpart for a part reads the cards.
+const RELEASES: [version: string, dataVersion: number, blocksOn: 'board' | 'page'][] = [
+  ['0.1.0', 6, 'board'],
+  ['0.1.1', 6, 'board'],
+  ['0.1.2', 6, 'board'],
+  ['0.1.3', 6, 'board'],
+  ['0.1.4', 7, 'board'],
+  ['0.1.5', 7, 'board'],
+  ['0.1.6', 7, 'board'],
+  ['0.0.3', 19, 'page'],
 ];
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const planner: Actor = { kind: 'agent', name: 'Planner' };
@@ -67,7 +70,10 @@ describe('Boards saved by each release', () => {
     if (dir) removeScratch(dir);
   });
 
-  for (const [version, dataVersion] of RELEASES) {
+  // The canvas a release put its blocks on.
+  const blocksOf = (board: Board, on: 'board' | 'page'): Canvas => (on === 'page' ? board.pages![0].canvas : board.canvas);
+
+  for (const [version, dataVersion, on] of RELEASES) {
     const migrated = dataVersion < MIGRATIONS.length;
     describe(`Tricot ${version}`, () => {
       beforeEach(() => folderWith(version));
@@ -100,14 +106,17 @@ describe('Boards saved by each release', () => {
         assert.equal(board.goal, 'Check that boards from every release still read');
         assert.deepEqual(board.createdBy, planner);
 
-        assert.deepEqual(board.canvas.blocks.map((b) => [b.type, b.title, b.rev]), [['note', 'Notes', 2], ['table', 'Table', 1], ['diagram', 'Flow', 1]]);
-        const [notes] = board.canvas.blocks;
+        const canvas = blocksOf(board, on);
+        assert.deepEqual(canvas.blocks.map((b) => [b.type, b.title, b.rev]), [['note', 'Notes', 2], ['table', 'Table', 1], ['diagram', 'Flow', 1]]);
+        const [notes] = canvas.blocks;
         assert.equal(notes.type === 'note' && notes.text, 'First line\n\nSecond line, reworded');
         const [earlier, ...none] = versionsOf(store, notes.id);
         assert.equal(none.length, 0);
         assert.equal(earlier.type === 'note' && earlier.text, 'First line\n\nSecond line');
-        const [pin] = board.canvas.pins;
-        assert.deepEqual([pin.blockId, pin.quote], [notes.id, 'reworded']);
+        if (on === 'board') {
+          const [pin] = canvas.pins;
+          assert.deepEqual([pin.blockId, pin.quote], [notes.id, 'reworded']);
+        }
 
         const log = eventsOf(store, board);
         assert.equal(log[0].type, 'board_created');
@@ -118,13 +127,14 @@ describe('Boards saved by each release', () => {
         const store = open();
         const [{ id }] = store.listBoards();
         const thread = store.startThread(id, 'Anything left before the upgrade?', sam);
-        store.addBlock({ boardId: id }, { content: { type: 'note', text: 'Added after the upgrade' } }, sam);
+        const page = on === 'page' ? store.getBoard(id).pages![0].id : undefined;
+        store.addBlock(page ? { pageId: page } : { boardId: id }, { content: { type: 'note', text: 'Added after the upgrade' } }, sam);
         await store.flush();
 
         const again = open();
         const board = again.getBoard(id);
         assert.deepEqual(board.threads?.map((t) => t.id), [thread.id]);
-        assert.deepEqual(board.canvas.blocks.map((b) => b.title), ['Notes', 'Table', 'Flow', undefined]);
+        assert.deepEqual(blocksOf(board, on).blocks.map((b) => b.title), ['Notes', 'Table', 'Flow', undefined]);
         assert.equal(eventsOf(again, board).length, board.seq);
       });
     });
