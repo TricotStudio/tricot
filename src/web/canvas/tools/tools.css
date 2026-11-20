@@ -85,9 +85,6 @@
 .canvas.is-drawing.draws-text .react-flow__pane {
   cursor: text;
 }
-.canvas.is-drawing.draws-arrow .react-flow__pane {
-  cursor: default;
-}
 .draw-preview {
   position: absolute;
   inset: 0;
@@ -110,6 +107,12 @@
 }
 .draw-head {
   fill: var(--exploring);
+}
+/* The block an arrow being drawn will link to, ringed. */
+.draw-target {
+  fill: none;
+  stroke: var(--exploring);
+  stroke-width: 2;
 }
 /* A stroke being drawn: in the pen's colour and at its width, as it is kept. */
 .draw-stroke {

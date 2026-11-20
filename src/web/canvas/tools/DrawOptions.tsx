@@ -2,7 +2,8 @@
 // (threads.tsx places it, chatBar.css), so they are picked before drawing:
 // what is picked here is what the tool draws from then on (drawTools.ts
 // `style`), kept for each tool in this browser. A shape: its colour and its
-// line, thin, medium or thick. An arrow: its line. A label: its colour, S, M
+// line, thin, medium or thick. An arrow: its line (a free one is coloured from
+// its own toolbar once drawn, as a link has no colour). A label: its colour, S, M
 // or L, and bold. The pen: its colour and its width. Select has none, and the
 // tray goes. It stays drawn while it is away, so it comes and goes in
 // motion (tools.css), and its row changes in place as another tool comes on.
@@ -20,6 +21,8 @@ const TOOL_NAMES: Record<StyledTool, string> = { shape: 'Shape', arrow: 'Arrow',
 export const SIZE_NAMES = { s: 'Small', m: 'Medium', l: 'Large' } as const;
 export const LINE_NAMES = { thin: 'Thin line', medium: 'Medium line', thick: 'Thick line' } as const;
 export const LINE_PIXELS = { thin: 1.5, medium: 3, thick: 5 } as const;
+// An arrowhead's size in widths of its line, a link's and a free arrow's alike: a heavier line takes fewer, its head still a little larger.
+export const ARROW_HEAD = { thin: 16, medium: 11, thick: 8.5 } as const;
 export const WIDTH_NAMES: Record<PenWidth, string> = { 2: 'Thin', 4: 'Medium', 8: 'Thick' };
 export const colourName = (c: ShapeColor) => c[0].toUpperCase() + c.slice(1);
 
@@ -60,7 +63,7 @@ export function DrawOptions() {
   const last = useRef<StyledTool>(tool ?? 'shape');
   if (tool) last.current = tool;
   const shown = tool ?? last.current;
-  // An arrow is a link, which takes no colour: only its line.
+  // An arrow takes only its line: a link has no colour, and a free arrow is coloured from its toolbar once drawn.
   const coloured = shown === 'arrow' ? undefined : shown;
   const color = coloured && tools.style[coloured].color;
 

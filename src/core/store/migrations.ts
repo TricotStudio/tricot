@@ -303,6 +303,15 @@ export const MIGRATIONS: Migration[] = [
     name: 'link weights',
     up() {},
   },
+  {
+    // 20: a shape block may be a free arrow (its form `arrow`), drawn with
+    // the arrow tool anywhere but from one block to another, which is still a
+    // link, with where it starts and where its head is (`ends`). Nothing here
+    // changes: this version is so that a Tricot before it refuses a file that
+    // may hold such shapes, rather than open it and draw them as boxes.
+    name: 'free arrows',
+    up() {},
+  },
 ];
 
 type Row = { board: string; owner: string; kind: string; id: string; body: string };

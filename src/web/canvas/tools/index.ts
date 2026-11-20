@@ -8,5 +8,5 @@
 export { drawTools, styledTool, useDrawKeys, useDrawTools, type DrawStyle, type DrawTool, type DrawToolsState, type ShapeTool, type StyledTool } from './drawTools';
 export { useDrawing } from './draw';
 export { DrawToolbar } from './DrawToolbar';
-export { colourName, DrawOptions, LINE_NAMES, LINE_PIXELS, LineMark, SIZE_NAMES, WIDTH_NAMES, WidthMark } from './DrawOptions';
+export { ARROW_HEAD, colourName, DrawOptions, LINE_NAMES, LINE_PIXELS, LineMark, SIZE_NAMES, WIDTH_NAMES, WidthMark } from './DrawOptions';
 export { outlineScale, strokePath } from './geometry';

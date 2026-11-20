@@ -6,8 +6,13 @@
 //
 // - Shape: a drag draws its box (⇧ keeps it square), a click makes one of its
 //   own size there; it is made where it was drawn, and its words open for
-//   typing (blocks/shape). An arrow is drawn from one block to another, and is
-//   a link between them; let go anywhere else, it makes nothing.
+//   typing (blocks/shape).
+// - Arrow: drawn from one block to another, it is a link between them, and
+//   the block it would link to is ringed while it is dragged over. Drawn
+//   anywhere else (from empty canvas, off a block, or within one) it is a free
+//   arrow, a shape of its own, from where it was pressed to where it was let
+//   go (⇧ holds it to 45°). A click makes nothing. No link starts or ends on a
+//   kind that isn't `linkable` (a free arrow): the block under it is taken.
 // - Text: a click places a label, open for typing.
 // - Pen: a drag draws a stroke, its points thinned as it is kept. A stroke
 //   begun soon after the last one, near its drawing, joins it, the drawing
@@ -24,10 +29,11 @@ import type { ReactFlowInstance } from '@xyflow/react';
 import { labelSize, type LineWeight } from '../../../core/blocks/shape/shapes';
 import type { Block, Canvas } from '../../../core/types';
 import type { BlockContent, BlockPatch, Move } from '../../shared/api';
+import { webKindOf } from '../blocks/registry';
 import type { CanvasNode, LinkEdgeType } from '../nodes';
 import { LINE_PIXELS } from './DrawOptions';
 import { drawTools, type DrawStyle, type DrawToolsState } from './drawTools';
-import { absolute, boxOf, near, relative, thinned, union, type Point, type Size } from './geometry';
+import { absolute, arrowBox, boxOf, heldTo45, near, relative, thinned, union, type Box, type Point, type Size } from './geometry';
 import './tools.css';
 
 
@@ -48,9 +54,14 @@ const CLICK = 6; // pixels a press may move and still be a click
 const JOIN_MS = 1500; // a stroke begun this soon after the last joins its drawing…
 const JOIN_NEAR = 48; // …if it starts this close to it (in canvas units)
 const SHAPE_SIZE: Record<'rectangle' | 'ellipse' | 'diamond', Size> = { rectangle: { w: 160, h: 90 }, ellipse: { w: 140, h: 90 }, diamond: { w: 140, h: 110 } };
+const ARROW_MARGIN = 12; // round a free arrow's line, in its box (in canvas units)
 
-// What is being drawn, in pixels from the canvas's top left corner, with the options it is drawn with.
-type Draft = { tool: DrawToolsState['tool']; shape: DrawToolsState['shape']; style: DrawStyle; from: Point; to: Point; points: Point[]; square: boolean };
+// What is being drawn, in pixels from the canvas's top left corner, with the options it is drawn with,
+// and for an arrow, the block it starts on and the box of the block it would link to.
+type Draft = { tool: DrawToolsState['tool']; shape: DrawToolsState['shape']; style: DrawStyle; from: Point; to: Point; points: Point[]; square: boolean; start?: string; target?: Box };
+
+// Where a free arrow ends: where it was let go, or held to 45° with ⇧.
+const arrowEnd = (draft: Draft): Point => (draft.square ? heldTo45(draft.from, draft.to) : draft.to);
 
 // A field kept only when it isn't the plain one, as the server keeps them.
 const unless = <T,>(value: T, plain: T) => (value === plain ? undefined : value);
@@ -69,13 +80,24 @@ export function useDrawing(tools: DrawToolsState, on: boolean, deps: DrawingDeps
     const rect = latest.current.wrapper.current!.getBoundingClientRect();
     return latest.current.flow.screenToFlowPosition({ x: rect.left + point.x, y: rect.top + point.y });
   };
-  const blockAt = (point: Point): string | undefined => {
+  // The block under a point that a link may start or end on, and its node.
+  const nodeAt = (point: Point): HTMLElement | undefined => {
     const rect = latest.current.wrapper.current!.getBoundingClientRect();
     for (const element of document.elementsFromPoint(rect.left + point.x, rect.top + point.y)) {
       const node = element.closest<HTMLElement>('.react-flow__node-block');
-      if (node?.dataset.id) return node.dataset.id;
+      const block = node?.dataset.id ? latest.current.canvas.blocks.find((b) => b.id === node.dataset.id) : undefined;
+      if (block && webKindOf(block.type).linkable?.(block) !== false) return node!;
     }
     return undefined;
+  };
+  const blockAt = (point: Point): string | undefined => nodeAt(point)?.dataset.id;
+  // The box, in the canvas's pixels, of the block an arrow from `start` would link to at `point`.
+  const targetAt = (start: string | undefined, point: Point): Box | undefined => {
+    const node = start ? nodeAt(point) : undefined;
+    if (!node || node.dataset.id === start) return undefined;
+    const rect = node.getBoundingClientRect();
+    const wrapper = latest.current.wrapper.current!.getBoundingClientRect();
+    return { x: rect.left - wrapper.left, y: rect.top - wrapper.top, w: rect.width, h: rect.height };
   };
 
   // A stroke drawn: into the drawing it joins, or a drawing of its own.
@@ -115,9 +137,12 @@ export function useDrawing(tools: DrawToolsState, on: boolean, deps: DrawingDeps
       return;
     }
     if (done.shape === 'arrow') {
-      const from = blockAt(done.from);
       const to = blockAt(done.to);
-      if (from && to && from !== to) link(from, to, done.style.arrow.line);
+      if (done.start && to && to !== done.start) return link(done.start, to, done.style.arrow.line);
+      if (!moved) return;
+      const line = done.style.arrow.line;
+      const { box, ends } = arrowBox(a, onCanvas(arrowEnd(done)), ARROW_MARGIN);
+      add({ type: 'shape', shape: 'arrow', line: unless(line, 'thin'), ends } as BlockContent, { at: { x: box.x + box.w / 2, y: box.y + box.h / 2 }, size: { w: box.w, h: box.h }, exact: true }).catch(report);
       return;
     }
     const b = onCanvas(done.to);
@@ -133,19 +158,14 @@ export function useDrawing(tools: DrawToolsState, on: boolean, deps: DrawingDeps
     const target = event.target as Element;
     if (target.closest(NOT_FOR_DRAWING)) return false;
     const from = local(event);
-    // An arrow starts on a block; a press elsewhere with it does nothing.
-    if (tools.tool === 'shape' && tools.shape === 'arrow' && !blockAt(from)) {
-      event.preventDefault();
-      event.stopPropagation();
-      return true;
-    }
     event.preventDefault();
     event.stopPropagation();
-    let current: Draft = { tool: tools.tool, shape: tools.shape, style: tools.style, from, to: from, points: [from], square: event.shiftKey };
+    const arrow = tools.tool === 'shape' && tools.shape === 'arrow';
+    let current: Draft = { tool: tools.tool, shape: tools.shape, style: tools.style, from, to: from, points: [from], square: event.shiftKey, start: arrow ? blockAt(from) : undefined };
     setDraft(current);
     const onMove = (e: PointerEvent) => {
       const to = local(e);
-      current = { ...current, to, square: e.shiftKey, points: current.tool === 'pen' ? [...current.points, to] : current.points };
+      current = { ...current, to, square: e.shiftKey, points: current.tool === 'pen' ? [...current.points, to] : current.points, target: arrow ? targetAt(current.start, to) : undefined };
       setDraft(current);
     };
     const onUp = () => {
@@ -170,7 +190,9 @@ export function useDrawing(tools: DrawToolsState, on: boolean, deps: DrawingDeps
   return { press, preview: draft && <DrawPreview draft={draft} zoom={deps.flow.getViewport().zoom} /> };
 }
 
-// What is being drawn, dashed, over the canvas until it is let go.
+// What is being drawn, dashed, over the canvas until it is let go: an arrow
+// that will be a link ringing the block it links to, a free one held to 45°
+// with ⇧ as it will be drawn.
 function DrawPreview({ draft, zoom }: { draft: Draft; zoom: number }) {
   const { from, to } = draft;
   const head = (10 + 2 * LINE_PIXELS[draft.style.arrow.line]) * zoom; // an arrow's head, a little larger as its line is heavier
@@ -179,7 +201,14 @@ function DrawPreview({ draft, zoom }: { draft: Draft; zoom: number }) {
     const { color, width } = draft.style.pen;
     shape = <polyline className={`draw-stroke shape-${color}`} points={draft.points.map((p) => `${p.x},${p.y}`).join(' ')} style={{ strokeWidth: width * zoom }} />;
   } else if (draft.tool === 'shape' && draft.shape === 'arrow') {
-    shape = <line className="draw-line" x1={from.x} y1={from.y} x2={to.x} y2={to.y} markerEnd="url(#draw-head)" style={{ strokeWidth: LINE_PIXELS[draft.style.arrow.line] * zoom }} />;
+    const { target } = draft;
+    const end = target ? to : arrowEnd(draft);
+    shape = (
+      <>
+        {target && <rect className="draw-target" x={target.x - 4} y={target.y - 4} width={target.w + 8} height={target.h + 8} rx={10 * zoom} />}
+        <line className="draw-line" x1={from.x} y1={from.y} x2={end.x} y2={end.y} markerEnd="url(#draw-head)" style={{ strokeWidth: LINE_PIXELS[draft.style.arrow.line] * zoom }} />
+      </>
+    );
   } else if (draft.tool === 'shape') {
     const outline = { strokeWidth: LINE_PIXELS[draft.style.shape.line] * zoom };
     let w = Math.abs(to.x - from.x);

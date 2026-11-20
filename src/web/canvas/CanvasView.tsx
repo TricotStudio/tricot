@@ -49,7 +49,7 @@ import type { AddContext } from './blocks/kind';
 import { webKindOf } from './blocks/registry';
 import { useBoxLeavesGroups } from './boxSelect';
 import { useCopyBlocks } from './copy';
-import { drawTools, useDrawing, useDrawKeys, useDrawTools } from './tools';
+import { ARROW_HEAD, drawTools, useDrawing, useDrawKeys, useDrawTools } from './tools';
 import { useIntake } from './intake';
 import { PanHint } from './panHint';
 import { BlockNode, FrameNode, LinkEdge, type CanvasNode, type LinkEdgeType } from './nodes';
@@ -97,12 +97,9 @@ function buildNodes(canvas: Canvas): CanvasNode[] {
   ];
 }
 
-// The arrowhead is sized in widths of its line, so a heavier line takes fewer, its head still a little larger.
-const HEAD = { thin: 16, medium: 11, thick: 8.5 } as const;
-
 function buildEdges(canvas: Canvas): LinkEdgeType[] {
   return canvas.links.map((link) => {
-    const head = HEAD[link.weight ?? 'thin'];
+    const head = ARROW_HEAD[link.weight ?? 'thin'];
     return {
       id: link.id,
       source: link.from,

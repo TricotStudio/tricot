@@ -135,6 +135,8 @@ export interface WebBlockKind<B extends Block = any> {
   // Where an arrow meets it, for a kind that isn't a box (an ellipse, a diamond): how far along the line from its
   // centre (dx, dy, in a box w × h) its outline is, as the scale that takes (dx, dy) to it. A box's when none.
   edgeScale?(block: B, w: number, h: number, dx: number, dy: number): number;
+  // Whether a link may start or end on it (by its handles or the arrow tool): not a free arrow, which is an arrow itself. Every block may when none.
+  linkable?(block: B): boolean;
   // The words of a block that go on the clipboard with it, for pasting in another app; none when it has no words.
   copyText?(block: B): string | undefined;
   readonly menu?: AddEntry;

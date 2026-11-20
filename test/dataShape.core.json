@@ -1,5 +1,5 @@
 {
-  "dataVersion": 19,
+  "dataVersion": 20,
   "blockKinds": ["note","table","image","diagram","link","diff","code","chart","scene","site","shape","drawing"],
   "enums": {
     "Actor.kind": ["agent","human"],

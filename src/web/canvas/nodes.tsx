@@ -214,13 +214,17 @@ export function BlockNode({ id, data, selected }: NodeProps<BlockNodeType>) {
         </>
       )}
 
-      <Handle type="source" position={Position.Right} className="block-handle" title="Drag to link" />
-      <Handle
-        type="target"
-        position={Position.Left}
-        isConnectableStart={false}
-        className={`block-target${connecting ? ' is-active' : ''}`}
-      />
+      {kind.linkable?.(block) !== false && (
+        <>
+          <Handle type="source" position={Position.Right} className="block-handle" title="Drag to link" />
+          <Handle
+            type="target"
+            position={Position.Left}
+            isConnectableStart={false}
+            className={`block-target${connecting ? ' is-active' : ''}`}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -220,6 +220,22 @@ describe('MCP + REST end to end', () => {
     assert.equal((await post('/canvas/links', { actor: 'Sam', from: label, to: box, weight: 'heavy' })).status, 400);
     const plain = await post('/canvas/links', { actor: 'Sam', from: label, to: box, weight: 'thin' });
     assert.equal(plain.json.weight, undefined, 'thin is no weight: it is kept as none');
+
+    // A free arrow, drawn anywhere else: a shape with its ends, told to agents by which way it points.
+    const free = await post('/canvas/blocks', { actor: 'Sam', pageId, w: 200, h: 120, content: { type: 'shape', shape: 'arrow', line: 'medium', ends: [0.1, 0.1, 0.9, 0.9] } });
+    assert.equal(free.status, 201, JSON.stringify(free.json));
+    assert.deepEqual(free.json.ends, [0.1, 0.1, 0.9, 0.9]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /arrow \(gray, pointing down-right, medium line\)/);
+    const level = await post('/canvas/blocks', { actor: 'Sam', pageId, content: { type: 'shape', shape: 'arrow', ends: [0, 0.5, 1, 0.5] } });
+    assert.equal(level.json.ends, undefined, 'left to right across its middle is no ends: kept as none');
+    assert.equal((await post('/canvas/blocks', { actor: 'Sam', pageId, content: { type: 'shape', shape: 'arrow', ends: [0, 0, 1.5, 1] } })).status, 400);
+    assert.equal((await post('/canvas/blocks', { actor: 'Sam', pageId, content: { type: 'shape', shape: 'arrow', ends: [0.5, 0.5, 0.5, 0.5] } })).status, 400);
+    const drawn2 = idOf(await callText('add_block', { page_id: pageId, type: 'shape', shape: 'arrow', text: 'then', ends: [1, 0.5, 0, 0.5] }));
+    assert.match(await callText('get_canvas', { page_id: pageId }), /arrow "then" \(gray, pointing left\)/);
+    await callText('update_block', { block_id: drawn2, rev: 1, ends: [0.5, 1, 0.5, 0] });
+    assert.match(eventsOf(store, boardId).at(-1)!.summary, /pointed it up$/);
+    const boxed = await post('/canvas/blocks', { actor: 'Sam', pageId, content: { type: 'shape', shape: 'rectangle', ends: [0.1, 0.1, 0.9, 0.9] } });
+    assert.equal(boxed.json.ends, undefined, 'only an arrow keeps its ends');
   });
 
   it('ends an idle wait with a hint to call again', async () => {

@@ -1,7 +1,8 @@
 // The geometry of drawing on a canvas, with no React in it: a pen's stroke
 // thinned to the points that make its line, the boxes strokes take and how
 // a drawing grows to hold another, its points relative to its box and back,
-// a stroke's smooth path, and where an arrow meets a shape's outline.
+// a stroke's smooth path, where an arrow meets a shape's outline, the box a
+// free arrow takes and where its ends are in it, and a line held to 45°.
 
 import type { Stroke } from '../../../core/blocks/drawing/strokes';
 import type { ShapeForm } from '../../../core/blocks/shape/shapes';
@@ -66,4 +67,19 @@ export function outlineScale(form: ShapeForm, w: number, h: number, dx: number, 
   if (form === 'ellipse') return 1 / Math.hypot(ax, ay);
   if (form === 'diamond') return 1 / (ax + ay);
   return 1 / Math.max(ax, ay);
+}
+
+// A free arrow from a to b: the box it takes, a margin round its line so a level or upright one can still be
+// held and its head isn't cut, and its ends as fractions of that box, to a thousandth.
+export function arrowBox(a: Point, b: Point, margin: number): { box: Box; ends: [number, number, number, number] } {
+  const box = { x: Math.min(a.x, b.x) - margin, y: Math.min(a.y, b.y) - margin, w: Math.abs(b.x - a.x) + 2 * margin, h: Math.abs(b.y - a.y) + 2 * margin };
+  const at = (n: number) => Math.round(n * 1000) / 1000;
+  return { box, ends: [at((a.x - box.x) / box.w), at((a.y - box.y) / box.h), at((b.x - box.x) / box.w), at((b.y - box.y) / box.h)] };
+}
+
+// The point b, turned about a to the nearest of the eight directions 45° apart, at the same distance (⇧ while drawing an arrow).
+export function heldTo45(a: Point, b: Point): Point {
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  const angle = Math.round(Math.atan2(b.y - a.y, b.x - a.x) / (Math.PI / 4)) * (Math.PI / 4);
+  return { x: a.x + Math.cos(angle) * length, y: a.y + Math.sin(angle) * length };
 }

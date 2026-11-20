@@ -1,7 +1,12 @@
 // How a shape block is drawn (core/blocks/shape): a rectangle, an ellipse or
 // a diamond filling its block, tinted with its colour and outlined in it, its
-// words in the middle; or a text label, words alone. It has no sheet or
-// header of its own (`bare`): it drags from anywhere on it. Its words are
+// words in the middle; a text label, words alone; or a free arrow, a line
+// across its block from one end to its head, in its colour (a link's ink when
+// gray) and at its line's weight, with a link's head, its words on a chip
+// halfway along. It has no sheet or header of its own (`bare`): it drags from
+// anywhere on it, but for a free arrow, which only its line and words take
+// hold of until it is selected (shape.css), so what is under its box can still
+// be clicked, and which no link starts or ends on (`linkable`). Its words are
 // edited in place: a double-click, or as soon as it is drawn, opens them;
 // Enter, Esc or a click away keeps what was typed (Shift+Enter is a new
 // line), and a label left with no words goes. Its toolbar recolours it,
@@ -9,11 +14,11 @@
 // the tools' options do before it is drawn (DrawOptions.tsx). The drawing
 // tools make it (drawTools.ts), so it has no entry on the Add menu.
 
-import { useEffect, useState } from 'react';
-import { LINE_WEIGHTS, SHAPE_COLORS, TEXT_SIZES, labelSize } from '../../../../core/blocks/shape/shapes';
+import { useEffect, useId, useState, type ReactNode } from 'react';
+import { arrowEnds, LINE_WEIGHTS, SHAPE_COLORS, TEXT_SIZES, labelSize } from '../../../../core/blocks/shape/shapes';
 import type { Block } from '../../../../core/types';
 import { useCanvas } from '../../context';
-import { colourName, LINE_NAMES, LINE_PIXELS, LineMark, SIZE_NAMES } from '../../tools/DrawOptions';
+import { ARROW_HEAD, colourName, LINE_NAMES, LINE_PIXELS, LineMark, SIZE_NAMES } from '../../tools/DrawOptions';
 import { outlineScale } from '../../tools/geometry';
 import type { BodyProps, ToolsProps, WebBlockKind } from '../kind';
 import './palette.css';
@@ -54,6 +59,37 @@ function ShapeBody({ block }: BodyProps<ShapeBlock>) {
     block.bold && 'is-bold',
     words.editing && 'is-editing',
   ];
+  const field = words.editing ? (
+    <textarea
+      className="shape-field nodrag nopan nowheel"
+      autoFocus
+      defaultValue={block.text ?? ''}
+      aria-label={block.shape === 'text' ? 'The label' : `The words in the ${block.shape}`}
+      placeholder={block.shape === 'text' ? 'Type a label' : ''}
+      onFocus={(event) => {
+        event.currentTarget.select();
+        fit(event.currentTarget);
+      }}
+      onInput={(event) => fit(event.currentTarget)}
+      onBlur={(event) => keep(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation(); // its keys are the field's, not the canvas's or the tools'
+        if (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey)) {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  ) : (
+    block.text && <span className="shape-words">{block.text}</span>
+  );
+  if (block.shape === 'arrow') {
+    return (
+      <Arrow block={block} className={classes.filter(Boolean).join(' ')} onDoubleClick={words.start}>
+        {field}
+      </Arrow>
+    );
+  }
   return (
     <div className={classes.filter(Boolean).join(' ')} onDoubleClick={words.start}>
       {block.shape === 'diamond' && (
@@ -61,29 +97,33 @@ function ShapeBody({ block }: BodyProps<ShapeBlock>) {
           <polygon points="50,1 99,50 50,99 1,50" />
         </svg>
       )}
-      {words.editing ? (
-        <textarea
-          className="shape-field nodrag nopan nowheel"
-          autoFocus
-          defaultValue={block.text ?? ''}
-          aria-label={block.shape === 'text' ? 'The label' : `The words in the ${block.shape}`}
-          placeholder={block.shape === 'text' ? 'Type a label' : ''}
-          onFocus={(event) => {
-            event.currentTarget.select();
-            fit(event.currentTarget);
-          }}
-          onInput={(event) => fit(event.currentTarget)}
-          onBlur={(event) => keep(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            event.stopPropagation(); // its keys are the field's, not the canvas's or the tools'
-            if (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey)) {
-              event.preventDefault();
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      ) : (
-        block.text && <span className="shape-words">{block.text}</span>
+      {field}
+    </div>
+  );
+}
+
+// A free arrow: its line from one end to the other, as fractions of its block so it stretches with it, a wider
+// clear line under it to take hold of it by, a link's head at its end, and its words, if any, on a chip halfway.
+function Arrow({ block, className, onDoubleClick, children }: { block: ShapeBlock; className: string; onDoubleClick: () => void; children: ReactNode }) {
+  const head = `shape-head-${useId().replace(/:/g, '')}`;
+  const [a, b, c, d] = arrowEnds(block);
+  const ends = { x1: `${a * 100}%`, y1: `${b * 100}%`, x2: `${c * 100}%`, y2: `${d * 100}%` };
+  const size = ARROW_HEAD[block.line ?? 'thin'];
+  return (
+    <div className={className} onDoubleClick={onDoubleClick}>
+      <svg className="shape-arrow" role="img" aria-label={block.text ? `An arrow: ${block.text}` : 'An arrow'}>
+        <defs>
+          <marker id={head} viewBox="-10 -10 20 20" markerUnits="strokeWidth" markerWidth={size} markerHeight={size} orient="auto" refX="0" refY="0">
+            <polyline className="shape-arrow-head" points="-5,-4 0,0 -5,4 -5,-4" />
+          </marker>
+        </defs>
+        <line className="shape-arrow-hold" {...ends} />
+        <line className="shape-arrow-line" {...ends} style={{ strokeWidth: LINE_PIXELS[block.line ?? 'thin'] }} markerEnd={`url(#${head})`} />
+      </svg>
+      {children && (
+        <span className="shape-arrow-words" style={{ left: `${(a + c) * 50}%`, top: `${(b + d) * 50}%` }}>
+          {children}
+        </span>
       )}
     </div>
   );
@@ -183,6 +223,8 @@ export const shape: WebBlockKind<ShapeBlock> = {
   ownPins: true,
   // An arrow meets an ellipse and a diamond at their outlines, a rectangle and a label at their box.
   edgeScale: (block, w, h, dx, dy) => outlineScale(block.shape, w, h, dx, dy),
+  linkable: (block) => block.shape !== 'arrow',
   copyText: (block) => block.text,
-  added: (block, canvas) => canvas.edit(block.id),
+  // Drawn, its words open for typing; a free arrow's open on a double-click, as most arrows have none.
+  added: (block, canvas) => block.shape !== 'arrow' && canvas.edit(block.id),
 };
