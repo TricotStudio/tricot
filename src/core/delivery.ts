@@ -13,6 +13,7 @@ import { BoardCard, boardCardKinds, cardOf, cardsOf } from './cards';
 import { listNames, samePerson, shortDuration } from './format';
 import { agentsIn, peopleIn } from './mentions';
 import { answeredBy, isAnswer } from './reactions';
+import { threadAgent } from './roles';
 import type { Actor, Board, Reaction, Thread } from './types';
 
 // How long a message keeps its line after it was sent. Past it the line has
@@ -103,12 +104,18 @@ export function meantFor(board: Pick<Board, 'activity'>, where: Where, said: Pic
   if (said.paired) return undefined;
   if (said.author?.kind === 'agent') {
     const to = toAgents({ author: said.author, mentions: said.mentions }, (names) => agentsIn(board, names));
-    return to.length && !said.held ? to : undefined;
+    if (to.length) return said.held ? undefined : to;
+    // In a thread an agent owns, another agent's plain message is for the owner (core/roles.ts).
+    const owner = 'thread' in where && !said.mentions?.length ? where.thread.owner : undefined;
+    return owner && !samePerson(owner, said.author.name) ? [owner] : undefined;
   }
   const named = agentsIn(board, said.mentions);
   if (named.length) return named;
   if (peopleIn(board, said.mentions).length) return undefined;
-  if ('thread' in where) return where.thread.lens?.agent ? [where.thread.lens.agent] : [];
+  if ('thread' in where) {
+    const routed = threadAgent(where.thread);
+    return routed ? [routed] : [];
+  }
   const follower = whereCard(where)?.followedBy;
   return follower ? [follower] : [];
 }
@@ -272,14 +279,15 @@ export function listeningLabel(names: string[]): string | undefined {
 // The agent a reply in a thread goes to, to name it in the bar: the one its
 // lens routes to, else the latest agent who wrote in it, else the one agent
 // listening. None when that isn't one agent.
-export function replyingTo(thread: Pick<Thread, 'lens' | 'messages'>, listening: string[]): string | undefined {
-  if (thread.lens?.agent) return thread.lens.agent;
+export function replyingTo(thread: Pick<Thread, 'owner' | 'lens' | 'messages'>, listening: string[]): string | undefined {
+  const routed = threadAgent(thread);
+  if (routed) return routed;
   const latest = thread.messages.findLast((m) => m.author.kind === 'agent');
   if (latest) return latest.author.name;
   return listening.length === 1 ? listening[0] : undefined;
 }
 
-export function replyPlaceholder(thread: Pick<Thread, 'lens' | 'messages'>, listening: string[]): string {
+export function replyPlaceholder(thread: Pick<Thread, 'owner' | 'lens' | 'messages'>, listening: string[]): string {
   const agent = replyingTo(thread, listening);
   return agent ? `Reply to ${agent}…` : 'Reply…';
 }

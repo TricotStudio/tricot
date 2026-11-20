@@ -94,6 +94,13 @@ export class ToolGroups {
     return this.all;
   }
 
+  // These groups and one more, for one session: its role's (mcp/tools/roles.ts).
+  with(group: ToolGroup): ToolGroups {
+    const more = new ToolGroups();
+    for (const added of [...this.all, group]) more.add(added);
+    return more;
+  }
+
   find(id: string): ToolGroup | undefined {
     return this.all.find((group) => group.id === id);
   }

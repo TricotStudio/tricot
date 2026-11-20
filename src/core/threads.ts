@@ -23,6 +23,7 @@ import { heldWords } from './agentTalk';
 import { addressedTo, agentsIn, asHeard, asksToRun, asksYouToRun, peopleIn, skillCalled, skillInstructionLines, waitingMention, withoutLeadingMentions } from './mentions';
 import type { AgentBrowserHalf } from './agents/agent';
 import { pageName } from './scratchPad';
+import { STATUS_WORDS, threadAgent } from './roles';
 import { threadFile } from './fileThread';
 import { blocksGone, blocksWords } from './threadSelection';
 import { answeredBy, reactionsLine } from './reactions';
@@ -140,11 +141,16 @@ function messageLensLine(thread: Thread, message: ThreadMessage): string {
 }
 
 // The agents a message is for: those it @-mentions, else, for a person's
-// message that mentions nobody, the agent the thread's lens is routed to.
+// message that mentions nobody, the thread's owner or the agent its lens is
+// routed to, and for another agent's, the thread's owner (core/roles.ts).
 export function messageAgents(board: Board, thread: Thread, message: ThreadMessage): string[] {
   const named = agentsIn(board, message.mentions);
-  if (named.length || message.author.kind !== 'human' || message.mentions?.length) return named;
-  return thread.lens?.agent ? [thread.lens.agent] : [];
+  if (named.length || message.mentions?.length) return named;
+  if (message.author.kind === 'human') {
+    const routed = threadAgent(thread);
+    return routed ? [routed] : [];
+  }
+  return thread.owner && !samePerson(thread.owner, message.author.name) ? [thread.owner] : [];
 }
 
 // ---- what a thread led to --------------------------------------------------------
@@ -423,11 +429,22 @@ function waitNote(waiting: Waiting | undefined, viewer: string | undefined): str
 }
 
 // A thread's lens as get_board lists it: Legal lens: "Review licences…",
-// and the agent it's routed to.
+// and the agent it's routed to; or, for a thread an agent owns, its owner and
+// where its work stands.
 function lensLine(thread: Thread): string {
   const lens = thread.lens;
   const brief = lens?.brief ? `: "${clip(lens.brief, 200)}"` : '';
-  return `${lensName(thread)} lens${brief}${lens?.agent ? `, routed to ${lens.agent}` : ''}`;
+  const owned = thread.owner ? `, owned by ${thread.owner}${thread.status ? `, ${STATUS_WORDS[thread.status]}` : ''}` : lens?.agent ? `, routed to ${lens.agent}` : '';
+  return `${lensName(thread)} lens${brief}${owned}`;
+}
+
+// Who owns a thread, and where its work stands, as get_thread says it.
+function ownerLine(thread: Thread, viewer: string | undefined): string {
+  const you = viewer !== undefined && samePerson(thread.owner!, viewer);
+  const status = thread.status ? ` Its work is ${STATUS_WORDS[thread.status]}.` : '';
+  return you
+    ? `You own it: a person's message here that @-mentions nobody is for you, and so is another agent's.${status}`
+    : `Owned by ${thread.owner}: a person's message here that @-mentions nobody is for ${thread.owner}.${status}`;
 }
 
 // The board's threads, briefly, latest first, for get_board: the latest
@@ -469,7 +486,8 @@ export function threadDetail(board: Board, thread: Thread, viewer?: string, told
   const lines = [`# Thread "${thread.title}" [thread id: ${thread.id}]`, `Started by ${who(thread.startedBy)} at ${thread.startedAt} on ${board.title} [board id: ${board.id}]`];
   const lens = thread.lens;
   lines.push(lens?.brief ? `Lens: ${lens.name}. Answer through it: ${lens.brief}` : `Lens: ${lensName(thread)}.`);
-  if (lens?.agent) lines.push(`Routed to ${lens.agent}: a person's message that @-mentions nobody is for ${lens.agent}.`);
+  if (thread.owner) lines.push(ownerLine(thread, viewer));
+  else if (lens?.agent) lines.push(`Routed to ${lens.agent}: a person's message that @-mentions nobody is for ${lens.agent}.`);
   const door = doorNote(thread, board, told);
   if (door) lines.push(door);
   const gone = blocksGone(board, thread);

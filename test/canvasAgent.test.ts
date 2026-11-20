@@ -47,7 +47,7 @@ describe('What an agent is told by a server of Tricot Canvas', () => {
     assert.ok(!tools.some((tool) => tool.name === 'pin'), 'no pin tool');
     const add = tools.find((tool) => tool.name === 'add_block')!;
     const types = (add.inputSchema.properties?.type as { enum: string[] }).enum;
-    assert.deepEqual(types, ['note', 'table', 'checklist', 'diagram', 'image', 'link', 'diff', 'code', 'chart', 'scene', 'site']);
+    assert.deepEqual(types, ['note', 'table', 'checklist', 'diagram', 'image', 'link', 'diff', 'code', 'chart', 'scene', 'site', 'shape']);
     const said = await refusedWith(client, 'add_block', { page_id: 'anything', type: 'hologram' });
     assert.match(said, /type/);
   });

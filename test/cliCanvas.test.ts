@@ -40,7 +40,7 @@ describe('tricot canvas', () => {
     assert.equal(url, `http://127.0.0.1:${h.port}`);
     assert.deepEqual(h.opened, [url]);
     assert.match(said(), new RegExp(`Tricot Canvas is running: http://127.0.0.1:${h.port}`));
-    assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "http://127.0.0.1:${h.port}/mcp\\?agent=Claude"`));
+    assert.match(said(), /Connect your agents for good, to use them on their own: tricot connect\n/);
     assert.match(await (await fetch(url)).text(), /<title>Canvas page<\/title>/);
 
     const info = (await (await fetch(`${url}/api/info`)).json()) as BoardInfo;

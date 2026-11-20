@@ -8,10 +8,12 @@ import { chart } from './chart';
 import { code } from './code';
 import { diagram } from './diagram';
 import { diff } from './diff';
+import { drawing } from './drawing';
 import { foreignKind } from './foreign';
 import { image } from './image';
 import { link } from './link';
 import { scene } from './scene';
+import { shape } from './shape';
 import { site } from './site';
 import { note } from './note';
 import { table } from './table';
@@ -19,7 +21,7 @@ import { table } from './table';
 // Their order is the order listings read in (what REST says a block may be).
 // It is a function so the kinds are read once they have all loaded, however
 // the modules happen to be imported.
-const registered = () => [note, table, image, diagram, link, diff, code, chart, scene, site] as const;
+const registered = () => [note, table, image, diagram, link, diff, code, chart, scene, site, shape, drawing] as const;
 
 // The kinds a part adds are in the types as the part declares them (AddedBlockKinds), and in the list once it registers them.
 export type RegisteredKinds = ReturnType<typeof registered>[number] | AddedKinds;

@@ -19,8 +19,47 @@ export interface AgentRule {
   effort?: string; // one of its thinking levels, by id ("high")
 }
 
-// By agent id ("claude"); an agent with nothing set has no entry.
+// By agent id ("claude"); an agent with nothing set has no entry. A rule for
+// one of its roles (core/roles.ts) is kept beside it, by the agent's id and
+// the role ("claude:coordinator": roleRuleKey).
 export type AgentRules = Record<string, AgentRule>;
+
+// The roles a person sets a model for, beside the agent's own (core/roles.ts):
+// the coordinator and the orchestrators Tricot starts on it, over the agent's
+// rule one value at a time; and the scouts and workers an orchestrator runs
+// as its own subagents, which it is told to run on theirs.
+export const RULE_ROLES = ['coordinator', 'orchestrator', 'scout', 'worker'] as const;
+export type RuleRole = (typeof RULE_ROLES)[number];
+export const RULE_ROLE_WORDS: Record<RuleRole, string> = { coordinator: 'Coordinator', orchestrator: 'Orchestrators', scout: 'Scouts', worker: 'Workers' };
+
+export const roleRuleKey = (agent: string, role: RuleRole): string => `${agent}:${role}`;
+
+// Which agent, and which of its roles, a rule's key names: none for one that names a role that is none.
+export function ruleKeyOf(key: string): { agent: string; role?: RuleRole } | undefined {
+  const [agent, role, ...rest] = key.split(':');
+  if (rest.length || !agent) return undefined;
+  if (role === undefined) return { agent };
+  return (RULE_ROLES as readonly string[]).includes(role) ? { agent, role: role as RuleRole } : undefined;
+}
+
+// What a role of an agent starts on, or runs its subagents on: a coordinator's
+// and an orchestrator's rule over the agent's own, one value at a time; a
+// scout's and a worker's alone, as nothing set leaves it to the orchestrator.
+export function roleRule(rules: AgentRules, agent: string, role: RuleRole): AgentRule {
+  const own = rules[roleRuleKey(agent, role)];
+  return role === 'scout' || role === 'worker' ? cleanRule({ ...own }) : cleanRule({ ...rules[agent], ...own });
+}
+
+// What an orchestrator is told to run its scouts and workers on, from their
+// rules: none when neither is set.
+export function subagentWords(rules: AgentRules, agent: string): string | undefined {
+  const on = (rule: AgentRule) => [rule.model && `on ${rule.model}`, rule.effort && `at ${rule.effort} thinking`].filter(Boolean).join(' ');
+  const said = (['scout', 'worker'] as const).flatMap((role) => {
+    const words = on(roleRule(rules, agent, role));
+    return words ? [`${role}s ${words}`] : [];
+  });
+  return said.length ? `The person asks you to run your ${said.join(', and ')}: start each subagent so.` : undefined;
+}
 
 export const MODEL_LIMIT = 120;
 

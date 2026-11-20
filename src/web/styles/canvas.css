@@ -556,6 +556,34 @@ page.canvas-bottom {
   border-color: var(--open);
   box-shadow: 0 0 0 1px var(--open), var(--shadow);
 }
+/* A block drawn whole (a shape, a pen's strokes: a kind that is `bare`): no
+   sheet, hairline or shadow of its own. Selected, highlighted or new since
+   the viewer looked, a ring round it, a little out from its edge. */
+.block.is-bare,
+.block.is-bare.is-selected,
+.block.is-bare.is-highlighted,
+.block.is-bare.is-new:not(.is-selected) {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+.block.is-bare.is-selected {
+  outline: 1px solid var(--text);
+  outline-offset: 4px;
+}
+.block.is-bare.is-highlighted {
+  outline: 1px solid var(--open);
+  outline-offset: 4px;
+}
+.block.is-bare.is-new:not(.is-selected) {
+  outline: 1px solid color-mix(in srgb, var(--focus) 55%, var(--border));
+  outline-offset: 4px;
+}
+.block-bare {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
 .block-head {
   display: flex;
   align-items: center;
@@ -1057,6 +1085,13 @@ page.canvas-bottom {
 .link-path.is-selected {
   stroke: var(--text);
   stroke-width: 2;
+}
+/* A heavier line, as drawn with the arrow tool (canvas/tools), selected or not. */
+.link-path.is-medium {
+  stroke-width: 3;
+}
+.link-path.is-thick {
+  stroke-width: 5;
 }
 .link-label {
   position: absolute;

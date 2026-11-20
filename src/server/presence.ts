@@ -24,6 +24,7 @@ import { EventEmitter } from 'node:events';
 import type { AgentRule } from '../core/agentRules';
 import { presenceRank, type PresenceState } from '../core/delivery';
 import type { CardKindName } from '../core/pins';
+import type { SessionRole } from '../core/roles';
 import { Listeners } from './listeners';
 import { Sleepers } from './sleepers';
 
@@ -49,6 +50,7 @@ export interface AgentFocus {
 export interface AgentSession {
   tool?: string;
   runsOn?: AgentRule;
+  role?: SessionRole; // a coordinator's or an orchestrator's (core/roles.ts), as its address says
 }
 
 export interface AgentPresence {
@@ -127,6 +129,13 @@ export class Presence {
   sessionOf(name: string): AgentSession | undefined {
     const session = this.sessions.get(name.toLowerCase());
     return session && structuredClone(session);
+  }
+
+  // The board's coordinator (core/roles.ts): the agent on it now whose latest
+  // session took that role, the one seen last when there are more.
+  coordinatorOn(boardId: string): string | undefined {
+    const on = this.list(boardId).filter((a) => a.state !== 'away' && this.sessions.get(a.name.toLowerCase())?.role?.kind === 'coordinator');
+    return on.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
   }
 
   startWaiting(boardId: string, name: string): void {

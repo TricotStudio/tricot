@@ -96,6 +96,7 @@ export function PieceView<B extends Block>(props: {
   name: string;
   version?: BlockVersion; // an earlier version: shown, not paired on
   pinId?: string; // a thread to open at
+  paired?: boolean; // it opens already paired
   part: string; // its part's name (core/parts.ts): 'code', 'note', 'diagram', 'image'
   label: string;
   icon: ReactNode;
@@ -117,7 +118,7 @@ export function PieceView<B extends Block>(props: {
   const canvas = useCanvas();
   const { seeItem } = canvas;
   const shown = useMemo(() => (version ? (atVersion(block, version) as B) : block), [block, version]);
-  const pairing = usePairing(block, name, part, { readOnly: Boolean(version) });
+  const pairing = usePairing(block, name, part, { readOnly: Boolean(version), start: props.paired ? 'pair' : undefined });
   const pointing = pairing.mode === 'pair';
   const stage = useRef<HTMLDivElement>(null);
   const [chosen, setChosen] = useState<PinDraft | null>(null);

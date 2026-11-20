@@ -16,6 +16,181 @@
   margin-inline: auto;
   display: flex;
   justify-content: center;
+  gap: 8px;
+}
+
+/* Over a canvas that can be drawn on, the canvas's drawing tools (canvas/tools)
+   float in a capsule of their own on the bar's left: its height, sheet,
+   corners and lift, a small gap between, so drawing and talking read as two
+   jobs on one baseline, the pair as wide as the bar alone.
+   The capsule comes and goes with that canvas (another tab, a block's full
+   view), so it is always there while the bar floats, and away it takes no
+   room: its column shuts (0fr), cancelling the float's gap too, and the
+   capsule waits under the bar's left end, which is drawn over it. Where it
+   waits is --tools-away, which the dock's move (below) shares. */
+:root {
+  --tools-away: translateX(48px) scale(0.94);
+}
+.chat-tools {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 0fr);
+  margin-right: -8px;
+}
+.chat-tools.is-shown {
+  grid-template-columns: minmax(0, 1fr);
+  margin-right: 0;
+}
+.chat-float > .chat-bar {
+  z-index: 1;
+}
+/* The options of the tool that is on (canvas/tools/DrawOptions.tsx), in a
+   tray over the capsule from its left end. It makes way while the Shape
+   menu, which opens where it is, is open. */
+.chat-tools > .draw-options {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+}
+.chat-tools:has(.draw-menu) > .draw-options.is-shown {
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  pointer-events: none;
+}
+.chat-tools-sheet {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  height: 50px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  transition: border-color 0.12s;
+}
+.chat-tools-sheet:focus-within {
+  border-color: var(--border-strong);
+}
+.chat-tools:not(.is-shown) .chat-tools-sheet {
+  opacity: 0;
+  transform: var(--tools-away);
+}
+.chat-tools:not(.is-shown) .draw-tools > * {
+  opacity: 0;
+  transform: scale(0.6);
+}
+/* Coming: the bar draws back from the left as the capsule slides out from
+   under it the other way, splitting off, and settles just past and back;
+   then its tools rise in, one after another. Going, the other way round:
+   the tools fold away from the bar's side first, one after another; then
+   the bar closes over the capsule, slow to start and quickening, the capsule
+   tucking in under it in plain sight, and lands just past its edge and back.
+   Only the shut column and the gap are laid out again on each frame: the
+   rest is transform and opacity. A capsule that was never there (a bar that
+   opens away from a canvas, `was-shown` unset) has no leaving to play. */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-tools {
+    transition:
+      grid-template-columns 320ms var(--ease-out),
+      margin-right 320ms var(--ease-out);
+  }
+  .chat-tools .chat-tools-sheet {
+    transition:
+      transform 420ms var(--dock-settle),
+      opacity 160ms linear,
+      border-color 0.12s;
+  }
+  .chat-tools .draw-tools > * {
+    transition:
+      transform 260ms var(--ease-out),
+      opacity 160ms linear;
+  }
+  .chat-tools.is-shown .draw-tools > :nth-child(1) {
+    transition-delay: 110ms;
+  }
+  .chat-tools.is-shown .draw-tools > :nth-child(2) {
+    transition-delay: 140ms;
+  }
+  .chat-tools.is-shown .draw-tools > :nth-child(3) {
+    transition-delay: 160ms;
+  }
+  .chat-tools.is-shown .draw-tools > :nth-child(4) {
+    transition-delay: 190ms;
+  }
+  .chat-tools.is-shown .draw-tools > :nth-child(5) {
+    transition-delay: 220ms;
+  }
+  .chat-tools:not(.is-shown) {
+    transition: none;
+  }
+  .chat-tools:not(.is-shown) .chat-tools-sheet {
+    transition: border-color 0.12s;
+  }
+  .chat-tools:not(.is-shown) .draw-tools > * {
+    transition:
+      transform 120ms var(--ease-exit),
+      opacity 120ms linear;
+  }
+  .chat-tools:not(.is-shown) .draw-tools > :nth-child(4) {
+    transition-delay: 25ms;
+  }
+  .chat-tools:not(.is-shown) .draw-tools > :nth-child(3) {
+    transition-delay: 50ms;
+  }
+  .chat-tools:not(.is-shown) .draw-tools > :nth-child(2) {
+    transition-delay: 70ms;
+  }
+  .chat-tools:not(.is-shown) .draw-tools > :nth-child(1) {
+    transition-delay: 90ms;
+  }
+  .chat-tools.was-shown {
+    animation: tools-close 460ms;
+  }
+  .chat-tools.was-shown .chat-tools-sheet {
+    animation: tools-tuck 460ms;
+  }
+}
+/* The bar closing: its edge sweeps over the shut column, then the gap's
+   cancelling runs 12px past it, the bar's edge landing beyond its place,
+   and comes back. */
+@keyframes tools-close {
+  0% {
+    grid-template-columns: minmax(0, 1fr);
+    margin-right: 0;
+    animation-timing-function: cubic-bezier(0.55, 0, 0.8, 0.2);
+  }
+  68% {
+    grid-template-columns: minmax(0, 0fr);
+    margin-right: -8px;
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  83% {
+    margin-right: -20px;
+    animation-timing-function: ease-in-out;
+  }
+  100% {
+    grid-template-columns: minmax(0, 0fr);
+    margin-right: -8px;
+  }
+}
+/* The capsule under it, in step: whole until the bar has covered it. */
+@keyframes tools-tuck {
+  0% {
+    transform: none;
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.55, 0, 0.8, 0.2);
+  }
+  68% {
+    transform: translateX(16px) scale(0.94);
+    opacity: 1;
+  }
+  69%,
+  100% {
+    transform: var(--tools-away);
+    opacity: 0;
+  }
 }
 
 .chat-bar {
@@ -289,6 +464,20 @@
   background: var(--surface);
   font-size: 13px;
   overflow-wrap: anywhere; /* a long link, path or name breaks rather than widening the panel */
+}
+/* Its left edge is a handle (shared/PanelHandle.tsx): drag it, or use the
+   arrow keys, to widen it over the board or narrow it; double-click puts it
+   back. Wider than its column, it lies over the board, and says so with the
+   shadow of what floats. */
+.thread-dock > .panel-handle {
+  left: 0;
+  transform: translateX(-50%);
+}
+.thread-dock.is-over {
+  box-shadow: var(--shadow-lg);
+}
+.thread-dock.is-resizing {
+  user-select: none;
 }
 .dock-head {
   flex: none;
@@ -566,6 +755,21 @@
   :root[data-dock-plain] .chat-bar {
     animation: dock-content-in calc(200ms * var(--dock-pace)) ease-out calc(120ms * var(--dock-pace)) both;
   }
+
+  /* The drawing tools' capsule, which only the floating bar has: docking,
+     it slips back under the bar as the bar sets off; floating again, it
+     slides out from under the bar as the bar lands. Under the bar's picture
+     all along (its group is drawn first). */
+  :root[data-dock-move] .chat-tools.is-shown .chat-tools-sheet {
+    view-transition-name: chat-tools;
+  }
+  ::view-transition-old(chat-tools) {
+    animation: tools-away calc(150ms * var(--dock-pace)) var(--ease-exit) both;
+  }
+  ::view-transition-new(chat-tools),
+  :root[data-dock-plain][data-dock-move='close'] .chat-tools.is-shown .chat-tools-sheet {
+    animation: tools-back calc(320ms * var(--dock-pace)) var(--dock-settle) calc(160ms * var(--dock-pace)) both;
+  }
 }
 
 /* Reduced motion: a quick crossfade, nothing travels, at its own pace. */
@@ -611,6 +815,18 @@
     border-color: var(--border-strong);
     border-radius: 14px;
     box-shadow: var(--shadow-lg);
+  }
+}
+@keyframes tools-away {
+  to {
+    opacity: 0;
+    transform: var(--tools-away);
+  }
+}
+@keyframes tools-back {
+  from {
+    opacity: 0;
+    transform: var(--tools-away);
   }
 }
 @keyframes dock-fade-out {
@@ -699,5 +915,58 @@
   .chat-who.is-none .chat-who-text,
   .chat-who .chat-who-text {
     display: none;
+  }
+  /* Beside the drawing tools, the field would have no room left: their
+     capsule sits just over the bar's right end instead, clear of the
+     canvas's zoom controls at its left, and the Shape menu opens from the
+     button's right so it stays on the screen. Coming and going, it rises
+     from under the bar and sinks back under it, its column never shut. */
+  :root {
+    --tools-away: translateY(calc(100% + 8px)) scale(0.96);
+  }
+  .chat-tools,
+  .chat-tools.is-shown {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    grid-template-columns: max-content;
+    margin: 0;
+  }
+  .chat-tools .draw-tools .menu-panel.draw-menu {
+    left: auto;
+    right: -10px;
+    transform-origin: bottom right;
+  }
+  .chat-tools > .draw-options {
+    left: auto;
+    right: 0;
+    transform-origin: bottom right;
+  }
+}
+/* There, going, the tools fold away as above, then the capsule drops in
+   behind the bar, quickening, whole until the bar hides it. */
+@media (max-width: 600px) and (prefers-reduced-motion: no-preference) {
+  .chat-tools.was-shown {
+    animation: none;
+  }
+  .chat-tools.was-shown .chat-tools-sheet {
+    animation-name: tools-sink;
+    animation-duration: 340ms;
+  }
+}
+@keyframes tools-sink {
+  0% {
+    transform: none;
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.55, 0, 0.8, 0.2);
+  }
+  90% {
+    transform: var(--tools-away);
+    opacity: 1;
+  }
+  91%,
+  100% {
+    transform: var(--tools-away);
+    opacity: 0;
   }
 }

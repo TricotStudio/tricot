@@ -18,7 +18,7 @@ import { connect } from './connectCommand';
 import { askOnFirstRun } from './hooks';
 import { holdLease, type Lease } from './lease';
 import type { CliResult } from './main';
-import { BOARD, DATA, EFFORT, MODEL, NAME, NO_ASK, NO_OPEN, NO_UPDATE_CHECK, PORT, VERBOSE, said, type Option } from './options';
+import { BOARD, COORDINATE, DATA, EFFORT, MODEL, NAME, NO_ASK, NO_OPEN, NO_UPDATE_CHECK, ORCHESTRATORS, PORT, VERBOSE, said, type Option } from './options';
 
 // A `tricot claude` command: it holds a lease with the board for as long as
 // it runs, and lets go of it however it ends (agentCommand.ts, server/leases.ts).
@@ -36,6 +36,9 @@ async function runAgentCommand(env: Env, id: string | string[], passthrough: str
     await a.parting();
   }
 }
+
+// The agents picked when plain `tricot` asked (startPicker.ts), started as `tricot claude codex` would start them.
+export const startAgents = (env: Env, ids: string[]): Promise<CliResult> => runAgentCommand(env, ids.length === 1 ? ids[0] : ids, [], []);
 
 const BOARD_STOPS_WITHIN_MS = 5000;
 
@@ -195,6 +198,7 @@ function agentHelp(id: string): { help: Help; options: Option[] } {
       said(BOARD, 'Give this board to the agent, instead of asking which'),
       said(NAME, "The agent's name on the board (one agent: with several, each has its own)"),
       ...ruleOptions,
+      ...(agent.wakes ? [COORDINATE, ORCHESTRATORS] : []),
       NO_ASK,
       VERBOSE,
       NO_OPEN,

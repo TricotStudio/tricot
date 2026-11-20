@@ -211,6 +211,8 @@ export interface AgentHalf<T extends KindTypes> {
   // What a tool group must offer (core/words.ts Told.offers) for agents to be told of this kind: its type among
   // add_block's, its entry among the fields by type. None: every server tells of it.
   offeredBy?: string;
+  // A kind people make and agents only read (a hand drawing): left out of add_block's types and fields.
+  peopleOnly?: true;
   addShape: Shape; // the add_block fields it reads
   updateShape: Shape; // the update_block fields it reads
   // Types agents may still name that make a block of this kind: a kind that
@@ -272,6 +274,8 @@ export interface BlockKind<T extends KindTypes = any> {
   readonly type: T['type'];
   readonly label: string; // "Note": what people and search call it
   readonly defaultSize: Size;
+  // The smallest it may be made: a drawn shape or a label is smaller than a block of content (160×90, when none).
+  readonly minSize?: Size;
   readonly titled?: false; // a code block is named by its path: it has no title
 
   // How it is called when it has no title ("code block" aside, the title comes first).

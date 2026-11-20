@@ -23,13 +23,15 @@ export const DATA = option('data', 'string', '--data <dir>', 'Where boards are k
 export const BOARD = option('board', 'string', '--board <id>', 'Open this board');
 export const NAME = option('name', 'string', '--name <name>', "The agent's name on the board");
 export const YES = option('yes', 'boolean', '--yes', "Don't ask (it still shows what it changes)", 'y');
-export const NO_ASK = option('no-ask', 'boolean', '--no-ask', "Don't ask about live steps on the first start");
+export const NO_ASK = option('no-ask', 'boolean', '--no-ask', "Don't ask which agents to start with it, nor about live steps on the first start");
 export const VERBOSE = option('verbose', 'boolean', '--verbose', 'With that question: show every file and line first');
 export const NO_OPEN = option('no-open', 'boolean', '--no-open', "Don't open the browser");
 export const NO_UPDATE_CHECK = option('no-update-check', 'boolean', '--no-update-check', "Don't ask GitHub once a day whether a newer Tricot is out (or set TRICOT_NO_UPDATE_CHECK=1)");
 export const BACKGROUND = option('background', 'boolean', '-d, --background', 'Keep running after this terminal closes (logs to <data>/server.log)', 'd');
 // An agent's model and thinking level for this run (core/agentRules.ts): each
 // is the agent's named before it, and stands in for the rule set in its panel.
+export const COORDINATE = option('coordinate', 'boolean', '--coordinate', "Start it as the board's coordinator: it answers the chat bar and hands each piece of work to an agent it starts here to own that thread");
+export const ORCHESTRATORS = option('orchestrators', 'string', '--orchestrators <n>', 'With --coordinate: how many agents it runs at once to own threads, at most (default 3)');
 export const MODEL = option('model', 'string', '--model <name>', 'The model the agent starts on, this run (over the one set in its panel)');
 export const EFFORT = option('effort', 'string', '--effort <level>', 'Its thinking level, this run');
 // The options that belong to the agent named before them (main.ts Words.placed).

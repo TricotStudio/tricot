@@ -2,8 +2,12 @@
 // as the board draws that kind, with the board's own renderers: Markdown as a
 // note reads (its pictures and links to the project's files resolved, as its
 // repository shows them), Mermaid as a diagram, CSV and TSV as a table, and a
-// picture as itself. Its text is a switch away (FilesView: Source).
+// picture as itself. Its text is a switch away (FilesView: Source), or a
+// double-click away at the line of what was double-clicked: each block of a
+// Markdown file, and each row of a table, says the line it starts on
+// (data-source-line).
 
+import type { Element, Root } from 'hast';
 import { useMemo, useState } from 'react';
 import { delimitedRows, imageTypeOf, type FilePreview } from '../../core/projectFiles';
 import { routes, routeUrl } from '../../core/routes';
@@ -14,6 +18,21 @@ import { linkTo } from '../shared/pages';
 import { besideFile } from './tree';
 
 const MOST_ROWS = 2000; // rows the table draws; the file holds them all
+const SOURCE_BLOCKS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'table', 'tr', 'hr', 'dt', 'dd']);
+
+// Each block of a drawn Markdown file says the line of the file it starts on,
+// as the parser read it: the line a double-click opens its source at.
+function rehypeSourceLines() {
+  const walk = (parent: Root | Element) => {
+    for (const child of parent.children) {
+      if (child.type !== 'element') continue;
+      if (SOURCE_BLOCKS.has(child.tagName) && child.position) child.properties.dataSourceLine = child.position.start.line;
+      walk(child);
+    }
+  };
+  return (tree: Root) => walk(tree);
+}
+const SOURCE_LINES = [rehypeSourceLines];
 
 export function FilePreviewBody({ board, file, kind, text }: { board: Board; file: string; kind: Exclude<FilePreview, 'image'>; text: string }) {
   if (kind === 'markdown') return <MarkdownFile board={board} file={file} text={text} />;
@@ -42,7 +61,9 @@ function MarkdownFile({ board, file, text }: { board: Board; file: string; text:
   );
   return (
     <article className="files-doc">
-      <Md beside={beside}>{text}</Md>
+      <Md beside={beside} rehypePlugins={SOURCE_LINES}>
+        {text}
+      </Md>
     </article>
   );
 }
@@ -61,7 +82,7 @@ function TableFile({ file, text }: { file: string; text: string }) {
     <div className="files-table">
       <table className="block-table">
         <thead>
-          <tr>
+          <tr data-source-line={1}>
             {cells(head).map((cell, c) => (
               <th key={c} className={numeric[c] ? 'is-number' : undefined}>
                 {cell}
@@ -71,7 +92,7 @@ function TableFile({ file, text }: { file: string; text: string }) {
         </thead>
         <tbody>
           {body.slice(0, MOST_ROWS).map((row, r) => (
-            <tr key={r}>
+            <tr key={r} data-source-line={r + 2 /* the line it starts on, unless a quoted cell before it spans lines */}>
               {cells(row).map((cell, c) => (
                 <td key={c} className={numeric[c] ? 'is-number' : undefined}>
                   {cell}

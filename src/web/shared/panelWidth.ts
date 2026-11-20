@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
 
 // A panel beside a canvas, as wide as the person last dragged its edge to on
 // this browser: a card's panel on the right, or one
@@ -51,6 +51,8 @@ export function usePanelWidth(from: RefObject<HTMLElement | null>, options: Pane
   const widest = Math.max(min, Math.round(window.innerWidth * share));
   const fit = (value: number) => Math.min(widest, Math.max(min, Math.round(value)));
   const width = fit(wanted);
+  // Where the edge was last dragged to: a drag's last move may land as the button comes up, before it is drawn.
+  const dragged = useRef(width);
 
   const set = (next: number) => {
     const fitted = fit(next);
@@ -69,22 +71,24 @@ export function usePanelWidth(from: RefObject<HTMLElement | null>, options: Pane
       if (event.button !== 0) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
+      dragged.current = width;
       setDragging(true);
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
       if (!dragging || !from.current) return;
       const box = from.current.getBoundingClientRect();
-      setWanted(fit(side === 'right' ? box.right - event.clientX : event.clientX - box.left));
+      dragged.current = fit(side === 'right' ? box.right - event.clientX : event.clientX - box.left);
+      setWanted(dragged.current);
     },
     onPointerUp: () => {
       if (!dragging) return;
       setDragging(false);
-      save(key, width, initial);
+      save(key, dragged.current, initial);
     },
     onPointerCancel: () => {
       if (!dragging) return;
       setDragging(false);
-      save(key, width, initial);
+      save(key, dragged.current, initial);
     },
     onDoubleClick: () => set(initial),
     // Towards the panel narrows it, away from it widens it.

@@ -24,7 +24,8 @@
 // - a ready task it could claim;
 // - a person's word on its work: a task sent back, approved, or with a
 //   commit asked for;
-// - a request to refresh a card or sync the board context.
+// - a request to refresh a card or sync the board context;
+// - the work of a thread it sent a person's message on to, done (core/roles.ts).
 
 import { discussionAt, type Said } from './answering';
 import { eventCardsLeading, cardOf } from './cards';
@@ -64,6 +65,8 @@ export function concernsAgent(event: BoardEvent, board: Board, agent: string): b
     }
     case 'pairing_started':
       return Boolean(event.forAgent && samePerson(event.forAgent, agent));
+    case 'thread_status_changed':
+      return doneWhereItSent(event, board, agent);
     case 'sync_requested':
       return Boolean(board.syncRequest);
     case 'comment_reacted': {
@@ -100,6 +103,14 @@ function placeOf(event: BoardEvent, board: Board): Where | undefined {
     return thread && { thread };
   }
   return { boardContext: true };
+}
+
+// A thread this agent sent a person's message on to, its work now done
+// (core/roles.ts): the coordinator tells the person.
+function doneWhereItSent(event: BoardEvent, board: Board, agent: string): boolean {
+  const thread = board.threads?.find((t) => t.id === event.itemId);
+  if (thread?.status !== 'done') return false;
+  return Boolean(board.threads?.some((t) => t.messages.some((m) => m.sent?.threadId === thread.id && isAgent(m.author, agent))));
 }
 
 // Whether a message answers what this agent asked: its last message before

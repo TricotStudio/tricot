@@ -1,0 +1,237 @@
+/* ---- the work under way, over the floating chat bar (threads/workStrip.tsx) --
+   A row of small pills just above the bar, centred, one for each thread an
+   agent owns whose work isn't done: the bar's own sheet, small, so they read
+   as the bar's. Waiting on people, a pill takes the open status's tint and
+   says so; at work, a dot that pulses while its owner has a step there. The
+   chip that offers to follow a message sent on sits first, in the
+   exploring tint, with its own ×. The row takes no pointer itself, so the
+   canvas under its gaps stays reachable. */
+.work-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-wrap: wrap-reverse;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.work-strip > * {
+  pointer-events: auto;
+}
+/* On a phone the row stays one row, scrolled sideways, and goes over the drawing tools, which take the place just
+   over the bar there (chatBar.css). It takes the pointer, to scroll. */
+@media (max-width: 600px) {
+  .work-strip {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 2px;
+    scrollbar-width: none;
+    pointer-events: auto;
+  }
+  .work-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .work-pill,
+  .work-sent {
+    flex: none;
+  }
+  .chat-float:has(.chat-tools.is-shown) > .work-strip {
+    bottom: calc(100% + 64px);
+  }
+}
+.work-pill,
+.work-sent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+}
+.work-pill {
+  cursor: pointer;
+}
+.work-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.work-pill:focus-visible,
+.work-sent button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.work-pill-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.work-dot.is-live {
+  background: var(--open);
+  animation: work-pulse 1.6s var(--ease-out) infinite;
+}
+.work-pill.is-waiting {
+  border-color: color-mix(in srgb, var(--open) 45%, var(--border));
+  background: var(--open-bg);
+  color: var(--open-ink);
+}
+.work-pill.is-waiting .work-dot {
+  background: var(--open);
+}
+.work-pill-state {
+  flex: none;
+  font-weight: 600;
+}
+.work-more {
+  align-self: center;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* "Sent to … · Follow": the message the viewer sent was sent on while they were elsewhere. */
+.work-sent {
+  max-width: 320px;
+  padding: 0 4px 0 10px;
+  border-color: color-mix(in srgb, var(--exploring) 40%, var(--border));
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+.work-sent button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.work-sent-follow {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.work-sent-close {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+}
+.work-sent-close:hover {
+  background: color-mix(in srgb, var(--exploring) 18%, transparent);
+}
+.work-sent-close .icon {
+  width: 12px;
+  height: 12px;
+}
+
+@keyframes work-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .work-dot.is-live {
+    animation: none;
+  }
+}
+
+/* A thread's owner, and where its work stands, in its head (OwnerChip). */
+.dock-owner {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dock-owner.is-needs-you {
+  background: var(--open-bg);
+  color: var(--open-ink);
+  box-shadow: none;
+}
+.dock-owner.is-done {
+  background: var(--decided-bg);
+  color: var(--decided-ink);
+  box-shadow: none;
+}
+
+/* Where a message went: the coordinator's word under it, a link to the thread. */
+.thread-sent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--exploring-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.thread-sent:hover {
+  text-decoration: underline;
+}
+.thread-sent .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* Back to the thread a message was asked in, over the one it was sent to: one line, cut short. */
+.dock-crumb {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 36px);
+  margin: 12px 18px -8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.dock-crumb-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dock-crumb:hover {
+  color: var(--text);
+}
+.dock-crumb .icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}

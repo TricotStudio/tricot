@@ -327,7 +327,8 @@ export function canvasDigest(board: Board, canvas: Canvas, held?: CanvasCard, pa
       const to = blocks.find((b) => b.id === link.to);
       if (!from || !to) continue;
       const said = link.label ? `: "${clip(link.label, 80)}"` : '';
-      lines.push(`- ${blockLabel(from)} → ${blockLabel(to)}${said} [id: ${link.id}] by ${who(link.author)}`);
+      const weight = link.weight ? ` (${link.weight} line)` : '';
+      lines.push(`- ${blockLabel(from)} → ${blockLabel(to)}${said}${weight} [id: ${link.id}] by ${who(link.author)}`);
     }
   }
   return lines.join('\n');

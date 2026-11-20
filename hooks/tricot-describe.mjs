@@ -83,6 +83,8 @@ const TRICOT = {
   get_thread: 'Reading the thread',
   reply_in_thread: 'Replying in the thread',
   start_thread: 'Starting a thread',
+  route_to_thread: 'Sending work on to a thread',
+  set_thread_status: 'Saying where the work stands',
   list_boards: 'Listing the boards',
   create_board: 'Creating a board',
   set_project_folder: 'Setting the project folder',

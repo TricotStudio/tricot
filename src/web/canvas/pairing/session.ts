@@ -54,7 +54,9 @@ function keepAgent(name: string): void {
 }
 
 // `readOnly`: the view shows what can't be paired on (an earlier version).
-export function usePairing(block: Block, name: string, part: string, options: { readOnly?: boolean } = {}): Pairing {
+// `start: 'pair'`: it opens already paired, with the agent Pair would pick
+// (the Files view's Pair), once; else it opens browsing.
+export function usePairing(block: Block, name: string, part: string, options: { readOnly?: boolean; start?: PairMode } = {}): Pairing {
   const canvas = useCanvas();
   const { board, owner } = canvas;
   const readOnly = canvas.readOnly || Boolean(options.readOnly);
@@ -141,6 +143,13 @@ export function usePairing(block: Block, name: string, part: string, options: { 
     },
     [readOnly, agent, leave, start],
   );
+
+  const began = useRef(false);
+  useEffect(() => {
+    if (began.current || options.start !== 'pair' || readOnly) return;
+    began.current = true;
+    pair();
+  }, [options.start, readOnly, pair]);
 
   const browse = useCallback(() => {
     setMode('browse');

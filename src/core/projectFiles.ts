@@ -41,6 +41,15 @@ export interface ProjectFiles {
   truncated?: boolean; // more than MAX_PROJECT_FILES: these are the first, by path
 }
 
+// What changed in the project folder while its Files view is open, as the
+// server tells it (server/projectWatch.ts): the paths, from the folder; or,
+// past a hundred, only that many did; and whether git's own state did.
+export interface FolderChange {
+  paths: string[];
+  many?: true;
+  git?: true;
+}
+
 export interface ProjectGit {
   prefix: string; // the folder's place in its repository, "apps/web/"; "" at its top. A
   // code block or a diff names its file from the repository's top: this before a listed path.

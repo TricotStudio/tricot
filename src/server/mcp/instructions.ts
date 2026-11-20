@@ -30,6 +30,9 @@ import type { ToolGroups } from './toolGroups';
 // gives it the command to run in the background before it ends its turn
 // (LISTEN_WORDS).
 export const MAX_INSTRUCTIONS = 3800;
+// What clients show of the text. A coordinator's or an orchestrator's session (core/roles.ts) is told its role in a
+// line ahead of the rest, over a part's, and stays under this rather than MAX_INSTRUCTIONS.
+export const CLIENTS_SHOW = 4096;
 const LISTEN_LINE = '- When idle, listen: call wait_for_updates, and again each time it returns.';
 const SLEEP_LINE = '- When idle, call wait_for_updates and do as it says: end your turn, or wait.';
 

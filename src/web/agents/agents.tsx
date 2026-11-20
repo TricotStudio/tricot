@@ -143,7 +143,7 @@ export function AgentPanel({ name, person, onClose }: { name: string; person: st
             </p>
             {running && <p className="agent-head-runs">{running}</p>}
           </div>
-          {ruled && <RuleChip kind={ruled} name={agent?.name ?? name} rule={rule} runsOn={agent?.runsOn} onSet={(next) => setRule(ruled.id, next)} under={head} />}
+          {ruled && <RuleChip kind={ruled} name={agent?.name ?? name} rule={rule} runsOn={agent?.runsOn} onSet={(next) => setRule(ruled.id, next)} under={head} roles={rules ? { rules, set: setRule } : undefined} />}
           <button type="button" className="btn btn-quiet btn-small agent-close" onClick={onClose} aria-label="Close">
             <Icon name="x" />
           </button>

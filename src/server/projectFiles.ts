@@ -64,17 +64,35 @@ async function gitListing(real: string, now: number): Promise<{ files: ProjectFi
   }
   if (!top) return undefined;
   const run = (args: string[]) => git(args, { cwd: real, maxBytes: LIST_BYTES });
+  // Its files, how each differs from the last commit, and the recent commits,
+  // asked of git all at once: none waits on another, and each is a program
+  // of its own to start. The log, the branch and HEAD are none before the
+  // first commit: every file is new then.
+  const recent = Promise.all([
+    run(['rev-parse', '--short', 'HEAD']),
+    run(['rev-parse', '--abbrev-ref', 'HEAD']),
+    run(['-c', 'core.quotePath=false', 'log', `-n${RECENT_COMMITS}`, '--no-renames', '--name-only', '--format=%x01%h%x02%aI%x02%an%x02%s', '--', '.']),
+  ]).catch((error: unknown) => {
+    if (error instanceof GitError && error.failure === 'failed') return undefined;
+    throw error;
+  });
   // git prints paths from the folder it runs in (ls-files) or from the
   // repository's top (status, log); the folder's place in it turns one into the other.
-  const prefix = (await run(['rev-parse', '--show-prefix'])).trim();
+  const [prefixOut, trackedOut, untrackedOut, porcelainOut, history] = await Promise.all([
+    run(['rev-parse', '--show-prefix']),
+    run(['ls-files', '-z', '--cached', '--', '.']),
+    run(['ls-files', '-z', '--others', '--exclude-standard', '--', '.']),
+    run(['status', '--porcelain=v1', '-z', '--untracked-files=no', '--', '.']),
+    recent,
+  ]);
+  const prefix = prefixOut.trim();
   const fromTop = (file: string) => (prefix && file.startsWith(prefix) ? file.slice(prefix.length) : prefix ? undefined : file);
-
-  const tracked = nulSplit(await run(['ls-files', '-z', '--cached', '--', '.']));
-  const untracked = nulSplit(await run(['ls-files', '-z', '--others', '--exclude-standard', '--', '.']));
+  const tracked = nulSplit(trackedOut);
+  const untracked = nulSplit(untrackedOut);
 
   // How each differs from the last commit. With -z, a renamed one's old path follows it.
   const status = new Map<string, FileStatus>();
-  const porcelain = nulSplit(await run(['status', '--porcelain=v1', '-z', '--untracked-files=no', '--', '.']));
+  const porcelain = nulSplit(porcelainOut);
   for (let i = 0; i < porcelain.length; i++) {
     const entry = porcelain[i];
     const [x, y] = [entry[0], entry[1]];
@@ -88,28 +106,20 @@ async function gitListing(real: string, now: number): Promise<{ files: ProjectFi
   // commit (\x01, then its fields), then the files it changed.
   const last = new Map<string, FileChange>();
   const week = new Set<string>();
-  let head: string | undefined;
-  let branch: string | undefined;
-  try {
-    head = (await run(['rev-parse', '--short', 'HEAD'])).trim() || undefined;
-    const name = (await run(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
-    branch = name && name !== 'HEAD' ? name : undefined;
-    const log = await run(['-c', 'core.quotePath=false', 'log', `-n${RECENT_COMMITS}`, '--no-renames', '--name-only', '--format=%x01%h%x02%aI%x02%an%x02%s', '--', '.']);
-    let change: FileChange | undefined;
-    for (const line of log.split('\n')) {
-      if (line.startsWith('\x01')) {
-        const [commit, at, by, subject] = line.slice(1).split('\x02');
-        change = { commit, at, by, subject };
-        continue;
-      }
-      const file = line && fromTop(line);
-      if (!file || !change) continue;
-      if (!last.has(file)) last.set(file, change);
-      if (now - Date.parse(change.at) <= WEEK_MS) week.add(file);
+  const head = history?.[0].trim() || undefined;
+  const name = history?.[1].trim();
+  const branch = name && name !== 'HEAD' ? name : undefined;
+  let change: FileChange | undefined;
+  for (const line of history?.[2].split('\n') ?? []) {
+    if (line.startsWith('\x01')) {
+      const [commit, at, by, subject] = line.slice(1).split('\x02');
+      change = { commit, at, by, subject };
+      continue;
     }
-  } catch (error) {
-    // Before the first commit there is no HEAD and no log: every file is new.
-    if (!(error instanceof GitError && error.failure === 'failed')) throw error;
+    const file = line && fromTop(line);
+    if (!file || !change) continue;
+    if (!last.has(file)) last.set(file, change);
+    if (now - Date.parse(change.at) <= WEEK_MS) week.add(file);
   }
 
   const files: ProjectFile[] = [];

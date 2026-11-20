@@ -4,6 +4,7 @@ import { addedGroup, where } from './labels';
 import { type BoardRepository, refOf } from './repository';
 import { LIMITS, clampSize, coord, guardArchived, limited, optional, required } from './validate';
 import { GROUP_PADDING, GROUP_SIZE, TOP_LEVEL_AREA, blockLabel, findSpot, groupArea } from '../canvas';
+import { kindOf } from '../blocks/registry';
 import { cardOwning } from '../cards';
 import { clip } from '../format';
 import type { Actor, Block, Canvas, Group, Link } from '../types';
@@ -44,7 +45,7 @@ export class Canvases {
     return group;
   }
 
-  addLink(fromId: string, toId: string, label: string | undefined, actor: Actor): Link {
+  addLink(fromId: string, toId: string, label: string | undefined, actor: Actor, weight?: 'thin' | 'medium' | 'thick'): Link {
     const located = this.repo.locateItem(fromId);
     guardArchived(located.board);
     const { canvas } = located;
@@ -60,6 +61,7 @@ export class Canvases {
       from: fromId,
       to: toId,
       label: label !== undefined ? optional(limited(label, LIMITS.title, 'A link label')) : undefined,
+      ...(weight === 'medium' || weight === 'thick' ? { weight } : {}),
       author: actor,
       createdAt: new Date().toISOString(),
     };
@@ -110,7 +112,7 @@ export class Canvases {
       }
       target.x = coord(move.x);
       target.y = coord(move.y);
-      if (move.w !== undefined || move.h !== undefined) Object.assign(target, clampSize(move.w ?? target.w, move.h ?? target.h));
+      if (move.w !== undefined || move.h !== undefined) Object.assign(target, clampSize(move.w ?? target.w, move.h ?? target.h, block ? kindOf(block.type).minSize : undefined));
     }
 
     if (regrouped.length === 0) return this.repo.touch(located.board, refOf(located));

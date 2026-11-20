@@ -6,17 +6,19 @@ import { chart } from './chart';
 import { code } from './code';
 import { diagram } from './diagram';
 import { diff } from './diff';
+import { drawing } from './drawing';
 import { image } from './image';
 import type { WebBlockKind } from './kind';
 import { link } from './link';
 import { scene } from './scene';
+import { shape } from './shape';
 import { site } from './site';
 import { note } from './note';
 import { table } from './table';
 import { ordered } from '../../../core/blocks/order';
 
 // A function so the kinds are read once they have all loaded.
-const registered = () => [note, table, image, diagram, link, diff, code, chart, scene, site];
+const registered = () => [note, table, image, diagram, link, diff, code, chart, scene, site, shape, drawing];
 
 let all: readonly WebBlockKind[] | undefined;
 let added: readonly WebBlockKind[] = [];

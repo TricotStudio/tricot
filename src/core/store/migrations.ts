@@ -273,6 +273,36 @@ export const MIGRATIONS: Migration[] = [
     name: 'threads about blocks selected on a sketchbook page',
     up() {},
   },
+  {
+    // A canvas can hold what people draw with its tools: shape blocks (a
+    // rectangle, an ellipse, a diamond or a text label, with its words, plain
+    // or bold, its colour, and a shape's line or a label's size) and drawing
+    // blocks (a pen's strokes, each its colour and width), each of a size smaller
+    // than a block of content may be. Nothing here changes: this version is so
+    // that a Tricot before it refuses a file that may hold them, rather than
+    // open it and fail on blocks of a type it doesn't know.
+    name: 'shape and drawing blocks',
+    up() {},
+  },
+  {
+    // 18: a thread may have an owner, the agent whose work it is, with where
+    // that work stands (a status: working, needs-you or done) and the agent
+    // Tricot starts as it (core/roles.ts); a coordinator's message may say it
+    // sent a person's message on to another thread; and the log has two more
+    // kinds of event, thread_routed and thread_status_changed. Nothing here
+    // changes: this version is so that a Tricot before it refuses a file that
+    // may hold them, rather than open it and misread them.
+    name: 'thread owners and statuses',
+    up() {},
+  },
+  {
+    // 19: a link drawn with the canvas's arrow tool may have a heavier line
+    // than thin (its weight: medium or thick). Nothing here changes: this
+    // version is so that a Tricot before it refuses a file that may hold
+    // such links, rather than open it and draw them all thin.
+    name: 'link weights',
+    up() {},
+  },
 ];
 
 type Row = { board: string; owner: string; kind: string; id: string; body: string };

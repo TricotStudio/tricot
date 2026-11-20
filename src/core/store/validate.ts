@@ -45,9 +45,10 @@ export function coord(value: number): number {
   return Math.round(Math.max(-100_000, Math.min(100_000, value)));
 }
 
-export function clampSize(w: number, h: number): { w: number; h: number } {
+// A size kept in range: at least `min` (a kind's, else a block of content's 160×90), at most 4000 either way.
+export function clampSize(w: number, h: number, min: { w: number; h: number } = { w: 160, h: 90 }): { w: number; h: number } {
   if (!Number.isFinite(w) || !Number.isFinite(h)) throw new BoardError('Sizes must be finite numbers.');
-  return { w: Math.round(Math.min(4000, Math.max(160, w))), h: Math.round(Math.min(4000, Math.max(90, h))) };
+  return { w: Math.round(Math.min(4000, Math.max(min.w, w))), h: Math.round(Math.min(4000, Math.max(min.h, h))) };
 }
 
 export function limited(value: string, max: number, field: string): string {

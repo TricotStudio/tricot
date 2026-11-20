@@ -85,15 +85,17 @@ describe('tricot command', () => {
   });
 
   describe('start', () => {
-    it('serves the board, opens it, and prints how to connect', async () => {
+    it('serves the board, opens it, and says in a few lines how to connect', async () => {
       const { exitCode, server } = await run();
       assert.equal(exitCode, 0);
       assert.ok(server);
       assert.equal(server.url, `http://127.0.0.1:${port}`);
       assert.deepEqual(opened, [server.url]);
       assert.match(said(), new RegExp(`${name} is running: http://127.0.0.1:${port}`));
-      assert.match(said(), new RegExp(`claude mcp add --scope user --transport http tricot "http://127.0.0.1:${port}/mcp\\?agent=Claude"`));
-      assert.match(said(), new RegExp(`codex mcp add tricot --url "http://127.0.0.1:${port}/mcp\\?agent=Codex"`));
+      // What to do next in a few lines: every client's command is tricot connect --print's, not the start's.
+      assert.match(said(), /Connect your agents for good, to use them on their own: tricot connect\n/);
+      assert.match(said(), /Every command by hand, and any other MCP client: tricot connect --print/);
+      assert.doesNotMatch(said(), /mcp add/);
 
       const page = await fetch(server.url);
       assert.match(await page.text(), /<title>Tricot<\/title>/);

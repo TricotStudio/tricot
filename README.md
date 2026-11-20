@@ -53,7 +53,7 @@ Tricot runs on Windows, but it was built on macOS and Windows support is new. Yo
 tricot
 ```
 
-This starts the board (or finds the one already running), opens it in your browser, and prints how to connect an agent. Run `tricot connect` once, as above, so your agents have the board; start a new session of each agent after it.
+This starts the board (or finds the one already running) and opens it in your browser. In a terminal it first asks which agents to start with it, from those it found on this computer, ticked as you left them last time: Enter starts them with the board, as `tricot claude codex` would, and Esc starts the board alone, with a few lines on how to start or connect an agent. Run `tricot connect` once, as above, so your agents have the board on their own too; start a new session of each agent after it.
 
 Or start the board and your agent together, in one command:
 

@@ -64,6 +64,11 @@
   .board-layout > .thread-dock {
     justify-self: normal;
     width: auto;
+    margin-left: 0;
+  }
+  /* A sheet here, as wide as the screen: its edge is no handle. */
+  .thread-dock > .panel-handle {
+    display: none;
   }
   /* The Overview's window, the board context's canvas or another view in
      its place, and the chat bar floats across the screen as on any tab

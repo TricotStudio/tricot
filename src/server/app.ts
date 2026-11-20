@@ -4,6 +4,7 @@ import { localhostHostValidation } from '@modelcontextprotocol/sdk/server/middle
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { runsOnOf } from '../core/agentRules';
+import { roleOf } from '../core/roles';
 import { wokenBy } from '../core/sessions';
 import type { StartFolder } from '../core/firstRun';
 import type { Store } from '../core/store';
@@ -141,6 +142,8 @@ export function createApp(
   );
   // Agents present on a board can be mentioned and assigned before they've written to it.
   store.presentAgents = (key) => presence.list(key).map((a) => a.name);
+  // A thread a person starts from a chat bar is the board's coordinator's (core/roles.ts).
+  store.coordinatorOf = (key) => presence.coordinatorOn(key);
   // Who is on each board, and the agents held asleep there, for what reads
   // them beside the routes (tests, as for the seats below).
   app.locals.presence = presence;
@@ -240,7 +243,8 @@ function rpcError(message: string) {
 // `?agent=` on its MCP URL, falling back to the client's own name, what
 // it runs on from `model=` and `effort=` when Tricot's terminal started it
 // (core/agentRules.ts runsOnUrl), and `wake=terminal` when that terminal
-// wakes it (core/sessions.ts wakeUrl). Each session watches its calls'
+// wakes it (core/sessions.ts wakeUrl), and `role=` (with `thread=`) when it
+// is a coordinator or an orchestrator (core/roles.ts). Each session watches its calls'
 // connections, so a wait ends when its agent hangs up (mcp/hangups.ts). One
 // from this computer, on a board that listens on it alone, may sleep by
 // `tricot listen`: the command reaches the board at the address the
@@ -273,6 +277,7 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
       const requested = typeof req.query.agent === 'string' ? req.query.agent.trim().slice(0, 60) : '';
       const runsOn = runsOnOf(req.query);
       const woken = wokenBy(req.query);
+      const role = roleOf(req.query);
       const listenAt = mcpOptions.offerListen && fromThisMachine(req) ? listenAddress(req) : undefined;
       const watching = new Hangups();
       const created = new StreamableHTTPServerTransport({
@@ -293,6 +298,7 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
         runsOn,
         woken,
         listenAt,
+        role,
       );
       await server.connect(created);
       transport = created;

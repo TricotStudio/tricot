@@ -12,7 +12,9 @@ import { createSession, listensBy, type McpOptions } from './mcp/session';
 import { configOf, type Extra } from './mcp/tool';
 import { ToolGroups } from './mcp/toolGroups';
 import { allTools } from './mcp/tools';
+import { roleGroup } from './mcp/tools/roles';
 import { listenWait } from './mcp/tools/updates';
+import type { SessionRole } from '../core/roles';
 
 export { MAX_INSTRUCTIONS } from './mcp/instructions';
 export type { McpOptions } from './mcp/session';
@@ -85,8 +87,11 @@ function instructionsByClient(server: McpServer, groups: ToolGroups | undefined,
 // its turn when it has nothing to do, and its waits don't wait while the
 // terminal holds it (mcp/session.ts). `listenAt`: the board's address as the
 // agent's client reached it, when it may sleep by `tricot listen`: it
-// does when its client can, and is told so the same way.
-export function createMcpServer(store: Store, getActor: () => Actor, options: McpOptions, hangups?: Hangups, runsOn?: AgentRule, woken?: string, listenAt?: string): McpServer {
+// does when its client can, and is told so the same way. `role`: a
+// coordinator's or an orchestrator's (core/roles.ts), as its address says.
+export function createMcpServer(store: Store, getActor: () => Actor, given: McpOptions, hangups?: Hangups, runsOn?: AgentRule, woken?: string, listenAt?: string, role?: SessionRole): McpServer {
+  // A coordinator's or an orchestrator's session has its role's tools and line besides (mcp/tools/roles.ts).
+  const options = role ? { ...given, groups: (given.groups ?? new ToolGroups()).with(roleGroup(role)) } : given;
   const server = new McpServer(
     { name: 'tricot', version: options.version ?? '0.0.0' },
     { instructions: instructionsFor(options.groups, Boolean(woken)) },
@@ -101,7 +106,7 @@ export function createMcpServer(store: Store, getActor: () => Actor, options: Mc
     const name = getActor().name;
     options.presence?.connect(name);
     const tool = agentOfMcpClient(server.server.getClientVersion()?.name)?.id;
-    options.presence?.started(name, { ...(tool && { tool }), ...(runsOn && { runsOn }) });
+    options.presence?.started(name, { ...(tool && { tool }), ...(runsOn && { runsOn }), ...(role && { role }) });
   };
 
   // Which agent's client this is decides how long one wait may last (session.ts longestWait).

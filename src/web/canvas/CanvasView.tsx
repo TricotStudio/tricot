@@ -49,6 +49,7 @@ import type { AddContext } from './blocks/kind';
 import { webKindOf } from './blocks/registry';
 import { useBoxLeavesGroups } from './boxSelect';
 import { useCopyBlocks } from './copy';
+import { drawTools, useDrawing, useDrawKeys, useDrawTools } from './tools';
 import { useIntake } from './intake';
 import { PanHint } from './panHint';
 import { BlockNode, FrameNode, LinkEdge, type CanvasNode, type LinkEdgeType } from './nodes';
@@ -62,7 +63,7 @@ const proOptions = { hideAttribution: true }; // React Flow is credited in the R
 const HOLD_MS = 4000;
 
 type Point = { x: number; y: number };
-type NewBlockOptions = { at?: Point; size?: { w: number; h: number }; title?: string };
+type NewBlockOptions = { at?: Point; size?: { w: number; h: number }; title?: string; exact?: boolean }; // exact: where it was drawn, not nudged off what is there
 
 function buildNodes(canvas: Canvas): CanvasNode[] {
   const members = new Map<string, number>();
@@ -89,22 +90,28 @@ function buildNodes(canvas: Canvas): CanvasNode[] {
         width: block.w,
         height: block.h,
         parentId: block.groupId,
-        dragHandle: '.block-head',
+        dragHandle: webKindOf(block.type).bare ? undefined : '.block-head', // a drawn shape drags from anywhere on it
         data: { block },
       }),
     ),
   ];
 }
 
+// The arrowhead is sized in widths of its line, so a heavier line takes fewer, its head still a little larger.
+const HEAD = { thin: 16, medium: 11, thick: 8.5 } as const;
+
 function buildEdges(canvas: Canvas): LinkEdgeType[] {
-  return canvas.links.map((link) => ({
-    id: link.id,
-    source: link.from,
-    target: link.to,
-    type: 'link',
-    data: { link },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--muted)' },
-  }));
+  return canvas.links.map((link) => {
+    const head = HEAD[link.weight ?? 'thin'];
+    return {
+      id: link.id,
+      source: link.from,
+      target: link.to,
+      type: 'link',
+      data: { link },
+      markerEnd: { type: MarkerType.ArrowClosed, width: head, height: head, color: 'var(--muted)' },
+    };
+  });
 }
 
 interface Props {
@@ -130,6 +137,7 @@ interface Props {
   // What holds it opens a block's full view on it (the Files view): this
   // block's, as soon as it is drawn, and it is told when the person closes it.
   opens?: string;
+  paired?: boolean; // and opens it already paired (the Files view's Pair)
   onClosed?: () => void;
 }
 
@@ -216,7 +224,7 @@ export function CanvasView(props: Props) {
 }
 
 function CanvasSurface(props: Props) {
-  const { board, page, name, emptyNote, evidence = NO_EVIDENCE, highlightOption = null, newItems = NOTHING_NEW, onSeeItem = ignore, covered = false, lead, opens, onClosed } = props;
+  const { board, page, name, emptyNote, evidence = NO_EVIDENCE, highlightOption = null, newItems = NOTHING_NEW, onSeeItem = ignore, covered = false, lead, opens, paired, onClosed } = props;
   const ownerKind = props.owner?.kind;
   const ownerCard = props.owner?.card;
   const owner = useMemo(() => (ownerKind && ownerCard ? { kind: ownerKind, card: ownerCard } : undefined), [ownerKind, ownerCard]);
@@ -233,6 +241,8 @@ function CanvasSurface(props: Props) {
   const wrapper = useRef<HTMLDivElement>(null);
   const toggles = useRef(new Map<string, RefObject<HTMLButtonElement | null>>()); // the Add menu's item of each kind that opens a form
   const [nodes, setNodes] = useState<CanvasNode[]>(() => buildNodes(canvas));
+  // The view fits what the canvas holds as it opens; one that opens empty keeps its place, so the first thing drawn on it stays where it was drawn.
+  const [fitOnOpen] = useState(() => canvas.blocks.length + canvas.groups.length > 0);
   const [edges, setEdges] = useState<LinkEdgeType[]>(() => buildEdges(canvas));
   const [autoEditId, setAutoEditId] = useState<string | null>(null);
   const [form, setForm] = useState<AddForm | null>(null); // the Add form that is open, and what it opened with
@@ -455,10 +465,10 @@ function CanvasSurface(props: Props) {
   // A kind that has one opens it from its card (canvas.openOverlay), unless it
   // edits and the board is read-only. Closing one that asks puts focus back on the block.
   // Each ask to open it at a pin is counted, so asking for the same pin again opens it again.
-  const [overlay, setOverlay] = useState<{ blockId: string; version?: BlockVersion; pinId?: string; pinAsked?: number } | null>(null);
+  const [overlay, setOverlay] = useState<{ blockId: string; version?: BlockVersion; pinId?: string; pinAsked?: number; paired?: boolean } | null>(null);
   const pinAsks = useRef(0);
   const openOverlay = useCallback(
-    (blockId: string, options: { version?: BlockVersion; pinId?: string } = {}) => {
+    (blockId: string, options: { version?: BlockVersion; pinId?: string; paired?: boolean } = {}) => {
       const block = canvas.blocks.find((b) => b.id === blockId);
       const open = block && webKindOf(block.type).overlay;
       if (open && !(readOnly && open.changes)) setOverlay({ blockId, ...options, ...(options.pinId ? { pinAsked: ++pinAsks.current } : {}) });
@@ -479,8 +489,8 @@ function CanvasSurface(props: Props) {
   useEffect(() => {
     if (!opens || openedFor.current === opens || !canvas.blocks.some((b) => b.id === opens)) return;
     openedFor.current = opens;
-    if (!overlay) openOverlay(opens);
-  }, [opens, canvas, overlay, openOverlay]);
+    if (!overlay) openOverlay(opens, paired ? { paired } : undefined);
+  }, [opens, paired, canvas, overlay, openOverlay]);
   // A block that goes while its overlay is open closes it.
   useEffect(() => {
     if (overlay && !canvas.blocks.some((b) => b.id === overlay.blockId)) setOverlay(null);
@@ -539,7 +549,7 @@ function CanvasSurface(props: Props) {
 
   // Centres a new item on `point`, nudging it off any item already starting
   // there, and drops it into the group under the point if there is one.
-  const placeAt = (point: { x: number; y: number }, size: { w: number; h: number }) => {
+  const placeAt = (point: { x: number; y: number }, size: { w: number; h: number }, exact = false) => {
     let x = point.x - size.w / 2;
     let y = point.y - size.h / 2;
     const taken = (px: number, py: number) =>
@@ -547,7 +557,7 @@ function CanvasSurface(props: Props) {
         const r = absoluteRect(n.id);
         return r && Math.abs(r.x - px) < 24 && Math.abs(r.y - py) < 24;
       });
-    for (let i = 0; i < 20 && taken(x, y); i++) {
+    for (let i = 0; i < 20 && !exact && taken(x, y); i++) {
       x += 32;
       y += 32;
     }
@@ -557,19 +567,47 @@ function CanvasSurface(props: Props) {
       : { x: Math.round(x), y: Math.round(y) };
   };
 
-  const addBlock = async (content: BlockContent, options: NewBlockOptions = {}) => {
+  const addBlock = async (content: BlockContent, options: NewBlockOptions = {}): Promise<Block | undefined> => {
     const { at, title } = options;
     const kind = kindOf(content.type);
     const size = options.size ?? kind.sizeFor?.(content as never, {}) ?? kind.defaultSize;
     try {
-      const place = placeAt(at ?? viewportCentre(), size);
+      const place = placeAt(at ?? viewportCentre(), size, options.exact);
       const block = await api.addBlock(ref, name, { content, title, ...place, w: size.w, h: size.h });
       webKindOf(content.type).added?.(block, { edit: setAutoEditId });
+      return block;
     } catch (e) {
       report(e);
+      return undefined;
     }
   };
-  const addContext: AddContext = { add: addBlock, report };
+  const addContext: AddContext = {
+    add: async (content, options) => {
+      await addBlock(content, options);
+    },
+    report,
+  };
+
+  // The drawing tools (drawTools.ts, draw.tsx): offered while this canvas can
+  // be drawn on (editable, uncovered, no full view open), their keys with them.
+  const tools = useDrawTools();
+  const drawable = !readOnly && !covered && !overlay;
+  useEffect(() => (drawable ? drawTools.register() : undefined), [drawable]);
+  useDrawKeys(drawable);
+  const drawing = useDrawing(tools, drawable, {
+    wrapper,
+    flow,
+    canvas,
+    add: addBlock,
+    link: (from, to, weight) => void api.addLink(name, from, to, weight).catch(report),
+    change: (block, patch) => changeBlock(block, patch),
+    move: (moves) => {
+      hold(moves.map((m) => m.id));
+      api.moveItems(ref, name, moves).catch(report);
+    },
+    report,
+  });
+  const drawingNow = drawable && tools.tool !== 'select';
   const toggleOf = (type: string) => {
     let toggle = toggles.current.get(type);
     if (!toggle) toggles.current.set(type, (toggle = createRef<HTMLButtonElement>()));
@@ -869,12 +907,13 @@ function CanvasSurface(props: Props) {
     <CanvasContext.Provider value={context}>
       <div
         ref={wrapper}
-        className={readOnly ? 'canvas is-read-only' : 'canvas'}
+        className={readOnly ? 'canvas is-read-only' : drawingNow ? `canvas is-drawing draws-${tools.tool === 'shape' ? tools.shape : tools.tool}` : 'canvas'}
         {...dropProps}
         onKeyDown={onCanvasKeyDown}
         onKeyUp={onCanvasKeyUp}
         onPointerDownCapture={(event) => {
           spaceMoved();
+          if (!moving && drawing.press(event)) return;
           box.onPointerDownCapture(event);
         }}
         onPointerUpCapture={box.onPointerUpCapture}
@@ -893,18 +932,18 @@ function CanvasSurface(props: Props) {
           onConnect={onConnect}
           isValidConnection={(c) => c.source !== c.target}
           colorMode={theme.base}
-          fitView
+          fitView={fitOnOpen}
           fitViewOptions={underBar ? FIT_UNDER_BAR : FIT}
           minZoom={0.15}
           maxZoom={4}
           panOnScroll
           panOnDrag={PAN_BUTTONS}
           panActivationKeyCode={covered ? null : PAN_KEY}
-          selectionOnDrag
+          selectionOnDrag={!drawingNow}
           selectionMode={SelectionMode.Partial}
           zoomOnDoubleClick={false}
           multiSelectionKeyCode={MULTI_SELECT}
-          nodesDraggable={!readOnly && !moving}
+          nodesDraggable={!readOnly && !moving && !drawingNow}
           nodesConnectable={!readOnly}
           deleteKeyCode={readOnly || covered ? null : ['Backspace', 'Delete']}
           proOptions={proOptions}
@@ -932,6 +971,7 @@ function CanvasSurface(props: Props) {
             </Panel>
           )}
         </ReactFlow>
+        {drawing.preview}
         {pinDraft && promptAt && (
           <PinPrompt
             draft={pinDraft}
@@ -965,6 +1005,7 @@ function CanvasSurface(props: Props) {
             version={overlay.version}
             pinId={overlay.pinId}
             pinAsked={overlay.pinAsked}
+            paired={overlay.paired}
             onClose={closeOverlay}
           />
         )}

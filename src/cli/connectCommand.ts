@@ -6,6 +6,7 @@ import { agentUrl as namedUrl, mcpJsonEntry, shellNoun, TOKEN_ENV, tokenLineName
 import { listNames } from '../core/format';
 import { findRunning } from '../platform/lock';
 import { hooksEnv, publicHost, tokenFor, UNREAD_TOKEN, type Env } from './commandEnv';
+import { startableHere } from './agentsHere';
 import { connectAgent, isConnectable } from './connectAgent';
 import { connectAll } from './connectAll';
 import { connectFileAgent, isFileAgent } from './connectFile';
@@ -28,6 +29,19 @@ export function printHowToConnect(env: Env, mcpUrl: string): void {
   out('Other clients: tricot connect mcp-json');
   out(`To have Tricot connect every agent it finds on this computer, with its hook where it takes one and its Tricot skill where it has skills, after asking once: tricot connect (or one: tricot connect ${commands[0]?.id ?? agentKinds()[0].id}). Add --print to only see what it would do.`);
   if (env.token) out('From another device, use this computer\'s address in place of 127.0.0.1.');
+}
+
+// What `tricot` says under the board's address when it runs alone: how to
+// start an agent with it (the ones Tricot can start that are on this
+// computer: agentsHere.ts), and where to connect agents for good or any other
+// client. Every agent's command by hand is `tricot connect --print`'s.
+export function printNextSteps(env: Env): void {
+  const { out } = env.ctx;
+  const here = startableHere(env).map((kind) => kind.id);
+  if (here.length) out(`Start an agent with the board: ${here.map((id) => `tricot ${id}`).join(' · ')}${here.length > 1 ? ` (several at once: tricot ${here.slice(0, 2).join(' ')})` : ''}`);
+  out('Connect your agents for good, to use them on their own: tricot connect');
+  out('Every command by hand, and any other MCP client: tricot connect --print');
+  if (env.token) out("From another device, use this computer's address in place of 127.0.0.1.");
 }
 
 // An agent Tricot connects with a command of its own, as against an entry for a file.

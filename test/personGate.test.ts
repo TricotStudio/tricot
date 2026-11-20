@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
@@ -251,6 +251,52 @@ describe('The person gate, in two tiers', () => {
       assert.ok(Date.now() - began < 3000, 'and the server answers, rather than hanging');
       const refused = await fetch(`${base}/api/boards/${board.id}/files/search?q=`, { headers: page('GET') });
       assert.equal(refused.status, 400, 'nothing to search for');
+
+      // What changes in the folder, live, to a person alone: a file saved is
+      // told once it settles, by its path; one in node_modules or a hidden folder is not.
+      await tierA('GET', `/api/boards/${ids.boardId}/files/live`); // a board with no folder: past the gate, then told so
+      const live = new AbortController();
+      const lapse = setTimeout(() => live.abort(), 8000);
+      const stream = await fetch(`${base}/api/boards/${board.id}/files/live`, { headers: page('GET'), signal: live.signal });
+      assert.equal(stream.status, 200);
+      const frames = stream.body!.getReader();
+      const told = async (): Promise<{ paths: string[] }> => {
+        let text = '';
+        for (;;) {
+          const { value, done } = await frames.read();
+          if (done) throw new Error('the stream ended');
+          text += new TextDecoder().decode(value);
+          const frame = /event: change\ndata: (.*)\n/.exec(text);
+          if (frame) return JSON.parse(frame[1]) as { paths: string[] };
+        }
+      };
+      mkdirSync(path.join(project, 'node_modules'));
+      mkdirSync(path.join(project, '.cache'));
+      const saving = setInterval(() => {
+        write('node_modules/x.js', 'x');
+        write('.cache/y', 'y');
+        write('src/b.ts', `saved ${Date.now()}\n`);
+      }, 300); // until the watch has started
+      try {
+        const change = await told();
+        assert.ok(change.paths.includes('src/b.ts'), `told ${JSON.stringify(change)}`);
+        assert.ok(!change.paths.some((file) => /node_modules|\.cache/.test(file)), `told ${JSON.stringify(change)}`);
+      } finally {
+        clearInterval(saving);
+        clearTimeout(lapse);
+        live.abort();
+      }
+
+      // A person's edit, saved over the file from Files: only over the version
+      // it was typed on (the hash read with it); one typed on an older
+      // version is refused, and the file stays as it was.
+      const opened = (await (await fetch(`${base}/api/boards/${board.id}/files/read?path=src%2Fb.ts`, { headers: page('GET') })).json()) as { hash: string };
+      const saveRoute = `/api/boards/${board.id}/files/write`;
+      const onDisk = () => readFileSync(path.join(project, 'src', 'b.ts'), 'utf8');
+      assert.equal((await call('POST', saveRoute, 'seat', { actor: 'Sam', path: 'src/b.ts', text: 'saved by Sam\n', base: opened.hash })).status, 200);
+      assert.equal(onDisk(), 'saved by Sam\n');
+      assert.equal((await call('POST', saveRoute, 'seat', { actor: 'Sam', path: 'src/b.ts', text: 'over it\n', base: opened.hash })).status, 409, 'typed on the version before');
+      assert.equal(onDisk(), 'saved by Sam\n', 'and the file stays as it was');
     } finally {
       for (const [key, value] of Object.entries(was)) {
         if (value === undefined) delete process.env[key];

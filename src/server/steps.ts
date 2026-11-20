@@ -402,8 +402,10 @@ export class Steps {
   }
 
   // Where a step goes: the card or thread its own Tricot call names, else the
-  // one this session last called about, else the card its agent last read or
-  // changed over MCP; else the board its agent is on, with no card; else nowhere.
+  // one this session last called about, else the thread its agent owns as an
+  // orchestrator (core/roles.ts), its subagents' steps too, else the card its
+  // agent last read or changed over MCP; else the board its agent is on, with
+  // no card; else nowhere.
   private placeOf(key: string, agent: string, named: Place | undefined, now: number): Place | undefined {
     if (named) {
       this.bindings.delete(key);
@@ -416,10 +418,22 @@ export class Steps {
       bound.at = now;
       return { board: bound.board, ...(bound.card && { card: bound.card }), ...(bound.thread && { thread: bound.thread }) };
     }
+    const owned = this.ownedThread(agent);
+    if (owned) return owned;
     const last = this.presence?.lastFocus(agent);
     if (last) return last;
     const seen = this.presence?.agents().find((a) => a.name.toLowerCase() === agent.toLowerCase());
     return seen?.board ? { board: seen.board } : undefined; // only connected: no board to go on
+  }
+
+  // The thread an orchestrator owns, while the board has it.
+  private ownedThread(agent: string): Place | undefined {
+    const role = this.presence?.sessionOf(agent)?.role;
+    if (role?.kind !== 'orchestrator') return undefined;
+    return found((): Place => {
+      const { board, thread } = this.store.getThread(role.thread);
+      return { board: boardKey(board), thread: thread.id };
+    });
   }
 
   // The card and the thread a step's own Tricot call names, where the board has them.

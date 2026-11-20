@@ -15,8 +15,9 @@ import { agentOnFile, onFiles } from '../fileThread';
 import { requestCardsHeight, requestTitle } from '../requests';
 import { pageLens, pageName } from '../scratchPad';
 import { blocksWords, selectionBlocks, selectionGroup, selectionPage, threadCards } from '../threadSelection';
-import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT, lensName, presetLens, sameLens, showsWork, threadTitle, threadWork } from '../threads';
-import { type Actor, type Block, type Board, type Group, type MessageLens, type ScratchPage, type Thread, type ThreadDoor, type ThreadLens, type ThreadMessage, type ThreadRef, boardKey } from '../types';
+import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT, TITLE_LENGTH, lensName, presetLens, sameLens, showsWork, threadTitle, threadWork } from '../threads';
+import { STATUS_WORDS } from '../roles';
+import { type Actor, type Block, type Board, type Group, type MessageLens, type ScratchPage, type Thread, type ThreadDoor, type ThreadLens, type ThreadMessage, type ThreadRef, type ThreadStatus, boardKey } from '../types';
 
 // How a thread starts besides its message and lens: as the board's General
 // thread, or from a tab's chat bar (its door), over a Sketchbook page
@@ -32,7 +33,24 @@ export interface ThreadStart {
   blockIds?: string[];
   file?: { named: string; make: () => { page: ScratchPage; block: Block } };
   messageLens?: LensInput | null;
+  // One a coordinator sends work to (routeToThread): its title, and the agent
+  // that owns it, where its work stands and which agent Tricot starts as it.
+  title?: string;
+  owner?: { name: string; status?: ThreadStatus; launch?: string };
 }
+
+// Where a coordinator sends a person's message on to (core/roles.ts): a thread
+// of the board, or a new one, titled, that an orchestrator owns.
+export type RouteTarget = { threadId: string } | { title: string; brief?: string; owner: string; launch: string };
+
+export interface Routed {
+  from: Thread; // where it was asked
+  to: Thread;
+  started: boolean; // `to` is new
+}
+
+// How long a quote of the message sent on may be, in the thread it goes to.
+const QUOTED = 4000;
 
 // Threads: conversations through which people work on the project with agents. A person (or an agent)
 // starts one with a message, and agents answer in it, through its lens. A message's @-mentions say which
@@ -53,7 +71,11 @@ export class Threads {
   // `file`, in Files, about the file open there: its block on the Files canvas,
   // which the thread is started on (core/fileThread.ts), routed to the agent
   // last asked about the file.
-  startThread(boardId: string, body: string, actor: Actor, lens?: LensInput | null, { general = false, door, pageId, blockIds, file, messageLens }: ThreadStart = {}): Thread {
+  //
+  // While a coordinator is on the board (core/roles.ts), one a person starts
+  // from a chat bar is its, unless it @-mentions an agent, or goes to the
+  // agent of its page or file, or its lens to one.
+  startThread(boardId: string, body: string, actor: Actor, lens?: LensInput | null, { general = false, door, pageId, blockIds, file, messageLens, title, owner: given }: ThreadStart = {}): Thread {
     const board = this.repo.getBoard(boardId);
     guardArchived(board);
     const text = limited(required(body, 'A message'), THREAD_TEXT_LIMIT, 'A message');
@@ -69,18 +91,25 @@ export class Threads {
     const id = this.repo.newThreadId();
     const now = new Date().toISOString();
     const { mentions, skill } = this.people.requestIn(board, text, actor);
+    const fromBar = actor.kind === 'human' && !general && (door !== undefined || pageId !== undefined || file !== undefined);
+    const coordinator = fromBar && !chosen?.agent && agentsIn(board, mentions).length === 0 ? this.repo.coordinatorOf(boardKey(board)) : undefined;
+    const owner = given ?? (coordinator ? { name: coordinator } : undefined);
+    const titled = title === undefined ? undefined : threadTitle(limited(required(title, 'A title'), TITLE_LENGTH * 3, 'A title'));
     // Nothing above is left to refuse it, so a file's block is made only for a thread that starts.
     const onFile = file?.make();
     const page = onFile?.page ?? over;
     const selected = onFile ? [onFile.block] : picked;
     const thread: Thread = {
       id,
-      title: general ? 'General' : threadTitle(text, mentions, agentsIn(board, mentions)),
+      title: general ? 'General' : (titled ?? threadTitle(text, mentions, agentsIn(board, mentions))),
       ...(general && { general: true as const }),
       ...(chosen && { lens: chosen }),
       ...(door && { door }),
       ...(page && { pageId: page.id }),
       ...(selected.length && { blockIds: selected.map((b) => b.id) }),
+      ...(owner && { owner: owner.name }),
+      ...(owner?.status && { status: owner.status }),
+      ...(owner?.launch && { launch: owner.launch }),
       startedBy: actor,
       startedAt: now,
       updatedAt: now,
@@ -175,7 +204,10 @@ export class Threads {
   // A message in a thread. One from whoever made work answering it (thread_id)
   // ahead of it shows that work under it, and the cards it names (refs: ids,
   // #N or TN) too. A person's may ask for a lens (^Name) on this message alone.
-  postToThread(threadId: string, body: string, actor: Actor, refs: string[] = [], messageLens?: LensInput | null): Thread {
+  // A person's message in a thread whose work waits on people or is done sets
+  // it back to work, and Tricot starts its owner again if it is gone
+  // (core/roles.ts). `routed`: a coordinator's word that it sent a message on.
+  postToThread(threadId: string, body: string, actor: Actor, refs: string[] = [], messageLens?: LensInput | null, routed?: { sent: NonNullable<ThreadMessage['sent']>; summary: string }): Thread {
     const { board, thread } = this.repo.getThread(threadId);
     guardArchived(board);
     const text = limited(required(body, 'A message'), THREAD_TEXT_LIMIT, 'A message');
@@ -220,11 +252,61 @@ export class Threads {
       ...(via ? { via } : {}),
       ...(shown.length ? { refs: shown } : {}),
       ...(held ? { held } : {}),
+      ...(routed && { sent: routed.sent }),
     };
     thread.messages.push(message);
     thread.updatedAt = now;
-    const summary = `replied in thread "${clip(thread.title, 60)}"${own ? `, through the ${own.name} lens` : ''}: "${clip(text, 200)}"`;
-    this.repo.record(board, actor, 'thread_replied', summary, { item: thread.id }, { at: now, mentions, commentId: message.id, held: Boolean(held) });
+    if (actor.kind === 'human' && (thread.status === 'needs-you' || thread.status === 'done')) thread.status = 'working';
+    const summary = routed?.summary ?? `replied in thread "${clip(thread.title, 60)}"${own ? `, through the ${own.name} lens` : ''}: "${clip(text, 200)}"`;
+    this.repo.record(board, actor, routed ? 'thread_routed' : 'thread_replied', summary, { item: thread.id }, { at: now, mentions, commentId: message.id, held: Boolean(held) });
+    return thread;
+  }
+
+  // A coordinator sends a person's message on (core/roles.ts): to a thread of
+  // the board, as its message quoting the person's, or to a new one that an
+  // orchestrator owns, which it starts with that quote and the coordinator's
+  // brief. Where it was asked, the coordinator says where it went, which
+  // answers it there, and which the page follows (Thread.messages' `sent`).
+  routeToThread(fromThreadId: string, messageId: string, actor: Actor, target: RouteTarget): Routed {
+    if (actor.kind !== 'agent') throw new BoardError("Only an agent sends a message on to a thread: a person moves to the thread and says it there.");
+    const { board, thread: from } = this.repo.getThread(fromThreadId);
+    guardArchived(board);
+    const message = from.messages.find((m) => m.id === messageId);
+    if (!message) throw new BoardError(`No message "${clip(messageId, 40)}" in thread "${clip(from.title, 60)}": pass a message id as get_thread lists it.`, 'not_found');
+    if (message.author.kind !== 'human') throw new BoardError(`That message is ${message.author.name}'s: send on what a person asked.`);
+    const before = from.messages.find((m) => m.sent?.messageId === messageId);
+    const went = before && board.threads?.find((t) => t.id === before.sent!.threadId);
+    if (went) throw new BoardError(`That message was sent on already, to thread "${clip(went.title, 60)}" [thread id: ${went.id}].`);
+    const quoted = clip(message.body, QUOTED).split('\n').map((line) => `> ${line}`).join('\n');
+    const asked = `${message.author.name} asked in "${clip(from.title, 60)}":\n\n${quoted}`;
+    let to: Thread;
+    let started = false;
+    if ('threadId' in target) {
+      to = this.threadOn(target.threadId, board);
+      if (to.id === from.id) throw new BoardError("That's the thread it was asked in: send it to another, or answer it here with reply_in_thread.");
+      if (to.status && to.status !== 'working') to.status = 'working';
+      this.postToThread(to.id, asked, actor);
+    } else {
+      const brief = optional(target.brief);
+      to = this.startThread(board.id, brief ? `${asked}\n\n${brief}` : asked, actor, undefined, { title: target.title, owner: { name: target.owner, status: 'working', launch: target.launch } });
+      started = true;
+    }
+    const summary = `sent ${message.author.name}'s message in thread "${clip(from.title, 60)}" on to thread "${clip(to.title, 60)}"`;
+    this.postToThread(from.id, `Sent to "${to.title}".`, actor, [], undefined, { sent: { threadId: to.id, messageId }, summary });
+    return { from, to, started };
+  }
+
+  // Where the work of a thread an agent owns stands (core/roles.ts): said by
+  // its owner, or a person. A summary goes in the thread first.
+  setThreadStatus(threadId: string, status: ThreadStatus, actor: Actor, summary?: string): Thread {
+    const { board, thread } = this.repo.getThread(threadId);
+    guardArchived(board);
+    if (!thread.owner) throw new BoardError(`Thread "${clip(thread.title, 60)}" has no owner, so its work has no status to set.`);
+    if (actor.kind === 'agent' && !samePerson(actor.name, thread.owner)) throw new BoardError(`Thread "${clip(thread.title, 60)}" is ${thread.owner}'s: only its owner says where its work stands.`);
+    if (optional(summary)) this.postToThread(thread.id, summary!, actor);
+    if (thread.status === status) return thread;
+    thread.status = status;
+    this.repo.record(board, actor, 'thread_status_changed', `marked the work of thread "${clip(thread.title, 60)}" ${STATUS_WORDS[status]}`, { item: thread.id });
     return thread;
   }
 

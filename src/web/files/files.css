@@ -60,6 +60,54 @@
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+/* The folder, after the title: a quiet button naming it, cut short past the
+   room the line leaves, whose menu (Change folder…, Read the folder again)
+   drops from its left. Then what git says of it and how many files, faint. */
+.files-folder {
+  position: relative;
+  min-width: 0;
+  margin-left: -4px;
+}
+.files-folder-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font: 12.5px var(--mono);
+  cursor: pointer;
+}
+.files-folder-button:hover,
+.files-folder-button[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.files-folder-button .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.files-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files-folder-chevron {
+  color: var(--faint);
+}
+.files-folder-button[aria-expanded='true'] .files-folder-chevron {
+  transform: rotate(180deg);
+}
+.menu-panel.files-folder-menu {
+  right: auto;
+  left: 0;
+  width: 220px;
+}
 .files-where {
   min-width: 0;
   overflow: hidden;
@@ -67,9 +115,6 @@
   white-space: nowrap;
   font: 12.5px var(--mono);
   color: var(--faint);
-}
-.files-reload {
-  margin-left: auto;
 }
 .files-body {
   flex: 1;
@@ -100,6 +145,7 @@
 .files-panels {
   display: flex;
   gap: 2px;
+  margin-left: auto;
   padding-left: 10px;
   border-left: 1px solid var(--border);
 }
@@ -146,20 +192,40 @@
   background: var(--bg);
   color: var(--faint);
 }
+/* The box is the field: focused, it takes the ring every focused field has
+   (base.css), and the input in it draws no box or ring of its own, whichever
+   sheet comes first. Its clear button is the page's own ×, in the theme's
+   colours, not the system's. */
 .files-find:focus-within {
-  border-color: var(--exploring);
-  box-shadow: 0 0 0 3px var(--exploring-bg);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
-.files-find input {
+.files-find input,
+.files-find input:focus {
   flex: 1;
   min-width: 0;
   height: 32px;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: none;
   color: var(--text);
   font: inherit;
   font-size: 13.5px;
   outline: none;
+}
+.files-find input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  background: var(--faint);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 7 7m0-7-7 7'/%3E%3C/svg%3E") center / contain no-repeat;
+  cursor: pointer;
+}
+.files-find input::-webkit-search-cancel-button:hover {
+  background: var(--text);
 }
 .files-filters {
   flex: none;
@@ -303,6 +369,7 @@
 }
 .files-crumbs {
   min-width: 0;
+  margin-right: auto; /* what follows sits at the right */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -314,8 +381,8 @@
   font-weight: 600;
 }
 .files-actions {
-  margin-left: auto;
   display: inline-flex;
+  align-items: center;
   gap: 8px;
   flex: none;
 }
@@ -354,23 +421,7 @@
 }
 .files-line {
   display: block;
-  padding: 0 20px 0 0;
   white-space: pre;
-}
-.files-line i {
-  display: inline-block;
-  width: 52px;
-  margin-right: 14px;
-  padding-right: 4px;
-  text-align: right;
-  font-style: normal;
-  color: var(--faint);
-  user-select: none;
-}
-.files-line.is-more {
-  padding-left: 70px;
-  color: var(--muted);
-  font-family: var(--font);
 }
 .files-code .tok-kw {
   color: var(--provisional-ink);
@@ -506,10 +557,12 @@
 }
 
 /* a board with no folder yet */
+/* In the middle of the view, both ways, the chat bar floating at its foot
+   counted out of the room below it. */
 .files-empty {
   max-width: 460px;
-  margin: 80px auto;
-  padding: 0 24px;
+  margin: auto;
+  padding: 24px 24px 120px;
   text-align: center;
   color: var(--muted);
 }
@@ -519,15 +572,44 @@
   color: var(--faint);
 }
 .files-empty h2 {
-  margin: 10px 0 6px;
+  margin: 14px 0 8px;
   font-size: 17px;
   color: var(--text);
+}
+/* A board with no folder: a line on what its Files are for, the button
+   that chooses one, why one couldn't be set, and, apart under a hairline,
+   the other way a board gets its folder. */
+.files-empty p {
+  margin: 0;
+  line-height: 1.55;
+}
+.files-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+}
+.files-empty .files-empty-error {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--danger);
+}
+.files-empty .files-empty-tip {
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--faint);
 }
 
 /* narrower: the list over the file, and the side under it */
 @media (max-width: 900px) {
   .files {
     height: auto;
+  }
+  .files-empty {
+    margin: 56px auto 0;
   }
   .files-body,
   .files-body.has-file,
@@ -562,26 +644,35 @@
 }
 
 /* ---- reading or editing the file ---- */
-.files-modes {
+/* The head: the path, then, at the right, what isn't saved yet (Edited,
+   Discard, Save) or Saved a moment, Preview or Source for a file the board
+   can draw, and Pair. */
+.files-modes,
+.files-pair-button {
   flex: none;
 }
-.files-head .files-actions {
-  margin-left: auto;
-}
-.files-head .files-actions + .files-modes {
-  margin-left: 4px;
-}
-.files-head .files-crumbs + .files-modes,
-.files-head .files-saved + .files-modes {
-  margin-left: auto;
-}
 .files-saved {
-  margin-left: auto;
   font-size: 12.5px;
   color: var(--decided-ink);
 }
-.files-saved + .files-actions {
-  margin-left: 10px;
+.files-unsaved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.files-unsaved::before,
+.files-unsaved-dot {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--open);
+}
+.files-unsaved-dot {
+  display: inline-block;
+  flex: none;
 }
 /* an edit refused, the file having changed since it was opened */
 .files-band {
@@ -601,42 +692,98 @@
   background: var(--open-bg);
   color: var(--text);
 }
-/* the editor: the file's text in a plain field, its lines numbered beside it */
-.files-editor {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  background: var(--surface);
+/* The file's text, read and edited in place (sourceEditor.tsx): its line
+   numbers in a gutter that stays put as the text scrolls sideways, and the
+   coloured lines with a field over them in the same place, the field's own
+   text clear, so what shows is the colours and what is typed the field's
+   caret and selection. Both are one size, one line height, one padding,
+   and keep their lines unwrapped, or the caret drifts from the text.
+   Past the lines it colours, a plain field, its text shown. */
+.files-code.is-source {
+  background: var(--bg);
 }
-.files-gutter,
-.files-editor textarea {
+.files-source {
+  display: grid;
+  grid-template-columns: auto minmax(max-content, 1fr);
+  min-height: 100%;
+}
+.files-source .files-source-gutter,
+.files-source .files-source-shown,
+.files-source .files-source-input {
   margin: 0;
-  padding: 12px 0 96px;
+  padding-top: 12px;
+  padding-bottom: 96px;
   font: 12.5px/1.7 var(--mono);
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre;
 }
-.files-gutter {
-  flex: none;
-  width: 66px;
+.files-source .files-source-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  min-width: 66px;
+  padding-left: 12px;
   padding-right: 14px;
-  overflow: hidden;
   text-align: right;
   color: var(--faint);
   background: var(--bg);
   user-select: none;
 }
-.files-editor textarea {
-  flex: 1;
-  min-width: 0;
-  padding-left: 14px;
+.files-source-cell {
+  display: grid;
+}
+.files-source-cell > * {
+  grid-area: 1 / 1;
+}
+.files-source .files-source-shown,
+.files-source .files-source-input {
+  padding-left: 4px;
   padding-right: 20px;
+}
+.files-source .files-source-shown {
+  color: var(--text);
+  pointer-events: none;
+}
+.files-source .files-source-input,
+.files-source .files-source-input:focus {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
   border: 0;
+  border-radius: 0;
   outline: none;
   resize: none;
-  white-space: pre;
+  overflow: hidden;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text);
+}
+.files-source .files-source-input::selection {
+  background: color-mix(in srgb, var(--focus) 30%, transparent);
+}
+.files-source .files-source-input:read-only {
+  caret-color: transparent;
+}
+/* past the lines it colours: the field scrolls itself, the gutter with it */
+.files-source.is-plain {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.files-source.is-plain .files-source-gutter {
+  position: static;
+  overflow: hidden;
+}
+.files-source.is-plain .files-source-input,
+.files-source.is-plain .files-source-input:focus {
+  flex: 1;
+  height: auto;
   overflow: auto;
-  tab-size: 2;
-  background: none;
   color: var(--text);
+  -webkit-text-fill-color: currentColor;
 }
 
 /* ---- pairing on the file: the Files canvas, under the file's full view ---- */
@@ -653,8 +800,7 @@
   background: var(--surface);
 }
 .files-doc {
-  max-width: 820px;
-  padding: 28px 40px 96px;
+  padding: 28px 40px 96px; /* as wide as the pane: its prose stops where Markdown's does (markdown.css) */
   font-size: 14px;
 }
 .files-doc > .md {

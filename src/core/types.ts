@@ -177,6 +177,7 @@ export interface Link {
   from: string; // block id
   to: string; // block id
   label?: string;
+  weight?: 'medium' | 'thick'; // its line's, as drawn with the arrow tool; thin when none
   author: Actor;
   createdAt: string;
 }
@@ -290,6 +291,8 @@ export interface EventTypeNames {
   thread_lens_changed: true;
   thread_deleted: true;
   thread_restored: true;
+  thread_routed: true;
+  thread_status_changed: true;
   pairing_started: true;
   pairing_ended: true;
   seats_changed: true;
@@ -375,6 +378,14 @@ export interface Thread {
   blockIds?: string[];
   groupId?: string; // that group, made beside the blocks when the first thing was made
 
+  // The agent that owns it (core/roles.ts): the board's coordinator on one a
+  // person started from a chat bar while a coordinator was on the board, an
+  // orchestrator on one a coordinator sent work to. A person's message there
+  // that @-mentions nobody is for it, and so is another agent's.
+  owner?: string;
+  status?: ThreadStatus; // where its owner's work stands: only on one a coordinator sent work to
+  launch?: string; // the agent Tricot's terminal starts as its owner while none of that name is on the board, by its id ("claude")
+
   startedBy: Actor;
   startedAt: string;
   updatedAt: string; // its latest message
@@ -391,6 +402,11 @@ export interface ThreadDoors {
   threads: true;
 }
 export type ThreadDoor = keyof ThreadDoors;
+
+// Where the work of a thread a coordinator sent work to stands (core/roles.ts):
+// its owner at work, waiting on a person, or done. A person's message in one
+// that waits or is done sets it back to work.
+export type ThreadStatus = 'working' | 'needs-you' | 'done';
 
 // What a thread looks at the project through, e.g. Legal or Design: agents
 // answer in it as its brief says (core/threads.ts).
@@ -419,6 +435,7 @@ export interface ThreadMessage {
   refs?: ThreadRef[]; // what it led to, shown under it as it is now
   reactions?: Reaction[]; // 👍, 👎 or 👀 from others, oldest first (core/reactions.ts)
   held?: number; // an agent's mention of another agent that the loop guard holds (Comment.held)
+  sent?: { threadId: string; messageId: string }; // a coordinator's word that it sent this thread's message (messageId) on to another thread
 }
 
 // A card a thread's message led to: a card of a registered kind (a decision, a task: a part adds them), a

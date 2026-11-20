@@ -38,6 +38,7 @@ export type LinkEdgeType = Edge<{ link: Link }, 'link'>;
 // ---- blocks -----------------------------------------------------------------
 
 const NO_PINS: Pin[] = [];
+const MIN_SIZE = { w: 160, h: 90 }; // a block of content's smallest, when its kind says none
 
 export function BlockNode({ id, data, selected }: NodeProps<BlockNodeType>) {
   const { block } = data;
@@ -74,9 +75,11 @@ export function BlockNode({ id, data, selected }: NodeProps<BlockNodeType>) {
   // A block's body scrolls its own content under the wheel; a picture, which
   // fits its block, lets the wheel and a pinch pan and zoom the canvas.
   const wheel = kind.still ? '' : ' nowheel';
+  const min = kindOf(block.type).minSize ?? MIN_SIZE;
   const classes = [
     'block',
     `block-type-${block.type}`,
+    kind.bare && 'is-bare',
     selected && 'is-selected',
     highlighted && 'is-highlighted',
     option && 'is-pinned',
@@ -115,8 +118,8 @@ export function BlockNode({ id, data, selected }: NodeProps<BlockNodeType>) {
     <div className={classes.filter(Boolean).join(' ')} data-pin-draft={pinningWhole ? '' : undefined}>
       <NodeResizer
         isVisible={selected && !canvas.readOnly}
-        minWidth={160}
-        minHeight={90}
+        minWidth={min.w}
+        minHeight={min.h}
         lineClassName="resize-line"
         handleClassName="resize-handle"
         onResizeStart={() => setResizing(true)}
@@ -151,7 +154,15 @@ export function BlockNode({ id, data, selected }: NodeProps<BlockNodeType>) {
         <button onClick={() => canvas.removeItem(id)}>Delete</button>
       </NodeToolbar>
 
-      {kind.Card ? (
+      {kind.bare ? (
+        // Drawn whole (a shape, a pen's strokes): its body alone, an earlier version shown in its place.
+        <CanvasContext.Provider value={viewing ? frozen : canvas}>
+          <div className="block-bare">
+            <kind.Body block={shown} selected={selected && !viewing} placed={viewing ? [] : placed} />
+          </div>
+          {viewing && <VersionBand block={block} version={viewing} onDone={() => setViewing(null)} />}
+        </CanvasContext.Provider>
+      ) : kind.Card ? (
         <>
           <CanvasContext.Provider value={viewing ? frozen : canvas}>
             <kind.Card
@@ -296,7 +307,10 @@ function borderPoint(node: InternalNode, point: { x: number; y: number }) {
   const dx = point.x - cx;
   const dy = point.y - cy;
   if (dx === 0 && dy === 0) return { x: cx, y: cy };
-  const scale = 1 / Math.max(Math.abs(dx) / (w / 2), Math.abs(dy) / (h / 2));
+  // A kind that isn't a box (an ellipse, a diamond) says where its outline is.
+  const block = node.type === 'block' ? (node.data as { block?: Block }).block : undefined;
+  const outline = block && webKindOf(block.type).edgeScale;
+  const scale = outline ? outline(block, w, h, dx, dy) : 1 / Math.max(Math.abs(dx) / (w / 2), Math.abs(dy) / (h / 2));
   return { x: cx + dx * scale, y: cy + dy * scale };
 }
 
@@ -322,7 +336,7 @@ export function LinkEdge({ id, source, target, markerEnd, data, selected }: Edge
 
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} className={selected ? 'link-path is-selected' : 'link-path'} />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} className={`link-path${selected ? ' is-selected' : ''}${data?.link.weight ? ` is-${data.link.weight}` : ''}`} />
       {(label || (selected && !canvas.readOnly) || editing) && (
         <EdgeLabelRenderer>
           <div

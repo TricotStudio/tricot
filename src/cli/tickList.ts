@@ -35,11 +35,14 @@ export interface TickOptions {
   rows: TickRow[];
   footer?: string; // a sentence under the rows, while the list is up
   details?: string[]; // what `?` shows; without it, there is no `?`
+  // What Enter does in the hint ("connect"), and what the answer says once given: the ticked ones, none, or cancelled.
+  words?: { enter?: string; chose?: (names: string) => string; none?: string; cancelled?: string };
+  all?: false; // no "All agents" row, where ticking every one isn't a choice people make (which agents to start)
 }
 
 const MASTER = 'All agents';
 const MASTER_AT = -1; // the cursor's place on it, in `stops`
-const hintOf = (options: TickOptions) => `↑↓ move · space tick · enter connect${options.details ? ' · ? details' : ''}`;
+const hintOf = (options: TickOptions) => `↑↓ move · space tick · enter ${options.words?.enter ?? 'connect'}${options.details ? ' · ? details' : ''}`;
 
 // The rows ticked when Enter was pressed, by their place in the list; none: cancelled.
 export async function pickTicked(term: TerminalKeys, options: TickOptions): Promise<number[] | undefined> {
@@ -49,7 +52,7 @@ export async function pickTicked(term: TerminalKeys, options: TickOptions): Prom
   const width = lineWidth(term);
   const ticked = options.rows.map((row) => row.kind === 'tick' && Boolean(row.ticked));
   const movable = options.rows.flatMap((row, i) => (row.kind === 'tick' ? [i] : []));
-  const master = movable.length > 1;
+  const master = movable.length > 1 && options.all !== false;
   const stops = master ? [MASTER_AT, ...movable] : movable; // where the cursor can be: a row's place, or the master row
   let at = master ? 1 : 0; // a place in `stops`
   const toggleAll = () => {
@@ -65,7 +68,7 @@ export async function pickTicked(term: TerminalKeys, options: TickOptions): Prom
       draw(listLines(options, ticked, master, stops[at], width, look));
       const key = await keys.next();
       if (cancels(key)) {
-        draw([answered('cancelled', look.dim)]);
+        draw([answered(options.words?.cancelled ?? 'cancelled', look.dim)]);
         return undefined;
       }
       if (key.name === 'up' || key.name === 'k') at = (at - 1 + stops.length) % stops.length;
@@ -83,7 +86,8 @@ export async function pickTicked(term: TerminalKeys, options: TickOptions): Prom
       } else if (key.name === 'return' || key.name === 'enter') {
         const chosen = ticked.flatMap((on, i) => (on ? [i] : []));
         const names = master && movable.every((i) => ticked[i]) ? 'all agents' : chosen.map((i) => options.rows[i].label).join(', ');
-        draw([answered(names ? `Ticked: ${names}` : 'None ticked', look.accent)]);
+        const said = options.words;
+        draw([answered(names ? (said?.chose ?? ((ticked) => `Ticked: ${ticked}`))(names) : (said?.none ?? 'None ticked'), look.accent)]);
         return chosen;
       }
     }

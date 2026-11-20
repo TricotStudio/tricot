@@ -1,0 +1,256 @@
+/* ---- the canvas's drawing tools (canvas/tools) -----------------------------
+   A row of round buttons, muted, in ink when pointed at or picked, in a
+   capsule of their own on the floating chat bar's left (chatBar.css). The
+   Shape button marks in its corner that it holds more; its menu is the
+   canvas's (canvas.css), opening upward from the button's left, so it stays
+   over the capsule and the bar. While a tool is picked the canvas takes a
+   crosshair, and what is drawn shows dashed in the canvas's own accent until
+   it is let go. */
+.draw-tools {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.draw-rule {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.draw-shapes {
+  position: relative;
+  display: inline-flex;
+}
+.draw-tool {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.draw-tool:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.draw-tool.is-on {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
+}
+.draw-tool .icon {
+  width: 16px;
+  height: 16px;
+}
+.draw-more {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 5px;
+  height: 5px;
+  fill: currentColor;
+}
+.draw-tools .menu-panel.draw-menu {
+  top: auto;
+  bottom: calc(100% + 18px); /* clear of the capsule's top edge, the button being centred in it */
+  left: -10px;
+  right: auto;
+  width: 196px;
+  transform-origin: bottom left;
+}
+.draw-menu .add-menu-row {
+  width: 100%;
+}
+.draw-menu-name {
+  flex: 1;
+}
+.draw-menu kbd {
+  font: 11.5px var(--mono);
+  color: var(--faint);
+}
+.draw-menu [aria-current='true'] {
+  background: var(--surface-2);
+}
+
+/* Drawing on the canvas. */
+.canvas.is-drawing .react-flow__pane,
+.canvas.is-drawing .react-flow__node {
+  cursor: crosshair;
+}
+.canvas.is-drawing.draws-text .react-flow__pane {
+  cursor: text;
+}
+.canvas.is-drawing.draws-arrow .react-flow__pane {
+  cursor: default;
+}
+.draw-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.draw-shape {
+  fill: color-mix(in srgb, var(--exploring) 8%, transparent);
+  stroke: var(--exploring);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.draw-line {
+  stroke: var(--exploring);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.draw-head {
+  fill: var(--exploring);
+}
+/* A stroke being drawn: in the pen's colour and at its width, as it is kept. */
+.draw-stroke {
+  fill: none;
+  stroke: var(--shape-ink, var(--text));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.draw-stroke.shape-gray {
+  stroke: var(--text);
+}
+
+/* ---- the options of the tool that is on (DrawOptions.tsx) -------------------
+   A tray of the capsule's sheet, a little lower, over it (chatBar.css places
+   it): the palette's colours as dots, ringed in ink when picked, then the
+   tool's own options as round buttons in the tools' manner, filled when
+   picked. It rises in as a tool with options comes on and sinks away as it
+   goes; another tool's row comes up in its place. */
+.draw-options {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  transform-origin: bottom left;
+}
+.draw-options:not(.is-shown) {
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  pointer-events: none;
+}
+.draw-options-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.draw-options .draw-rule {
+  margin: 0 6px;
+}
+.draw-swatches {
+  display: inline-flex;
+  align-items: center;
+}
+.draw-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.draw-swatch::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--shape-fill);
+  box-shadow: inset 0 0 0 1.5px var(--shape-ink);
+}
+.draw-swatch:hover {
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+.draw-swatch.is-on {
+  box-shadow: 0 0 0 1.5px var(--text);
+}
+.draw-option {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.draw-option:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.draw-option.is-on {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
+}
+.draw-option.is-bold {
+  font-weight: 700;
+}
+.draw-option svg {
+  width: 18px;
+  height: 18px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .draw-options {
+    transition:
+      opacity 180ms ease-out,
+      transform 240ms var(--ease-out);
+  }
+  .draw-options:not(.is-shown) {
+    transition-duration: 120ms;
+    transition-timing-function: var(--ease-exit);
+  }
+  .draw-options-row {
+    animation: draw-options-swap 200ms var(--ease-out) both;
+  }
+}
+@keyframes draw-options-swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+/* A phone's width: the tray's dots and buttons a little closer, so a label's
+   fits beside the canvas's zoom controls. */
+@media (max-width: 600px) {
+  .draw-options {
+    padding: 0 6px;
+  }
+  .draw-swatch {
+    width: 21px;
+    height: 21px;
+  }
+  .draw-swatch::before {
+    width: 14px;
+    height: 14px;
+  }
+  .draw-option {
+    min-width: 28px;
+    padding: 0 4px;
+  }
+  .draw-options .draw-rule {
+    margin: 0 4px;
+  }
+}

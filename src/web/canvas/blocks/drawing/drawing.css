@@ -1,0 +1,19 @@
+/* ---- a drawing on a canvas (blocks/drawing) --------------------------------
+   Its strokes fill its block and keep their width however the block is
+   stretched; their colour is the content palette's (palette.css), gray as ink. */
+.drawing {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.drawing-stroke {
+  fill: none;
+  stroke: var(--shape-ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.drawing-stroke.shape-gray {
+  stroke: var(--text);
+}

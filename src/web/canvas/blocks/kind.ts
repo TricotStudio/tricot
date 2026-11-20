@@ -111,6 +111,7 @@ export interface OverlayProps<B extends Block = Block> {
   version?: BlockVersion; // an earlier version, when one is being looked at
   pinId?: string; // the pin whose thread to open at
   pinAsked?: number; // counts the asks to open at pinId: asked again for the same pin, it opens it again
+  paired?: boolean; // it opens already paired (the Files view's Pair): a view that pairs takes it
   onClose(): void;
 }
 
@@ -129,6 +130,11 @@ export interface WebBlockKind<B extends Block = any> {
   readonly Tools?: ComponentType<ToolsProps<B>>; // in the block's toolbar when it is selected
   readonly ownPins?: true; // its body draws its own pins, so the strip under it isn't added
   readonly still?: true; // its body doesn't scroll, so the wheel and a pinch pan and zoom the canvas
+  // It draws itself whole, with no sheet, header or shadow (a drawn shape, a pen's strokes), and drags from anywhere on it.
+  readonly bare?: true;
+  // Where an arrow meets it, for a kind that isn't a box (an ellipse, a diamond): how far along the line from its
+  // centre (dx, dy, in a box w × h) its outline is, as the scale that takes (dx, dy) to it. A box's when none.
+  edgeScale?(block: B, w: number, h: number, dx: number, dy: number): number;
   // The words of a block that go on the clipboard with it, for pasting in another app; none when it has no words.
   copyText?(block: B): string | undefined;
   readonly menu?: AddEntry;

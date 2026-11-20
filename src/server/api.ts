@@ -22,7 +22,8 @@ import type { Steps } from './steps';
 import { boardKey, type Actor, type Block, type Board } from '../core/types';
 import { serveListener } from './listeners';
 import type { ProjectFileText } from '../core/projectFiles';
-import { listProjectFiles, projectImage, readProjectFile, writeProjectFile } from './projectFiles';
+import { listProjectFiles, projectFolder, projectImage, readProjectFile, writeProjectFile } from './projectFiles';
+import { ProjectWatches } from './projectWatch';
 import { searchProjectFiles } from './projectSearch';
 import { heldBy } from './wakes';
 import { OLDEST_COMMAND, PROTOCOL } from '../core/protocol';
@@ -80,6 +81,7 @@ export function createApiRouter(
   connectors?: Pick<Connectors, 'get'>, // the app's connectors, which a part's route may act through (apiParts.ts)
 ): Router {
   const api = Router();
+  const watches = new ProjectWatches(); // the project folders a Files view is open on (projectWatch.ts)
   const on = routesOn(api, '/api');
 
   // A step from an agent's harness while it works: one line of what it is
@@ -259,6 +261,20 @@ export function createApiRouter(
   on(routes.projectFiles, personOnly(person), async (req, res) => {
     const board = store.getBoard(param(req, 'boardId'));
     res.json(await listProjectFiles(projectFolderOf(board)));
+  });
+  // What changes in it, while a Files view is open on it, as server-sent
+  // events (projectWatch.ts): `change`, with the paths that changed, once
+  // they settle. The view reads the list again, and the file open if it is
+  // among them. A person's, as the list is.
+  on(routes.projectFilesLive, personOnly(person), (req, res) => {
+    const board = store.getBoard(param(req, 'boardId'));
+    const folder = projectFolderOf(board);
+    const { real } = projectFolder(folder);
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.write('retry: 2000\n\n');
+    const listed = async () => (await listProjectFiles(folder)).files.map((file) => file.path);
+    const stop = watches.listen(real, listed, (change) => void res.write(`event: change\ndata: ${JSON.stringify(change)}\n\n`));
+    req.on('close', stop);
   });
   on(routes.projectFile, personOnly(person), async (req, res) => {
     const { path: file, lines } = projectFileParams.parse(req.query);
@@ -649,7 +665,7 @@ export function createApiRouter(
 
   on(routes.addLink, (req, res) => {
     const body = canvasBodies.addLink.parse(req.body);
-    res.status(201).json(store.addLink(body.from, body.to, body.label, human(body.actor)));
+    res.status(201).json(store.addLink(body.from, body.to, body.label, human(body.actor), body.weight));
   });
 
   on(routes.relabelLink, (req, res) => {

@@ -151,6 +151,14 @@ const ICONS = {
   // A sheet over another, for the Sketchbook's pages.
   folder: <path d="M2.5 4.75a1 1 0 0 1 1-1h2.85l1.4 1.6h4.75a1 1 0 0 1 1 1v5.9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1Z" />,
   pages: <path d="M5.75 2.75h5.5a1 1 0 0 1 1 1v7M4.25 4.75h5.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-5.5a1 1 0 0 1-1-1v-6.5a1 1 0 0 1 1-1Z" />,
+  // The canvas's drawing tools (DrawToolbar.tsx): select, the shapes, the arrow, a text label and the pen.
+  select: <path d="M4 2.8l8 5.3-3.5.7 1.9 3.7-1.5.8-1.9-3.7L4.4 12z" />,
+  rectangle: <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />,
+  ellipse: <ellipse cx="8" cy="8" rx="5.5" ry="4.5" />,
+  diamond: <path d="M8 2.3 13.7 8 8 13.7 2.3 8z" />,
+  arrow: <path d="M3 13 13 3M7.5 3H13v5.5" />,
+  type: <path d="M3.5 3.5h9M8 3.5v9" />,
+  pen: <path d="M2.5 11.5c1.6-2.6 3.2-5.3 4.8-4s1.8 3 3.6 1.4 2-3.4 2.6-4.4" />,
   // Two blocks in a dashed frame, for a group on the canvas.
   group: (
     <>

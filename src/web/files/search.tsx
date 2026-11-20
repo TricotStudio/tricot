@@ -3,9 +3,11 @@
 // number and its match marked; a click opens the file at that line
 // (FilesView's Preview). The server does the reading (server/projectSearch.ts);
 // this asks it once typing pauses, and drops the answer to a search typed over.
+// As the files change (live.ts), the same search is asked again, quietly:
+// what was found stays shown, undimmed, until the new answer replaces it.
 // A line's text is drawn as text, split at its marks, never as HTML.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MAX_SEARCH_MATCHES, SEARCH_MS, type Mark, type ProjectSearch, type ProjectSearchOptions } from '../../core/projectSearch';
 import { MAX_PROJECT_FILES } from '../../core/projectFiles';
 import type { Board } from '../../core/types';
@@ -23,16 +25,21 @@ export interface ContentSearch {
 }
 
 // The answer to a search of the board's files, asked when `options` stay the same for a moment, and not at all while there is nothing to find.
-export function useContentSearch(boardId: string, options: ProjectSearchOptions, on: boolean): ContentSearch {
+// A new `version` (the files changed) asks the same search again, quietly.
+export function useContentSearch(boardId: string, options: ProjectSearchOptions, on: boolean, version = 0): ContentSearch {
   const [state, setState] = useState<ContentSearch>({ searching: false });
   const { q, matchCase, word, regex } = options;
+  const asked = useRef('');
   useEffect(() => {
     if (!on || !q) {
+      asked.current = '';
       setState({ searching: false });
       return;
     }
     const stop = new AbortController();
-    setState((now) => ({ ...now, searching: true, failed: undefined }));
+    const now = JSON.stringify([boardId, q, matchCase, word, regex]);
+    if (asked.current !== now) setState((was) => ({ ...was, searching: true, failed: undefined }));
+    asked.current = now;
     const timer = window.setTimeout(() => {
       api.searchProjectFiles(boardId, { q, matchCase, word, regex }, stop.signal).then(
         (result) => !stop.signal.aborted && setState({ result, searching: false }),
@@ -43,7 +50,7 @@ export function useContentSearch(boardId: string, options: ProjectSearchOptions,
       window.clearTimeout(timer);
       stop.abort();
     };
-  }, [boardId, on, q, matchCase, word, regex]);
+  }, [boardId, on, q, matchCase, word, regex, version]);
   return state;
 }
 

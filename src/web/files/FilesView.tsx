@@ -11,16 +11,27 @@
 //
 // The folder icon is on every board, and the project folder is chosen and
 // changed here (ProjectFolderDialog.tsx): *Choose project folder…* when the
-// board has none, *Change folder…* in the title line when it has. A folder
-// that changes, from here or by an agent, starts the view over.
+// board has none, and, when it has, from the folder's menu, the folder named
+// after the title. A folder that changes, from here or by an agent, starts
+// the view over.
 //
-// The file's view reads it, edits it: the whole file as text, saved
-// over it on this computer, and only over the version opened, so an edit
-// never overwrites what an agent saved since; or pairs on it with an agent:
-// its code block on the board's Files canvas opens full screen, as
-// any code block's does, to point at lines and ask; the agent changes the
-// file itself, and the block is brought up to the file while they pair. What
-// is saved, the block follows too (server: api.ts).
+// What is in the folder is shown live: as files change on this computer,
+// saved by a person or an agent, made or deleted, committed or checked out,
+// the list is read again, quietly, and so is the file open, unless it is
+// being edited, and a search inside the files is asked again (live.ts,
+// server/projectWatch.ts). The folder's menu reads it again by hand too.
+//
+// The file's view shows it as it reads: drawn, for a file the board can draw
+// (Markdown, a diagram, a table, a picture), else as its text. Its text is
+// edited where it is shown, with no mode to switch to (Preview below,
+// sourceEditor.tsx): a double-click on the drawing opens the text at that
+// line, typing makes a draft (drafts.ts) and ⌘S saves it over the file on
+// this computer, only over the version it was typed on, so an edit never
+// overwrites what an agent saved since without the person's say. Or it is
+// paired on with an agent: its code block on the board's Files canvas opens
+// full screen, already paired, to point at lines and ask; the agent changes
+// the file itself, and the block is brought up to the file while they pair.
+// What is saved, the block follows too (server: api.ts).
 //
 // The search at the top of the list finds a file by its name, or, switched to
 // Inside files (⌘⇧F from any view), by what is in the files, as an IDE's Find
@@ -33,13 +44,13 @@
 // a picture, which has no text to ask about, nor while the list or nothing
 // is picked. What is sent starts a thread on the file's block.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { codeLanguage, codeLines } from '../../core/blocks/code/code';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import { codeLines } from '../../core/blocks/code/code';
 import type { OpenFile } from '../../core/fileThread';
 import { hasText, previewOf, type ProjectFile, type ProjectFileText, type ProjectFiles } from '../../core/projectFiles';
 import type { Board } from '../../core/types';
 import { phaseOf, busyOfPhase, useSteps, stepWords } from '../agents';
-import { CanvasView, Code, coloursOf, highlightLine, type Token } from '../canvas';
+import { CanvasView } from '../canvas';
 import type { ProjectSearchOptions } from '../../core/projectSearch';
 import { api, type RequestError } from '../shared/api';
 import type { CardKinds } from '../shared/cardKinds';
@@ -47,19 +58,21 @@ import { useBoardViews } from '../shared/boardViewsContext';
 import { CardAnchor, useCardKinds } from '../shared/cardKindsContext';
 import { askToConfirm } from '../shared/confirm';
 import { Icon, timeAgo } from '../shared/components';
-import { useReadOnly, useStoredFlag } from '../shared/hooks';
+import { useMenu, useReadOnly, useStoredFlag } from '../shared/hooks';
 import { go, linkTo } from '../shared/pages';
 import { Stitch } from '../shared/stitch';
 import { ProjectFolderDialog } from './ProjectFolderDialog';
+import { useDrafts, type Draft } from './drafts';
+import { updateBoard } from '../live';
+import { useFolderChanges } from './live';
 import { FilePreviewBody, PictureFile } from './preview';
 import { SearchResults, useContentSearch } from './search';
+import { SourceEditor, type Jump } from './sourceEditor';
 import { FIND_IN_FILES, FIND_IN_FILES_KEYS, FOLD_PANELS, FOLD_PANELS_KEYS, isFoldPanels, useFindRequest } from './shortcut';
 import { bestMatches, filesShown, foldersOf, placesOnBoard, treeOf, type FilePlace, type FilesShow, type Folder } from './tree';
 import './files.css';
 
 const MOST_ROWS = 1500; // rows the list draws at once; a search narrows the rest
-const MOST_LINES = 4000; // lines the preview draws; the page holds them all
-const AROUND_HIT = 300; // a hit past them: this many lines before it and after it are drawn instead
 const plural = (n: number, word: string) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 const nameOf = (file: string) => file.slice(file.lastIndexOf('/') + 1);
 
@@ -85,6 +98,11 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
   const [text, setText] = useState('');
   const [exact, setExact] = useState<Pick<ProjectSearchOptions, 'matchCase' | 'word' | 'regex'>>({});
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  // How often the file open, and the files a search reads, changed on this computer since the view opened.
+  const [fileChanged, setFileChanged] = useState(0);
+  const [filesChanged, setFilesChanged] = useState(0);
+  // What was typed into the files and isn't saved yet, by path (drafts.ts).
+  const { drafts, setDraft } = useDrafts(board.id, folder);
   // The project folder is chosen and changed here, where it is used: its dialog,
   // from the empty state or the title line (an archived board keeps its folder).
   const readOnly = useReadOnly();
@@ -121,18 +139,49 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
     return () => document.removeEventListener('keydown', fold);
   }, [treeShown, sideShown, showTree, showSide]);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
+  // The list, read from the folder: on opening, from the folder's menu, and,
+  // quietly, as the folder changes (live.ts). One read at a time, and one
+  // more after it when it was asked for meanwhile; a read of a folder the
+  // view no longer shows is dropped.
+  const reading = useRef(false);
+  const readAgain = useRef(false);
+  const showing = useRef({ boardId: board.id, folder });
+  showing.current = { boardId: board.id, folder };
+  const readList = useCallback((quiet: boolean) => {
+    if (reading.current) {
+      readAgain.current = true;
+      return;
+    }
+    reading.current = true;
+    const asked = showing.current;
+    const still = () => showing.current.boardId === asked.boardId && showing.current.folder === asked.folder;
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     api
-      .projectFiles(board.id)
-      .then(setListing, (failed: Error) => setError(failed.message))
-      .finally(() => setLoading(false));
-  }, [board.id]);
+      .projectFiles(asked.boardId)
+      .then(
+        (now) => {
+          if (!still()) return;
+          setListing(now);
+          setError(null);
+        },
+        (failed: Error) => still() && setError(failed.message),
+      )
+      .finally(() => {
+        reading.current = false;
+        if (!quiet) setLoading(false);
+        if (!readAgain.current) return;
+        readAgain.current = false;
+        readList(true);
+      });
+  }, []);
+  const load = useCallback(() => readList(false), [readList]);
   useEffect(() => {
     if (folder) load();
     else setListing(null);
-  }, [folder, load]);
+  }, [board.id, folder, load]);
   // A folder changed under the view, here or by an agent: what was searched,
   // filtered, opened and picked was the old folder's, so the view starts over.
   const shownFolder = useRef(folder);
@@ -159,8 +208,13 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
   useEffect(() => {
     rows.current?.querySelector('.is-picked')?.scrollIntoView({ block: 'nearest' });
   }, [file, listing]);
+  useFolderChanges(board.id, folder, (change) => {
+    readList(true);
+    if (file && (change.many || change.paths.includes(file))) setFileChanged((n) => n + 1);
+    if (change.many || change.paths.length > 0) setFilesChanged((n) => n + 1);
+  });
   const files = listing?.files ?? [];
-  const found = useContentSearch(board.id, { q: text, ...exact }, Boolean(folder) && inside);
+  const found = useContentSearch(board.id, { q: text, ...exact }, Boolean(folder) && inside, filesChanged);
   const shown = useMemo(() => filesShown(files, query, show, places), [files, query, show, places]);
   const tree = useMemo(() => treeOf(shown), [shown]);
   const counts = useMemo(() => ({ all: files.length, week: files.filter((f) => f.week).length, board: files.filter((f) => places.has(f.path)).length }), [files, places]);
@@ -193,20 +247,7 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
   if (!folder) {
     return (
       <section className="files" aria-label="Project files">
-        <div className="files-empty">
-          <Icon name="folder" />
-          <h2>This board has no project folder yet</h2>
-          {readOnly ? (
-            <p>This board is archived, so a folder can't be chosen until it is unarchived. Its files then show here, to read and to open on a Sketchbook page.</p>
-          ) : (
-            <>
-              <p>Choose the folder this board is about, or start Tricot inside the project's folder: a board made there takes it. Its files then show here, to read and to open on a Sketchbook page.</p>
-              <button className="btn btn-primary" ref={opener} onClick={() => setChoosing(true)}>
-                Choose project folder…
-              </button>
-            </>
-          )}
-        </div>
+        <NoFolder board={board} name={name} readOnly={readOnly} opener={opener} onType={() => setChoosing(true)} />
         {folderDialog}
       </section>
     );
@@ -217,22 +258,17 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
     <section className="files" aria-label="Project files">
       <header className="files-title">
         <h2>Files</h2>
-        <span className="files-where" title={listing?.folder ?? folder}>
-          {listing?.folder ?? folder}
-          {listing?.git?.branch && <> · {listing.git.branch}</>}
-          {listing?.git && <> · {listing.git.clean ? 'clean' : 'changes not committed'}</>}
-          {listing && <> · {plural(listing.files.length, 'file')}{listing.truncated ? ' (the first ones)' : ''}</>}
+        <FolderMenu folder={listing?.folder ?? folder} readOnly={readOnly} opener={opener} onChoose={() => setChoosing(true)} onRead={load} />
+        <span className="files-where">
+          {[
+            listing?.git?.branch,
+            listing?.git && (listing.git.clean ? 'clean' : 'changes not committed'),
+            listing && `${plural(listing.files.length, 'file')}${listing.truncated ? ' (the first ones)' : ''}`,
+            loading && 'reading…',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
-        <button className="btn btn-quiet btn-small files-reload" onClick={load} disabled={loading} title="Read the folder again">
-          <Icon name="sync" />
-          {loading ? 'Reading…' : 'Reload'}
-        </button>
-        {!readOnly && (
-          <button className="btn btn-quiet btn-small files-change" ref={opener} onClick={() => setChoosing(true)} title="Choose another project folder for this board, or remove it">
-            <Icon name="folder" />
-            Change folder…
-          </button>
-        )}
         <span className="files-panels" role="group" aria-label="Panels">
           <button
             type="button"
@@ -335,19 +371,134 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
             ) : !listing ? (
               <p className="files-note">Reading {folder}…</p>
             ) : (
-              <Rows folder={tree} depth={0} board={board} picked={file} places={places} isOpen={isOpen} toggle={toggle} budget={{ left: MOST_ROWS }} />
+              <Rows folder={tree} depth={0} board={board} picked={file} places={places} unsaved={drafts} isOpen={isOpen} toggle={toggle} budget={{ left: MOST_ROWS }} />
             )}
           </div>
         </aside>
 
         {file ? (
-          <Preview key={file} board={board} name={name} file={file} line={line} listed={picked} places={places.get(file) ?? []} onSaved={load} pairNow={Boolean(pair)} onShown={onShown} />
+          <Preview
+            key={file}
+            board={board}
+            name={name}
+            file={file}
+            line={line}
+            listed={picked}
+            places={places.get(file) ?? []}
+            changes={fileChanged}
+            draft={drafts.get(file)}
+            onDraft={(next) => setDraft(file, next)}
+            onSaved={load}
+            pairNow={Boolean(pair)}
+            onShown={onShown}
+          />
         ) : (
           <Lately board={board} files={files} listed={Boolean(listing)} />
         )}
       </div>
       {folderDialog}
     </section>
+  );
+}
+
+// A board with no project folder: what its Files are for, and the folder
+// chosen in the system's own dialog (Finder, Explorer, zenity), set as soon
+// as one is picked, as picking it says which. A computer with no such dialog
+// (or one that couldn't open) is given the folder dialog to type its path in
+// (ProjectFolderDialog.tsx), the reason said above it. Under the button, the
+// other way a board gets its folder. An archived board says it takes none
+// until it is unarchived. `opener` is the button the folder dialog goes back to.
+function NoFolder({ board, name, readOnly, opener, onType }: { board: Board; name: string; readOnly: boolean; opener: RefObject<HTMLButtonElement | null>; onType: () => void }) {
+  const [choosing, setChoosing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const choose = async () => {
+    setChoosing(true);
+    setError(null);
+    let folder: string | undefined;
+    try {
+      ({ folder } = await api.chooseFolder());
+    } catch (failed) {
+      setError((failed as Error).message);
+      setChoosing(false);
+      onType();
+      return;
+    }
+    try {
+      if (folder) await updateBoard(board.id, name, { folder });
+    } catch (failed) {
+      setError((failed as Error).message);
+    } finally {
+      setChoosing(false);
+    }
+  };
+  return (
+    <div className="files-empty">
+      <Icon name="folder" />
+      <h2>No project folder yet</h2>
+      {readOnly ? (
+        <p>This board is archived. Its project folder can be chosen once it is unarchived.</p>
+      ) : (
+        <>
+          <p>Choose the folder this board is about. Its files show here, to read, edit and pair on with an agent.</p>
+          <div className="files-empty-actions">
+            <button className="btn btn-primary" ref={opener} onClick={() => void choose()} disabled={choosing}>
+              {choosing ? 'Choosing…' : 'Choose folder…'}
+            </button>
+          </div>
+          {error && (
+            <p className="files-empty-error" role="alert">
+              {error}
+            </p>
+          )}
+          <p className="files-empty-tip">Start Tricot inside a project's folder, and the boards you make there take it.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// The project folder, after the title: the folder the view shows, and its
+// menu, to choose another one (or none) and to read it again, which the view
+// also does on its own as the folder changes (live.ts). The dialog the menu
+// opens goes back to its button (`opener`).
+function FolderMenu({ folder, readOnly, opener, onChoose, onRead }: { folder: string; readOnly: boolean; opener: RefObject<HTMLButtonElement | null>; onChoose: () => void; onRead: () => void }) {
+  const { open, setOpen, close, root, button, menu, onKeyDown } = useMenu();
+  const pick = (action: () => void, refocus: boolean) => () => {
+    close(refocus);
+    action();
+  };
+  return (
+    <div className="files-folder" ref={root}>
+      <button
+        ref={(element) => {
+          button.current = element;
+          opener.current = element;
+        }}
+        type="button"
+        className="files-folder-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Project folder: ${folder}`}
+        title={readOnly ? folder : `${folder} · change the folder, or read it again`}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="folder" />
+        <span className="files-folder-name">{folder}</span>
+        <Icon name="chevron-down" className="files-folder-chevron" />
+      </button>
+      {open && (
+        <div className="menu-panel files-folder-menu" role="menu" aria-label="Project folder" ref={menu} onKeyDown={onKeyDown}>
+          {!readOnly && (
+            <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" onClick={pick(onChoose, false)}>
+              Change folder…
+            </button>
+          )}
+          <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" onClick={pick(onRead, true)}>
+            Read the folder again
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -358,11 +509,12 @@ function Rows(props: {
   board: Board;
   picked?: string;
   places: ReadonlyMap<string, FilePlace[]>;
+  unsaved: ReadonlyMap<string, unknown>; // files with an edit not saved yet
   isOpen: (path: string) => boolean;
   toggle: (path: string) => void;
   budget: { left: number };
 }) {
-  const { folder, depth, board, picked, places, isOpen, toggle, budget } = props;
+  const { folder, depth, board, picked, places, unsaved, isOpen, toggle, budget } = props;
   const indent = { paddingLeft: 10 + depth * 16 };
   const rows = [];
   for (const inner of folder.folders) {
@@ -399,6 +551,7 @@ function Rows(props: {
         <Icon name="note" className="files-file" />
         <span className="files-name">{nameOf(file.path)}</span>
         <span className="files-marks">
+          {unsaved.has(file.path) && <span className="files-unsaved-dot" title="Edited, not saved yet" />}
           {mark && (
             <span className={`files-status is-${file.status}`} title={mark.words}>
               {mark.mark}
@@ -444,30 +597,57 @@ function Lately({ board, files, listed }: { board: Board; files: ProjectFile[]; 
 }
 
 // The file picked: its text, what to do with it, and where it is on the board.
-function Preview({ board, name, file, line, listed, places, onSaved, pairNow, onShown }: { board: Board; name: string; file: string; line?: number; listed?: ProjectFile; places: FilePlace[]; onSaved: () => void; pairNow: boolean; onShown?: (file: OpenFile | undefined) => void }) {
+// The file picked: drawn, as its text, or paired on. A file the board can
+// draw opens drawn, its text a switch away, or a double-click away at the line
+// of what was double-clicked; any other opens as its text. The text is edited
+// where it is shown (sourceEditor.tsx), with no mode to switch to: what is
+// typed is a draft (drafts.ts), kept across files and views, until ⌘S saves
+// it over the file, and only over the version it was typed on, so a person's
+// edit never goes over what an agent saved since without their say. Only a
+// file read whole is edited, on a board that isn't archived; its line breaks
+// (\n or \r\n) are kept as the file had them.
+//
+// `changes` counts its changes on this computer: each is read again while it
+// is read; under a draft, the band says it changed and asks whose to keep.
+// Pair opens the file's code block on the Files canvas already paired, to
+// point at lines and ask; not with a draft, which the agent wouldn't see.
+function Preview(props: {
+  board: Board;
+  name: string;
+  file: string;
+  line?: number;
+  listed?: ProjectFile;
+  places: FilePlace[];
+  changes: number;
+  draft?: Draft;
+  onDraft: (next: Draft | null) => void;
+  onSaved: () => void;
+  pairNow: boolean;
+  onShown?: (file: OpenFile | undefined) => void;
+}) {
+  const { board, name, file, line, listed, places, changes, draft, onDraft, onSaved, pairNow, onShown } = props;
   const cards = useCardKinds();
   const context = useBoardViews().boardContext()?.name.toLowerCase() ?? 'board';
+  const readOnly = useReadOnly();
   const [text, setText] = useState<ProjectFileText | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'read' | 'edit' | 'pair'>('read');
+  const [refused, setRefused] = useState<string | null>(null); // a save that didn't go through, and why
+  const [mode, setMode] = useState<'read' | 'pair'>('read');
   const [paired, setPaired] = useState<{ pageId: string; blockId: string } | null>(null);
-  const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
-  const [conflict, setConflict] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  // A file the board can draw opens drawn so, its text a switch away;
+  // A file the board can draw opens drawn, its text a switch away;
   // a picture that isn't text (all but an SVG) has only its picture.
   const kind = previewOf(file);
   const textual = hasText(file);
   // Opened at a line (from a search inside the files), it shows its text, with the line in view.
   const [shown, setShown] = useState<'preview' | 'source'>(kind && !line ? 'preview' : 'source');
-  const code = useRef<HTMLDivElement>(null);
-  const scrolled = useRef<string | undefined>(undefined);
+  const [jump, setJump] = useState<Jump | undefined>(undefined);
   const read = useCallback(
     () =>
       (textual ? api.projectFile(board.id, file) : Promise.resolve(null)).then(
         (now) => {
-          setText(now);
+          setText((was) => (was && now && was.hash === now.hash && was.start === now.start ? was : now)); // the same text keeps its lines drawn
           setError(null);
           return now;
         },
@@ -481,6 +661,12 @@ function Preview({ board, name, file, line, listed, places, onSaved, pairNow, on
   useEffect(() => {
     void read();
   }, [read]);
+  const readFor = useRef(changes);
+  useEffect(() => {
+    if (mode !== 'read' || readFor.current === changes) return;
+    readFor.current = changes;
+    void read();
+  }, [changes, mode, read]);
   // Its text read, the file is the one open: what the chat bar asks about.
   const named = text?.named;
   useEffect(() => {
@@ -488,77 +674,72 @@ function Preview({ board, name, file, line, listed, places, onSaved, pairNow, on
     onShown?.({ path: file, named });
     return () => onShown?.(undefined);
   }, [file, named, onShown]);
-
-  const lines = useMemo(() => (text ? codeLines(text.text) : []), [text]);
-  // The lines drawn: the first MOST_LINES, or, for a hit past them, a window around it (not all of a lockfile).
-  const hitAt = line ? line - (text?.start ?? 1) : -1;
-  const first = hitAt >= MOST_LINES ? hitAt - AROUND_HIT : 0;
-  const tokens = useMemo(() => {
-    const colours = coloursOf(codeLanguage({ path: file }));
-    const carried = { inComment: false };
-    const to = hitAt >= MOST_LINES ? hitAt + AROUND_HIT + 1 : MOST_LINES;
-    return lines.slice(first, to).map((row) => highlightLine(row, colours, carried));
-  }, [lines, file, hitAt, first]);
-  // A line asked for: the text, not the drawing, with that line in the middle of the view, once its text is drawn.
+  // A line asked for: the text, not the drawing.
   useEffect(() => {
     if (line) setShown('source');
   }, [line]);
-  useEffect(() => {
-    if (!line || !text || mode !== 'read' || shown !== 'source' || scrolled.current === `${file}:${line}`) return;
-    const row = code.current?.querySelector(`[data-line="${line}"]`);
-    if (!row) return;
-    scrolled.current = `${file}:${line}`;
-    row.scrollIntoView({ block: 'center' });
-  }, [line, text, mode, shown, file]);
   const steps = useSteps();
   const now = Date.now();
   const inIt = steps.filter((step) => step.text.includes(nameOf(file)) && phaseOf(step, now));
 
-  // Edit: the whole file as text, saved over it with ⌘S or Save, and only
-  // over the version opened: if an agent saved it since, nothing is
-  // written, and the band says so, with the way on.
-  const editing = mode === 'edit';
-  const changed = editing && text !== null && draft !== text.text;
-  const edit = () => {
+  // Its text as the field holds it, \n between lines, and the breaks it is saved with.
+  const onDisk = useMemo(() => (text ? text.text.replace(/\r\n/g, '\n') : ''), [text]);
+  const breaks = text?.text.includes('\r\n') ? '\r\n' : '\n';
+  const lineCount = useMemo(() => (text ? codeLines(text.text).length : 0), [text]);
+  const editable = Boolean(text && text.start === 1 && text.total === undefined) && !readOnly;
+  const value = draft?.text ?? onDisk;
+  const stale = Boolean(draft && text && draft.base !== text.hash);
+  const type = (next: string) => {
     if (!text) return;
-    setDraft(text.text);
-    setConflict(null);
-    setMode('edit');
+    onDraft(next === onDisk && !stale ? null : { text: next, base: draft?.base ?? text.hash });
   };
-  const leave = async (): Promise<boolean> => {
-    if (changed && !(await askToConfirm({ title: `Drop your changes to ${nameOf(file)}?`, detail: "They aren't saved to the file.", confirmLabel: 'Drop them', cancelLabel: 'Keep editing', danger: true }))) return false;
-    setMode('read');
-    setConflict(null);
-    return true;
-  };
-  const look = async (view: 'preview' | 'source') => {
-    if (editing && !(await leave())) return;
-    setShown(view);
-  };
-  const reading = (view: 'preview' | 'source') => mode === 'read' && shown === view;
   const save = async () => {
-    if (!text || busy || !changed) return;
+    if (!text || !draft || busy || !editable) return;
     setBusy(true);
-    setConflict(null);
+    setRefused(null);
     try {
-      const { file: written } = await api.writeProjectFile(board.id, name, file, draft, text.hash);
+      const { file: written } = await api.writeProjectFile(board.id, name, file, breaks === '\n' ? draft.text : draft.text.replace(/\n/g, breaks), draft.base);
       setText(written);
-      setMode('read');
+      onDraft(null);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
       onSaved();
     } catch (failed) {
-      if ((failed as RequestError).status === 409) setConflict((failed as Error).message);
-      else setError((failed as Error).message);
+      if ((failed as RequestError).status === 409) void read(); // its newer version: the band says so
+      else setRefused(`Not saved: ${(failed as Error).message}`);
     } finally {
       setBusy(false);
     }
   };
+  const discard = async () => {
+    if (!draft) return;
+    if (!(await askToConfirm({ title: `Discard your changes to ${nameOf(file)}?`, detail: "They aren't saved to the file.", confirmLabel: 'Discard', cancelLabel: 'Keep them', danger: true }))) return;
+    onDraft(null);
+    setRefused(null);
+  };
+  // The file changed under a draft: go on with the draft (saving then puts it
+  // over theirs), or take theirs, first copying the draft to type in again.
+  const keepMine = () => {
+    if (text && draft) onDraft({ ...draft, base: text.hash });
+  };
+  const takeTheirs = async (copy: boolean) => {
+    if (copy && draft) await navigator.clipboard?.writeText(draft.text).catch(() => undefined);
+    onDraft(null);
+  };
+  // A double-click on the drawing: its text, at the line of what was double-clicked.
+  const toSource = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!textual) return;
+    const at = (event.target as Element).closest('[data-source-line]');
+    const target = Number(at?.getAttribute('data-source-line')) || 1;
+    setShown('source');
+    setJump((was) => ({ line: target, n: (was?.n ?? 0) + 1 }));
+  };
+
   // Pair: the file's block on the Files canvas (made the first time, else
-  // brought up to the file), opened full screen as any code block is, to
-  // point at lines and ask the agent; closing it comes back here, the file
-  // read again. While they pair, the block is brought up to the file every
-  // few seconds, as the agent changes the file itself.
+  // brought up to the file), opened full screen as any code block is, already
+  // paired, to point at lines and ask the agent; closing it comes back here,
+  // the file read again. While they pair, the block is brought up to the file
+  // every few seconds, as the agent changes the file itself.
   const pair = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -590,86 +771,94 @@ function Preview({ board, name, file, line, listed, places, onSaved, pairNow, on
   }, [mode, board.id, name, file]);
   const filesPage = paired ? board.pages?.find((p) => p.id === paired.pageId) : undefined;
 
-  // The newer version, read again: the edit is dropped, or first copied to type in again.
-  const takeTheirs = async (copy: boolean) => {
-    if (copy) await navigator.clipboard?.writeText(draft).catch(() => undefined);
-    const fresh = await read();
-    if (fresh) setDraft(fresh.text);
-    setConflict(null);
-  };
-
+  const drawn = Boolean(kind) && shown === 'preview';
   const parts = file.split('/');
   return (
     <>
       <div className="files-preview">
         {mode !== 'pair' && (
-        <div className="files-head">
-          <span className="files-crumbs" title={file}>
-            {parts.slice(0, -1).map((part, i) => (
-              <span key={i}>{part} / </span>
-            ))}
-            <b>{parts[parts.length - 1]}</b>
-          </span>
-          {saved && <span className="files-saved">Saved</span>}
-          {editing && (
-            <span className="files-actions">
-              <button className="btn btn-small" onClick={() => void leave()} disabled={busy}>
-                Cancel
-              </button>
-              <button className="btn btn-small btn-primary" onClick={() => void save()} disabled={busy || !changed} title="Save it over the file (⌘S)">
-                {busy ? 'Saving…' : 'Save'}
-              </button>
+          <div className="files-head">
+            <span className="files-crumbs" title={file}>
+              {parts.slice(0, -1).map((part, i) => (
+                <span key={i}>{part} / </span>
+              ))}
+              <b>{parts[parts.length - 1]}</b>
             </span>
-          )}
-          {textual && (
-          <div className="pair-modes files-modes" role="group" aria-label="Mode">
-            {kind ? (
-              <>
-                <button type="button" className={`pair-mode${reading('preview') ? ' is-on' : ''}`} aria-pressed={reading('preview')} onClick={() => void look('preview')} title={PREVIEW_TITLES[kind]}>
+            {draft ? (
+              <span className="files-actions">
+                <span className="files-unsaved" title="Not saved to the file yet: ⌘S saves it">
+                  Edited
+                </span>
+                <button className="btn btn-small btn-quiet" onClick={() => void discard()} disabled={busy}>
+                  Discard
+                </button>
+                <button className="btn btn-small btn-primary" onClick={() => void save()} disabled={busy || !editable} title="Save it over the file (⌘S)">
+                  {busy ? 'Saving…' : 'Save'}
+                </button>
+              </span>
+            ) : (
+              saved && <span className="files-saved">Saved</span>
+            )}
+            {textual && kind && (
+              <div className="pair-modes files-modes" role="group" aria-label="Show">
+                <button type="button" className={`pair-mode${shown === 'preview' ? ' is-on' : ''}`} aria-pressed={shown === 'preview'} onClick={() => setShown('preview')} title={`${PREVIEW_TITLES[kind]}. Double-click it to edit its source there.`}>
                   Preview
                 </button>
-                <button type="button" className={`pair-mode${reading('source') ? ' is-on' : ''}`} aria-pressed={reading('source')} onClick={() => void look('source')} title="Its text, line by line">
+                <button type="button" className={`pair-mode${shown === 'source' ? ' is-on' : ''}`} aria-pressed={shown === 'source'} onClick={() => setShown('source')} title={editable ? 'Its text, to read and edit in place' : 'Its text, line by line'}>
                   Source
                 </button>
-              </>
-            ) : (
-              <button type="button" className={`pair-mode${mode === 'read' ? ' is-on' : ''}`} aria-pressed={mode === 'read'} onClick={() => editing && void leave()} title="Read the file">
-                Read
+              </div>
+            )}
+            {textual && (
+              <button
+                type="button"
+                className="btn btn-small files-pair-button"
+                onClick={() => void pair()}
+                disabled={!text || busy || Boolean(draft)}
+                title={draft ? 'Save or discard your edit first: the agent works on the file as it is saved' : 'Pair with an agent on it: point at lines and ask; the agent changes the file'}
+              >
+                Pair
               </button>
             )}
-            <button type="button" className={`pair-mode${editing ? ' is-on' : ''}`} aria-pressed={editing} onClick={() => !editing && edit()} disabled={!text} title="Edit the file itself, and save it over it">
-              Edit
-            </button>
-            <button type="button" className="pair-mode" aria-pressed={false} onClick={() => void pair()} disabled={!text || busy || editing} title="Pair with an agent on it: point at lines and ask; the agent changes the file">
-              Pair
-            </button>
           </div>
-          )}
-        </div>
         )}
-        {conflict && (
+        {stale && (
           <div className="files-band is-conflict" role="alert">
-            <span>{conflict}</span>
+            <span>{nameOf(file)} changed on this computer since you started editing it.</span>
+            <button className="btn btn-small" onClick={keepMine} title="Go on with yours: saving puts it over theirs">
+              Keep mine
+            </button>
             <button className="btn btn-small" onClick={() => void takeTheirs(true)}>
-              Copy my edit, then reload
+              Copy mine, then take theirs
             </button>
             <button className="btn btn-small" onClick={() => void takeTheirs(false)}>
-              Reload
+              Take theirs
+            </button>
+          </div>
+        )}
+        {refused && !stale && (
+          <div className="files-band is-conflict" role="alert">
+            <span>{refused}</span>
+            <button className="btn btn-small" onClick={() => setRefused(null)}>
+              OK
             </button>
           </div>
         )}
         {mode === 'pair' ? (
           <div className="files-pair">
             {paired && filesPage ? (
-              <CanvasView board={board} page={filesPage} name={name} opens={paired.blockId} onClosed={unpair} />
+              <CanvasView board={board} page={filesPage} name={name} opens={paired.blockId} paired onClosed={unpair} />
             ) : (
               <p className="files-note">Opening {nameOf(file)} to pair on…</p>
             )}
           </div>
-        ) : editing ? (
-          <FileEditor value={draft} onChange={setDraft} onSave={() => void save()} label={`Edit ${file}`} />
         ) : (
-          <div ref={code} className={`files-code${kind && shown === 'preview' ? ` is-preview is-${kind}` : ''}`} tabIndex={0} aria-label={kind && shown === 'preview' ? `${file}, drawn` : `The text of ${file}`}>
+          <div
+            className={`files-code${drawn ? ` is-preview is-${kind}` : ' is-source'}`}
+            tabIndex={drawn ? 0 : undefined}
+            aria-label={drawn ? `${file}, drawn${textual ? '. Double-click to edit its source.' : ''}` : undefined}
+            onDoubleClick={drawn ? toSource : undefined}
+          >
             {error ? (
               <p className="files-note is-error">{error}</p>
             ) : kind === 'image' && shown === 'preview' ? (
@@ -677,22 +866,18 @@ function Preview({ board, name, file, line, listed, places, onSaved, pairNow, on
             ) : !text ? (
               <p className="files-note">Reading {nameOf(file)}…</p>
             ) : kind && kind !== 'image' && shown === 'preview' ? (
-              <FilePreviewBody board={board} file={file} kind={kind} text={text.text} />
+              <FilePreviewBody board={board} file={file} kind={kind} text={value} />
             ) : (
-              <pre>
-                {first > 0 && <span className="files-line is-more">{plural(first, 'line')} before these.</span>}
-                {tokens.map((parts, k) => {
-                  const i = first + k;
-                  return (
-                    <span key={i} className={`files-line${text.start + i === line ? ' is-hit' : ''}`} data-line={text.start + i}>
-                      <i>{text.start + i}</i>
-                      <Code tokens={parts.length ? parts : ([{ text: lines[i] }] as Token[])} />
-                      {'\n'}
-                    </span>
-                  );
-                })}
-                {lines.length > first + tokens.length && <span className="files-line is-more">{plural(lines.length - first - tokens.length, 'more line')} after these.</span>}
-              </pre>
+              <SourceEditor
+                path={file}
+                value={value}
+                readOnly={!editable}
+                label={editable ? `${file}: edit it here; ⌘S saves it` : `The text of ${file}`}
+                hit={line}
+                jump={jump}
+                onChange={type}
+                onSave={() => void save()}
+              />
             )}
           </div>
         )}
@@ -738,47 +923,9 @@ function Preview({ board, name, file, line, listed, places, onSaved, pairNow, on
         ) : (
           !listed?.status && <p className="files-note">No recent commit changed it.</p>
         )}
-        {text?.total || lines.length ? <p className="files-note">{plural(text?.total ?? lines.length, 'line')}</p> : null}
+        {text?.total || lineCount ? <p className="files-note">{plural(text?.total ?? lineCount, 'line')}</p> : null}
       </aside>
     </>
-  );
-}
-
-// The file's text to edit: a plain field in the code's own type, its lines
-// numbered beside it. Tab puts in two spaces rather than leaving the field;
-// ⌘S (Ctrl S elsewhere) saves.
-function FileEditor({ value, onChange, onSave, label }: { value: string; onChange: (next: string) => void; onSave: () => void; label: string }) {
-  const gutter = useRef<HTMLPreElement>(null);
-  const count = useMemo(() => value.split('\n').length, [value]);
-  const numbers = useMemo(() => Array.from({ length: count }, (_, i) => i + 1).join('\n'), [count]);
-  return (
-    <div className="files-editor">
-      <pre className="files-gutter" ref={gutter} aria-hidden>
-        {numbers}
-      </pre>
-      <textarea
-        autoFocus
-        spellCheck={false}
-        value={value}
-        aria-label={label}
-        onChange={(event) => onChange(event.target.value)}
-        onScroll={(event) => {
-          if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop;
-        }}
-        onKeyDown={(event) => {
-          if (event.key.toLowerCase() === 's' && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            onSave();
-          } else if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
-            event.preventDefault();
-            const field = event.currentTarget;
-            const { selectionStart: from, selectionEnd: to } = field;
-            onChange(value.slice(0, from) + '  ' + value.slice(to));
-            requestAnimationFrame(() => field.setSelectionRange(from + 2, from + 2));
-          }
-        }}
-      />
-    </div>
   );
 }
 

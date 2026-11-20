@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { modelProblem, ruleWords, type AgentRule } from '../../core/agentRules';
+import { modelProblem, roleRuleKey, RULE_ROLE_WORDS, RULE_ROLES, ruleWords, type AgentRule, type AgentRules, type RuleRole } from '../../core/agentRules';
 import type { AgentKind } from '../../core/agents/agent';
 import { agentKindOf } from '../../core/agents/registry';
 import { samePerson } from '../../core/format';
@@ -15,6 +15,19 @@ import { menuStep, useDismiss } from '../shared/hooks';
 // model of one's own to type. The line under the name, what it runs on now,
 // is the panel's (agents.tsx, runningWords). Drawn by agents.css; nothing
 // here imports a style, so tests can draw it.
+//
+// Given every rule (`roles`), a row over the columns picks whose model it
+// sets: the agent's own, or one of its roles' (core/roles.ts, core/agentRules.ts
+// RULE_ROLES). A coordinator or an orchestrator Tricot starts on it takes its
+// role's rule over the agent's, so Default there is the agent's; the scouts
+// and workers an orchestrator runs are told theirs, so Default there leaves
+// it to the orchestrator.
+
+// What a role of this agent's rule is set through: every rule, and setting one by its key.
+export interface RoleRules {
+  rules: AgentRules;
+  set: (key: string, rule: AgentRule) => Promise<void>;
+}
 
 // Which agent this is: as its session said (its MCP client), else the one
 // whose name on the board it has. None for a client Tricot doesn't know.
@@ -32,8 +45,8 @@ const POPOVER_WIDTH = { one: 264, two: 336 };
 
 // `under`: what the popover drops below, when not the chip itself (the
 // panel's head, so it leaves the line under the name in view).
-export function RuleChip(props: { kind: AgentKind; name: string; rule: AgentRule; runsOn?: AgentRule; onSet: (rule: AgentRule) => Promise<void>; under?: RefObject<HTMLElement | null> }) {
-  const { kind, name, rule, runsOn, onSet, under } = props;
+export function RuleChip(props: { kind: AgentKind; name: string; rule: AgentRule; runsOn?: AgentRule; onSet: (rule: AgentRule) => Promise<void>; under?: RefObject<HTMLElement | null>; roles?: RoleRules }) {
+  const { kind, name, rule, runsOn, onSet, under, roles } = props;
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const words = ruleWords(kind, rule);
@@ -64,13 +77,29 @@ export function RuleChip(props: { kind: AgentKind; name: string; rule: AgentRule
           <path d="m4.5 6.5 3.5 3.5 3.5-3.5" />
         </svg>
       </button>
-      {open && <RulePopover kind={kind} owner={owner} rule={rule} runsOn={runsOn} anchor={anchor} under={under} onSet={onSet} onClose={close} />}
+      {open && <RulePopover kind={kind} owner={owner} rule={rule} runsOn={runsOn} anchor={anchor} under={under} onSet={onSet} onClose={close} roles={roles} />}
     </>
   );
 }
 
-export function RulePopover(props: { kind: AgentKind; owner: string; rule: AgentRule; runsOn?: AgentRule; anchor: RefObject<HTMLElement | null>; under?: RefObject<HTMLElement | null>; onSet: (rule: AgentRule) => Promise<void>; onClose: (refocus?: boolean) => void }) {
-  const { kind, owner, rule, runsOn, anchor, under, onSet, onClose } = props;
+export function RulePopover(props: {
+  kind: AgentKind;
+  owner: string;
+  rule: AgentRule;
+  runsOn?: AgentRule;
+  anchor: RefObject<HTMLElement | null>;
+  under?: RefObject<HTMLElement | null>;
+  onSet: (rule: AgentRule) => Promise<void>;
+  onClose: (refocus?: boolean) => void;
+  roles?: RoleRules;
+}) {
+  const { kind, owner, runsOn, anchor, under, onClose, roles } = props;
+  // Whose rule the columns set: the agent's own (none), or one of its roles'.
+  const [role, setRole] = useState<RuleRole | null>(null);
+  const rule = role && roles ? (roles.rules[roleRuleKey(kind.id, role)] ?? {}) : props.rule;
+  const onSet = (next: AgentRule) => (role && roles ? roles.set(roleRuleKey(kind.id, role), next) : props.onSet(next));
+  const subagents = role === 'scout' || role === 'worker';
+  const plain = role === null ? 'Default' : subagents ? 'Its choice' : `As ${owner}`;
   const models = kind.startsOn?.models ?? [];
   const levels = kind.startsOn?.levels ?? [];
   const width = levels.length ? POPOVER_WIDTH.two : POPOVER_WIDTH.one;
@@ -160,24 +189,51 @@ export function RulePopover(props: { kind: AgentKind; owner: string; rule: Agent
       {chosen && <Icon name="check" className="agent-rule-check" />}
     </button>
   );
-  const now = runsOn && (ruleWords(kind, runsOn) ?? 'its own settings');
+  const now = role === null && runsOn && (ruleWords(kind, runsOn) ?? 'its own settings');
+  const title = role === null ? `${owner} starts on` : subagents ? `${owner}'s ${RULE_ROLE_WORDS[role].toLowerCase()} run on` : role === 'coordinator' ? `${owner} as coordinator starts on` : `${owner}'s orchestrators start on`;
+  const foot =
+    role === null
+      ? `A change takes effect the next time ${owner} starts; Default passes nothing.`
+      : subagents
+        ? `An orchestrator is told this as it starts, and runs its ${RULE_ROLE_WORDS[role].toLowerCase()} on it; its choice is the orchestrator's own.`
+        : `A change takes effect the next time Tricot starts one; As ${owner} is ${owner}'s own.`;
 
   return createPortal(
     <div
       ref={root}
       className="assignee-menu agent-rule-menu"
       role="dialog"
-      aria-label={`${owner} starts on`}
+      aria-label={title}
       tabIndex={-1}
       style={{ left: place?.left ?? -9999, top: place?.top, bottom: place?.bottom, width, visibility: place ? undefined : 'hidden' }}
       onKeyDown={keys}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="agent-rule-title">{owner} starts on</div>
+      {roles && (
+        <div className="agent-rule-roles" role="radiogroup" aria-label="Whose model">
+          {[null, ...RULE_ROLES].map((each) => (
+            <button
+              key={each ?? 'own'}
+              type="button"
+              role="radio"
+              aria-checked={role === each}
+              className={`agent-rule-role${role === each ? ' is-on' : ''}`}
+              disabled={busy}
+              onClick={() => {
+                setRole(each);
+                setError(null);
+              }}
+            >
+              {each ? RULE_ROLE_WORDS[each] : owner}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="agent-rule-title">{title}</div>
       <div className={`agent-rule-columns${levels.length ? ' is-two' : ''}`}>
         <div className="agent-rule-column" role="group" aria-label="Model">
           <div className="assignee-menu-head">Model</div>
-          {option('Default', !rule.model, () => void set({ ...rule, model: undefined }), 'default')}
+          {option(plain, !rule.model, () => void set({ ...rule, model: undefined }), 'default')}
           {models.map((model) => option(model.label, rule.model === model.id, () => void set({ ...rule, model: model.id }), model.id))}
           {own && option(own, true, () => {}, `own:${own}`)}
           <form className="agent-rule-own" onSubmit={ownModel}>
@@ -195,7 +251,7 @@ export function RulePopover(props: { kind: AgentKind; owner: string; rule: Agent
         {levels.length > 0 && (
           <div className="agent-rule-column" role="group" aria-label="Thinking">
             <div className="assignee-menu-head">Thinking</div>
-            {option('Default', !rule.effort, () => void set({ ...rule, effort: undefined }), 'default')}
+            {option(plain, !rule.effort, () => void set({ ...rule, effort: undefined }), 'default')}
             {levels.map((level) => option(level.label, rule.effort === level.id, () => void set({ ...rule, effort: level.id }), level.id))}
           </div>
         )}
@@ -211,7 +267,7 @@ export function RulePopover(props: { kind: AgentKind; owner: string; rule: Agent
             Running now on <strong>{now}</strong>.{' '}
           </>
         )}
-        A change takes effect the next time {owner} starts; Default passes nothing.
+        {foot}
       </p>
     </div>,
     document.body,

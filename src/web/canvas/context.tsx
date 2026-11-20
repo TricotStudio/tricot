@@ -50,7 +50,7 @@ export interface CanvasContextValue {
   restoreBlock: (block: Block, rev: number) => Promise<boolean>; // false if refused (and reported)
   deleteVersions: (block: Block, rev?: number) => Promise<boolean>; // an earlier version, or all of them, with Undo; false if refused (and reported)
   openLink: (block: Block, open: boolean) => void; // show a link in place for everyone, or fold it back
-  openOverlay: (blockId: string, options?: { version?: BlockVersion; pinId?: string }) => void; // the block's overlay: an image at full size (at an earlier version if given), a Google Doc's editor (at a thread)
+  openOverlay: (blockId: string, options?: { version?: BlockVersion; pinId?: string; paired?: boolean }) => void; // the block's overlay: an image at full size (at an earlier version if given), a Google Doc's editor (at a thread)
   newItems: ReadonlySet<string>; // changed by others since the viewer last looked
   seeItem: (id: string) => void;
   resize: (id: string, box: { x: number; y: number; width: number; height: number }) => void;

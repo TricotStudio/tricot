@@ -163,7 +163,7 @@ export class Blocks {
     const group = input.groupId ? this.canvases.findGroup(canvas, input.groupId) : undefined;
     const optionId = input.optionId ? this.canvases.validOption(located, input.optionId) : undefined;
     const fallback = kind.sizeFor?.(content, { w: input.w, h: input.h }) ?? kind.defaultSize;
-    const size = clampSize(input.w ?? fallback.w, input.h ?? fallback.h);
+    const size = clampSize(input.w ?? fallback.w, input.h ?? fallback.h, kind.minSize);
     const position =
       input.x !== undefined && input.y !== undefined
         ? { x: coord(input.x), y: coord(input.y) }

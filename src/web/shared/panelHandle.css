@@ -1,0 +1,44 @@
+/* ---- a panel's edge, to drag (PanelHandle.tsx) ------------------------------
+   A strip as tall as the panel, a hairline down its middle that takes the
+   focus colour when pointed at, focused or dragged, and the width it is at
+   beside it while it is dragged. Where it sits is its holder's. */
+.panel-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 6;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  transition: background 0.12s;
+}
+.panel-handle:hover::before,
+.panel-handle:focus-visible::before,
+.panel-handle.is-dragging::before {
+  background: var(--focus);
+}
+.panel-handle:focus-visible {
+  outline: none;
+}
+.panel-handle-size {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  transform: translateY(-50%);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}

@@ -5,8 +5,11 @@ import { which } from './which';
 // The system's own "choose a folder" dialog, opened on this computer for the
 // board's project folder: a web page is never told a folder's full
 // path, but the server runs here, so it can ask the system and hand the path
-// back. macOS: a Finder dialog through osascript (`activate` first, so it
-// comes in front rather than behind the browser). Windows: the folder
+// back. macOS: a Finder dialog through osascript, in JavaScript, which asks
+// AppKit to bring it in front of the browser first and goes on at once:
+// AppleScript's own `activate` waits two seconds for that before the dialog
+// opens, and a recent macOS, which lets no app in the background take the
+// front by itself, refuses it all the same. Windows: the folder
 // browser of Windows Forms, through PowerShell in a single-threaded
 // apartment, as that dialog needs. Linux and the rest: zenity, else kdialog;
 // with neither, there is no dialog to open, and the person types the path.
@@ -25,7 +28,14 @@ export interface FolderChooser {
 // The dialog this system has, or undefined when it has none.
 export function folderChooser(home: string, env: Record<string, string | undefined>, os: NodeJS.Platform = currentOs()): FolderChooser | undefined {
   if (os === 'darwin') {
-    return { command: 'osascript', args: ['-e', 'activate', '-e', `POSIX path of (choose folder with prompt "${PROMPT}" default location (path to home folder))`] };
+    const script = [
+      'ObjC.import("AppKit")',
+      '$.NSApplication.sharedApplication.activateIgnoringOtherApps(true)',
+      'var app = Application.currentApplication()',
+      'app.includeStandardAdditions = true',
+      `app.chooseFolder({ withPrompt: ${JSON.stringify(PROMPT)}, defaultLocation: app.pathTo("home folder") }).toString()`,
+    ].join('; ');
+    return { command: 'osascript', args: ['-l', 'JavaScript', '-e', script] };
   }
   if (isWindows(os)) {
     const script = [
@@ -44,8 +54,8 @@ export function folderChooser(home: string, env: Record<string, string | undefin
 }
 
 // What the dialog said: the folder chosen, or none (the person cancelled).
-// Each of them prints the path alone, on a line of its own (osascript with
-// a / at the end), and prints nothing, or fails, when cancelled.
+// Each of them prints the path alone, on a line of its own (perhaps with a /
+// at the end), and prints nothing, or fails, when cancelled.
 export function chosenFolder(stdout: string): string | undefined {
   const line = stdout.split(/\r?\n/).find((l) => l.trim())?.trim();
   if (!line) return undefined;

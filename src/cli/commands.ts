@@ -8,7 +8,7 @@
 import { agentKinds, skillAgents } from '../core/agents/registry';
 import { listNames } from '../core/format';
 import { findRunning } from '../platform/lock';
-import { agentEntries } from './agentCommands';
+import { agentEntries, startAgents } from './agentCommands';
 import { start, status, stop } from './boardCommands';
 import { boardFits } from './boardVersion';
 import { hooksEnv, tokenFor, type Env } from './commandEnv';
@@ -105,10 +105,10 @@ export const COMMANDS: CliCommand[] = [
       title: 'tricot [start]: start the board, or find the running one, and open it',
       usage: ['tricot [start] [options]'],
       about: [
-        "Starts the board on this data, or finds the one already running, opens it in the browser, and prints how to connect an agent. The first tricot in a terminal also asks, once, whether to show your agents' steps live on your boards (tricot steps turns them on or off later).",
+        "Starts the board on this data, or finds the one already running, and opens it in the browser. In a terminal it first asks which agents to start with it (those Tricot can start that are on this computer, ticked as you left them last time): Enter starts them with the board, as tricot claude codex does; Esc starts the board alone and says in a few lines how to start or connect an agent (every command by hand: tricot connect --print). The first tricot in a terminal also asks, once, whether to show your agents' steps live on your boards (tricot steps turns them on or off later).",
       ],
     },
-    run: (env) => start(env),
+    run: (env) => start(env, false, startAgents),
   },
   {
     name: 'canvas',

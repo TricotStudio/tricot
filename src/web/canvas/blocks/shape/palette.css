@@ -1,0 +1,88 @@
+/* ---- the colours of what is drawn on a canvas (shapes, a pen's strokes) ----
+   The content palette, as a chart's series are coloured: themed for light and
+   dark, checked for colour-blind readers, and never a status's colour, which
+   means something (DESIGN.md). Each sets --shape-ink, its line and words, and
+   --shape-fill, a tint of it on the sheet. Gray is ink alone, on the sheet. */
+.shape-gray {
+  --shape-ink: var(--border-strong);
+  --shape-fill: var(--surface);
+}
+.shape-blue {
+  --shape-ink: var(--series-1);
+}
+.shape-orange {
+  --shape-ink: var(--series-2);
+}
+.shape-green {
+  --shape-ink: var(--series-3);
+}
+.shape-yellow {
+  --shape-ink: var(--series-4);
+}
+.shape-pink {
+  --shape-ink: var(--series-5);
+}
+.shape-violet {
+  --shape-ink: var(--series-7);
+}
+.shape-red {
+  --shape-ink: var(--series-8);
+}
+:is(.shape-blue, .shape-orange, .shape-green, .shape-yellow, .shape-pink, .shape-violet, .shape-red) {
+  --shape-fill: color-mix(in srgb, var(--shape-ink) 16%, var(--surface));
+}
+
+/* A swatch in a drawn block's toolbar: its colour as a dot, ringed when it is the one. */
+.shape-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.node-toolbar .shape-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  display: inline-grid;
+  place-items: center;
+}
+.node-toolbar .shape-swatch::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--shape-fill);
+  box-shadow: inset 0 0 0 1.5px var(--shape-ink);
+}
+.node-toolbar .shape-swatch.is-on {
+  box-shadow: 0 0 0 1.5px var(--text);
+}
+/* A shape's line, a label's size and bold, and a drawing's width: small
+   buttons after a rule, filled when they are the one. */
+.node-toolbar .shape-option {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+.node-toolbar .shape-option.is-on {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.node-toolbar .shape-option.is-bold {
+  font-weight: 700;
+}
+.node-toolbar .shape-option svg {
+  width: 16px;
+  height: 16px;
+}
+.shape-rule {
+  align-self: center;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+}

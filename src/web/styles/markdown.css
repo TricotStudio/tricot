@@ -4,15 +4,16 @@
    so a note at 14px and a comment at 13px keep the same proportions, and the
    headings are the system's own roles (20, 16 and 14px at 600 in a 14px
    note). Space above a heading is three to five times the space below it, so
-   it belongs to what follows. Prose stops at about 75 characters however wide
-   the block; tables, code and pictures may use the full width. */
+   it belongs to what follows. Prose fills what holds it, and stops only on a
+   very wide space, at about 120 characters; tables, code and pictures may use
+   the full width. */
 @property --md-measure {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;
 }
 .md {
-  --md-measure: 34em; /* resolved here, at the text's own size: about 75 characters */
+  --md-measure: 54em; /* resolved here, at the text's own size: about 120 characters */
   min-width: 0; /* in a grid (a panel's section, a comment) a wide table scrolls rather than widening the text */
   overflow-wrap: break-word;
 }

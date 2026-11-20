@@ -1,10 +1,10 @@
 /* ---- a note's full view (noteView.tsx) -------------------------------------------
-   The note on a sheet, at a reading size, its prose stopping at a reading
-   width. While pairing, a selection shows in the amber of a part being
+   The note on a sheet, at a reading size, as wide as Markdown's prose goes
+   (markdown.css) where the window has room. While pairing, a selection shows in the amber of a part being
    asked about. */
 
 .note-full-sheet {
-  width: min(760px, calc(100% - 48px));
+  width: min(920px, calc(100% - 48px));
   padding: 36px 48px 44px;
 }
 .note-full {

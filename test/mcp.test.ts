@@ -188,6 +188,40 @@ describe('MCP + REST end to end', () => {
     for (const result of quiet) assert.doesNotMatch(result, /You already have/);
   });
 
+  it("keeps a shape's line and bold and an arrow's weight as an agent and a person set them, and tells agents of them", async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Sketches' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Sign in' }));
+    const box = idOf(await callText('add_block', { page_id: pageId, type: 'shape', shape: 'rectangle', text: 'Sign in', color: 'blue', line: 'thick', bold: true }));
+    const label = idOf(await callText('add_block', { page_id: pageId, type: 'shape', shape: 'text', text: 'Step one', line: 'thick', bold: true }));
+    let canvas = await callText('get_canvas', { page_id: pageId });
+    assert.match(canvas, /\(blue, thick line, bold\)/);
+    assert.match(canvas, /\(gray, medium, bold\)/, 'a label has no outline: its line is not kept');
+
+    await callText('update_block', { block_id: box, rev: 1, line: 'thin', bold: false });
+    canvas = await callText('get_canvas', { page_id: pageId });
+    assert.match(canvas, /\(blue\)/);
+    assert.match(eventsOf(store, boardId).at(-1)!.summary, /gave it a thin line; made its words plain$/);
+    const refused = await call('update_block', { block_id: label, rev: 1, line: 'heavy' });
+    assert.equal(refused.isError, true);
+
+    // A person draws them from the page with the tools' options.
+    const drawn = await post('/canvas/blocks', { actor: 'Sam', pageId, content: { type: 'shape', shape: 'ellipse', color: 'green', line: 'medium' } });
+    assert.equal(drawn.status, 201, JSON.stringify(drawn.json));
+    assert.match(await callText('get_canvas', { page_id: pageId }), /\(green, medium line\)/);
+    const wrong = await post('/canvas/blocks', { actor: 'Sam', pageId, content: { type: 'shape', shape: 'ellipse', line: 'heavy' } });
+    assert.equal(wrong.status, 400);
+
+    // And an arrow between them, with its line's weight.
+    const arrow = await post('/canvas/links', { actor: 'Sam', from: box, to: label, weight: 'thick' });
+    assert.equal(arrow.status, 201, JSON.stringify(arrow.json));
+    assert.equal(arrow.json.weight, 'thick');
+    assert.match(await callText('get_canvas', { page_id: pageId }), / → .* \(thick line\) \[id: /);
+    assert.equal((await post('/canvas/links', { actor: 'Sam', from: label, to: box, weight: 'heavy' })).status, 400);
+    const plain = await post('/canvas/links', { actor: 'Sam', from: label, to: box, weight: 'thin' });
+    assert.equal(plain.json.weight, undefined, 'thin is no weight: it is kept as none');
+  });
+
   it('ends an idle wait with a hint to call again', async () => {
     const boardId = (await callText('create_board', { title: 'Idle' })).match(/\[id: ([^\]]+)\]/)![1];
     const result = await callText('wait_for_updates', { board_id: boardId, since: 1, timeout_seconds: 1 });

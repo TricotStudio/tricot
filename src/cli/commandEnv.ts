@@ -24,6 +24,8 @@ export type Env = {
     background?: boolean;
     'stop-with-agents'?: boolean;
     'no-update-check'?: boolean;
+    coordinate?: boolean; // an agent command: start it as the board's coordinator (core/roles.ts)
+    orchestrators?: string; // with it: how many agents it starts at once, at most
     session?: string; // tricot listen: its MCP session's word
     url?: string; // tricot listen: the board's address
     // tricot show (showCommand.ts): the new page's title, what the person asked, a

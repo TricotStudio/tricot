@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { inWindow } from '../../core/delivery';
 import { barPlaceholder, barSends, doorName } from '../../core/doors';
 import { agentOnFile, type OpenFile } from '../../core/fileThread';
@@ -14,13 +14,15 @@ import { api } from '../shared/api';
 import type { PlainQuestion } from '../shared/cardKinds';
 import { useBoardViews } from '../shared/boardViewsContext';
 import { useCardKinds } from '../shared/cardKindsContext';
-import { usePageSelection, useUndoDelete } from '../canvas';
+import { DrawOptions, DrawToolbar, useDrawTools, usePageSelection, useUndoDelete } from '../canvas';
 import { ChatBar } from './chatBar';
 import { moveDock } from './dockMotion';
 import { lookAtBoard } from './justMade';
 import { fileBar, pageBar, replyPlaceholder, viewOfDoor } from './chatDoor';
 import { agentLineAt, commentAnchor, LoopLine, MessageFoot, newestMine, onItsWay, outbox, Reactions, SaidTo, settledKeys, useMentionable, useOutgoing, withOutgoing, type Outgoing } from '../conversation';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
+import { PanelHandle } from '../shared/PanelHandle';
+import { usePanelWidth } from '../shared/panelWidth';
 import { CLOSED, dockOnArrival, type DockState, type Left } from './dockStays';
 import { escapeCloses, followPress, useBeside, useDismiss, useReadOnly } from '../shared/hooks';
 import { askDockToOpen, OPEN_THREAD } from '../shared/openThread';
@@ -33,6 +35,7 @@ import { ThreadsList } from './threadsList';
 import { useThreadsSeen } from './threadsSeen';
 import { WorkCards } from './threadWork';
 import './threads.css';
+import { OwnerChip, useRouted, WorkStrip, type Routed } from './workStrip';
 
 // A thread just started, drawn until the server has it: its first message is
 // in the outbox (outbox.ts). Nothing is sent to it, nor changed on it.
@@ -245,6 +248,24 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   // lets the bar go back to the bottom.
   const docked = open && (page === 'new' || Boolean(thread));
   isDocked.current = docked;
+  // The coordinator sent the viewer's message on (core/roles.ts): the dock
+  // showing the thread it was asked in follows it there, with a way back;
+  // anywhere else, the floating bar offers to (workStrip.tsx).
+  const routed = useRouted(board, name);
+  const [back, setBack] = useState<{ from: string; to: string } | null>(null);
+  const follow = routed.latest;
+  const followTo = useCallback(
+    (to: Routed) => {
+      routed.done(to.id);
+      setBack({ from: to.from, to: to.to });
+      showThread(to.to);
+    },
+    [routed, showThread],
+  );
+  useEffect(() => {
+    if (follow && docked && page === 'thread' && selected === follow.from) followTo(follow);
+  }, [follow, docked, page, selected, followTo]);
+  const backTo = back && thread?.id === back.to ? threads.find((t) => t.id === back.from) : undefined;
   // Closed, the board has the eye again: what was made meanwhile in view is seen.
   useEffect(() => {
     if (!docked) lookAtBoard();
@@ -355,6 +376,17 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const overFile = !docked && door === 'threads' && !shownPage ? shownFile : undefined;
   const fileAgent = useMemo(() => overFile && agentOnFile(board, overFile.named, boardAgents(board, present.map((a) => a.name))), [board, overFile, present]);
   const fileWords = overFile && fileBar(overFile.path, fileAgent);
+  // Floating over a canvas that can be drawn on, its drawing tools float
+  // beside the bar, in a capsule of their own on its left, the options of the
+  // tool that is on in a tray over it (DrawOptions). The capsule stays
+  // while the bar floats, so it comes and goes in motion (chatBar.css),
+  // inert while it is away. It leaves in motion only once it has been there
+  // (`was-shown`), so a bar that opens away from a canvas plays no leaving.
+  const drawable = useDrawTools().present && !docked;
+  const [toolsSeen, setToolsSeen] = useState(false);
+  useEffect(() => {
+    if (drawable) setToolsSeen(true);
+  }, [drawable]);
   fieldKey.current = draftKey;
   const draft = drafts[draftKey] ?? '';
   const setDraft = (key: string, body: string) => set((current) => ({ drafts: { ...current.drafts, [key]: body } }));
@@ -540,11 +572,36 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     />
   );
 
+  // The docked conversation's width (shared/panelWidth.ts), as its edge was last
+  // dragged on this browser. It widens over the board, which stays as it is
+  // under it: the board's column keeps the conversation's usual width, and
+  // narrower when the conversation is, so narrowing gives the board the room.
+  const usual = Math.round(Math.min(DOCK_USUAL, window.innerWidth * 0.4));
+  const dockWidth = usePanelWidth(panel, { key: 'tricot:dock-width', initial: usual, min: 320, share: 0.66, side: 'right' });
+  const column = Math.min(dockWidth.width, usual);
+  useLayoutEffect(() => {
+    const layout = docked ? panel.current?.parentElement : undefined;
+    if (!layout) return;
+    layout.style.setProperty('--dock-width', `${column}px`);
+    return () => {
+      layout.style.removeProperty('--dock-width');
+    };
+  }, [docked, column]);
+
   if (!docked) {
     return (
       <>
         <div className="chat-float">
           {threadsList}
+          {!listOpen && <WorkStrip board={board} routed={follow} onOpen={(id) => showThread(id)} onFollow={followTo} onDismiss={routed.done} />}
+          {bar && (
+            <div className={`chat-tools${drawable ? ' is-shown' : toolsSeen ? ' was-shown' : ''}`} inert={!drawable}>
+              <div className="chat-tools-sheet">
+                <DrawToolbar />
+              </div>
+              <DrawOptions />
+            </div>
+          )}
           {bar ?? (
             <button type="button" className="chat-threads-only" ref={listButton} onClick={toggleList} aria-expanded={listOpen} aria-haspopup="dialog">
               <Icon name="thread" /> Threads
@@ -562,7 +619,13 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     </button>
   );
   return (
-    <aside className="thread-dock" ref={panel} aria-label="Threads">
+    <aside
+      className={`thread-dock${dockWidth.width > column ? ' is-over' : ''}${dockWidth.dragging ? ' is-resizing' : ''}`}
+      ref={panel}
+      aria-label="Threads"
+      style={{ '--dock-w': `${dockWidth.width}px`, '--dock-over': `${dockWidth.width - column}px` } as CSSProperties}
+    >
+      <PanelHandle {...dockWidth} label="Conversation width" />
       <header className="dock-head">
         <button
           type="button"
@@ -590,8 +653,21 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
       )}
       {page === 'thread' && thread && (
         <>
+          {backTo && (
+            <button
+              type="button"
+              className="dock-crumb"
+              onClick={() => {
+                setBack(null);
+                showThread(backTo.id);
+              }}
+            >
+              <Icon name="arrow-left" />
+              <span className="dock-crumb-title">Back to “{shownTitle(backTo)}”</span>
+            </button>
+          )}
           <ThreadTitle board={board} thread={thread} readOnly={readOnly || isLocal(thread)} onPick={(lens) => setLens(thread, lens)} />
-          <Conversation board={board} thread={thread} name={name} onOpen={noop} onEdit={editUnsent} />
+          <Conversation board={board} thread={thread} name={name} onOpen={noop} onEdit={editUnsent} onThread={(id) => showThread(id)} />
         </>
       )}
       {page === 'new' && (
@@ -610,6 +686,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
 }
 
 const noop = () => {};
+const DOCK_USUAL = 440; // the conversation's width until it is dragged, at most 40% of the window (board.css)
 
 // The open thread's title, and under it where it was started, what it made
 // (#78, T48, 3 blocks) and when, and its lens, whose chip changes it.
@@ -625,6 +702,7 @@ function ThreadTitle(props: { board: Board; thread: Thread; readOnly: boolean; o
       </h2>
       <div className="dock-meta">
         {tag && <span className="dock-door">{tag}</span>}
+        <OwnerChip thread={thread} />
         {made.map((m) => (
           <span key={m} className="dock-made">
             → {m}
@@ -654,8 +732,8 @@ function ThreadTitle(props: { board: Board; thread: Thread; readOnly: boolean; o
 // agent has that line too, and says who it is for ("Claude → Codex"); once
 // the loop guard holds one, the foot says the agents wait for a person
 // (agentTalk.tsx). An archived board's threads are only read.
-function Conversation(props: { board: Board; thread: Thread | undefined; name: string; onOpen: () => void; onEdit: (body: string, lens?: MessageLens) => void }) {
-  const { board, thread, name, onOpen, onEdit } = props;
+function Conversation(props: { board: Board; thread: Thread | undefined; name: string; onOpen: () => void; onEdit: (body: string, lens?: MessageLens) => void; onThread?: (id: string) => void }) {
+  const { board, thread, name, onOpen, onEdit, onThread } = props;
   const readOnly = useReadOnly();
   const scroller = useRef<HTMLDivElement>(null);
   const names = useMentionable(name);
@@ -720,6 +798,7 @@ function Conversation(props: { board: Board; thread: Thread | undefined; name: s
                     <ViaSkill via={message.via} />
                   </div>
                   <CommentText comment={message} />
+                  {message.sent && <SentOn board={board} sent={message.sent} onThread={onThread} />}
                   {message.refs?.length ? <WorkCards board={board} refs={message.refs} onOpen={onOpen} /> : null}
                   {way || i === lineAt || message.id === agentLine ? (
                     <MessageFoot
@@ -762,6 +841,17 @@ function Conversation(props: { board: Board; thread: Thread | undefined; name: s
       {thread && <LoopLine board={board} items={thread.messages} className="threads-quiet" />}
       {!readOnly && !speaking && <Listening board={board} thread={thread} />}
     </div>
+  );
+}
+
+// Where a coordinator sent a message on (core/roles.ts): the thread, to open.
+function SentOn({ board, sent, onThread }: { board: Board; sent: NonNullable<ThreadMessage['sent']>; onThread?: (id: string) => void }) {
+  const to = board.threads?.find((t) => t.id === sent.threadId);
+  if (!to || !onThread) return null;
+  return (
+    <button type="button" className="thread-sent" onClick={() => onThread(to.id)}>
+      Open “{shownTitle(to)}” <Icon name="arrow-right" />
+    </button>
   );
 }
 

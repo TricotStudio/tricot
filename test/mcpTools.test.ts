@@ -108,6 +108,34 @@ describe('the MCP server and its tools', () => {
     assert.deepEqual(labelled('claim_work', {}, {}), generic, 'none given, none said, whatever the file has');
   });
 
+  // A coordinator's and an orchestrator's session (core/roles.ts, named on its MCP address) list their role's tool
+  // besides, documented, labelled, in their guide topic and told first; a session with no role lists and is told neither.
+  it("lists a role's tool, and says its role first, only to a session of that role", async () => {
+    const plain = await hookIn('hook-roles');
+    const documented = documentedTools();
+    const names = tools.map((t) => t.name);
+    const roles = [
+      ['agent=Router&role=coordinator', 'route_to_thread', 'coordinating', /^This session is the board's coordinator/],
+      ['agent=Owner&role=orchestrator&thread=th_1', 'set_thread_status', 'orchestrating', /^This session owns thread \[thread id: th_1\]/],
+    ] as const;
+    for (const [query, tool, topic, told] of roles) {
+      assert.ok(!names.includes(tool), `${tool} is not listed without the role`);
+      const session = new Client({ name: 'test-client', version: '1.0.0' });
+      await session.connect(new StreamableHTTPClientTransport(new URL(`${canvas.base}/mcp?${query}`)));
+      try {
+        const listed = (await session.listTools()).tools.map((t) => t.name);
+        assert.deepEqual(listed.filter((name) => !names.includes(name)), [tool], `the ${topic} session lists ${tool} besides`);
+        assert.ok(documented.has(tool), `${tool} is in docs/mcp-tools.md`);
+        assert.ok(!plain(tool)!.text.startsWith('Using Tricot:'), `${tool} needs a step label in hooks/tricot-describe.mjs`);
+        assert.match(await readGuide(session, topic), new RegExp(`^## ${tool}$`, 'm'));
+        assert.match(session.getInstructions() ?? '', told);
+      } finally {
+        await session.close();
+      }
+    }
+    assert.doesNotMatch(client.getInstructions() ?? '', /^This session/m);
+  });
+
   it('marks what reads and what removes, and nothing else', () => {
     const hints = (name: string) => tools.find((t) => t.name === name)?.annotations;
     assert.deepEqual(hints('get_board'), { readOnlyHint: true });

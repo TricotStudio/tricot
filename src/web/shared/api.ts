@@ -307,7 +307,7 @@ export const api = {
   addGroup: (ref: CanvasRef, actor: string, input: { title: string; x: number; y: number; w: number; h: number }) =>
     post(routes.addGroup)<Group>({ actor, ...ref, ...input }),
   renameGroup: (id: string, actor: string, title: string) => post(routes.renameGroup)<Group>({ actor, title }, { id }),
-  addLink: (actor: string, from: string, to: string) => post(routes.addLink)<Link>({ actor, from, to }),
+  addLink: (actor: string, from: string, to: string, weight?: 'thin' | 'medium' | 'thick') => post(routes.addLink)<Link>({ actor, from, to, weight }),
   relabelLink: (id: string, actor: string, label: string) => post(routes.relabelLink)<Link>({ actor, label }, { id }),
   // ask: a request for agents to act on the part, where its kind takes one (a website's element).
   pinComment: (blockId: string, actor: string, input: { part: PinPart; body: string; ask?: boolean }) =>

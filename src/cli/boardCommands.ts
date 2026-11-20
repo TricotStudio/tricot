@@ -14,19 +14,23 @@ import { PortInUseError, startServer, type RunningServer } from '../server/start
 import type { RunningLock } from './agentCommand';
 import { askToStop } from './askToStop';
 import { boardUrl, hooksEnv, openBoard, sleep, thisTricot, tokenFor, type Env } from './commandEnv';
-import { printHowToConnect } from './connectCommand';
+import { printNextSteps } from './connectCommand';
 import { askOnFirstRun } from './hooks';
 import type { CliResult } from './main';
 import { personHere, serverTerminal } from './seatsDesk';
+import { pickAgents } from './startPicker';
 import { keptFlags, updatesFor } from './updateCommand';
 
-function printRunning(env: Env, lock: { url: string; mcpUrl: string }, headline: string): void {
+// The board's address and data folder, and what a person does next (connectCommand.ts printNextSteps), unless an agent starts with it.
+function printWhere(env: Env, lock: { url: string }, headline: string): void {
   const { out } = env.ctx;
   out(`${headline} ${boardUrl(env, lock.url)}`);
   out(`Boards in: ${env.dataDir}`);
   out('');
-  printHowToConnect(env, lock.mcpUrl);
 }
+
+// What `start` hands the agents picked (startPicker.ts) to: `tricot claude codex`, as typed (commands.ts gives it).
+export type StartAgents = (env: Env, ids: string[]) => Promise<CliResult>;
 
 // What a person calls each: "Tricot" is what a server with parts has always said of itself, so only Canvas is named.
 const named = (canvas: boolean) => (canvas ? 'Tricot Canvas' : 'Tricot');
@@ -41,7 +45,8 @@ async function otherRunning(env: Env, canvas: boolean, lock: Pick<ServerLock, 'e
 
 // `asked`: Tricot Canvas was asked for (`tricot canvas`), started the same way on the same data, port and options. Canvas is also
 // what `tricot start` starts where there is no edition with parts (src/edition.ts), so everything below follows the edition it gets.
-export async function start(env: Env, asked = false): Promise<CliResult> {
+// `agents`: what starts the agents picked in a terminal (plain `tricot` only; Canvas starts the board alone).
+export async function start(env: Env, asked = false, agents?: StartAgents): Promise<CliResult> {
   const { ctx, port, host, dataDir } = env;
   const edition = await editionOf(asked);
   const canvas = edition.edition === 'canvas';
@@ -52,11 +57,17 @@ export async function start(env: Env, asked = false): Promise<CliResult> {
   await askOnFirstRun(hooksEnv(env, running));
   if (running?.url && running.mcpUrl) {
     const authed = { ...env, token: tokenFor(env, running.host ?? host) };
-    printRunning(authed, { url: running.url, mcpUrl: running.mcpUrl }, `${named(canvas)} is already running:`);
+    printWhere(authed, { url: running.url }, `${named(canvas)} is already running:`);
+    const picked = agents && (await pickAgents(env, true));
+    if (picked) return agents(env, picked);
+    printNextSteps(authed);
     openBoard(authed, running.url);
     return { exitCode: 0 };
   }
   if (env.values.background) return startInBackground(env, canvas);
+  // In a terminal, the agents to start with it, if any: they start it in the background, as `tricot claude` does.
+  const picked = agents && (await pickAgents(env, false));
+  if (picked) return agents(env, picked);
 
   let server: RunningServer;
   try {
@@ -78,7 +89,8 @@ export async function start(env: Env, asked = false): Promise<CliResult> {
     return failedToStart(env, error, canvas);
   }
   const authed = { ...env, token: server.token };
-  printRunning(authed, server, `${named(canvas)} is running:`);
+  printWhere(authed, server, `${named(canvas)} is running:`);
+  printNextSteps(authed);
   ctx.out('Press Ctrl+C to stop.');
   // In a terminal, this one asks when a browser wants to act for the person
   // (seatsDesk.ts), and lets go of what it holds as the server stops.
@@ -121,7 +133,8 @@ async function startInBackground(env: Env, canvas: boolean): Promise<CliResult> 
     return { exitCode: 1 };
   }
   const authed = { ...env, token: tokenFor(env, lock.host ?? host) };
-  printRunning(authed, lock, `${named(canvas)} is running in the background:`);
+  printWhere(authed, lock, `${named(canvas)} is running in the background:`);
+  printNextSteps(authed);
   ctx.out('Stop it with: tricot stop');
   openBoard(authed, lock.url);
   return { exitCode: 0 };

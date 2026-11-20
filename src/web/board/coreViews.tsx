@@ -1,4 +1,3 @@
-import { pagesOf } from '../../core/scratchPad';
 import { FIND_FILE, FIND_FILE_KEYS, FIND_IN_FILES, FIND_IN_FILES_KEYS, FilesView, projectFolderOf } from '../files';
 import { Icon } from '../shared/components';
 import { BoardViews } from '../shared/boardViews';
@@ -15,7 +14,7 @@ export function coreBoardViews(views: BoardViews): BoardViews {
     id: 'scratch',
     label: 'Sketchbook',
     link: (boardId) => linkTo.board(boardId, 'scratch'),
-    tab: ({ board, away }) => ({ count: pagesOf(board).length, changed: away.pagesChanged.size > 0 }),
+    tab: ({ away }) => ({ changed: away.pagesChanged.size > 0 }),
     // Over a Sketchbook page the chat bar asks about that page, of the agent that made it.
     chat: () => 'threads',
     render: ({ board, name, route, away }) => (

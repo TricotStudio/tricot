@@ -22,7 +22,7 @@ import { ScratchPad } from './store/scratchPad';
 import { Skills } from './store/skills';
 import { composeParts, partsOf, type CanvasCard, type CoreModules, type StorePart } from './store/storePart';
 import { Sync } from './store/sync';
-import { Threads, type ThreadStart } from './store/threads';
+import { Threads, type RouteTarget, type Routed, type ThreadStart } from './store/threads';
 import { useBlockKinds } from './blocks/registry';
 import { useBoardCards } from './cards';
 import { useCardReading } from './cardReading';
@@ -32,7 +32,7 @@ import type { Deletion } from './deletions';
 import type { PairingEnd, PairingSession } from './pairing';
 import type { SkillList, TricotSkill } from './skills';
 import type { PixelSize } from './blocks/image/image';
-import type { Actor, Block, BlockVersion, Board, BoardEvent, BoardSummary, Comment, ContextRequest, Group, Link, Pin, ScratchPage, Thread, ThreadRef, VersionSummary } from './types';
+import type { Actor, Block, BlockVersion, Board, BoardEvent, BoardSummary, Comment, ContextRequest, Group, Link, Pin, ScratchPage, Thread, ThreadRef, ThreadStatus, VersionSummary } from './types';
 
 export { BoardError } from './store/errors';
 export type { Reacted, ReactionInput, ReactionPlace } from './store/reactions';
@@ -175,6 +175,15 @@ export class Store {
     this.repo.presentAgents = present;
   }
 
+  // The coordinator on a board now, by its key, from presence (core/roles.ts):
+  // the server sets it, so a thread a person starts from a chat bar is its.
+  get coordinatorOf(): (boardKey: string) => string | undefined {
+    return this.repo.coordinatorOf;
+  }
+  set coordinatorOf(coordinator: (boardKey: string) => string | undefined) {
+    this.repo.coordinatorOf = coordinator;
+  }
+
   // Whether blocks may name what is on this computer (a website's folder or
   // dev server): the server says, by where it listens.
   get localFiles(): boolean {
@@ -274,6 +283,8 @@ export class Store {
   threadOn(threadId: string, board: Board): Thread { return this.threads.threadOn(threadId, board); }
   addThreadWork(threadId: string, ref: ThreadRef, actor: Actor): void { return this.threads.addThreadWork(threadId, ref, actor); }
   threadGroup(threadId: string, actor: Actor): Group | undefined { return this.threads.threadGroup(threadId, actor); }
+  routeToThread(fromThreadId: string, messageId: string, actor: Actor, to: RouteTarget): Routed { return this.threads.routeToThread(fromThreadId, messageId, actor, to); }
+  setThreadStatus(threadId: string, status: ThreadStatus, actor: Actor, summary?: string): Thread { return this.threads.setThreadStatus(threadId, status, actor, summary); }
   // What server code asks of a Store about a card, by the name of its kind: a comment on it, what its kind sweeps for lapsed
   // (first looks), and what an agent's call about it keeps. A Store with no such kind refuses the comment and leaves the rest.
   commentOnKind(kind: string, id: string, body: string, actor: Actor, about?: CommentAbout): CardCommented {
@@ -339,7 +350,7 @@ export class Store {
   }
   addGroup(ref: CanvasRef, input: NewGroup, actor: Actor): Group { return this.canvases.addGroup(ref, input, actor); }
   renameGroup(groupId: string, title: string, actor: Actor): Group { return this.canvases.renameGroup(groupId, title, actor); }
-  addLink(fromId: string, toId: string, label: string | undefined, actor: Actor): Link { return this.canvases.addLink(fromId, toId, label, actor); }
+  addLink(fromId: string, toId: string, label: string | undefined, actor: Actor, weight?: 'thin' | 'medium' | 'thick'): Link { return this.canvases.addLink(fromId, toId, label, actor, weight); }
   relabelLink(linkId: string, label: string, actor: Actor): Link { return this.canvases.relabelLink(linkId, label, actor); }
   pinComment(blockId: string, part: PinPart, body: string, actor: Actor, options: { ask?: boolean } = {}): { pin: Pin; comment: Comment } { return this.pins.pinComment(blockId, part, body, actor, options); }
   commentOnPin(pinId: string, body: string, actor: Actor): { pin: Pin; comment: Comment } { return this.pins.commentOnPin(pinId, body, actor); }

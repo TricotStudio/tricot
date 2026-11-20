@@ -12,4 +12,5 @@ export { Code } from './lines';
 export { usePageSelection } from './pageSelection';
 export { besidePins, PinnedFrom } from './pins';
 export { ToolbarMenu, type ToolbarMenuApi } from './toolbarMenu';
+export { DrawOptions, DrawToolbar, useDrawTools } from './tools';
 export { UndoToast, useUndoDelete, useUndoShortcut } from './undo';

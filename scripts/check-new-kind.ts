@@ -260,7 +260,7 @@ async function endToEnd(): Promise<void> {
   assert.match(add.description!, /chart → [^]*; quote → quote, \+ speaker\./);
   const guide = ((await client.callTool({ name: 'read_guide', arguments: { topic: 'blocks' } })) as { content: { text: string }[] }).content[0].text;
   assert.match(guide, /chart → [^]*; quote → quote \(the words\), plus optional speaker \(who said them\)\./);
-  assert.match(guide, /Content fields by type: .*, focus, quote, speaker, and for code /);
+  assert.match(guide, /Content fields by type: .*, focus, (?:[a-z]+, )*quote, speaker, and for code /); // after the kinds listed before it
   ok('tools/list names the type, its fields and what it is for');
 
   // an agent adds one; the canvas, get_block and search read it

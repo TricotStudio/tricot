@@ -147,7 +147,7 @@ export const canvas = {
   move: z.object({ ...by, moves: sized(move, { max: [LIMITS.moves, `Move at most ${LIMITS.moves} items at once.`] }) }),
   addGroup: newGroup.extend(by),
   renameGroup: z.object({ ...by, title: fields.groupTitle }),
-  addLink: z.object({ ...by, from: z.string(), to: z.string(), label: fields.linkLabel.optional() }),
+  addLink: z.object({ ...by, from: z.string(), to: z.string(), label: fields.linkLabel.optional(), weight: z.enum(['thin', 'medium', 'thick']).optional() }),
   relabelLink: z.object({ ...by, label: fields.linkLabel }),
   pin: z.object({ ...by, part: pinPart }), // and the card it is linked to, by its kind's `<kind>Id` (cardIdsOf)
   // ask: a request for agents to act on the part, on parts that take one (a website's elements).

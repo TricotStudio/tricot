@@ -1,0 +1,120 @@
+/* ---- a shape drawn on a canvas (blocks/shape) ------------------------------
+   It fills its block: a rectangle with the canvas's rounded corners, an
+   ellipse, or a diamond (an outline that keeps its line's width however it is
+   stretched), tinted with its colour and outlined in it at its line's weight
+   (thin, medium or thick), its words in the middle at the body size. A text
+   label is words alone, at its size, in ink tinted with its colour. Either's
+   words may be bold. Its words, edited, are a field in their place. */
+.shape {
+  --shape-line: 1.5px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: center;
+}
+.shape.is-rectangle,
+.shape.is-ellipse {
+  border: var(--shape-line) solid var(--shape-ink);
+  background: var(--shape-fill);
+}
+.shape.is-line-medium {
+  --shape-line: 3px;
+}
+.shape.is-line-thick {
+  --shape-line: 5px;
+}
+.shape.is-rectangle {
+  border-radius: 10px;
+}
+.shape.is-ellipse {
+  border-radius: 50%;
+  padding: 12% 16%;
+}
+.shape.is-diamond {
+  padding: 20% 24%;
+}
+.shape-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.shape-outline polygon {
+  fill: var(--shape-fill);
+  stroke: var(--shape-ink);
+  stroke-width: var(--shape-line);
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.shape-words {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A label: words alone, from the left, at its size, in ink tinted with its colour. */
+.shape.is-text {
+  place-items: center start;
+  padding: 2px 4px;
+  text-align: left;
+  color: color-mix(in srgb, var(--shape-ink) 70%, var(--text));
+}
+.shape.is-text.shape-gray {
+  color: var(--text);
+}
+.shape.is-text.is-size-s {
+  font-size: 13px;
+}
+.shape.is-text.is-size-m {
+  font-size: 16px;
+}
+.shape.is-text.is-size-l {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.shape.is-bold,
+.shape.is-text.is-bold {
+  font-weight: 700;
+}
+
+/* Its words, edited in place: a field as wide as its words' room, in their type. */
+.shape .shape-field,
+.shape .shape-field:focus {
+  position: relative;
+  width: 100%;
+  max-height: 100%;
+  min-height: 1.4em;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  field-sizing: content;
+}
+.shape.is-text .shape-field,
+.shape.is-text .shape-field:focus {
+  min-width: 100%;
+  overflow: visible;
+  white-space: pre;
+}
+.shape .shape-field::placeholder {
+  color: var(--faint);
+}

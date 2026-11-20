@@ -28,6 +28,8 @@ export const CORE_EVENTS: readonly EventType[] = [
   'thread_lens_changed',
   'thread_deleted',
   'thread_restored',
+  'thread_routed',
+  'thread_status_changed',
   'pairing_started',
   'pairing_ended',
   'seats_changed',

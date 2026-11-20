@@ -32,7 +32,7 @@ const placed = (list: readonly string[], where: 'types' | 'docs', among: readonl
 // Whether a server offers what a kind needs agents to be offered (`offeredBy`): the core's own says none.
 export type Offers = (what: string) => boolean;
 const offersNone: Offers = () => false;
-const told = (kind: AnyKind, offers: Offers): boolean => kind.agent.offeredBy === undefined || offers(kind.agent.offeredBy);
+const told = (kind: AnyKind, offers: Offers): boolean => !kind.agent.peopleOnly && (kind.agent.offeredBy === undefined || offers(kind.agent.offeredBy));
 
 // The kinds as agents list them, with those a group has to offer left out where it offers none.
 function listed(offers: Offers = offersNone, extra: readonly AnyKind[] = []): AnyKind[] {

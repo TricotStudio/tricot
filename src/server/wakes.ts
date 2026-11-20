@@ -6,6 +6,8 @@
 // not its own. A read doesn't consume it: only the end of a turn after
 // reading, or a wake that started a turn, moves `since` on.
 import { concernsAgent } from '../core/concerns';
+import { samePerson } from '../core/format';
+import { launchesOn, type Launch } from '../core/roles';
 import type { Store } from '../core/store';
 import { boardKey, type Board } from '../core/types';
 import { eventVisibleTo } from './mcp/backlog';
@@ -25,6 +27,10 @@ export interface WakesReply {
   seq: number; // the board's latest event, for the terminal's next view
   agents: HeldAgent[];
   refused: string[]; // held by another terminal: not this one's to wake
+  // To a terminal that holds the board's coordinator: the threads whose owner it
+  // starts, at work with none of that name on the board (core/roles.ts). Left
+  // out when there are none.
+  launches?: Launch[];
 }
 
 // `read`: what was read for it before (its record's), read on from where it
@@ -49,5 +55,9 @@ export function heldBy(store: Store, presence: Presence, board: Board, holder: s
     if (record) record.read = read;
     return { name, asleep, since, at, ...(read.due !== undefined && { due: read.due }), ...(stuck && { stuck: true as const }) };
   });
-  return { seq: board.seq, agents, refused };
+  const coordinates = held.some(({ name }) => presence.sessionOf(name)?.role?.kind === 'coordinator');
+  const answering = (name: string) =>
+    Boolean(presence.sleepers.held(key, name)) || presence.list(key).some((agent) => agent.state !== 'away' && samePerson(agent.name, name));
+  const launches = coordinates ? launchesOn(board, answering) : [];
+  return { seq: board.seq, agents, refused, ...(launches.length && { launches }) };
 }

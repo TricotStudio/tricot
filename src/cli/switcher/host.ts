@@ -53,6 +53,8 @@
 // person quits (every agent is closed, as a terminal window closing would),
 // the terminal is put back as it was and `done` gives each agent's exit code.
 import type { WakeTraits } from '../../core/agents/agent';
+import { samePerson } from '../../core/format';
+import type { Launch } from '../../core/roles';
 import type { Answers } from './answers';
 import { InputRouter, ARM_MS, type HostAction, type SwitchKey } from './keys';
 import type { LiveFeed } from './live';
@@ -107,6 +109,11 @@ export interface TricotSetup {
   // reads what the agent starts on from the board first.
   choices?(running: string[]): AddChoice[];
   make?(id: string): HostedAgent | { problem: string } | Promise<HostedAgent | { problem: string }>;
+  // The owner of a thread the board's coordinator sent work to, made ready to
+  // start in a tab of its own, as the board asks (core/roles.ts), or why it
+  // can't be; and how many such owners run at once here, at most.
+  launch?(launch: Launch): HostedAgent | { problem: string } | Promise<HostedAgent | { problem: string }>;
+  orchestrators?: number;
 }
 
 export interface HostOptions {
@@ -165,6 +172,7 @@ export interface Host {
 
 interface Agent extends AgentNow {
   index: number;
+  thread?: string; // the thread it owns, as an orchestrator Tricot started for it
   rangAt?: number; // when it last rang its bell or sent a notification
   drawingSince?: number; // when its latest run of drawing, without a break of DRAWING_GAP_MS, began
   id?: string;
@@ -176,6 +184,8 @@ interface Agent extends AgentNow {
 
 export const TRICOT_TAB = -1;
 export const MAX_AGENTS = 9; // as many as the switch key's digits pick
+export const ORCHESTRATORS = 3; // owners of threads Tricot runs at once here, unless the run says otherwise
+const RELAUNCH_MS = 2 * 60_000; // a thread's owner that ended is started again after this, at the soonest
 const COLOUR_WAIT_MS = 500;
 const FLASH_MS = 2_500;
 const ANSWER_HINT_MS = 5_000;
@@ -227,7 +237,17 @@ export function startHost(options: HostOptions): Host {
   let pending = ''; // typed while the terminal's colours were asked for
   const seenRequests = new Set<string>();
   const adding = new Set<string>(); // agents being made to add, from the Tricot tab, by id
-  const wakes = new Wakes({ ...options.wakeTiming, ...(options.wakes && { link: options.wakes }), ...(options.wakeHolder && { holder: options.wakeHolder }), live: () => options.live?.now(), now, changed: () => schedule() });
+  const launching = new Set<string>(); // owners of threads being made to start, by thread id
+  const launched = new Map<string, number>(); // when each thread's owner was last started here, by thread id
+  const wakes = new Wakes({
+    ...options.wakeTiming,
+    ...(options.wakes && { link: options.wakes }),
+    ...(options.wakeHolder && { holder: options.wakeHolder }),
+    live: () => options.live?.now(),
+    now,
+    changed: () => schedule(),
+    launches: (list) => launchOwners(list),
+  });
 
   const router = new InputRouter({
     key: key.byte,
@@ -625,6 +645,35 @@ export function startHost(options: HostOptions): Host {
     if (!('then' in made)) return begin(made);
     adding.add(id);
     return made.then(begin, (error: unknown) => `It didn't start: ${error instanceof Error ? error.message : error}`).finally(() => adding.delete(id));
+  }
+
+  // The board's coordinator sent work to a thread whose owner no session
+  // answers for (core/roles.ts): each starts in a tab of its own, behind the
+  // one showing, as many at once as the run allows. One that ended is
+  // started again once RELAUNCH_MS have gone, should its thread still be at
+  // work; one that can't start says why in the strip.
+  function launchOwners(list: Launch[]): void {
+    if (quitting || finished || !setup?.launch) return;
+    const cap = setup.orchestrators ?? ORCHESTRATORS;
+    for (const wanted of list) {
+      const owning = agents.filter((a) => a.thread !== undefined && a.state !== 'ended').length + launching.size;
+      if (owning >= cap || agents.length + adding.size + launching.size >= MAX_AGENTS) return;
+      if (launching.has(wanted.thread) || agents.some((a) => a.state !== 'ended' && samePerson(a.name, wanted.name))) continue;
+      if (now() - (launched.get(wanted.thread) ?? -Infinity) < RELAUNCH_MS) continue;
+      launched.set(wanted.thread, now());
+      launching.add(wanted.thread);
+      void Promise.resolve(setup.launch(wanted))
+        .then(
+          (ready) => {
+            if ('problem' in ready) return say(ready.problem, ANSWER_HINT_MS);
+            if (quitting || finished) return ready.cleanup?.();
+            startAgent(ready).thread = wanted.thread;
+            say(`${ready.name} started, to own "${wanted.title}".`, ANSWER_HINT_MS);
+          },
+          (error: unknown) => say(`${wanted.name} didn't start: ${error instanceof Error ? error.message : error}`, ANSWER_HINT_MS),
+        )
+        .finally(() => launching.delete(wanted.thread));
+    }
   }
 
   // From the Tricot tab: hung up, as a closing window would; killed if it

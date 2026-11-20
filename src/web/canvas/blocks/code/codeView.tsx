@@ -127,7 +127,7 @@ function CodeLines({ block, placed, pointing, chosen, open, pick, openPin }: Pie
   );
 }
 
-export function CodeView({ block, name, version, pinId, onClose }: OverlayProps<CodeBlock>) {
+export function CodeView({ block, name, version, pinId, paired, onClose }: OverlayProps<CodeBlock>) {
   const language = codeLanguage(block);
   const lines = codeLines(block.text).length;
   const from = [language?.name ?? 'Code', block.start && block.start > 1 ? linesText(block, lines) : plural(lines, 'line'), block.commit && `at ${shortCommit(block.commit)}`]
@@ -140,6 +140,7 @@ export function CodeView({ block, name, version, pinId, onClose }: OverlayProps<
       name={name}
       version={version}
       pinId={pinId}
+      paired={paired}
       part="code"
       className="code-full-view"
       label={`Code ${block.path || 'block'}`}

@@ -22,6 +22,7 @@ export interface ThreadsServer<S extends Store = Store> {
   call(agent: ThreadsAgent, name: string, args?: Record<string, unknown>): Promise<ToolResult>;
   callText(agent: ThreadsAgent, name: string, args?: Record<string, unknown>): Promise<string>;
   request(method: 'GET' | 'POST', route: string, body?: Record<string, unknown>): Promise<{ status: number; json: any }>;
+  connect(query: string): Promise<Client>; // one more session, its MCP address's query as given (`agent=Router&role=coordinator`)
   stop(): Promise<void>;
 }
 
@@ -39,6 +40,8 @@ export async function threadsServer<S extends Store = Store>(edition: Edition = 
     clients[agent] = new Client({ name: 'test-client', version: '1.0.0' });
     await clients[agent].connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp?agent=${agent}`)));
   }
+
+  const more: Client[] = [];
 
   async function call(agent: ThreadsAgent, name: string, args: Record<string, unknown> = {}): Promise<ToolResult> {
     return (await clients[agent].callTool({ name, arguments: args })) as ToolResult;
@@ -61,8 +64,14 @@ export async function threadsServer<S extends Store = Store>(edition: Edition = 
       });
       return { status: response.status, json: await response.json() };
     },
+    async connect(query) {
+      const client = new Client({ name: 'test-client', version: '1.0.0' });
+      await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp?${query}`)));
+      more.push(client);
+      return client;
+    },
     async stop() {
-      for (const client of Object.values(clients)) await client.close();
+      for (const client of [...Object.values(clients), ...more]) await client.close();
       server.closeAllConnections();
       server.close();
       await store.flush();
