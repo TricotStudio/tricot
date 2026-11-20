@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A shared board of canvases, threads and files where humans and agents work together, over MCP",
-  "releaseNotes": "Search inside your project's files from Files, or with Cmd+Shift+F. A bell beside search lists what needs you and turns on sound and desktop notifications. tricot connect asks one short question, Claude Code's questions are answered on the board, and waiting agents stay online.",
+  "releaseNotes": "Draw on the canvas with shapes, arrows, text and a pen. Files follows your folder live and opens files in preview; double-click to edit. A coordinator agent can hand each piece of work to an agent of its own, and plain tricot asks which agents to start.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
