@@ -22,6 +22,9 @@ export type DrawTool = 'select' | 'shape' | 'text' | 'pen';
 export type ShapeTool = 'rectangle' | 'ellipse' | 'diamond' | 'arrow';
 export const SHAPE_TOOLS: readonly ShapeTool[] = ['rectangle', 'ellipse', 'diamond', 'arrow'];
 export const SHAPE_KEYS: Record<ShapeTool, string> = { rectangle: 'R', ellipse: 'O', diamond: 'D', arrow: 'A' };
+// Each shape's name and icon (shared/components.tsx ICONS), as the Shape button and the tray's forms show it.
+export const SHAPE_NAMES: Record<ShapeTool, string> = { rectangle: 'Rectangle', ellipse: 'Ellipse', diamond: 'Diamond', arrow: 'Arrow' };
+export const SHAPE_ICONS: Record<ShapeTool, 'rectangle' | 'ellipse' | 'diamond' | 'arrow'> = { rectangle: 'rectangle', ellipse: 'ellipse', diamond: 'diamond', arrow: 'arrow' };
 export const TOOL_KEYS: Record<Exclude<DrawTool, 'shape'>, string> = { select: 'V', text: 'T', pen: 'P' };
 
 export interface DrawStyle {

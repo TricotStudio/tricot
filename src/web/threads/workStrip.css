@@ -20,27 +20,9 @@
 .work-strip > * {
   pointer-events: auto;
 }
-/* On a phone the row stays one row, scrolled sideways, and goes over the drawing tools, which take the place just
-   over the bar there (chatBar.css). It takes the pointer, to scroll. */
-@media (max-width: 600px) {
-  .work-strip {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-    padding: 2px;
-    scrollbar-width: none;
-    pointer-events: auto;
-  }
-  .work-strip::-webkit-scrollbar {
-    display: none;
-  }
-  .work-pill,
-  .work-sent {
-    flex: none;
-  }
-  .chat-float:has(.chat-tools.is-shown) > .work-strip {
-    bottom: calc(100% + 64px);
-  }
+/* Over the drawing tools' tray while it is open (canvas/tools/DrawOptions.tsx), so neither hides the other. */
+.chat-float:has(.draw-options.is-shown) > .work-strip {
+  bottom: calc(100% + 62px);
 }
 .work-pill,
 .work-sent {
@@ -245,4 +227,29 @@
   flex: none;
   width: 13px;
   height: 13px;
+}
+/* On a phone the row stays one row, scrolled sideways, and goes over the drawing tools, which take the place just
+   over the bar there (chatBar.css). It takes the pointer, to scroll. */
+@media (max-width: 600px) {
+  .work-strip {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 2px;
+    scrollbar-width: none;
+    pointer-events: auto;
+  }
+  .work-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .work-pill,
+  .work-sent {
+    flex: none;
+  }
+  .chat-float:has(.chat-tools.is-shown) > .work-strip {
+    bottom: calc(100% + 64px);
+  }
+  .chat-float:has(.draw-options.is-shown) > .work-strip {
+    bottom: calc(100% + 150px);
+  }
 }

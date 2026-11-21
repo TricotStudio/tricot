@@ -53,11 +53,6 @@
   left: 0;
   bottom: calc(100% + 8px);
 }
-.chat-tools:has(.draw-menu) > .draw-options.is-shown {
-  opacity: 0;
-  transform: translateY(6px) scale(0.97);
-  pointer-events: none;
-}
 .chat-tools-sheet {
   display: flex;
   align-items: center;
@@ -931,11 +926,6 @@
     bottom: calc(100% + 8px);
     grid-template-columns: max-content;
     margin: 0;
-  }
-  .chat-tools .draw-tools .menu-panel.draw-menu {
-    left: auto;
-    right: -10px;
-    transform-origin: bottom right;
   }
   .chat-tools > .draw-options {
     left: auto;

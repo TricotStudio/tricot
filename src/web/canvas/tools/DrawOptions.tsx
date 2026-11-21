@@ -1,9 +1,11 @@
 // The options of the tool that is on, in a tray over the tools' capsule
 // (threads.tsx places it, chatBar.css), so they are picked before drawing:
 // what is picked here is what the tool draws from then on (drawTools.ts
-// `style`), kept for each tool in this browser. A shape: its colour and its
-// line, thin, medium or thick. An arrow: its line (a free one is coloured from
-// its own toolbar once drawn, as a link has no colour). A label: its colour, S, M
+// `style`), kept for each tool in this browser. A shape: which one first
+// (rectangle, ellipse, diamond or arrow: the one place to choose it, beside its
+// options), then its colour and its line, thin, medium or thick. An arrow: the
+// same forms, then its line (a free one is coloured from its own toolbar once
+// drawn, as a link has no colour). A label: its colour, S, M
 // or L, and bold. The pen: its colour and its width. Select has none, and the
 // tray goes. It stays drawn while it is away, so it comes and goes in
 // motion (tools.css), and its row changes in place as another tool comes on.
@@ -13,7 +15,8 @@ import { useRef, type ReactNode } from 'react';
 import { PEN_WIDTHS, type PenWidth } from '../../../core/blocks/drawing/strokes';
 import { LINE_WEIGHTS, SHAPE_COLORS, TEXT_SIZES, type ShapeColor } from '../../../core/blocks/shape/shapes';
 import '../blocks/shape/palette.css';
-import { drawTools, styledTool, useDrawTools, type StyledTool } from './drawTools';
+import { Icon } from '../../shared/components';
+import { drawTools, SHAPE_ICONS, SHAPE_KEYS, SHAPE_NAMES, SHAPE_TOOLS, styledTool, useDrawTools, type StyledTool } from './drawTools';
 import './tools.css';
 
 const TOOL_NAMES: Record<StyledTool, string> = { shape: 'Shape', arrow: 'Arrow', text: 'Text', pen: 'Pen' };
@@ -111,9 +114,23 @@ export function DrawOptions() {
       </Option>
     ));
   }
+  // A shape or an arrow: which one, first, so choosing it and its look are one tray.
+  const forms = (shown === 'shape' || shown === 'arrow') && (
+    <>
+      <span className="draw-forms" role="group" aria-label="Shape">
+        {SHAPE_TOOLS.map((form) => (
+          <Option key={form} on={tools.shape === form} name={`${SHAPE_NAMES[form]} (${SHAPE_KEYS[form]})`} onPick={() => drawTools.pickShape(form)}>
+            <Icon name={SHAPE_ICONS[form]} />
+          </Option>
+        ))}
+      </span>
+      <Rule />
+    </>
+  );
   return (
     <div className={`draw-options${tool ? ' is-shown' : ''}`} role="toolbar" aria-label={`${TOOL_NAMES[shown]} options`} inert={!tool}>
-      <div className="draw-options-row" key={shown}>
+      <div className="draw-options-row" key={shown === 'arrow' ? 'shape' : shown}>
+        {forms}
         {colours && (
           <>
             <span className="draw-swatches" role="group" aria-label="Colour">
@@ -122,7 +139,7 @@ export function DrawOptions() {
             <Rule />
           </>
         )}
-        {rest}
+        <span className="draw-rest">{rest}</span>
       </div>
     </div>
   );

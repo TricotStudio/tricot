@@ -1,9 +1,8 @@
 /* ---- the canvas's drawing tools (canvas/tools) -----------------------------
    A row of round buttons, muted, in ink when pointed at or picked, in a
    capsule of their own on the floating chat bar's left (chatBar.css). The
-   Shape button marks in its corner that it holds more; its menu is the
-   canvas's (canvas.css), opening upward from the button's left, so it stays
-   over the capsule and the bar. While a tool is picked the canvas takes a
+   Shape button holds the last shape; the others are in the tray over the
+   tools, beside their colour and line (DrawOptions.tsx). While a tool is picked the canvas takes a
    crosshair, and what is drawn shows dashed in the canvas's own accent until
    it is let go. */
 .draw-tools {
@@ -17,10 +16,6 @@
   height: 18px;
   margin: 0 4px;
   background: var(--border);
-}
-.draw-shapes {
-  position: relative;
-  display: inline-flex;
 }
 .draw-tool {
   position: relative;
@@ -46,35 +41,6 @@
 .draw-tool .icon {
   width: 16px;
   height: 16px;
-}
-.draw-more {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 5px;
-  height: 5px;
-  fill: currentColor;
-}
-.draw-tools .menu-panel.draw-menu {
-  top: auto;
-  bottom: calc(100% + 18px); /* clear of the capsule's top edge, the button being centred in it */
-  left: -10px;
-  right: auto;
-  width: 196px;
-  transform-origin: bottom left;
-}
-.draw-menu .add-menu-row {
-  width: 100%;
-}
-.draw-menu-name {
-  flex: 1;
-}
-.draw-menu kbd {
-  font: 11.5px var(--mono);
-  color: var(--faint);
-}
-.draw-menu [aria-current='true'] {
-  background: var(--surface-2);
 }
 
 /* Drawing on the canvas. */
@@ -155,6 +121,17 @@
 }
 .draw-options .draw-rule {
   margin: 0 6px;
+}
+/* The shapes, first in the tray when the Shape tool is on: the same buttons as the options, an icon each. */
+.draw-forms,
+.draw-rest {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.draw-forms .draw-option .icon {
+  width: 16px;
+  height: 16px;
 }
 .draw-swatches {
   display: inline-flex;
@@ -255,5 +232,29 @@
   }
   .draw-options .draw-rule {
     margin: 0 4px;
+  }
+  /* Too wide for a phone in one row once it holds the shapes: on a grid, the shapes and the rest side by side, the
+     colours across a row of their own under them, so the tray is as wide as its widest row; the rules between the
+     groups go, the rows and the gap parting them instead. */
+  .draw-options {
+    height: auto;
+    min-height: 44px;
+    padding: 6px;
+  }
+  .draw-options-row {
+    display: grid;
+    grid-auto-flow: column;
+    justify-content: end;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 6px;
+  }
+  .draw-options-row > .draw-rule {
+    display: none;
+  }
+  .draw-options-row > .draw-swatches {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 }
