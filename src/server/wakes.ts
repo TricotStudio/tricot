@@ -55,9 +55,22 @@ export function heldBy(store: Store, presence: Presence, board: Board, holder: s
     if (record) record.read = read;
     return { name, asleep, since, at, ...(read.due !== undefined && { due: read.due }), ...(stuck && { stuck: true as const }) };
   });
-  const coordinates = held.some(({ name }) => presence.sessionOf(name)?.role?.kind === 'coordinator');
   const answering = (name: string) =>
     Boolean(presence.sleepers.held(key, name)) || presence.list(key).some((agent) => agent.state !== 'away' && samePerson(agent.name, name));
-  const launches = coordinates ? launchesOn(board, answering) : [];
-  return { seq: board.seq, agents, refused, ...(launches.length && { launches }) };
+  return { seq: board.seq, agents, refused, ...launchesFor(presence, board, held.map(({ name }) => name), answering) };
+}
+
+// The owners this terminal starts (core/roles.ts): those of the agent kinds of the coordinators it holds, each kind from
+// its own coordinator's terminal; and one of a kind no coordinator on the board is, from the terminal holding the
+// coordinator seen last. So a thread's owner is started by one terminal, however many hold coordinators.
+function launchesFor(presence: Presence, board: Board, held: string[], answering: (name: string) => boolean): { launches?: Launch[] } {
+  const kindOf = (name: string) => presence.sessionOf(name)?.tool;
+  const isCoordinator = (name: string) => presence.sessionOf(name)?.role?.kind === 'coordinator';
+  const mine = new Set(held.filter(isCoordinator).map(kindOf));
+  if (!mine.size) return {};
+  const coordinators = presence.coordinatorsOn(boardKey(board));
+  const onBoard = new Set(coordinators.map(kindOf));
+  const lastSeenIsMine = held.some((name) => coordinators[0] !== undefined && samePerson(name, coordinators[0]));
+  const launches = launchesOn(board, answering).filter((launch) => mine.has(launch.agent) || (!onBoard.has(launch.agent) && lastSeenIsMine));
+  return launches.length ? { launches } : {};
 }

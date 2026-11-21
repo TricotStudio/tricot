@@ -131,11 +131,12 @@ export class Presence {
     return session && structuredClone(session);
   }
 
-  // The board's coordinator (core/roles.ts): the agent on it now whose latest
-  // session took that role, the one seen last when there are more.
-  coordinatorOn(boardId: string): string | undefined {
+  // The board's coordinators (core/roles.ts): the agents on it now whose latest
+  // session took that role, the one seen last first. Each agent Tricot's terminal
+  // starts is one, so `tricot claude codex` has two.
+  coordinatorsOn(boardId: string): string[] {
     const on = this.list(boardId).filter((a) => a.state !== 'away' && this.sessions.get(a.name.toLowerCase())?.role?.kind === 'coordinator');
-    return on.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
+    return on.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)).map((a) => a.name);
   }
 
   startWaiting(boardId: string, name: string): void {

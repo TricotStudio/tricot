@@ -74,12 +74,13 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     const agent = AGENTS[id];
     if (!agent.session) return refuse(`Tricot can't start ${agent.name} for you yet: ${agent.cantStart}, and this command leaves its settings alone. Start the others without it, and connect ${agent.name} once with: tricot connect ${id}`);
   }
-  // A coordinator is one agent, which Tricot wakes: the terminal that holds it starts the agents it hands work to (core/roles.ts).
-  if (values.coordinate && several) return refuse(`--coordinate starts one agent as the board's coordinator: start it alone, as tricot ${ids[0]} --coordinate, and it starts the others as it hands them work.`);
-  if (values.coordinate && !AGENTS[ids[0]].wakes) return refuse(`${AGENTS[ids[0]].name} can't coordinate yet: Tricot starts the agents a coordinator hands work to from the terminal that wakes it, and it doesn't wake ${AGENTS[ids[0]].name}.`);
+  // Each agent Tricot wakes is a coordinator of the board (core/roles.ts), with orchestrators of its own kind: this
+  // terminal, which holds it, starts the agents it hands work to. One Tricot can't wake runs as any agent does.
+  const coordinates = (id: string) => Boolean(AGENTS[id].wakes);
+  const coordinators = ids.filter(coordinates);
   const orchestrators = values.orchestrators === undefined ? undefined : Number(values.orchestrators);
   if (orchestrators !== undefined && !(Number.isInteger(orchestrators) && orchestrators >= 1 && orchestrators <= MAX_AGENTS - 1)) return refuse(`--orchestrators is how many agents a coordinator starts at once: a whole number from 1 to ${MAX_AGENTS - 1}.`);
-  if (orchestrators !== undefined && !values.coordinate) return refuse('--orchestrators goes with --coordinate: it is how many agents the coordinator starts at once.');
+  if (orchestrators !== undefined && !coordinators.length) return refuse(`--orchestrators is how many agents a coordinator starts at once, and ${listNames(ids.map((id) => AGENTS[id].name))} can't coordinate: Tricot starts those agents from the terminal that wakes a coordinator, and it doesn't wake ${ids.length > 1 ? 'them' : 'it'}.`);
   if (several && values.name) return refuse(`--name names one agent: with several, each has its usual name on the board (${listNames(ids.map((id) => AGENTS[id].boardName))}).`);
   if (several && passthrough.length) return refuse("Words after -- go to one agent, and with several Tricot can't tell whose they are: start that one on its own, as tricot claude -- …, or give each its model after its name, as tricot claude --model opus codex.");
   if (isWindows(ctx.platform)) return refuse("Several agents in one terminal don't work on Windows yet: start each in a terminal of its own, with tricot claude, tricot codex.");
@@ -131,8 +132,8 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
 
   // Which terminal this run is, as the addresses of the agents it wakes name it (core/sessions.ts wakeUrl).
   const holder = randomUUID();
-  // Its first message: one Tricot wakes is told to end its turn when idle, the others to listen; a coordinator, its role.
-  const messageFor = (id: string) => (values.coordinate ? coordinatorMessage(board.id) : firstMessage(board.id, Boolean(AGENTS[id].wakes)));
+  // Its first message: one Tricot wakes is told to end its turn when idle, the others to listen; the coordinator, its role.
+  const messageFor = (id: string, coordinates = false) => (coordinates ? coordinatorMessage(board.id) : firstMessage(board.id, Boolean(AGENTS[id].wakes)));
   // Asked before any agent's folder is made: it waits on the board for a few
   // seconds, and a Ctrl+C then must have nothing of ours to leave behind.
   const actor = await personOn(lock.url, a.dataDir, board.id);
@@ -163,12 +164,12 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     for (const [at, id] of ids.entries()) {
       const agent = AGENTS[id];
       const say = (line: string) => ctx.out(several && !line.startsWith(agent.name) ? `${agent.name}: ${line[0].toLowerCase()}${line.slice(1)}` : line);
-      // A coordinator starts on its role's rule, over the agent's own (core/agentRules.ts roleRule).
-      const rule = ruleForRun(agent, values.coordinate ? roleRule(rules, id, 'coordinator') : rules[id], chosen[id], say);
+      // The coordinator starts on its role's rule, over the agent's own (core/agentRules.ts roleRule).
+      const role = coordinates(id) ? { role: { kind: 'coordinator' } as const, message: messageFor(id, true) } : undefined;
+      const rule = ruleForRun(agent, role ? roleRule(rules, id, 'coordinator') : rules[id], chosen[id], say);
       const startsOn = startsOnLine(agent, rule);
       if (startsOn) ctx.out(startsOn);
-      const coordinates = values.coordinate ? { role: { kind: 'coordinator' } as const, message: messageFor(id) } : undefined;
-      hosted.push(hostedAgent(id, names[at], commands[at], several ? [] : passthrough, rule, say, coordinates));
+      hosted.push(hostedAgent(id, names[at], commands[at], several ? [] : passthrough, rule, say, role));
     }
   } catch (error) {
     for (const made of hosted) made.cleanup?.();
@@ -204,37 +205,50 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
       if (!command) return { problem: `Tricot can't start ${agent?.name ?? id} here.` };
       const now = await readRules(lock.url, a.dataDir);
       try {
-        return hostedAgent(id, agent.boardName, command, [], ruleForRun(agent, 'rules' in now ? now.rules[id] : undefined, undefined), () => {});
+        // One added here coordinates too, as those named did, when Tricot wakes it.
+        const set = 'rules' in now ? now.rules : {};
+        const role = coordinates(id) ? { role: { kind: 'coordinator' } as const, message: messageFor(id, true) } : undefined;
+        return hostedAgent(id, agent.boardName, command, [], ruleForRun(agent, role ? roleRule(set, id, 'coordinator') : set[id], undefined), () => {}, role);
       } catch (error) {
         return { problem: `${agent.name} didn't start: ${error instanceof Error ? error.message : error}` };
       }
     },
-    // The owner of a thread the coordinator sent work to (core/roles.ts),
-    // set up as the others were here, with its role and its thread on its
-    // address, on its agent's rule as read now.
-    ...(values.coordinate && {
-      orchestrators: orchestrators ?? ORCHESTRATORS,
-      launch: async (wanted: Launch) => {
-        const agent = AGENTS[wanted.agent];
-        if (!agent?.session) return { problem: `Tricot can't start ${agent?.name ?? wanted.agent} to own "${wanted.title}": it waits for an owner.` };
-        const command = which(agent.command!, ctx.env);
-        if (!command) return { problem: `${agent.name} isn't installed here, so "${wanted.title}" waits for an owner.` };
-        const now = await readRules(lock.url, a.dataDir);
-        const set = 'rules' in now ? now.rules : {};
-        try {
-          // On the orchestrators' rule, told what to run its scouts and workers on (core/agentRules.ts).
-          const subagents = subagentWords(set, wanted.agent);
-          const role = { role: { kind: 'orchestrator', thread: wanted.thread } as const, message: subagents ? `${orchestratorMessage(wanted)} ${subagents}` : orchestratorMessage(wanted) };
-          return hostedAgent(wanted.agent, wanted.name, command, [], ruleForRun(agent, roleRule(set, wanted.agent, 'orchestrator'), undefined), () => {}, role);
-        } catch (error) {
-          return { problem: `${wanted.name} didn't start: ${error instanceof Error ? error.message : error}` };
-        }
-      },
-    }),
+    // The owner of a thread a coordinator sent work to (core/roles.ts), set up
+    // as the others were here, with its role and its thread on its address,
+    // on its agent's rule as read now: the board asks only a terminal that
+    // holds a coordinator, and any agent this terminal starts may be one.
+    orchestrators: orchestrators ?? ORCHESTRATORS,
+    launch: async (wanted: Launch) => {
+      const agent = AGENTS[wanted.agent];
+      if (!agent?.session) return { problem: `Tricot can't start ${agent?.name ?? wanted.agent} to own "${wanted.title}": it waits for an owner.` };
+      const command = which(agent.command!, ctx.env);
+      if (!command) return { problem: `${agent.name} isn't installed here, so "${wanted.title}" waits for an owner.` };
+      const now = await readRules(lock.url, a.dataDir);
+      const set = 'rules' in now ? now.rules : {};
+      try {
+        // On the orchestrators' rule, told what to run its scouts and workers on (core/agentRules.ts).
+        const subagents = subagentWords(set, wanted.agent);
+        const role = { role: { kind: 'orchestrator', thread: wanted.thread } as const, message: subagents ? `${orchestratorMessage(wanted)} ${subagents}` : orchestratorMessage(wanted) };
+        return hostedAgent(wanted.agent, wanted.name, command, [], ruleForRun(agent, roleRule(set, wanted.agent, 'orchestrator'), undefined), () => {}, role);
+      } catch (error) {
+        return { problem: `${wanted.name} didn't start: ${error instanceof Error ? error.message : error}` };
+      }
+    },
   };
   ctx.out(`Starting ${products} on "${board.title}"…`);
-  const messages = [...new Set(ids.map(messageFor))];
-  for (const message of messages) ctx.out(messages.length > 1 ? `> ${ids.filter((id) => messageFor(id) === message).map((id) => AGENTS[id].name).join(', ')}: ${message}` : `> ${message}`);
+  const leading = names.filter((_, at) => coordinates(ids[at]));
+  const plain = names.filter((_, at) => !coordinates(ids[at]));
+  if (leading.length) {
+    ctx.out(
+      leading.length > 1
+        ? `${listNames(leading)} each coordinate the board: each answers what people ask it in the chat bar (one mentioned by name, else the one active last), and starts agents of its own kind here for each piece of work, ${orchestrators ?? ORCHESTRATORS} at most at once.`
+        : `${leading[0]} coordinates the board: it answers what people ask in the chat bar, and starts an agent of its own here for each piece of work, ${orchestrators ?? ORCHESTRATORS} at most at once.`,
+    );
+  }
+  if (plain.length) ctx.out(`${listNames(plain)} ${plain.length > 1 ? 'answer' : 'answers'} on the board as any agent does: Tricot doesn't wake ${plain.length > 1 ? 'them' : 'it'}, so ${plain.length > 1 ? 'they' : 'it'} can't coordinate.`);
+  const opening = (id: string) => messageFor(id, coordinates(id));
+  const messages = [...new Set(ids.map(opening))];
+  for (const message of messages) ctx.out(messages.length > 1 ? `> ${ids.filter((id) => opening(id) === message).map((id) => AGENTS[id].name).join(', ')}: ${message}` : `> ${message}`);
   ctx.out(
     several
       ? `${SWITCH_KEY.label} switches between them, ${SWITCH_KEY.label} then a number picks one, and ${SWITCH_KEY.label} then q quits.`

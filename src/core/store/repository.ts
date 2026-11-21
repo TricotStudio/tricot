@@ -57,9 +57,10 @@ export class BoardRepository {
   // The agents on a board now, by its key, from presence: the server sets it,
   // so a mention or an assignee can name an agent that has only read the board.
   presentAgents: (boardKey: string) => string[] = () => [];
-  // The board's coordinator now, by its key, from presence (core/roles.ts): the
-  // server sets it, so a thread a person starts from a chat bar is its.
-  coordinatorOf: (boardKey: string) => string | undefined = () => undefined;
+  // The board's coordinators now, by its key, the one seen last first, from
+  // presence (core/roles.ts): the server sets it, so a thread a person starts
+  // from a chat bar is one of theirs.
+  coordinatorsOf: (boardKey: string) => string[] = () => [];
   // The clock what runs out of time keeps time by, so tests can move it.
   now: () => number = Date.now;
   // Whether blocks may name what is on this computer (a website's folder or

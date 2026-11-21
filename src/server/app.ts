@@ -142,8 +142,8 @@ export function createApp(
   );
   // Agents present on a board can be mentioned and assigned before they've written to it.
   store.presentAgents = (key) => presence.list(key).map((a) => a.name);
-  // A thread a person starts from a chat bar is the board's coordinator's (core/roles.ts).
-  store.coordinatorOf = (key) => presence.coordinatorOn(key);
+  // A thread a person starts from a chat bar is one of the board's coordinators' (core/roles.ts).
+  store.coordinatorsOf = (key) => presence.coordinatorsOn(key);
   // Who is on each board, and the agents held asleep there, for what reads
   // them beside the routes (tests, as for the seats below).
   app.locals.presence = presence;

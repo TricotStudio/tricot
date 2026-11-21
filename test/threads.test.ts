@@ -92,6 +92,14 @@ describe('Threads over MCP and REST', () => {
     assert.equal(asked.owner, 'Router', "a thread a person starts from a chat bar is the coordinator's");
     const named = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Claude what is this page?', door: 'canvas' })).json as Thread;
     assert.equal(named.owner, undefined, 'one that @-mentions an agent is for that agent');
+    // Each agent Tricot starts coordinates: one @-mentioned takes the thread, and one that mentions none goes to the one seen last.
+    const second = await server.connect('agent=Cody&role=coordinator');
+    await said(second, 'get_board', { board_id: boardId });
+    const toCody = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Cody shorten the welcome email.', door: 'canvas' })).json as Thread;
+    assert.equal(toCody.owner, 'Cody');
+    await said(coordinator, 'get_board', { board_id: boardId });
+    const toLast = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Rename the board.', door: 'canvas' })).json as Thread;
+    assert.equal(toLast.owner, 'Router', 'the coordinator seen last');
 
     const message = asked.messages[0].id;
     const started = await said(coordinator, 'route_to_thread', { thread_id: asked.id, message_id: message, title: 'Sign-in on mobile', brief: 'The button hides under the keyboard.', agent: 'claude' });
@@ -102,12 +110,18 @@ describe('Threads over MCP and REST', () => {
     assert.deepEqual(store.getThread(asked.id).thread.messages.at(-1)!.sent, { threadId: work.id, messageId: message }, 'where it was asked, the coordinator says where it went');
     assert.deepEqual(launchesOn(store.getBoard(boardId), () => false), [{ thread: work.id, title: work.title, name: work.owner, agent: 'claude' }]);
     assert.deepEqual(launchesOn(store.getBoard(boardId), (name) => name === work.owner), [], 'none while its owner is on the board');
-    // The board asks the terminal holding the coordinator, and no other, to start the owner (server/wakes.ts).
+    // The board asks a terminal holding a coordinator of the owner's kind, and no other, to start it (server/wakes.ts):
+    // Router is a Claude in one terminal, Cody a Codex in another; a terminal that holds no coordinator starts none.
     const presence = new Presence(() => {});
-    presence.started('Router', { role: { kind: 'coordinator' } });
+    const key = boardKey(store.getBoard(boardId));
+    presence.started('Router', { tool: 'claude', role: { kind: 'coordinator' } });
+    presence.started('Cody', { tool: 'codex', role: { kind: 'coordinator' } });
+    presence.seen(key, 'Router');
+    presence.seen(key, 'Cody');
     const holding = (holder: string, name: string) => heldBy(store, presence, store.getBoard(boardId), holder, [{ name, asleep: true, at: Date.now() }], []);
-    assert.deepEqual(holding('terminal-one', 'Router').launches?.map((l) => l.name), [work.owner]);
-    assert.equal(holding('terminal-two', 'Codex').launches, undefined, 'only to the terminal that holds the coordinator');
+    assert.deepEqual(holding('terminal-one', 'Router').launches?.map((l) => l.name), [work.owner], "the Claude coordinator's terminal starts a Claude owner");
+    assert.equal(holding('terminal-two', 'Cody').launches, undefined, "the Codex coordinator's terminal leaves it alone");
+    assert.equal(holding('terminal-three', 'Claude').launches, undefined, 'a terminal that holds no coordinator starts none');
     presence.close();
     const twice = (await coordinator.callTool({ name: 'route_to_thread', arguments: { thread_id: asked.id, message_id: message, to_thread_id: named.id } })) as ToolResult;
     assert.match(twice.content[0].text, /was sent on already, to thread "Sign-in on mobile"/);

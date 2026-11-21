@@ -3,19 +3,21 @@
 // thread it hands work to, which owns that thread and runs its own subagents
 // (scouts, workers) to do it.
 //
-// - A coordinator is a session whose MCP address says `role=coordinator`
-//   (`tricot claude --coordinate`). While one is on a board, a thread a person
-//   starts there from a chat bar is the coordinator's (Thread.owner,
-//   store/threads.ts startThread), unless it @-mentions an agent or is about a
-//   page or file an agent made. It answers a quick question in place, and
-//   sends work on with route_to_thread: to the thread it belongs to, or to a
-//   new one, which an orchestrator owns.
+// - A coordinator is a session whose MCP address says `role=coordinator`: each
+//   agent Tricot's terminal starts and wakes (`tricot claude`, and both of
+//   `tricot claude codex`, cli/severalAgents.ts). While one is on a board, a
+//   thread a person starts there from a chat bar is a coordinator's
+//   (Thread.owner, store/threads.ts startThread): the one it @-mentions, else
+//   the one seen last; one that @-mentions another agent, or is about a page or
+//   file an agent made, is not. It answers a quick question in place, and sends
+//   work on with route_to_thread: to the thread it belongs to, or to a new one,
+//   which an orchestrator of its own kind owns.
 // - An orchestrator is a session whose address says `role=orchestrator` and
 //   the thread it owns (`thread=<id>`). Tricot's terminal starts it: the
-//   board tells the terminal holding the coordinator which threads have an
-//   owner no session of that name answers for (server/wakes.ts launchesOn),
-//   and the terminal starts each in a tab of its own
-//   (cli/switcher/host.ts). Its live steps, its subagents' too, go to its
+//   board tells each terminal holding a coordinator which threads have an
+//   owner no session of that name answers for, of the kinds it coordinates
+//   (server/wakes.ts), and the terminal starts each in a tab of its own, so
+//   many at once for each coordinator (cli/switcher/host.ts). Its live steps, its subagents' too, go to its
 //   thread (server/steps.ts), and it says where its work stands with
 //   set_thread_status (Thread.status).
 // - The person follows along on the page: the dock moves to the thread their

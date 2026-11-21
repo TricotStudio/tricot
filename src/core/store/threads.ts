@@ -72,9 +72,10 @@ export class Threads {
   // which the thread is started on (core/fileThread.ts), routed to the agent
   // last asked about the file.
   //
-  // While a coordinator is on the board (core/roles.ts), one a person starts
-  // from a chat bar is its, unless it @-mentions an agent, or goes to the
-  // agent of its page or file, or its lens to one.
+  // While coordinators are on the board (core/roles.ts), one a person starts
+  // from a chat bar is the one it @-mentions, else the one seen last; one that
+  // @-mentions another agent, or goes to the agent of its page or file, or its
+  // lens to one, is no coordinator's.
   startThread(boardId: string, body: string, actor: Actor, lens?: LensInput | null, { general = false, door, pageId, blockIds, file, messageLens, title, owner: given }: ThreadStart = {}): Thread {
     const board = this.repo.getBoard(boardId);
     guardArchived(board);
@@ -91,8 +92,11 @@ export class Threads {
     const id = this.repo.newThreadId();
     const now = new Date().toISOString();
     const { mentions, skill } = this.people.requestIn(board, text, actor);
+    // A coordinator it @-mentions, alone among agents, takes it; one that mentions none goes to the one seen last.
     const fromBar = actor.kind === 'human' && !general && (door !== undefined || pageId !== undefined || file !== undefined);
-    const coordinator = fromBar && !chosen?.agent && agentsIn(board, mentions).length === 0 ? this.repo.coordinatorOf(boardKey(board)) : undefined;
+    const named = agentsIn(board, mentions);
+    const coordinators = fromBar && !chosen?.agent && named.length <= 1 ? this.repo.coordinatorsOf(boardKey(board)) : [];
+    const coordinator = named.length ? coordinators.find((c) => samePerson(c, named[0])) : coordinators[0];
     const owner = given ?? (coordinator ? { name: coordinator } : undefined);
     const titled = title === undefined ? undefined : threadTitle(limited(required(title, 'A title'), TITLE_LENGTH * 3, 'A title'));
     // Nothing above is left to refuse it, so a file's block is made only for a thread that starts.

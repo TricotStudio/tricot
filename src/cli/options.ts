@@ -30,8 +30,7 @@ export const NO_UPDATE_CHECK = option('no-update-check', 'boolean', '--no-update
 export const BACKGROUND = option('background', 'boolean', '-d, --background', 'Keep running after this terminal closes (logs to <data>/server.log)', 'd');
 // An agent's model and thinking level for this run (core/agentRules.ts): each
 // is the agent's named before it, and stands in for the rule set in its panel.
-export const COORDINATE = option('coordinate', 'boolean', '--coordinate', "Start it as the board's coordinator: it answers the chat bar and hands each piece of work to an agent it starts here to own that thread");
-export const ORCHESTRATORS = option('orchestrators', 'string', '--orchestrators <n>', 'With --coordinate: how many agents it runs at once to own threads, at most (default 3)');
+export const ORCHESTRATORS = option('orchestrators', 'string', '--orchestrators <n>', "How many agents the board's coordinator runs at once to own threads, at most (default 3)");
 export const MODEL = option('model', 'string', '--model <name>', 'The model the agent starts on, this run (over the one set in its panel)');
 export const EFFORT = option('effort', 'string', '--effort <level>', 'Its thinking level, this run');
 // The options that belong to the agent named before them (main.ts Words.placed).

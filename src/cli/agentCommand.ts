@@ -59,7 +59,7 @@ export type RunningLock = ServerLock & { url: string; mcpUrl: string };
 
 export interface AgentEnv {
   ctx: CliContext;
-  values: { board?: string; name?: string; 'no-open'?: boolean; coordinate?: boolean; orchestrators?: string };
+  values: { board?: string; name?: string; 'no-open'?: boolean; orchestrators?: string };
   dataDir: string;
   port: number; // where a board started on this data would listen
   // The board running on this data, if there is one: never started, nor held.
@@ -106,10 +106,6 @@ export async function agentCommand(a: AgentEnv, id: string | string[], passthrou
   sweepFolders(); // those an earlier Tricot left behind when it was killed before it could remove them
   if (Array.isArray(id)) return severalAgents(a, id, passthrough, chosen);
   if (stripRuns(a, id)) return severalAgents(a, [id], passthrough, chosen);
-  if (values.coordinate) {
-    ctx.err(`A coordinator runs in Tricot's terminal, which starts the agents it hands work to, and that terminal can't run here. Nothing was started.`);
-    return { exitCode: 1 };
-  }
   const agent = AGENTS[id];
   if (!agent.session) return joinBoard(a, id, agent);
   const command = which(agent.command, ctx.env);

@@ -26,7 +26,7 @@ A session with a role (`src/core/roles.ts`, named on its MCP address: `role=coor
 
 | Tool | Purpose |
 | --- | --- |
-| `route_to_thread` | The coordinator's (`tricot claude --coordinate`, `read_guide("coordinating")`). It answers people in the chat bar, whose threads are its while it is on the board, and does no work itself: it sends a person's message on to the thread its work belongs to (`to_thread_id`), whose owner hears it at once, or starts a thread for new work (`title`, `brief`, `agent`) that an orchestrator owns, which Tricot's terminal starts in a tab of its own. Where it was asked, it says where it went, and the page takes the person there. |
+| `route_to_thread` | A coordinator's (each agent Tricot's terminal starts and wakes, `read_guide("coordinating")`). It answers people in the chat bar, whose threads are its while it is on the board, and does no work itself: it sends a person's message on to the thread its work belongs to (`to_thread_id`), whose owner hears it at once, or starts a thread for new work (`title`, `brief`, `agent`) that an orchestrator owns, which Tricot's terminal starts in a tab of its own. Where it was asked, it says where it went, and the page takes the person there. |
 | `set_thread_status` | The orchestrator's, for the thread it owns (`read_guide("orchestrating")`): working, needs-you while it waits on a person, or done, with a summary posted first. A person's message there sets it back to working; done tells the coordinator, which tells the person. |
 
 Connected services add tools of their own, once a person has connected them on the Connectors page. They read what people link on a canvas, and none of them acts as a person in the service:

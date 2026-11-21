@@ -175,13 +175,14 @@ export class Store {
     this.repo.presentAgents = present;
   }
 
-  // The coordinator on a board now, by its key, from presence (core/roles.ts):
-  // the server sets it, so a thread a person starts from a chat bar is its.
-  get coordinatorOf(): (boardKey: string) => string | undefined {
-    return this.repo.coordinatorOf;
+  // The coordinators on a board now, by its key, the one seen last first, from
+  // presence (core/roles.ts): the server sets it, so a thread a person starts
+  // from a chat bar is one of theirs.
+  get coordinatorsOf(): (boardKey: string) => string[] {
+    return this.repo.coordinatorsOf;
   }
-  set coordinatorOf(coordinator: (boardKey: string) => string | undefined) {
-    this.repo.coordinatorOf = coordinator;
+  set coordinatorsOf(coordinators: (boardKey: string) => string[]) {
+    this.repo.coordinatorsOf = coordinators;
   }
 
   // Whether blocks may name what is on this computer (a website's folder or

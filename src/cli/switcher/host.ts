@@ -111,7 +111,7 @@ export interface TricotSetup {
   make?(id: string): HostedAgent | { problem: string } | Promise<HostedAgent | { problem: string }>;
   // The owner of a thread the board's coordinator sent work to, made ready to
   // start in a tab of its own, as the board asks (core/roles.ts), or why it
-  // can't be; and how many such owners run at once here, at most.
+  // can't be; and how many such owners of each agent kind run at once here, at most.
   launch?(launch: Launch): HostedAgent | { problem: string } | Promise<HostedAgent | { problem: string }>;
   orchestrators?: number;
 }
@@ -237,7 +237,7 @@ export function startHost(options: HostOptions): Host {
   let pending = ''; // typed while the terminal's colours were asked for
   const seenRequests = new Set<string>();
   const adding = new Set<string>(); // agents being made to add, from the Tricot tab, by id
-  const launching = new Set<string>(); // owners of threads being made to start, by thread id
+  const launching = new Map<string, string>(); // owners of threads being made to start: thread id -> agent kind
   const launched = new Map<string, number>(); // when each thread's owner was last started here, by thread id
   const wakes = new Wakes({
     ...options.wakeTiming,
@@ -647,21 +647,22 @@ export function startHost(options: HostOptions): Host {
     return made.then(begin, (error: unknown) => `It didn't start: ${error instanceof Error ? error.message : error}`).finally(() => adding.delete(id));
   }
 
-  // The board's coordinator sent work to a thread whose owner no session
-  // answers for (core/roles.ts): each starts in a tab of its own, behind the
-  // one showing, as many at once as the run allows. One that ended is
-  // started again once RELAUNCH_MS have gone, should its thread still be at
-  // work; one that can't start says why in the strip.
+  // A coordinator sent work to a thread whose owner no session answers for
+  // (core/roles.ts): each starts in a tab of its own, behind the one showing,
+  // as many at once of each agent kind as the run allows, so each coordinator
+  // has its own. One that ended is started again once RELAUNCH_MS have gone,
+  // should its thread still be at work; one that can't start says why in the strip.
   function launchOwners(list: Launch[]): void {
     if (quitting || finished || !setup?.launch) return;
     const cap = setup.orchestrators ?? ORCHESTRATORS;
     for (const wanted of list) {
-      const owning = agents.filter((a) => a.thread !== undefined && a.state !== 'ended').length + launching.size;
-      if (owning >= cap || agents.length + adding.size + launching.size >= MAX_AGENTS) return;
+      if (agents.length + adding.size + launching.size >= MAX_AGENTS) return;
+      const owning = agents.filter((a) => a.thread !== undefined && a.id === wanted.agent && a.state !== 'ended').length + [...launching.values()].filter((kind) => kind === wanted.agent).length;
+      if (owning >= cap) continue;
       if (launching.has(wanted.thread) || agents.some((a) => a.state !== 'ended' && samePerson(a.name, wanted.name))) continue;
       if (now() - (launched.get(wanted.thread) ?? -Infinity) < RELAUNCH_MS) continue;
       launched.set(wanted.thread, now());
-      launching.add(wanted.thread);
+      launching.set(wanted.thread, wanted.agent);
       void Promise.resolve(setup.launch(wanted))
         .then(
           (ready) => {
