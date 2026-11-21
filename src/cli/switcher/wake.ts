@@ -49,7 +49,7 @@ import { randomUUID } from 'node:crypto';
 import type { WakeTraits } from '../../core/agents/agent';
 import { samePerson } from '../../core/format';
 import { routes, routeUrl } from '../../core/routes';
-import type { Launch } from '../../core/roles';
+import type { Launch, OwnerNow } from '../../core/roles';
 import type { Answers } from './answers';
 import type { InputModes } from './screen';
 import { waitingFor, type BoardLive, type WakeView } from './strip';
@@ -163,6 +163,8 @@ export interface WakeReply {
   agents?: { name: string; asleep: boolean; since: number; at: number; due?: number; stuck?: boolean }[];
   refused?: string[];
   launches?: Launch[]; // the owners of threads to start, to a terminal holding the board's coordinator (core/roles.ts)
+  owners?: OwnerNow[]; // the orchestrators it holds, and where their threads' work stands
+  closes?: string[]; // orchestrators to close: their thread deleted, past its undo
 }
 export type WakeLink = (report: WakeReport) => Promise<WakeReply | undefined>;
 
@@ -215,6 +217,7 @@ export interface WakesOptions {
   confirmMs?: number;
   retryMs?: number[];
   launches?: (launches: Launch[]) => void; // the owners of threads the board asks this terminal to start
+  owners?: (owners: OwnerNow[], closes: string[]) => void; // where its orchestrators' work stands, and those to close
 }
 
 export class Wakes {
@@ -494,6 +497,7 @@ export class Wakes {
       if (typeof reply.seq === 'number' && reply.seq > this.seq) this.seq = reply.seq;
       const refused = new Set((reply.refused ?? []).map((name) => name.toLowerCase()));
       for (const [key, held] of this.held) held.refused = refused.has(key);
+      this.options.owners?.(reply.owners ?? [], reply.closes ?? []);
       if (reply.launches?.length) this.options.launches?.(reply.launches);
       for (const record of reply.agents ?? []) {
         const held = this.held.get(record.name.toLowerCase());

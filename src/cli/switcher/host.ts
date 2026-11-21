@@ -54,7 +54,8 @@
 // the terminal is put back as it was and `done` gives each agent's exit code.
 import type { WakeTraits } from '../../core/agents/agent';
 import { samePerson } from '../../core/format';
-import type { Launch } from '../../core/roles';
+import type { Launch, OwnerNow } from '../../core/roles';
+import type { ThreadStatus } from '../../core/types';
 import type { Answers } from './answers';
 import { InputRouter, ARM_MS, type HostAction, type SwitchKey } from './keys';
 import type { LiveFeed } from './live';
@@ -238,6 +239,7 @@ export function startHost(options: HostOptions): Host {
   const seenRequests = new Set<string>();
   const adding = new Set<string>(); // agents being made to add, from the Tricot tab, by id
   const launching = new Map<string, string>(); // owners of threads being made to start: thread id -> agent kind
+  const ownerStatus = new Map<string, ThreadStatus>(); // where each orchestrator's thread stands, as the board last said, by name lower-cased
   const launched = new Map<string, number>(); // when each thread's owner was last started here, by thread id
   const wakes = new Wakes({
     ...options.wakeTiming,
@@ -247,6 +249,7 @@ export function startHost(options: HostOptions): Host {
     now,
     changed: () => schedule(),
     launches: (list) => launchOwners(list),
+    owners: (owners, closes) => tendOwners(owners, closes),
   });
 
   const router = new InputRouter({
@@ -652,15 +655,21 @@ export function startHost(options: HostOptions): Host {
   // as many at once of each agent kind as the run allows, so each coordinator
   // has its own. One that ended is started again once RELAUNCH_MS have gone,
   // should its thread still be at work; one that can't start says why in the strip.
+  //
+  // Only an owner at work counts towards those at once: one whose thread waits
+  // on people, or is done, sleeps and costs nothing. When the tabs are full,
+  // the owner whose thread is done and that has been quiet longest closes to
+  // make room; a word in its thread later starts a fresh one.
   function launchOwners(list: Launch[]): void {
     if (quitting || finished || !setup?.launch) return;
     const cap = setup.orchestrators ?? ORCHESTRATORS;
+    const atWork = (a: Agent) => a.thread !== undefined && a.state !== 'ended' && !a.closing && (ownerStatus.get(a.name.toLowerCase()) ?? 'working') === 'working';
     for (const wanted of list) {
-      if (agents.length + adding.size + launching.size >= MAX_AGENTS) return;
-      const owning = agents.filter((a) => a.thread !== undefined && a.id === wanted.agent && a.state !== 'ended').length + [...launching.values()].filter((kind) => kind === wanted.agent).length;
+      const owning = agents.filter((a) => atWork(a) && a.id === wanted.agent).length + [...launching.values()].filter((kind) => kind === wanted.agent).length;
       if (owning >= cap) continue;
       if (launching.has(wanted.thread) || agents.some((a) => a.state !== 'ended' && samePerson(a.name, wanted.name))) continue;
       if (now() - (launched.get(wanted.thread) ?? -Infinity) < RELAUNCH_MS) continue;
+      if (agents.length + adding.size + launching.size >= MAX_AGENTS && !makeRoom()) return;
       launched.set(wanted.thread, now());
       launching.set(wanted.thread, wanted.agent);
       void Promise.resolve(setup.launch(wanted))
@@ -674,6 +683,29 @@ export function startHost(options: HostOptions): Host {
           (error: unknown) => say(`${wanted.name} didn't start: ${error instanceof Error ? error.message : error}`, ANSWER_HINT_MS),
         )
         .finally(() => launching.delete(wanted.thread));
+    }
+  }
+
+  // The tab of the owner whose thread is done and that has been quiet longest, closed for a new one: whether there was one.
+  function makeRoom(): boolean {
+    const done = agents.filter((a) => a.thread !== undefined && a.state !== 'ended' && !a.closing && ownerStatus.get(a.name.toLowerCase()) === 'done');
+    const quietest = done.sort((a, b) => (a.lastOutput ?? 0) - (b.lastOutput ?? 0))[0];
+    if (!quietest) return false;
+    say(`${quietest.name} closed to make room: its thread is done, and a word there starts it again.`, ANSWER_HINT_MS);
+    stopAgent(quietest.index);
+    return true;
+  }
+
+  // What the board says of the orchestrators this terminal holds: where their threads stand, and those to close, their
+  // thread deleted and its undo past (core/roles.ts). Only a tab Tricot started to own a thread is ever closed so.
+  function tendOwners(owners: OwnerNow[], closes: string[]): void {
+    for (const { name, status } of owners) ownerStatus.set(name.toLowerCase(), status);
+    for (const name of closes) {
+      const owner = agents.find((a) => a.thread !== undefined && a.state !== 'ended' && !a.closing && samePerson(a.name, name));
+      if (!owner) continue;
+      ownerStatus.delete(name.toLowerCase());
+      say(`${owner.name} closed: its thread was deleted.`, ANSWER_HINT_MS);
+      stopAgent(owner.index);
     }
   }
 

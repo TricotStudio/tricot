@@ -7,7 +7,7 @@ import { useBoardCards } from '../src/core/cards';
 import { roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
 import { commentsForYou } from '../src/core/bell';
 import { concernsAgent } from '../src/core/concerns';
-import { launchesOn } from '../src/core/roles';
+import { CLOSE_AFTER_DELETE_MS, launchesOn } from '../src/core/roles';
 import { Presence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
@@ -143,6 +143,17 @@ describe('Threads over MCP and REST', () => {
     assert.equal(concernsAgent(latest(), store.getBoard(boardId), 'Router'), true, 'the coordinator hears it is done');
     assert.equal(concernsAgent(latest(), store.getBoard(boardId), 'Codex'), false);
     assert.throws(() => store.setThreadStatus(work.id, 'working', { kind: 'agent', name: 'Codex' }), /only its owner says where its work stands/);
+
+    // The terminal holding the owner hears where its thread stands, and, once the thread is deleted and its undo is past,
+    // to close it (server/wakes.ts): never before, so an Undo finds it there.
+    const tending = new Presence(() => {});
+    tending.started(work.owner!, { tool: 'claude', role: { kind: 'orchestrator', thread: work.id } });
+    const owners = (at: number) => heldBy(store, tending, store.getBoard(boardId), 'terminal-one', [{ name: work.owner!, asleep: true, at: Date.now() }], [], at);
+    assert.deepEqual([owners(Date.now()).owners, owners(Date.now()).closes], [[{ name: work.owner, status: 'done' }], undefined]);
+    store.removeItem(work.id, { kind: 'human', name: 'Sam' });
+    assert.equal(owners(Date.now()).closes, undefined, 'not while its undo is still offered');
+    assert.deepEqual(owners(Date.now() + CLOSE_AFTER_DELETE_MS).closes, [work.owner], 'closed once its undo is past');
+    tending.close();
   });
 });
 

@@ -75,6 +75,18 @@ export function orchestratorName(agent: string, title: string, taken: string[]):
   for (let n = 2; ; n++) if (free(`${base} ${n}`)) return `${base} ${n}`;
 }
 
+// How long after a thread is deleted its orchestrator is closed: past the undo toast's 10 s countdown (web/canvas/
+// undo.css), with room for the pointer resting on it, so an Undo finds its owner still there.
+export const CLOSE_AFTER_DELETE_MS = 60_000;
+
+// An orchestrator a terminal holds, and where the work of the thread it owns stands, as the board tells the terminal
+// (server/wakes.ts): it counts towards its coordinator's owners at once only while at work, and one done is the first
+// to make room when the terminal has none.
+export interface OwnerNow {
+  name: string;
+  status: ThreadStatus;
+}
+
 // A thread whose owner Tricot's terminal starts, as the board tells it (server/wakes.ts).
 export interface Launch {
   thread: string; // its id
