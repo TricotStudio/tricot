@@ -9,11 +9,13 @@ import { useDismiss } from '../shared/hooks';
 import { useRoster } from '../shared/mentions';
 
 // The threads list (core/threadList.ts): every thread on the board, wherever
-// it was started, rising from the chat bar as wide as it is, or dropping from
-// the docked conversation's "Threads". Waiting on you first, then Recent, then
-// the finished, quiet ones under Earlier, quieter and a line each. Each row
-// leads with what the conversation is about, then says what it made in plain
-// words; the whole row opens it. New thread is the open-ended door (threads.tsx).
+// it was started, rising from the chat bar as wide as it is, or filling the
+// docked panel as a page of its own, under the panel's header, which then says
+// Threads and offers New thread (threads.tsx). Waiting on you first, then
+// Recent, then the finished, quiet ones under Earlier, quieter and a line each.
+// Each row leads with what the conversation is about, then says what it made
+// in plain words (in the panel, with two lines of the latest message); the
+// whole row opens it. New thread is the open-ended door (threads.tsx).
 
 // Earlier shows this many until asked for the rest.
 const EARLIER_SHOWN = 5;
@@ -21,27 +23,36 @@ const EARLIER_SHOWN = 5;
 interface Props {
   groups: ThreadGroups;
   name: string;
-  current?: string; // the thread open in the panel
+  current?: string; // the thread the panel had open
   readOnly: boolean;
-  docked: boolean; // dropping from the docked conversation, rather than rising from the bar
+  // The docked panel's page, rather than a popover over the bar: it stays
+  // until a row or New thread is picked, and keeps where it was scrolled in
+  // `scroll`, for coming back to it from a thread.
+  page?: { scroll: { current: number | null } };
   onOpen: (id: string) => void;
   onNew: () => void;
   onDelete: (thread: Thread) => void;
-  onClose: (escape: boolean) => void;
-  toggle: RefObject<HTMLElement | null>; // the button that opens it, which toggles it
+  onClose?: (escape: boolean) => void; // the popover's
+  toggle?: RefObject<HTMLElement | null>; // the button that opens the popover, which toggles it
 }
 
 export function ThreadsList(props: Props) {
-  const { groups, name, current, readOnly, docked, onOpen, onNew, onDelete, onClose, toggle } = props;
+  const { groups, name, current, readOnly, page, onOpen, onNew, onDelete, onClose, toggle } = props;
   const root = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   const [allEarlier, setAllEarlier] = useState(false);
-  useDismiss(true, onClose, root, toggle);
-  // Opens on the thread open in the panel, else the first.
+  // The popover closes on a click outside it or on Escape; the page is the
+  // panel's, which does that for itself.
+  useDismiss(!page, onClose ?? noClose, root, toggle);
+  // Opens on the thread the panel had open, else the first; the page where
+  // it was scrolled, if it was.
   useEffect(() => {
     const el = root.current;
     const row = (current && el?.querySelector<HTMLElement>(`[data-thread="${CSS.escape(current)}"] .tl-open`)) || el?.querySelector<HTMLElement>('.tl-open');
-    (row ?? el?.querySelector<HTMLElement>('.tl-new'))?.focus({ preventScroll: true });
-    row?.scrollIntoView({ block: 'nearest' });
+    (row ?? el?.querySelector<HTMLElement>('.tl-new') ?? el)?.focus({ preventScroll: true });
+    const kept = page?.scroll.current;
+    if (body.current && kept != null) body.current.scrollTop = kept;
+    else row?.scrollIntoView({ block: 'nearest' });
   }, []); // once, as it opens
   // The arrow keys move between rows.
   const onKeyDown = (e: KeyboardEvent) => {
@@ -61,16 +72,18 @@ export function ThreadsList(props: Props) {
     <ThreadRow key={entry.thread.id} entry={entry} name={name} compact={compact} current={entry.thread.id === current} readOnly={readOnly} onOpen={() => onOpen(entry.thread.id)} onDelete={() => onDelete(entry.thread)} />
   );
   return (
-    <div className={`threads-pop${docked ? ' is-docked' : ''}`} ref={root} role="dialog" aria-label="Threads" onKeyDown={onKeyDown}>
-      <header className="tl-head">
-        <h2 className="tl-heading">Threads</h2>
-        {!readOnly && (
-          <button type="button" className="btn btn-small tl-new" onClick={onNew}>
-            <Icon name="plus" /> New thread
-          </button>
-        )}
-      </header>
-      <div className="tl-body">
+    <div className={`threads-pop${page ? ' is-page' : ''}`} ref={root} role={page ? 'region' : 'dialog'} aria-label="Threads" tabIndex={page ? -1 : undefined} onKeyDown={onKeyDown}>
+      {!page && (
+        <header className="tl-head">
+          <h2 className="tl-heading">Threads</h2>
+          {!readOnly && (
+            <button type="button" className="btn btn-small tl-new" onClick={onNew}>
+              <Icon name="plus" /> New thread
+            </button>
+          )}
+        </header>
+      )}
+      <div className="tl-body" ref={body} onScroll={page ? (e) => void (page.scroll.current = e.currentTarget.scrollTop) : undefined}>
         {none && <p className="tl-empty">{readOnly ? 'No threads.' : 'No threads yet. What you send from the bar starts one, wherever you are.'}</p>}
         {waiting.length > 0 && (
           <section className="tl-group is-waiting" aria-label="Waiting on you">
@@ -143,6 +156,8 @@ function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; 
     </li>
   );
 }
+
+const noClose = () => {};
 
 // The latest message, as a row shows it: "Claude: Should a team…", "You: …",
 // without the mentions it opens with, and a tag on an agent's (`isAgent`).

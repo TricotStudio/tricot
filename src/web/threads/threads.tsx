@@ -53,8 +53,8 @@ function draftMessage(o: Outgoing, name: string, names: string[]): ThreadMessage
 // starts a thread through that tab's door (core/doors.ts), which opens in a
 // panel docked on the right, the board still there beside it, and the bar
 // becomes the panel's reply box. The panel shows one thread, under "← Threads"
-// and its title, with where it was started and what it made, or New thread,
-// the open-ended door. It stays open while the person uses the board: opening
+// and its title, with where it was started and what it made; or New thread,
+// the open-ended door; or the list of every thread, which fills it. It stays open while the person uses the board: opening
 // a card, following a link or a T6 chip, changing tabs, pressing a button,
 // selecting text, dragging or panning the canvas all leave it be, and it is
 // open again, on the same thread, when they come back from a card's own view.
@@ -62,9 +62,11 @@ function draftMessage(o: Outgoing, name: string, names: string[]): ThreadMessage
 // thread it had open there). It closes on its close button, on Escape, or on
 // a dismiss click, a plain click on empty space that does nothing else
 // (shared/dismissClick.ts), which puts the bar back at the bottom. The
-// bar's threads button, and the panel's "← Threads", open the list of every
-// thread (threadsList.tsx), waiting on you first. A person deletes a thread
-// from its row; a toast offers to undo it, as on a canvas (canvas/undo.tsx).
+// bar's threads button opens the list of every thread (threadsList.tsx),
+// waiting on you first, over the bar; the panel's "← Threads" turns the panel
+// into that list, a page of its own, where a row turns it back into its thread
+// and the reply box starts a new one. A person deletes a thread from its row;
+// a toast offers to undo it, as on a canvas (canvas/undo.tsx).
 // Agents answer over MCP (core/threads.ts); replies arrive with the board.
 
 // Asks the dock to open on a thread, e.g. from the notifications list, the changes feed, a
@@ -132,9 +134,8 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const names = useMentionable(name);
   const [askedHere] = useState(() => door === 'canvas' && flagged(flags.ask));
   // As it was on this board, or as the person left the last one (dockStays.ts).
-  const [arrival] = useState(() => dockOnArrival(remembered.get(board.id) ?? CLOSED, board.id, left, (id) => threads.some((t) => t.id === id)));
   const [state, setState] = useState<DockState>(() => {
-    const kept = arrival.state;
+    const kept = dockOnArrival(remembered.get(board.id) ?? CLOSED, board.id, left, (id) => threads.some((t) => t.id === id));
     return askedHere ? { ...kept, open: false, drafts: { ...kept.drafts, bar: FIRST_QUESTIONS } } : kept;
   });
   useEffect(() => {
@@ -150,8 +151,9 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const report = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
   const { remove, toast } = useUndoDelete(name, report);
   const field = useRef<HTMLInputElement>(null);
-  const [listOpen, setListOpen] = useState(() => arrival.list && !askedHere); // the threads list
+  const [listOpen, setListOpen] = useState(false); // the threads list over the floating bar
   const listButton = useRef<HTMLButtonElement>(null); // what opened it, which toggles it
+  const listScroll = useRef<number | null>(null); // where the panel's list was scrolled, for coming back to it
 
   // The bar's field moves between the bottom and the panel (dockMotion.ts),
   // and each place keeps its caret: by its draft's key, where it was when the
@@ -244,9 +246,9 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     };
   }, [showThread, board.id]);
   const thread = page === 'thread' ? (threads.find((t) => t.id === selected) ?? (started?.id === selected ? started : undefined)) : undefined;
-  // Docked: a thread, or New thread. One deleted (or not found) while open
-  // lets the bar go back to the bottom.
-  const docked = open && (page === 'new' || Boolean(thread));
+  // Docked: a thread, New thread or the list. One deleted (or not found)
+  // while open lets the bar go back to the bottom.
+  const docked = open && (page === 'new' || page === 'list' || Boolean(thread));
   isDocked.current = docked;
   // The coordinator sent the viewer's message on (core/roles.ts): the dock
   // showing the thread it was asked in follows it there, with a way back;
@@ -337,6 +339,17 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     setError(null);
     setListOpen((was) => !was);
   };
+  // In the panel, "← Threads" turns it into the list, which takes the focus
+  // (threadsList.tsx); the reply box keeps its caret for coming back.
+  const showList = () =>
+    dock(
+      true,
+      () => {
+        setError(null);
+        set({ open: true, page: 'list' });
+      },
+      false,
+    );
   // Closed by Escape, the focus goes back to what opened it; by a click
   // elsewhere, it stays where the click put it.
   const closeList = useCallback((escape: boolean) => {
@@ -363,8 +376,8 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   };
 
   // The bar is the open thread's reply box, the open-ended door's on New
-  // thread, and else the tab's own door.
-  const through: ThreadDoor | undefined = docked && page === 'thread' ? undefined : docked && page === 'new' ? 'threads' : door;
+  // thread and on the list, and else the tab's own door.
+  const through: ThreadDoor | undefined = docked && page === 'thread' ? undefined : docked ? 'threads' : door;
   const draftKey = through === undefined ? thread!.id : through === 'threads' ? 'new' : 'bar';
   // Floating over a Sketchbook page, the bar asks about it, of its agent if it has one.
   const overPage = !docked && door === 'threads' ? shownPage : undefined;
@@ -472,7 +485,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   // What ^ offers, by the lens of the thread the message goes to (the open
   // one's, the new one's, or none): a message's own lens, on it alone.
   // Decisions' question bar has no lens to ask for.
-  const toLens = docked && page === 'thread' ? thread?.lens : docked && page === 'new' ? (newLens ?? undefined) : undefined;
+  const toLens = docked && page === 'thread' ? thread?.lens : docked ? (newLens ?? undefined) : undefined;
   const lenses = useMemo(() => (sends === 'question' ? undefined : lensChoices(toLens)), [sends, toLens]);
 
   const send = () => {
@@ -521,12 +534,18 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const othersWaiting = groups.waiting.filter((e) => e.thread.id !== thread?.id).length;
   // Over a page or a file, the bar says what it asks about.
   const aboutWords = pageWords ?? fileWords;
+  // On the list, it says it starts a thread, not a reply to one.
+  const onList = docked && page === 'list';
   const placeholder = through
     ? aboutWords
       ? aboutWords.placeholder
-      : through === 'threads' && newLens
-      ? `What do you want to work through in ${newLens.name}?`
-      : barPlaceholder(through)
+      : onList
+        ? newLens
+          ? `Start a thread in ${newLens.name}…`
+          : 'Start a thread…'
+        : through === 'threads' && newLens
+          ? `What do you want to work through in ${newLens.name}?`
+          : barPlaceholder(through)
     : replyPlaceholder(thread!, listening);
   const bar = readOnly ? null : (
     <ChatBar
@@ -564,19 +583,9 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
       error={docked ? null : error}
     />
   );
-  const threadsList = listOpen && (
-    <ThreadsList
-      groups={groups}
-      name={name}
-      current={docked ? thread?.id : undefined}
-      readOnly={readOnly}
-      docked={docked}
-      onOpen={openFromList}
-      onNew={startNew}
-      onDelete={deleteThread}
-      onClose={closeList}
-      toggle={listButton}
-    />
+  // Over the floating bar, the list rises from its threads button.
+  const threadsList = listOpen && !docked && (
+    <ThreadsList groups={groups} name={name} readOnly={readOnly} onOpen={openFromList} onNew={startNew} onDelete={deleteThread} onClose={closeList} toggle={listButton} />
   );
 
   // The docked conversation's width (shared/panelWidth.ts), as its edge was last
@@ -586,14 +595,20 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const usual = Math.round(Math.min(DOCK_USUAL, window.innerWidth * 0.4));
   const dockWidth = usePanelWidth(panel, { key: 'tricot:dock-width', initial: usual, min: 320, share: 0.66, side: 'right' });
   const column = Math.min(dockWidth.width, usual);
+  // How far it reaches over the board, past its column: the layout says it
+  // too (--dock-over), so what covers the tab, a block's full view, ends where
+  // the panel begins (pairing.css), following its edge as it is dragged.
+  const over = dockWidth.width - column;
   useLayoutEffect(() => {
     const layout = docked ? panel.current?.parentElement : undefined;
     if (!layout) return;
     layout.style.setProperty('--dock-width', `${column}px`);
+    layout.style.setProperty('--dock-over', `${over}px`);
     return () => {
       layout.style.removeProperty('--dock-width');
+      layout.style.removeProperty('--dock-over');
     };
-  }, [docked, column]);
+  }, [docked, column, over]);
 
   if (!docked) {
     return (
@@ -630,29 +645,43 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
       className={`thread-dock${dockWidth.width > column ? ' is-over' : ''}${dockWidth.dragging ? ' is-resizing' : ''}`}
       ref={panel}
       aria-label="Threads"
-      style={{ '--dock-w': `${dockWidth.width}px`, '--dock-over': `${dockWidth.width - column}px` } as CSSProperties}
+      style={{ '--dock-w': `${dockWidth.width}px`, '--dock-over': `${over}px` } as CSSProperties}
     >
       <PanelHandle {...dockWidth} label="Conversation width" />
       <header className="dock-head">
-        <button
-          type="button"
-          ref={listButton}
-          className="dock-back"
-          onClick={toggleList}
-          aria-expanded={listOpen}
-          aria-haspopup="dialog"
-          aria-label={`All threads${othersWaiting ? `, ${othersWaiting} waiting on you` : ''}`}
-        >
-          <Icon name="arrow-left" /> Threads
-          {othersWaiting > 0 && (
-            <span className="dock-count" aria-hidden>
-              {othersWaiting}
-            </span>
-          )}
-        </button>
+        {onList ? (
+          <>
+            <h2 className="dock-heading">Threads</h2>
+            {!readOnly && (
+              <button type="button" className="btn btn-small tl-new" onClick={startNew}>
+                <Icon name="plus" /> New thread
+              </button>
+            )}
+          </>
+        ) : (
+          <button type="button" className="dock-back" onClick={showList} aria-label={`All threads${othersWaiting ? `, ${othersWaiting} waiting on you` : ''}`}>
+            <Icon name="arrow-left" /> Threads
+            {othersWaiting > 0 && (
+              <span className="dock-count" aria-hidden>
+                {othersWaiting}
+              </span>
+            )}
+          </button>
+        )}
         {closeButton}
       </header>
-      {threadsList}
+      {onList && (
+        <ThreadsList
+          groups={groups}
+          name={name}
+          current={selected ?? undefined}
+          readOnly={readOnly}
+          page={{ scroll: listScroll }}
+          onOpen={openFromList}
+          onNew={startNew}
+          onDelete={deleteThread}
+        />
+      )}
       {error && (
         <p className="error threads-error" role="alert">
           {error}

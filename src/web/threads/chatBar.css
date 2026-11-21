@@ -882,7 +882,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: var(--z-cover);
+    z-index: var(--z-docked);
     height: min(78vh, 640px);
     border-left: none;
     border-top: 1px solid var(--border);

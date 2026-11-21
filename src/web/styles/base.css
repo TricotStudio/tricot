@@ -25,10 +25,11 @@
 
   /* The page's layers, bottom to top: what may cover what. A z-index that
      sets where a piece sits on the page names one of these; a number from 0
-     to 9 orders pieces inside one part (a chart's tip, the dock beside the
-     tab), and never decides what covers what across the page. */
+     to 9 orders pieces inside one part (a chart's tip, a table's header
+     row), and never decides what covers what across the page. */
   --z-floating: 20; /* over the tab: the chat bar, the drop target, a note under a selection */
-  --z-cover: 30; /* covers a whole tab: a block's full view, the narrow screen's thread sheet */
+  --z-cover: 30; /* covers a whole tab: a block's full view */
+  --z-docked: 35; /* the thread panel beside the tab, over what covers it where it reaches over the tab; the narrow screen's thread sheet */
   --z-popover: 40; /* a menu, picker, card or popover, from wherever it opens */
   --z-panel: 60; /* a panel over the page behind a scrim: search, the agents */
   --z-dialog: 70; /* a dialog that asks before something happens */

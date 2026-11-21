@@ -96,9 +96,10 @@
   grid-column: 2;
   grid-row: 1;
   justify-self: start;
-  z-index: 2;
+  z-index: var(--z-docked);
   /* As wide as its edge was dragged (threads.tsx): past its column it reaches
-     left, over the board, which stays as it is under it. */
+     left, over the board, which stays as it is under it, a block's full view
+     included. */
   width: var(--dock-w, var(--dock-width));
   margin-left: calc(-1 * var(--dock-over, 0px));
 }

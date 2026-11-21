@@ -12,9 +12,11 @@ import type { ThreadLens } from '../../core/types';
 
 // What the dock had open, and what was typed where, kept per board while the
 // page is open, so a card opened from the conversation and closed again comes
-// back to it. Drafts are by thread id, 'new' for the open-ended door's, and
-// 'bar' for the tab's own door.
-export type DockPage = 'thread' | 'new';
+// back to it. Its page is a thread, New thread (the open-ended door), or the
+// list of every thread, which fills the panel. Drafts are by thread id, 'new'
+// for the open-ended door's (New thread's and the list's), and 'bar' for the
+// tab's own door.
+export type DockPage = 'thread' | 'new' | 'list';
 export interface DockState {
   open: boolean;
   page: DockPage;
@@ -43,17 +45,17 @@ export const ACROSS_PROJECTS: AcrossProjects = 'stays';
 
 // The dock's state as a board's tabs come on screen, from what it kept for
 // that board and what was left: the same board as it was; another project
-// as ACROSS_PROJECTS says. `list` opens the threads list over the panel,
-// with New thread under it. `has` says whether a thread is on this board.
+// as ACROSS_PROJECTS says, on the thread it had open there, else on its list
+// of threads. `has` says whether a thread is on this board.
 export function dockOnArrival(
   kept: DockState,
   boardId: string,
   left: Left | null,
   has: (threadId: string) => boolean,
   across: AcrossProjects = ACROSS_PROJECTS,
-): { state: DockState; list: boolean } {
-  if (!left || left.board === boardId) return { state: kept, list: false };
-  if (!left.open || across === 'closes') return { state: { ...kept, open: false }, list: false };
-  if (kept.open && kept.page === 'thread' && kept.selected && has(kept.selected)) return { state: kept, list: false };
-  return { state: { ...kept, open: true, page: 'new' }, list: true };
+): DockState {
+  if (!left || left.board === boardId) return kept;
+  if (!left.open || across === 'closes') return { ...kept, open: false };
+  if (kept.open && kept.page === 'thread' && kept.selected && has(kept.selected)) return kept;
+  return { ...kept, open: true, page: 'list' };
 }

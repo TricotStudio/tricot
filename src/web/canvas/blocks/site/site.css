@@ -283,4 +283,10 @@
   z-index: var(--z-cover);
   background: var(--bg);
 }
+/* Where the thread panel lies over the tab, it ends where the panel begins, as the full view does (pairing.css). */
+@media (min-width: 901px) {
+  .site-failed.is-full {
+    right: var(--dock-over, 0px);
+  }
+}
 

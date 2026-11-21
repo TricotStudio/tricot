@@ -26,14 +26,35 @@
   animation: threads-pop-in 0.16s cubic-bezier(0.32, 0.72, 0, 1);
   transform-origin: 50% 100%;
 }
-.threads-pop.is-docked {
-  top: 56px;
-  bottom: auto;
-  left: 8px;
-  right: 8px;
-  max-height: calc(100% - 140px);
-  transform-origin: 0 0;
-  animation-name: threads-drop-in;
+/* In the docked panel, the list is a page of its own (threads.tsx): it fills
+   the panel under the panel's header, with no edge, shadow or lift of its
+   own, and fades in as it takes the thread's place. A row there has room for
+   two lines of the latest message. */
+.threads-pop.is-page {
+  position: static;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  animation: threads-page-in 0.12s ease-out;
+}
+.threads-pop.is-page:focus {
+  outline: none;
+}
+.threads-pop.is-page .tl-body {
+  padding-top: 6px;
+}
+.threads-pop.is-page .tl-meta {
+  align-items: flex-start;
+}
+.threads-pop.is-page .tl-last {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
 }
 @keyframes threads-pop-in {
   from {
@@ -41,14 +62,14 @@
     transform: translateY(6px) scale(0.985);
   }
 }
-@keyframes threads-drop-in {
+@keyframes threads-page-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .threads-pop {
+  .threads-pop,
+  .threads-pop.is-page {
     animation: none;
   }
 }

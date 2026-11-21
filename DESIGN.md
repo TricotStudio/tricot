@@ -283,7 +283,7 @@ The app has three working layouts, all with a 24px side gutter on desktop and 16
 
 - **Home:** a centred column (max 1080px) with the projects list and, at its foot, how to connect an agent; 48px top padding.
 - **Board:** a top bar, then the view tabs (the Sketchbook, and the project's Files as a quiet folder before them), and the page's canvas filling the room beneath.
-- **Thread panel:** a thread opens in a panel at the right of the canvas, up to 440px (40% of the window at most), with the chat bar at its foot.
+- **Thread panel:** a thread opens in a panel at the right of the canvas, up to 440px (40% of the window at most), with the chat bar at its foot. Its "← Threads" turns the whole panel into the list of every thread, a page of its own rather than a popover over the thread; a row turns it back.
 
 Spacing follows a 4px base (4, 6, 8, 12, 16, 24, 32, 48). Tight groups (a block's header row, a message's byline) use 6–8px; separate groups (sections in a panel) use 20–24px.
 

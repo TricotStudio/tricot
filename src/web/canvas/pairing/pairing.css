@@ -20,6 +20,15 @@
     opacity: 0;
   }
 }
+/* The thread panel widened past its column lies over the tab (board.css): the
+   full view ends where the panel begins, so its bar, Close included, stays in
+   view. The board layout says how far the panel reaches over it (--dock-over,
+   set by the panel). On a narrow screen the panel is a sheet at the foot. */
+@media (min-width: 901px) {
+  .pair-shell {
+    right: var(--dock-over, 0px);
+  }
+}
 
 .pair-bar {
   flex: none;
