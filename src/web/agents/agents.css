@@ -293,6 +293,49 @@
   padding: 0 8px;
   font-size: 12.5px;
 }
+/* How many agents a coordinator runs at once: a row of small numbers under the columns, the chosen one in ink. */
+.agent-rule-at-once {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 8px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.agent-rule-at-once-name {
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.agent-rule-count {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.agent-rule-count:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.agent-rule-count.is-on {
+  border-color: var(--text);
+  color: var(--text);
+  font-weight: 600;
+}
+.agent-rule-count:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.agent-rule-count:disabled {
+  cursor: progress;
+}
 .agent-rule-error {
   padding: 2px 8px;
   font-size: 12px;

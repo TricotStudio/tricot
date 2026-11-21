@@ -38,7 +38,8 @@ export function createAgentRulesRouter(rules: AgentRulesStore, person: PersonGat
       return;
     }
     const rule = cleanRule(agentRule.rule.parse(req.body ?? {}));
-    const problem = ruleProblem(kind, rule);
+    // How many agents it runs at once is a coordinator's alone (core/roles.ts).
+    const problem = rule.orchestrators && key.role !== 'coordinator' ? `Only a coordinator's rule says how many agents it runs at once: set it on ${kind.id}:coordinator.` : ruleProblem(kind, rule);
     if (problem) {
       res.status(400).json({ error: problem });
       return;

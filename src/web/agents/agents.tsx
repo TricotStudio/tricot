@@ -54,7 +54,8 @@ function useAgentRules(): { rules: AgentRules | null; set: (id: string, rule: Ag
     };
   }, []);
   const set = useCallback(async (id: string, rule: AgentRule) => {
-    const changed = await api.setAgentRule(id, { model: rule.model ?? null, effort: rule.effort ?? null });
+    // The whole rule each time: a coordinator's carries how many agents it runs at once, kept as the model changes.
+    const changed = await api.setAgentRule(id, { model: rule.model ?? null, effort: rule.effort ?? null, ...(id.endsWith(':coordinator') && { orchestrators: rule.orchestrators ?? null }) });
     setRules(changed.rules);
   }, []);
   return { rules, set };

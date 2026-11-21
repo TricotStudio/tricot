@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { useBoardCards } from '../src/core/cards';
-import { roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
+import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
 import { commentsForYou } from '../src/core/bell';
 import { concernsAgent } from '../src/core/concerns';
 import { CLOSE_AFTER_DELETE_MS, launchesOn } from '../src/core/roles';
@@ -227,6 +227,10 @@ describe('The model of each role', () => {
     assert.deepEqual(roleRule(rules, 'claude', 'worker'), {}, "a subagent's none set: the orchestrator's choice");
     assert.equal(subagentWords(rules, 'claude'), 'The person asks you to run your scouts on haiku: start each subagent so.');
     assert.equal(subagentWords({ claude: { model: 'opus' } }, 'claude'), undefined);
+    // How many agents a coordinator runs at once is its rule's, from 1 to 8; none, or one out of range, is the default 3.
+    assert.equal(atOnce({ 'claude:coordinator': { orchestrators: 5 } }, 'claude'), 5);
+    assert.equal(atOnce({}, 'claude'), 3);
+    assert.deepEqual([cleanRule({ orchestrators: 9 }), cleanRule({ orchestrators: 2.5 }), cleanRule({ orchestrators: null })], [{}, {}, {}]);
   });
 });
 

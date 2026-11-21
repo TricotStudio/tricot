@@ -45,7 +45,7 @@
 // Tricot tab, was closed, not failed.
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { roleRule, stripWords, subagentWords, type AgentRule } from '../core/agentRules';
+import { atOnce, DEFAULT_AT_ONCE, roleRule, stripWords, subagentWords, type AgentRule } from '../core/agentRules';
 import { agentUrl } from '../core/connect';
 import { listNames } from '../core/format';
 import { coordinatorMessage, orchestratorMessage, roleUrl, type Launch, type SessionRole } from '../core/roles';
@@ -57,9 +57,11 @@ import { readRules, ruleForRun, startedOn, startsOnLine, UNREAD_RULES } from './
 import { chooseBoard, personOn } from './chooseBoard';
 import type { CliResult } from './main';
 import { SWITCH_KEY } from './switcher/keys';
-import { MAX_AGENTS, ORCHESTRATORS, type HostedAgent } from './switcher/host';
+import type { HostedAgent } from './switcher/host';
 import type { SwitcherRun } from './switcher/run';
 import type { AddChoice } from './switcher/tricotTab';
+
+const RULES_AGAIN_MS = 30_000; // how stale the agents' rules may be when the terminal asks how many owners a coordinator runs
 
 export async function severalAgents(a: AgentEnv, ids: string[], passthrough: string[], chosen: Record<string, AgentRule> = {}): Promise<CliResult> {
   const { ctx, values } = a;
@@ -78,9 +80,6 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
   // terminal, which holds it, starts the agents it hands work to. One Tricot can't wake runs as any agent does.
   const coordinates = (id: string) => Boolean(AGENTS[id].wakes);
   const coordinators = ids.filter(coordinates);
-  const orchestrators = values.orchestrators === undefined ? undefined : Number(values.orchestrators);
-  if (orchestrators !== undefined && !(Number.isInteger(orchestrators) && orchestrators >= 1 && orchestrators <= MAX_AGENTS - 1)) return refuse(`--orchestrators is how many agents a coordinator starts at once: a whole number from 1 to ${MAX_AGENTS - 1}.`);
-  if (orchestrators !== undefined && !coordinators.length) return refuse(`--orchestrators is how many agents a coordinator starts at once, and ${listNames(ids.map((id) => AGENTS[id].name))} can't coordinate: Tricot starts those agents from the terminal that wakes a coordinator, and it doesn't wake ${ids.length > 1 ? 'them' : 'it'}.`);
   if (several && values.name) return refuse(`--name names one agent: with several, each has its usual name on the board (${listNames(ids.map((id) => AGENTS[id].boardName))}).`);
   if (several && passthrough.length) return refuse("Words after -- go to one agent, and with several Tricot can't tell whose they are: start that one on its own, as tricot claude -- …, or give each its model after its name, as tricot claude --model opus codex.");
   if (isWindows(ctx.platform)) return refuse("Several agents in one terminal don't work on Windows yet: start each in a terminal of its own, with tricot claude, tricot codex.");
@@ -142,6 +141,19 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
   const read = await readRules(lock.url, a.dataDir);
   if ('problem' in read) ctx.out(UNREAD_RULES(read.problem));
   const rules = 'rules' in read ? read.rules : {};
+  // How many agents each coordinator runs at once, as its rule in the agent's panel says (core/agentRules.ts atOnce):
+  // read again at most every RULES_AGAIN_MS as the terminal asks, so a change there holds without a restart.
+  let rulesNow = rules;
+  let rulesAt = Date.now();
+  const atOnceOf = (kind: string): number => {
+    if (Date.now() - rulesAt > RULES_AGAIN_MS) {
+      rulesAt = Date.now();
+      void readRules(lock.url, a.dataDir).then((again) => {
+        if ('rules' in again) rulesNow = again.rules;
+      });
+    }
+    return atOnce(rulesNow, kind);
+  };
   // Each agent as it starts here, those named and those added from the
   // Tricot tab alike: connected for this session only, with its own name,
   // on its rule; the strip says what it runs on.
@@ -217,7 +229,7 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     // as the others were here, with its role and its thread on its address,
     // on its agent's rule as read now: the board asks only a terminal that
     // holds a coordinator, and any agent this terminal starts may be one.
-    orchestrators: orchestrators ?? ORCHESTRATORS,
+    orchestrators: atOnceOf,
     launch: async (wanted: Launch) => {
       const agent = AGENTS[wanted.agent];
       if (!agent?.session) return { problem: `Tricot can't start ${agent?.name ?? wanted.agent} to own "${wanted.title}": it waits for an owner.` };
@@ -241,8 +253,8 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
   if (leading.length) {
     ctx.out(
       leading.length > 1
-        ? `${listNames(leading)} each coordinate the board: each answers what people ask it in the chat bar (one mentioned by name, else the one active last), and starts agents of its own kind here for each piece of work, ${orchestrators ?? ORCHESTRATORS} at most at once.`
-        : `${leading[0]} coordinates the board: it answers what people ask in the chat bar, and starts an agent of its own here for each piece of work, ${orchestrators ?? ORCHESTRATORS} at most at once.`,
+        ? `${listNames(leading)} each coordinate the board: each answers what people ask it in the chat bar (one mentioned by name, else the one active last), and starts agents of its own kind here for each piece of work, as many at once as its Coordinator row in the agent's panel says (${DEFAULT_AT_ONCE} unless set).`
+        : `${leading[0]} coordinates the board: it answers what people ask in the chat bar, and starts an agent of its own here for each piece of work, ${atOnceOf(coordinators[0])} at most at once (its Coordinator row in the agent's panel sets it).`,
     );
   }
   if (plain.length) ctx.out(`${listNames(plain)} ${plain.length > 1 ? 'answer' : 'answers'} on the board as any agent does: Tricot doesn't wake ${plain.length > 1 ? 'them' : 'it'}, so ${plain.length > 1 ? 'they' : 'it'} can't coordinate.`);

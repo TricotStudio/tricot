@@ -17,7 +17,13 @@ import type { AgentBrowserHalf, AgentKind, RuleChoice } from './agents/agent';
 export interface AgentRule {
   model?: string; // as the agent takes it: an alias ("opus") or a full name
   effort?: string; // one of its thinking levels, by id ("high")
+  // On a coordinator's rule alone (roleRuleKey(agent, 'coordinator')): how many agents it runs at once to own threads
+  // (core/roles.ts), from 1 to MAX_AT_ONCE; none, DEFAULT_AT_ONCE.
+  orchestrators?: number;
 }
+
+export const DEFAULT_AT_ONCE = 3;
+export const MAX_AT_ONCE = 8; // with its coordinator, as many as the terminal's tabs hold (9)
 
 // By agent id ("claude"); an agent with nothing set has no entry. A rule for
 // one of its roles (core/roles.ts) is kept beside it, by the agent's id and
@@ -82,11 +88,16 @@ export const thinkingLevels = (...ids: string[]): RuleChoice[] => ids.map((id) =
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 // The rule with its words trimmed and an empty one taken out.
-export function cleanRule(rule: { model?: string | null; effort?: string | null }): AgentRule {
+export function cleanRule(rule: { model?: string | null; effort?: string | null; orchestrators?: number | null }): AgentRule {
   const model = rule.model?.trim();
   const effort = rule.effort?.trim();
-  return { ...(model && { model }), ...(effort && { effort }) };
+  const orchestrators = rule.orchestrators;
+  const atOnce = typeof orchestrators === 'number' && Number.isInteger(orchestrators) && orchestrators >= 1 && orchestrators <= MAX_AT_ONCE ? orchestrators : undefined;
+  return { ...(model && { model }), ...(effort && { effort }), ...(atOnce && { orchestrators: atOnce }) };
 }
+
+// How many agents a coordinator of this kind runs at once to own threads, as its rule says.
+export const atOnce = (rules: AgentRules, agent: string): number => rules[roleRuleKey(agent, 'coordinator')]?.orchestrators ?? DEFAULT_AT_ONCE;
 
 // What is wrong with a model's name: none when the agent can be handed it.
 // It goes to the agent as a word of its own, so it can't start with - (the

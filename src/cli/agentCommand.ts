@@ -59,7 +59,7 @@ export type RunningLock = ServerLock & { url: string; mcpUrl: string };
 
 export interface AgentEnv {
   ctx: CliContext;
-  values: { board?: string; name?: string; 'no-open'?: boolean; orchestrators?: string };
+  values: { board?: string; name?: string; 'no-open'?: boolean };
   dataDir: string;
   port: number; // where a board started on this data would listen
   // The board running on this data, if there is one: never started, nor held.

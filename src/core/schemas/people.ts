@@ -375,6 +375,7 @@ export const agentRule = {
   rule: z.object({
     model: z.string({ error: 'model is the name of a model, or null for its own.' }).max(200).nullable().optional(),
     effort: z.string({ error: 'effort is a thinking level, or null for its own.' }).max(40).nullable().optional(),
+    orchestrators: z.number({ error: "orchestrators is how many agents a coordinator runs at once, or null for the default." }).int().min(1).max(8).nullable().optional(),
   }),
 };
 

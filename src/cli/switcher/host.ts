@@ -54,6 +54,7 @@
 // the terminal is put back as it was and `done` gives each agent's exit code.
 import type { WakeTraits } from '../../core/agents/agent';
 import { samePerson } from '../../core/format';
+import { DEFAULT_AT_ONCE } from '../../core/agentRules';
 import type { Launch, OwnerNow } from '../../core/roles';
 import type { ThreadStatus } from '../../core/types';
 import type { Answers } from './answers';
@@ -112,9 +113,9 @@ export interface TricotSetup {
   make?(id: string): HostedAgent | { problem: string } | Promise<HostedAgent | { problem: string }>;
   // The owner of a thread the board's coordinator sent work to, made ready to
   // start in a tab of its own, as the board asks (core/roles.ts), or why it
-  // can't be; and how many such owners of each agent kind run at once here, at most.
+  // can't be; and how many such owners of each agent kind run at once here, at most, as its coordinator's rule says.
   launch?(launch: Launch): HostedAgent | { problem: string } | Promise<HostedAgent | { problem: string }>;
-  orchestrators?: number;
+  orchestrators?(kind: string): number;
 }
 
 export interface HostOptions {
@@ -185,7 +186,6 @@ interface Agent extends AgentNow {
 
 export const TRICOT_TAB = -1;
 export const MAX_AGENTS = 9; // as many as the switch key's digits pick
-export const ORCHESTRATORS = 3; // owners of threads Tricot runs at once here, unless the run says otherwise
 const RELAUNCH_MS = 2 * 60_000; // a thread's owner that ended is started again after this, at the soonest
 const COLOUR_WAIT_MS = 500;
 const FLASH_MS = 2_500;
@@ -662,11 +662,10 @@ export function startHost(options: HostOptions): Host {
   // make room; a word in its thread later starts a fresh one.
   function launchOwners(list: Launch[]): void {
     if (quitting || finished || !setup?.launch) return;
-    const cap = setup.orchestrators ?? ORCHESTRATORS;
     const atWork = (a: Agent) => a.thread !== undefined && a.state !== 'ended' && !a.closing && (ownerStatus.get(a.name.toLowerCase()) ?? 'working') === 'working';
     for (const wanted of list) {
       const owning = agents.filter((a) => atWork(a) && a.id === wanted.agent).length + [...launching.values()].filter((kind) => kind === wanted.agent).length;
-      if (owning >= cap) continue;
+      if (owning >= (setup.orchestrators?.(wanted.agent) ?? DEFAULT_AT_ONCE)) continue;
       if (launching.has(wanted.thread) || agents.some((a) => a.state !== 'ended' && samePerson(a.name, wanted.name))) continue;
       if (now() - (launched.get(wanted.thread) ?? -Infinity) < RELAUNCH_MS) continue;
       if (agents.length + adding.size + launching.size >= MAX_AGENTS && !makeRoom()) return;

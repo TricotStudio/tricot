@@ -27,9 +27,9 @@ function readRules(value: unknown): AgentRules {
   const kept: AgentRules = {};
   for (const [id, rule] of Object.entries(rules)) {
     if (!rule || typeof rule !== 'object') continue;
-    const { model, effort } = rule as Record<string, unknown>;
-    const clean = cleanRule({ model: typeof model === 'string' ? model : undefined, effort: typeof effort === 'string' ? effort : undefined });
-    if (clean.model || clean.effort) kept[id] = clean;
+    const { model, effort, orchestrators } = rule as Record<string, unknown>;
+    const clean = cleanRule({ model: typeof model === 'string' ? model : undefined, effort: typeof effort === 'string' ? effort : undefined, orchestrators: typeof orchestrators === 'number' ? orchestrators : undefined });
+    if (clean.model || clean.effort || clean.orchestrators) kept[id] = clean;
   }
   return kept;
 }
@@ -61,7 +61,7 @@ export class AgentRulesStore {
   set(id: string, rule: AgentRule): AgentRules {
     const clean = cleanRule(rule);
     const next = { ...this.rules };
-    if (clean.model || clean.effort) next[id] = clean;
+    if (clean.model || clean.effort || clean.orchestrators) next[id] = clean;
     else delete next[id];
     this.save(next); // kept only once it is written: a refusal leaves the rules as they were
     this.rules = next;

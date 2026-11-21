@@ -196,7 +196,7 @@ export const api = {
   // The model and thinking level each agent starts on, by agent id; and
   // setting one's, which is the person's alone (null: its own).
   agentRules: () => get(routes.agentRules)<{ rules: AgentRules }>(),
-  setAgentRule: (agent: string, rule: { model: string | null; effort: string | null }) => post(routes.setAgentRule)<{ rules: AgentRules }>(rule, { agent }),
+  setAgentRule: (agent: string, rule: { model: string | null; effort: string | null; orchestrators?: number | null }) => post(routes.setAgentRule)<{ rules: AgentRules }>(rule, { agent }),
   // The skills people add in Tricot, for one agent or (no agent) every agent.
   addSkill: (actor: string, skill: { name: string; description: string; instructions: string; agent?: string }) =>
     post(routes.addSkill)<TricotSkill>({ actor, ...skill }),

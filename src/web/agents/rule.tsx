@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { modelProblem, roleRuleKey, RULE_ROLE_WORDS, RULE_ROLES, ruleWords, type AgentRule, type AgentRules, type RuleRole } from '../../core/agentRules';
+import { DEFAULT_AT_ONCE, MAX_AT_ONCE, modelProblem, roleRuleKey, RULE_ROLE_WORDS, RULE_ROLES, ruleWords, type AgentRule, type AgentRules, type RuleRole } from '../../core/agentRules';
 import type { AgentKind } from '../../core/agents/agent';
 import { agentKindOf } from '../../core/agents/registry';
 import { samePerson } from '../../core/format';
@@ -196,7 +196,9 @@ export function RulePopover(props: {
       ? `A change takes effect the next time ${owner} starts; Default passes nothing.`
       : subagents
         ? `An orchestrator is told this as it starts, and runs its ${RULE_ROLE_WORDS[role].toLowerCase()} on it; its choice is the orchestrator's own.`
-        : `A change takes effect the next time Tricot starts one; As ${owner} is ${owner}'s own.`;
+        : role === 'coordinator'
+          ? `At once: how many agents each coordinator runs at work on threads at a time (${DEFAULT_AT_ONCE} unless set), from its next one. A change of model takes effect the next time Tricot starts one; As ${owner} is ${owner}'s own.`
+          : `A change takes effect the next time Tricot starts one; As ${owner} is ${owner}'s own.`;
 
   return createPortal(
     <div
@@ -256,6 +258,25 @@ export function RulePopover(props: {
           </div>
         )}
       </div>
+      {role === 'coordinator' && (
+        <div className="agent-rule-at-once" role="radiogroup" aria-label="Agents it runs at once">
+          <span className="agent-rule-at-once-name">At once</span>
+          {Array.from({ length: MAX_AT_ONCE }, (_, at) => at + 1).map((count) => (
+            <button
+              key={count}
+              type="button"
+              role="radio"
+              aria-checked={(rule.orchestrators ?? DEFAULT_AT_ONCE) === count}
+              className={`agent-rule-count${(rule.orchestrators ?? DEFAULT_AT_ONCE) === count ? ' is-on' : ''}`}
+              title={`${count} agent${count === 1 ? '' : 's'} at work at once${count === DEFAULT_AT_ONCE ? ' (the default)' : ''}`}
+              disabled={busy}
+              onClick={() => void set({ ...rule, orchestrators: count === DEFAULT_AT_ONCE ? undefined : count })}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+      )}
       {error && (
         <p className="agent-rule-error" role="alert">
           {error}

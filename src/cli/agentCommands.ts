@@ -18,7 +18,7 @@ import { connect } from './connectCommand';
 import { askOnFirstRun } from './hooks';
 import { holdLease, type Lease } from './lease';
 import type { CliResult } from './main';
-import { BOARD, DATA, EFFORT, MODEL, NAME, NO_ASK, NO_OPEN, NO_UPDATE_CHECK, ORCHESTRATORS, PORT, VERBOSE, said, type Option } from './options';
+import { BOARD, DATA, EFFORT, MODEL, NAME, NO_ASK, NO_OPEN, NO_UPDATE_CHECK, PORT, VERBOSE, said, type Option } from './options';
 
 // A `tricot claude` command: it holds a lease with the board for as long as
 // it runs, and lets go of it however it ends (agentCommand.ts, server/leases.ts).
@@ -198,7 +198,6 @@ function agentHelp(id: string): { help: Help; options: Option[] } {
       said(BOARD, 'Give this board to the agent, instead of asking which'),
       said(NAME, "The agent's name on the board (one agent: with several, each has its own)"),
       ...ruleOptions,
-      ...(agent.wakes ? [ORCHESTRATORS] : []),
       NO_ASK,
       VERBOSE,
       NO_OPEN,
