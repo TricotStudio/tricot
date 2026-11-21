@@ -251,8 +251,9 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const docked = open && (page === 'new' || page === 'list' || Boolean(thread));
   isDocked.current = docked;
   // The coordinator sent the viewer's message on (core/roles.ts): the dock
-  // showing the thread it was asked in follows it there, with a way back;
-  // anywhere else, the floating bar offers to (workStrip.tsx).
+  // showing the thread it was asked in follows it there, with a way back, or
+  // without one where the message moved and that thread is gone; anywhere
+  // else, the floating bar offers to (workStrip.tsx).
   const routed = useRouted(board, name);
   const [back, setBack] = useState<{ from: string; to: string } | null>(null);
   const follow = routed.latest;
@@ -265,8 +266,8 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     [routed, showThread],
   );
   useEffect(() => {
-    if (follow && docked && page === 'thread' && selected === follow.from) followTo(follow);
-  }, [follow, docked, page, selected, followTo]);
+    if (follow && open && page === 'thread' && selected === follow.from) followTo(follow);
+  }, [follow, open, page, selected, followTo]);
   const backTo = back && thread?.id === back.to ? threads.find((t) => t.id === back.from) : undefined;
   // Closed, the board has the eye again: what was made meanwhile in view is seen.
   useEffect(() => {

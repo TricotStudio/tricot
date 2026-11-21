@@ -48,7 +48,13 @@ export interface Routed {
   from: Thread; // where it was asked
   to: Thread;
   started: boolean; // `to` is new
+  moved: boolean; // the message moved to `to`, and `from`, which held nothing else, is gone
 }
+
+// Whether a thread holds nothing but the person's message sent on, as one the chat bar starts does until it is
+// answered: none of its own blocks, cards or other messages, and no owner but the coordinator sending it on.
+const alone = (thread: Thread, messageId: string, actor: Actor): boolean =>
+  thread.messages.length === 1 && thread.messages[0].id === messageId && !thread.general && !thread.blockIds?.length && !thread.pending?.length && !thread.messages[0].refs?.length && (!thread.owner || samePerson(thread.owner, actor.name));
 
 // How long a quote of the message sent on may be, in the thread it goes to.
 const QUOTED = 4000;
@@ -74,9 +80,10 @@ export class Threads {
   // last asked about the file.
   //
   // While coordinators are on the board (core/roles.ts), one a person starts
-  // from a chat bar is the one it @-mentions, else the one seen last; one that
-  // @-mentions another agent, or goes to the agent of its page or file, or its
-  // lens to one, is no coordinator's.
+  // from a chat bar is the one it @-mentions, else the agent of its page or
+  // file, or its lens's, where that is one, else the one seen last; one that
+  // @-mentions another agent, or goes to an agent that coordinates nothing, is
+  // no coordinator's.
   startThread(boardId: string, body: string, actor: Actor, lens?: LensInput | null, { general = false, door, pageId, blockIds, file, messageLens, title, owner: given }: ThreadStart = {}): Thread {
     const board = this.repo.getBoard(boardId);
     guardArchived(board);
@@ -93,11 +100,13 @@ export class Threads {
     const id = this.repo.newThreadId();
     const now = new Date().toISOString();
     const { mentions, skill } = this.people.requestIn(board, text, actor);
-    // A coordinator it @-mentions, alone among agents, takes it; one that mentions none goes to the one seen last.
+    // A coordinator it @-mentions, alone among agents, takes it; one that mentions none goes to the agent it is routed to
+    // where that coordinates, else to the one seen last.
     const fromBar = actor.kind === 'human' && !general && (door !== undefined || pageId !== undefined || file !== undefined);
     const named = agentsIn(board, mentions);
-    const coordinators = fromBar && !chosen?.agent && named.length <= 1 ? this.repo.coordinatorsOf(boardKey(board)) : [];
-    const coordinator = named.length ? coordinators.find((c) => samePerson(c, named[0])) : coordinators[0];
+    const coordinators = fromBar && named.length <= 1 ? this.repo.coordinatorsOf(boardKey(board)) : [];
+    const routedTo = chosen?.agent;
+    const coordinator = coordinators.find((c) => samePerson(c, named[0] ?? routedTo ?? c));
     const owner = given ?? (coordinator ? { name: coordinator } : undefined);
     const titled = title === undefined ? undefined : threadTitle(limited(required(title, 'A title'), TITLE_LENGTH * 3, 'A title'));
     // Nothing above is left to refuse it, so a file's block is made only for a thread that starts.
@@ -212,7 +221,8 @@ export class Threads {
   // A person's message in a thread whose work waits on people or is done sets
   // it back to work, and Tricot starts its owner again if it is gone
   // (core/roles.ts). `routed`: a coordinator's word that it sent a message on.
-  postToThread(threadId: string, body: string, actor: Actor, refs: string[] = [], messageLens?: LensInput | null, routed?: { sent: NonNullable<ThreadMessage['sent']>; summary: string }): Thread {
+  // `movedFrom`: a person's message a coordinator moved here, from the thread it was asked in.
+  postToThread(threadId: string, body: string, actor: Actor, refs: string[] = [], messageLens?: LensInput | null, routed?: { sent: NonNullable<ThreadMessage['sent']>; summary: string }, movedFrom?: string): Thread {
     const { board, thread } = this.repo.getThread(threadId);
     guardArchived(board);
     const text = limited(required(body, 'A message'), THREAD_TEXT_LIMIT, 'A message');
@@ -258,6 +268,7 @@ export class Threads {
       ...(shown.length ? { refs: shown } : {}),
       ...(held ? { held } : {}),
       ...(routed && { sent: routed.sent }),
+      ...(movedFrom && { movedFrom }),
     };
     thread.messages.push(message);
     thread.updatedAt = now;
@@ -272,6 +283,11 @@ export class Threads {
   // orchestrator owns, which it starts with that quote and the coordinator's
   // brief. Where it was asked, the coordinator says where it went, which
   // answers it there, and which the page follows (Thread.messages' `sent`).
+  // A follow-up asked in a thread of its own that holds nothing else, as the
+  // chat bar starts one, moves to the thread it follows up, as the person's
+  // own message there, and the thread it was asked in goes: the person's
+  // conversation stays one thread, and the page follows the message
+  // (Thread.messages' `movedFrom`).
   routeToThread(fromThreadId: string, messageId: string, actor: Actor, target: RouteTarget): Routed {
     if (actor.kind !== 'agent') throw new BoardError("Only an agent sends a message on to a thread: a person moves to the thread and says it there.");
     const { board, thread: from } = this.repo.getThread(fromThreadId);
@@ -289,6 +305,13 @@ export class Threads {
     if ('threadId' in target) {
       to = this.threadOn(target.threadId, board);
       if (to.id === from.id) throw new BoardError("That's the thread it was asked in: send it to another, or answer it here with reply_in_thread.");
+      if (alone(from, messageId, actor)) {
+        this.postToThread(to.id, message.body, message.author, [], undefined, undefined, from.id);
+        board.threads = board.threads!.filter((t) => t !== from);
+        this.repo.unindexThread(from.id);
+        this.repo.record(board, actor, 'thread_routed', `moved ${message.author.name}'s message from thread "${clip(from.title, 60)}", which held nothing else, into thread "${clip(to.title, 60)}"`, { item: to.id });
+        return { from, to, started: false, moved: true };
+      }
       if (to.status && to.status !== 'working') to.status = 'working';
       this.postToThread(to.id, asked, actor);
     } else {
@@ -298,7 +321,7 @@ export class Threads {
     }
     const summary = `sent ${message.author.name}'s message in thread "${clip(from.title, 60)}" on to thread "${clip(to.title, 60)}"`;
     this.postToThread(from.id, `Sent to "${to.title}".`, actor, [], undefined, { sent: { threadId: to.id, messageId }, summary });
-    return { from, to, started };
+    return { from, to, started, moved: false };
   }
 
   // Where the work of a thread an agent owns stands (core/roles.ts): said by

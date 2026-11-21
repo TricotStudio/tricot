@@ -200,6 +200,18 @@ describe('Threads over MCP and REST', () => {
     assert.deepEqual(launchesOn(store.getBoard(boardId), () => false), [], 'no terminal starts anything for it');
     await said(lead, 'set_thread_status', { thread_id: work.id, status: 'needs-you', summary: 'Sticky on phones too?' });
     assert.equal(store.getThread(work.id).thread.status, 'needs-you');
+    // A follow-up from the chat bar, alone in its thread, moves to the thread it follows up as Sam's, which takes it back
+    // to work, and the thread it was asked in goes.
+    const followUp = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead is it sticky on tablets too?', door: 'canvas' })).json as Thread;
+    const moved = await said(lead, 'route_to_thread', { thread_id: followUp.id, message_id: followUp.messages[0].id, to_thread_id: work.id });
+    assert.match(moved, /^Moved their message into thread "Sticky footer" \[thread id: \S+\], which you own: .* so it is gone/);
+    assert.ok(!store.getBoard(boardId).threads!.some((t) => t.id === followUp.id), 'the thread it was asked in is gone');
+    const landed = store.getThread(work.id).thread;
+    assert.deepEqual([landed.messages.at(-1)!.author.name, landed.messages.at(-1)!.body, landed.messages.at(-1)!.movedFrom, landed.status], ['Sam', '@Lead is it sticky on tablets too?', followUp.id, 'working']);
+    // Over a page a coordinator made, the chat bar's thread is that coordinator's.
+    const page = /\[page id: (\w+)\]/.exec(await said(lead, 'add_page', { board_id: boardId, title: 'Footer ideas' }))![1];
+    const overPage = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Which footer reads best?', pageId: page })).json as Thread;
+    assert.equal(overPage.owner, 'Lead', "its page's agent, a coordinator");
     const loose = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'A note to self.' })).json as Thread;
     const refused = (await lead.callTool({ name: 'set_thread_status', arguments: { thread_id: loose.id, status: 'done' } })) as ToolResult;
     assert.match(refused.content[0].text, /has no owner/, 'only for a thread it owns');

@@ -5,7 +5,7 @@ import { boardAgents } from '../../../core/mentions';
 import { orchestratorName, STATUS_WORDS, type SessionRole } from '../../../core/roles';
 import { BoardError } from '../../../core/store';
 import { fields } from '../../../core/schemas/fields';
-import { boardKey, type ThreadStatus } from '../../../core/types';
+import { boardKey, type Thread, type ThreadStatus } from '../../../core/types';
 import { defineTool, text, type Tool } from '../tool';
 import type { ToolGroup } from '../toolGroups';
 import type { ToolContext } from './context';
@@ -17,6 +17,15 @@ import type { ToolContext } from './context';
 // how to work holds for the work, and this says which work is this session's.
 
 const STATUSES = ['working', 'needs-you', 'done'] as const satisfies readonly ThreadStatus[];
+
+// Where a message sent on to a thread of the board went, said to the coordinator that sent it: moved, when the thread
+// it was asked in held nothing else and is gone, or quoted there, its thread answered with where it went.
+function sentWords(routed: { from: Thread; to: Thread; moved: boolean }, whose: string): string {
+  const where = `thread "${clip(routed.to.title, 80)}" [thread id: ${routed.to.id}]${whose}`;
+  return routed.moved
+    ? `Moved their message into ${where}. The thread they asked it in held nothing else, so it is gone, and the person is taken there.`
+    : `Sent it to ${where}. You said where it went in "${clip(routed.from.title, 80)}", and the person is taken there.`;
+}
 
 // Tricot's terminal starts a role's session on its board, which its first message names: it has no board to find, and
 // its instructions keep within what clients show (instructions.ts CLIENTS_SHOW), its role's line ahead of a part's.
@@ -33,7 +42,7 @@ export function roleGroup(role: SessionRole): ToolGroup {
           {
             name: 'coordinator',
             before: 'neutral',
-            text: "This session is the board's coordinator, over any role below: answer a quick question in place, send work on with route_to_thread, and never do it yourself. read_guide coordinating says how.",
+            text: "This session is the board's coordinator, over any role below: answer a quick question in place, send work and follow-ups of a thread on with route_to_thread, and never do the work yourself. read_guide coordinating says how.",
           },
           ROLE_BOARD,
         ],
@@ -60,12 +69,12 @@ function coordinatorTools({ store, getActor, options }: ToolContext): Tool[] {
       name: 'route_to_thread',
       title: 'Send on to a thread',
       description:
-        "Send a person's message from the chat bar on to the thread its work belongs to, or start a new thread for new work, which an agent Tricot starts owns. Where it was asked, you say where it went, and the person is taken there.",
+        "Send a person's message from the chat bar on to the thread it follows up (a question about that thread's work included), where it moves when it is all its own thread holds, or start a new thread for new work, which an agent Tricot starts owns. The person is taken where it went.",
       guide: {
         topic: 'coordinating',
         text: [
-          "You are the board's coordinator: the chat bar's threads are yours, and you keep the whole picture so people needn't. Answer a quick question in place with reply_in_thread. Anything that takes work, send on, and do none of it yourself.",
-          'Work that belongs to a thread already (a follow-up, a change to something being built): to_thread_id, from get_board\'s Threads. Its owner hears it at once.',
+          "You are the board's coordinator: the chat bar's threads are yours, and you keep the whole picture so people needn't. Answer a quick question in place with reply_in_thread, unless it follows up a thread of the board: send that there. Anything that takes work, send on, and do none of it yourself.",
+          'Work that belongs to a thread already (a follow-up, a change to something being built, a question about where its work stands): to_thread_id, from get_board\'s Threads. Its owner hears it at once. A message alone in a thread the chat bar just started moves there, and that thread goes, so the person\'s conversation stays one thread.',
           'New work: title (a few words, what the work is) and brief (what its owner should know besides the message: where to look, what was decided, what done looks like). Tricot starts an agent in your terminal to own it, named after the title; agent picks which (claude, codex), yours unless you say.',
           'One piece of work a thread: split an ask that holds two by sending it to each. Your updates tell you when a thread you sent work to is done: say so to the person in the thread they asked in, in a sentence, with what changed for them.',
         ].join('\n'),
@@ -83,9 +92,8 @@ function coordinatorTools({ store, getActor, options }: ToolContext): Tool[] {
         if (to_thread_id && (title || brief || agent)) throw new BoardError('Pass to_thread_id to send it to a thread of the board, or title (with brief) to start one: not both.');
         if (!to_thread_id && !title) throw new BoardError('Pass to_thread_id to send it to a thread of the board, or title (with brief) to start one for new work.');
         if (to_thread_id) {
-          const { from, to } = store.routeToThread(thread_id, message_id, actor, { threadId: to_thread_id });
-          const owner = to.owner ? `, which ${to.owner} owns: it hears it now` : ': no agent owns it, so whoever answers there takes it';
-          return text(`Sent it to thread "${clip(to.title, 80)}" [thread id: ${to.id}]${owner}. You said where it went in "${clip(from.title, 80)}", and the person is taken there.`);
+          const routed = store.routeToThread(thread_id, message_id, actor, { threadId: to_thread_id });
+          return text(sentWords(routed, routed.to.owner ? `, which ${routed.to.owner} owns: it hears it now` : ': no agent owns it, so whoever answers there takes it'));
         }
         const id = agent ?? options.presence?.sessionOf(actor.name)?.tool ?? agentKinds()[0].id;
         const kind = findAgent(id);
@@ -145,7 +153,7 @@ export function leadTools({ store, getActor }: ToolContext, leads: (boardKey: st
       name: 'route_to_thread',
       title: 'Send on to a thread',
       description:
-        "Send a person's message from the chat bar on to the thread its work belongs to, or start a new thread for new work, which you own: hand its work to a background agent of your own with the thread id. Where it was asked, you say where it went, and the person is taken there.",
+        "Send a person's message from the chat bar on to the thread it follows up (a question about that thread's work included), where it moves when it is all its own thread holds, or start a new thread for new work, which you own: hand its work to a background agent of your own with the thread id. The person is taken where it went.",
       schema: {
         thread_id: z.string().describe('The thread the person asked in'),
         message_id: z.string().describe('Their message, as get_thread lists it'),
@@ -159,9 +167,9 @@ export function leadTools({ store, getActor }: ToolContext, leads: (boardKey: st
         if (!to_thread_id && !title) throw new BoardError('Pass to_thread_id to send it to a thread of the board, or title (with brief) to start one for new work.');
         lead(thread_id);
         if (to_thread_id) {
-          const { from, to } = store.routeToThread(thread_id, message_id, actor, { threadId: to_thread_id });
-          const whose = !to.owner ? ': no agent owns it, so whoever answers there takes it' : samePerson(to.owner, actor.name) ? ', which you own: take it up, or hand it on with its thread id' : `, which ${to.owner} owns: it hears it now`;
-          return text(`Sent it to thread "${clip(to.title, 80)}" [thread id: ${to.id}]${whose}. You said where it went in "${clip(from.title, 80)}", and the person is taken there.`);
+          const routed = store.routeToThread(thread_id, message_id, actor, { threadId: to_thread_id });
+          const owner = routed.to.owner;
+          return text(sentWords(routed, !owner ? ': no agent owns it, so whoever answers there takes it' : samePerson(owner, actor.name) ? ', which you own: take it up there, or hand it on with its thread id' : `, which ${owner} owns: it hears it now`));
         }
         const { from, to } = store.routeToThread(thread_id, message_id, actor, { title: title!, brief, owner: actor.name });
         return text(

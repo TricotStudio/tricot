@@ -24,7 +24,8 @@ export interface Routed {
 }
 
 // The viewer's messages sent on since this page opened, the latest last:
-// what came before it is history, not news to follow.
+// what came before it is history, not news to follow. One moved to the thread
+// it follows up (`movedFrom`) is one, from the thread it was asked in, gone.
 export function useRouted(board: Board, name: string): { latest: Routed | undefined; done: (id: string) => void } {
   const seen = useRef<Set<string> | null>(null);
   const [handled, setHandled] = useState<Set<string>>(() => new Set());
@@ -32,6 +33,7 @@ export function useRouted(board: Board, name: string): { latest: Routed | undefi
     const found: Routed[] = [];
     for (const thread of board.threads ?? []) {
       for (const message of thread.messages) {
+        if (message.movedFrom && message.author.kind === 'human' && samePerson(message.author.name, name)) found.push({ id: message.id, from: message.movedFrom, to: thread.id });
         if (!message.sent) continue;
         const asked = thread.messages.find((m) => m.id === message.sent!.messageId);
         if (asked?.author.kind === 'human' && samePerson(asked.author.name, name)) found.push({ id: message.id, from: thread.id, to: message.sent.threadId });

@@ -436,6 +436,7 @@ export interface ThreadMessage {
   reactions?: Reaction[]; // 👍, 👎 or 👀 from others, oldest first (core/reactions.ts)
   held?: number; // an agent's mention of another agent that the loop guard holds (Comment.held)
   sent?: { threadId: string; messageId: string }; // a coordinator's word that it sent this thread's message (messageId) on to another thread
+  movedFrom?: string; // a person's message a coordinator moved here from the thread it was asked in, which held nothing else and is gone
 }
 
 // A card a thread's message led to: a card of a registered kind (a decision, a task: a part adds them), a
