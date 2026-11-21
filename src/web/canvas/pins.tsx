@@ -27,6 +27,7 @@ import { askToUnpin } from '../shared/confirm';
 import { AsksYou, CommentText, MentionTextarea, COMMENT_LENSES, CommentLens, ViaSkill } from '../shared/mentions';
 import { Reactions, showComments } from '../conversation';
 import { linkTo } from '../shared/pages';
+import { insideOf } from '../shared/onTop';
 import { webKindOf } from './blocks/registry';
 import { ownedBy, useCanvas, type PinDraft } from './context';
 import { DRAFT, markClass, pieces, type TextMark } from './marks';
@@ -383,7 +384,7 @@ export function PinPrompt(props: {
   textRef.current = text;
   useEffect(() => {
     const away = (e: MouseEvent) => {
-      if (!root.current?.contains(e.target as Node) && !textRef.current.trim()) onClose();
+      if (!insideOf(e.target as Element, root.current) && !textRef.current.trim()) onClose();
     };
     const escape = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('mousedown', away, true);
@@ -542,7 +543,7 @@ export function PinThread(props: {
     const away = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // Its own chip toggles it.
-      if (root.current?.contains(target) || target.closest?.(`[data-chip-pin="${CSS.escape(pin.id)}"]`)) return;
+      if (insideOf(target, root.current) || target.closest?.(`[data-chip-pin="${CSS.escape(pin.id)}"]`)) return;
       if (!bodyRef.current.trim()) onClose();
     };
     const escape = (e: KeyboardEvent) => e.key === 'Escape' && onClose();

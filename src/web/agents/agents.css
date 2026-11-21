@@ -101,7 +101,7 @@
 .agent-scrim {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-panel);
   display: flex;
   justify-content: flex-end;
   background: var(--scrim);

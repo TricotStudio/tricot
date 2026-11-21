@@ -265,7 +265,7 @@
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 70;
+  z-index: var(--z-toast);
   display: grid;
   gap: 10px;
   width: min(440px, calc(100vw - 32px));

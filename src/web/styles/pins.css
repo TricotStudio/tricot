@@ -315,7 +315,7 @@
 /* The prompt under a part being pinned. */
 .pin-prompt {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-popover);
   display: grid;
   gap: 10px;
   padding: 12px;

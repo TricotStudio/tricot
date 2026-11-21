@@ -20,6 +20,15 @@
 //   many at once for each coordinator (cli/switcher/host.ts). Its live steps, its subagents' too, go to its
 //   thread (server/steps.ts), and it says where its work stands with
 //   set_thread_status (Thread.status).
+// - An agent connected on its own (`claude` with Tricot's tools, told to listen
+//   on a board) has no terminal to start orchestrators in. It takes the
+//   coordinator's role on each board it sleeps on by `tricot listen`, as each
+//   agent Tricot's terminal starts is one (mcp/session.ts, server/presence.ts
+//   lead), so it works the same however it was connected, and
+//   owns the threads it sends work to itself: it hands each one's work to a
+//   background agent of its own (its harness's subagent), whose steps go to that
+//   thread once it names it (server/steps.ts), and which reports there and says
+//   where its work stands. It holds the role until its session ends.
 // - The person follows along on the page: the dock moves to the thread their
 //   message was sent to, and the chat bar lists the threads at work and those
 //   waiting on them (web/threads/workStrip.tsx).
@@ -111,3 +120,8 @@ export const orchestratorMessage = (launch: Pick<Launch, 'thread' | 'title'>): s
 // The first thing a coordinator Tricot starts reads, after its board.
 export const coordinatorMessage = (board?: string): string =>
   `You are the coordinator of the Tricot board ${board ?? 'that fits this folder'}: you answer people in the chat bar and do no work yourself. Read read_guide("coordinating"), catch up with get_board, then call wait_for_updates and do as it says. Tricot wakes you when someone asks.`;
+
+// What an agent connected on its own is told as it takes a board's coordinator role (`lead`, mcp/session.ts): it owns
+// the threads it sends work to, and does each one's work through a background agent of its own.
+export const LEAD_WORDS =
+  "You are now this board's coordinator: the threads people start from its chat bar come to you, and route_to_thread and set_thread_status are now among your tools. Answer a quick question in place. Send anything that takes work on with route_to_thread: to the thread it belongs to, or to a new thread, which you own. Hand each new thread's work to a background agent of your own (your Agent tool), so you stay free for the bar, and tell it the thread id: it reads the thread with get_thread first (its steps then show there), plans with a to-do list, reports there with reply_in_thread, asks people there, and sets where the work stands with set_thread_status, needs-you or done. A person's reply in a thread you own comes to you: take it up, or hand it on with the thread id.";

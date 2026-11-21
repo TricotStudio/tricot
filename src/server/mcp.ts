@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ZodType } from 'zod';
 import type { AgentRule } from '../core/agentRules';
@@ -12,7 +13,7 @@ import { createSession, listensBy, type McpOptions } from './mcp/session';
 import { configOf, type Extra } from './mcp/tool';
 import { ToolGroups } from './mcp/toolGroups';
 import { allTools } from './mcp/tools';
-import { roleGroup } from './mcp/tools/roles';
+import { leadTools, roleGroup } from './mcp/tools/roles';
 import { listenWait } from './mcp/tools/updates';
 import type { SessionRole } from '../core/roles';
 
@@ -107,14 +108,45 @@ export function createMcpServer(store: Store, getActor: () => Actor, given: McpO
     options.presence?.connect(name);
     const tool = agentOfMcpClient(server.server.getClientVersion()?.name)?.id;
     options.presence?.started(name, { ...(tool && { tool }), ...(runsOn && { runsOn }), ...(role && { role }) });
+    // An agent that coordinates a board already, as after its client reconnected: its role's tools from the start,
+    // for a client that doesn't hear the list change. They serve it once it listens there again and takes the role back.
+    if (options.presence?.ledBy(name)) for (const tool of leading) tool.enable();
   };
 
   // Which agent's client this is decides how long one wait may last (session.ts longestWait).
   const client = () => server.server.getClientVersion();
-  const session = createSession(store, getActor, options, { clientName: () => client()?.name, clientVersion: () => client()?.version, hangups, woken, ...(listenAt && { listenAt }) });
+  // An agent connected on its own takes a board's coordinator role as it listens there, as each agent Tricot's terminal
+  // starts is one (core/roles.ts): its coordinator's tools, made with the rest and listed from then on.
+  const holder = randomUUID();
+  const leadsOn = (key: string) => Boolean(options.presence?.leads(key, getActor().name, holder));
+  let leading: { enable(): void; enabled: boolean }[] = [];
+  const lead = async (key: string, extra: Extra): Promise<boolean> => {
+    const presence = options.presence;
+    const name = getActor().name;
+    if (!presence || leadsOn(key)) return false;
+    presence.lead(key, name, holder);
+    if (leading.some((tool) => !tool.enabled)) {
+      for (const tool of leading) tool.enable();
+      // On the call's own stream as well, which a client hears though it opened no stream of its own for notices.
+      await extra.sendNotification({ method: 'notifications/tools/list_changed' }).catch(() => {});
+    }
+    return true;
+  };
+  const session = createSession(store, getActor, options, {
+    clientName: () => client()?.name,
+    clientVersion: () => client()?.version,
+    hangups,
+    woken,
+    ...(listenAt && { listenAt }),
+    ...(!role && !woken && { lead }),
+  });
   // Its connection closed: a listener of its is told its session is gone
-  // (server/listeners.ts), and a Codex Tricot wakes is let go of (codexWake.ts).
-  server.server.onclose = () => session.close();
+  // (server/listeners.ts), a Codex Tricot wakes is let go of (codexWake.ts),
+  // and a board it coordinated is left without it.
+  server.server.onclose = () => {
+    session.close();
+    options.presence?.unlead(holder);
+  };
   const blocks = blockReader(store, options.allowFilePaths);
   const words = (options.groups ?? new ToolGroups()).phrases();
   const register = server.registerTool.bind(server) as (name: string, config: unknown, handler: unknown) => unknown;
@@ -125,6 +157,16 @@ export function createMcpServer(store: Store, getActor: () => Actor, given: McpO
     // The SDK calls a tool that takes no arguments with only its extra.
     const handler = tool.schema ? call : (extra: Extra) => call({}, extra);
     register(tool.name, configOf(tool), handler);
+  }
+  if (!role && !woken) {
+    const context = { store, getActor, options, session, blocks, words };
+    leading = leadTools(context, leadsOn).map((tool) => {
+      const call = (args: Record<string, unknown>, extra: Extra) =>
+        costs ? costs.measure(getActor().name, tool.name, args, () => session.handle(tool, args, extra)) : session.handle(tool, args, extra);
+      const made = register(tool.name, configOf(tool), call) as { enable(): void; disable(): void; enabled: boolean };
+      made.disable();
+      return made;
+    });
   }
   slimToolList(server, (name) => (name === 'wait_for_updates' && !woken && listensBy(client(), listenAt) ? listenWait(words) : undefined));
 

@@ -47,7 +47,6 @@
   }
 }
 .menu-panel.project-menu-panel {
-  top: calc(100% + 6px);
   width: 210px;
 }
 
@@ -107,7 +106,7 @@
   position: fixed;
   left: 50%;
   bottom: 16px;
-  z-index: 60;
+  z-index: var(--z-toast);
   width: max-content;
   max-width: calc(100vw - 32px);
   transform: translateX(-50%);

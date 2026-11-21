@@ -2,6 +2,7 @@ import { applyChange, sameTally, tallyOf, type BoardChange, type LiveState } fro
 import type { Approval } from '../../core/approvals';
 import type { AdmissionView } from '../../core/seats';
 import type { AgentWork } from '../../core/agentWork';
+import type { FolderChange } from '../../core/projectFiles';
 import type { AgentPresence, AgentStep, LiveBoard } from '../shared/api';
 import type { EventFeed } from './events';
 import { routes, routeUrl } from '../../core/routes';
@@ -52,6 +53,9 @@ export interface Session {
   onApprovals?: (approvals: Approval[]) => void;
   // Browsers and terminals asking to act for the person, to a seat (seats.tsx).
   onAdmissions?: (admissions: AdmissionView[]) => void;
+  // What changes in the board's project folder, while `watchFolder` asks for it
+  // (shared/folderChanges.ts); `many` after the stream dropped, as it missed what changed meanwhile.
+  onFiles?: (change: FolderChange) => void;
 }
 
 const QUIET_MS = 50_000; // the server pings every 20 s
@@ -71,6 +75,8 @@ export class BoardSession {
   private stopped = false;
   private watchdog: ReturnType<typeof setInterval> | undefined;
   private retry: ReturnType<typeof setTimeout> | undefined;
+  private folder: string | undefined; // the project folder a Files view listens to, asked for on the stream
+  private folderHeard = false; // a stream asking for it has opened since: one opening again missed what changed
 
   constructor(private readonly session: Session) {
     this.board = session.held ?? null;
@@ -89,6 +95,16 @@ export class BoardSession {
     clearInterval(this.watchdog);
     clearTimeout(this.retry);
     this.source?.close();
+  }
+
+  // A Files view opened on the board's folder, or closed (none): the stream
+  // asks for what changes in it, or stops, joining again from where it was.
+  watchFolder(folder: string | undefined): void {
+    if (folder === this.folder) return;
+    this.folder = folder;
+    this.folderHeard = false;
+    if (this.stopped || !this.source) return; // a stream not yet open asks when it opens
+    this.reconnect();
   }
 
   // The page is looked at again (the tab shown, the network back): check where it stands.
@@ -137,9 +153,14 @@ export class BoardSession {
   private connect(since: number): void {
     this.source?.close();
     this.heardAt = Date.now();
-    const source = this.session.open(routeUrl(routes.boardStream, { boardId: this.session.boardId }, { since: String(since) }));
+    const source = this.session.open(routeUrl(routes.boardStream, { boardId: this.session.boardId }, { since: String(since), ...(this.folder && { files: '1' }) }));
     this.source = source;
-    source.onopen = () => this.session.onLive(true);
+    source.onopen = () => {
+      this.session.onLive(true);
+      if (source !== this.source || !this.folder) return;
+      if (this.folderHeard) this.session.onFiles?.({ paths: [], many: true });
+      this.folderHeard = true;
+    };
     source.onerror = () => {
       this.session.onLive(false);
       // The browser reconnects by itself unless the server refused it.
@@ -161,6 +182,7 @@ export class BoardSession {
     hear('work', (work: AgentWork[]) => this.session.onWork?.(work));
     hear('approvals', (approvals: Approval[]) => this.session.onApprovals?.(approvals));
     hear('admissions', (admissions: AdmissionView[]) => this.session.onAdmissions?.(admissions));
+    hear('files', (change: FolderChange) => this.session.onFiles?.(change));
     hear('ping', (state: LiveState) => this.compare(state));
     hear('reset', () => void this.reload());
     hear('deleted', () => this.gone());

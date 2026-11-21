@@ -366,8 +366,11 @@ export class Steps {
 
   // A step adds to its session's work: the plan it writes, the files it changes, and itself to the trail, but for
   // what an agent said and the end of a turn. A step after the end of a turn starts another: no file changed yet.
+  // A subagent at work in a thread it named itself (handed it, core/roles.ts) has work of its own, so each thread its
+  // session hands out shows its own plan and files; one that named none is its session's.
   private noteWork(agent: string, name: string, input: StepInput, place: Place, firedAt: number, ms: number | undefined): void {
-    const key = [agent.toLowerCase(), input.session ?? ''].join('\u0000');
+    const own = input.worker && place.thread && this.bindings.get([agent.toLowerCase(), input.session ?? '', input.worker].join('\u0000'))?.thread === place.thread;
+    const key = [agent.toLowerCase(), input.session ?? '', own ? input.worker : ''].join('\u0000');
     const before = this.works.get(key);
     const fresh = !before || (before.turnOver && !input.done);
     const work: Work = before && !fresh ? before : { board: place.board, agent: name, files: [], trail: before?.trail ?? [], since: firedAt, at: firedAt, turnOver: false, ...(before?.plan && { plan: before.plan }) };
@@ -474,7 +477,8 @@ export class Steps {
   }
 
   // Where a step goes: the card or thread its own Tricot call names, else the
-  // one this session last called about, else the thread its agent owns as an
+  // one this session last called about (a subagent's own calls, else its
+  // session's), else the thread its agent owns as an
   // orchestrator (core/roles.ts), its subagents' steps too, else the card its
   // agent last read or changed over MCP; else the board its agent is on, with
   // no card; else nowhere.
@@ -490,6 +494,10 @@ export class Steps {
       bound.at = now;
       return { board: bound.board, ...(bound.card && { card: bound.card }), ...(bound.thread && { thread: bound.thread }) };
     }
+    // A subagent that named nothing of its own yet goes where its session is.
+    const session = key.slice(0, key.lastIndexOf('\u0000') + 1);
+    const its = session !== key ? this.bindings.get(session) : undefined;
+    if (its && this.stillThere(its)) return { board: its.board, ...(its.card && { card: its.card }), ...(its.thread && { thread: its.thread }) };
     const owned = this.ownedThread(agent);
     if (owned) return owned;
     const last = this.presence?.lastFocus(agent);

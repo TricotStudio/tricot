@@ -79,7 +79,7 @@
 /* Its menu: a little wider than Add's, for the pages' names. A page is a row
    of its name after a check for the one shown, a dot after it for changes
    not seen. */
-.toolbar-pages > .menu-panel.add-menu {
+.menu-panel.add-menu.toolbar-pages-menu {
   width: min(264px, calc(100vw - 62px));
 }
 .pages-menu-row {

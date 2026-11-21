@@ -1,6 +1,7 @@
-import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from '../shared/components';
 import { useMenu } from '../shared/hooks';
+import { OnTop, usePlace } from '../shared/onTop';
 
 // How long a menu stays drawn once it closes, fading out (canvas.css): inert
 // and out of the accessibility tree, so the focus is back on its button at
@@ -41,10 +42,13 @@ interface Props {
 // the header's menu (useMenu, as the board's ⋯): arrows move, Escape and a
 // click elsewhere close it, and Escape closes it alone, not a form open under
 // it. It opens on its first row, or on the one marked data-menu-start (the
-// page shown, in Pages).
+// page shown, in Pages). It is drawn on top (shared/onTop.tsx), under its
+// button, so a long one isn't covered by the chat bar at the canvas's foot.
 export function ToolbarMenu({ icon, label, title, name, menuLabel, className, rows, autoFocus, onButtonKeyDown, children, after }: Props) {
   const { open, setOpen, close, root, button, menu, onKeyDown } = useMenu();
   const leaving = useLeaving(open);
+  const drawn = useRef<HTMLDivElement>(null); // the menu while it is drawn, leaving included
+  const place = usePlace(open || leaving, button, drawn);
   useEffect(() => {
     if (open) menu.current?.querySelector<HTMLElement>('[data-menu-start]')?.focus();
   }, [open, menu]);
@@ -76,19 +80,25 @@ export function ToolbarMenu({ icon, label, title, name, menuLabel, className, ro
         <Icon name="chevron-down" className="toolbar-add-chevron" />
       </button>
       {(open || leaving) && (
-        <div
-          className={`menu-panel add-menu nodrag nopan nowheel${open ? '' : ' is-leaving'}`}
-          role={open ? 'menu' : undefined}
-          aria-label={open ? menuLabel : undefined}
-          aria-hidden={open ? undefined : true}
-          inert={!open}
-          ref={open ? menu : undefined}
-          onKeyDown={open ? onMenuKeyDown : undefined}
-        >
-          <div className="add-menu-core" role="none">
-            {children({ open, close, enter })}
+        <OnTop from={root}>
+          <div
+            className={`menu-panel add-menu${className ? ` ${className}-menu` : ''}${open ? '' : ' is-leaving'}`}
+            role={open ? 'menu' : undefined}
+            aria-label={open ? menuLabel : undefined}
+            aria-hidden={open ? undefined : true}
+            inert={!open}
+            ref={(el) => {
+              drawn.current = el;
+              menu.current = open ? el : null;
+            }}
+            onKeyDown={open ? onMenuKeyDown : undefined}
+            style={place}
+          >
+            <div className="add-menu-core" role="none">
+              {children({ open, close, enter })}
+            </div>
           </div>
-        </div>
+        </OnTop>
       )}
       {after}
     </div>

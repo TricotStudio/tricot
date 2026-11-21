@@ -252,21 +252,34 @@ describe('The person gate, in two tiers', () => {
       const refused = await fetch(`${base}/api/boards/${board.id}/files/search?q=`, { headers: page('GET') });
       assert.equal(refused.status, 400, 'nothing to search for');
 
-      // What changes in the folder, live, to a person alone: a file saved is
-      // told once it settles, by its path; one in node_modules or a hidden folder is not.
-      await tierA('GET', `/api/boards/${ids.boardId}/files/live`); // a board with no folder: past the gate, then told so
+      // What changes in the folder, live, to a person alone, on the board's own
+      // stream while its Files view asks (`files=1`): a file saved is told once
+      // it settles, by its path; one in node_modules or a hidden folder is not.
+      // A plain program on the same stream asking the same is told nothing of it.
       const live = new AbortController();
       const lapse = setTimeout(() => live.abort(), 8000);
-      const stream = await fetch(`${base}/api/boards/${board.id}/files/live`, { headers: page('GET'), signal: live.signal });
+      const streamUrl = `${base}/api/boards/${board.id}/stream?files=1`;
+      const plain = await fetch(streamUrl, { signal: live.signal });
+      const stream = await fetch(streamUrl, { headers: page('GET'), signal: live.signal });
       assert.equal(stream.status, 200);
-      const frames = stream.body!.getReader();
-      const told = async (): Promise<{ paths: string[] }> => {
+      const framesOf = (response: Response) => {
+        const reader = response.body!.getReader();
         let text = '';
+        return {
+          next: async () => {
+            const { value, done } = await reader.read();
+            if (done) throw new Error('the stream ended');
+            return (text += new TextDecoder().decode(value));
+          },
+          get text() {
+            return text;
+          },
+        };
+      };
+      const frames = framesOf(stream);
+      const told = async (): Promise<{ paths: string[] }> => {
         for (;;) {
-          const { value, done } = await frames.read();
-          if (done) throw new Error('the stream ended');
-          text += new TextDecoder().decode(value);
-          const frame = /event: change\ndata: (.*)\n/.exec(text);
+          const frame = /event: files\ndata: (.*)\n/.exec(await frames.next());
           if (frame) return JSON.parse(frame[1]) as { paths: string[] };
         }
       };
@@ -281,6 +294,10 @@ describe('The person gate, in two tiers', () => {
         const change = await told();
         assert.ok(change.paths.includes('src/b.ts'), `told ${JSON.stringify(change)}`);
         assert.ok(!change.paths.some((file) => /node_modules|\.cache/.test(file)), `told ${JSON.stringify(change)}`);
+        const other = framesOf(plain);
+        for (const until = Date.now() + 600; Date.now() < until; ) await Promise.race([other.next().catch(() => ''), new Promise((resolve) => setTimeout(resolve, until - Date.now()))]);
+        assert.match(other.text, /event: hello/, 'the plain program hears the board');
+        assert.doesNotMatch(other.text, /event: files/, 'but not what changes in its folder');
       } finally {
         clearInterval(saving);
         clearTimeout(lapse);

@@ -132,7 +132,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: var(--z-popover);
   width: min(290px, calc(100vw - 32px));
   display: grid;
   gap: 2px;
@@ -287,7 +287,7 @@ button.live-label:hover,
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 40;
+  z-index: var(--z-popover);
   width: max-content;
   max-width: min(340px, calc(100vw - 32px));
   padding: 6px;
@@ -389,7 +389,7 @@ button.live-label:hover,
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  z-index: 20;
+  z-index: var(--z-popover);
   width: min(460px, calc(100vw - 32px));
   background: var(--surface);
   border: 1px solid var(--border);

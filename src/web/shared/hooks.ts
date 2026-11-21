@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
 import { dismissClick, interactiveAt, selectedText, type Press } from './dismissClick';
+import { insideOf } from './onTop';
 
 // A per-viewer boolean preference, remembered in localStorage when available.
 export function useStoredFlag(key: string, initial: () => boolean): [boolean, (value: boolean) => void] {
@@ -33,8 +34,8 @@ export function typing(target: EventTarget | null): boolean {
 
 // A panel that closes on a click outside `root`, or on Escape. It hears a
 // press on its way down, before the canvas, which keeps its presses to
-// itself, can stop it. The @-mention menu is portaled to the body, but it's
-// part of the field it drops from. `toggle` is the button that opens it,
+// itself, can stop it. A menu drawn on top (onTop.tsx) is part of what opened
+// it, and so is the @-mention menu, portaled to the body by the field it drops from. `toggle` is the button that opens it,
 // when that isn't in `root`: a press there is the button's, so it toggles
 // once. `close` is told whether it was Escape, and given the press or the
 // key, for a panel that leaves some of them be. `beside` is for a panel
@@ -52,7 +53,7 @@ export function useDismiss(
     const outside = (e: MouseEvent) => {
       if (!beside) heardOver.add(e);
       const target = e.target as Element;
-      if (root.current?.contains(target) || toggle?.current?.contains(target) || target.closest?.('.mention-menu')) return;
+      if (insideOf(target, root.current, toggle?.current) || target.closest?.('.mention-menu')) return;
       close(false, e);
     };
     const escape = (e: KeyboardEvent) => {
@@ -129,7 +130,7 @@ export function followPress(down: MouseEvent, then: (dismissed: boolean) => void
     shiftKey: down.shiftKey,
     altKey: down.altKey,
     interactive: interactiveAt(target, { x: down.clientX, y: down.clientY }),
-    taken: overBoard(down) || Boolean(target.closest?.('.popover[open]')),
+    taken: overBoard(down) || Boolean(target.closest?.('.popover[open], [data-on-top]')),
   };
   if (!dismissClick(pressed)) return null;
   const selection = selectedText();

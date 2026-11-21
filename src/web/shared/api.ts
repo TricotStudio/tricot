@@ -56,6 +56,7 @@ export interface AgentPresence {
   state: PresenceState;
   stuck?: true; // asleep, and a wake its terminal typed into it started no turn
   focus?: { kind: CardKindName; id: string }; // the card it is taking a look at, for a minute after its last call about it
+  coordinator?: true; // the board's coordinator (core/roles.ts): the chat bar's threads go to it
 }
 
 // What an agent is doing now, from a hook in its harness (server/steps.ts): its

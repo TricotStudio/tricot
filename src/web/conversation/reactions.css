@@ -73,11 +73,8 @@ button.reaction.is-mine:hover {
   color: var(--text);
 }
 
+/* Drawn on top, over its button (reactions.tsx, shared/onTop.tsx). */
 .reaction-picker {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: -4px;
-  z-index: 20;
   display: flex;
   gap: 2px;
   padding: 3px;

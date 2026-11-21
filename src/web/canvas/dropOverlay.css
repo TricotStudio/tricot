@@ -3,7 +3,7 @@
 .canvas-drop {
   position: absolute;
   inset: 10px;
-  z-index: 20;
+  z-index: var(--z-floating);
   display: grid;
   place-items: center;
   border: 2px dashed color-mix(in srgb, var(--exploring) 65%, transparent);

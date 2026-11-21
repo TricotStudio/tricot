@@ -1,5 +1,6 @@
 import { isTabDoor } from '../../core/doors';
 import { fileLabel } from '../../core/fileThread';
+import { samePerson } from '../../core/format';
 import type { ScratchPage, ThreadDoor } from '../../core/types';
 import type { BoardViewName } from '../shared/pages';
 
@@ -24,22 +25,27 @@ export function viewOfDoor(door: ThreadDoor | undefined): BoardViewName | undefi
 // made it, if one did, as a thread it starts goes to that agent unless the
 // message @-mentions another (core/scratchPad.ts pageLens). With blocks
 // selected there, it starts a thread about them: the agent talks
-// it through with the person before it makes anything.
-export function pageBar(page: Pick<ScratchPage, 'title' | 'agent'>, selected = 0): { placeholder: string; label: string } {
-  const who = page.agent?.name ?? 'agents';
+// it through with the person before it makes anything. Else, while the board
+// has a coordinator (`lead`, core/roles.ts), it is the one asked, by name, and
+// it takes work too, which it starts a thread of its own for.
+export function pageBar(page: Pick<ScratchPage, 'title' | 'agent'>, selected = 0, lead?: string): { placeholder: string; label: string } {
+  const who = page.agent?.name ?? lead ?? 'agents';
   if (selected > 0) {
     const these = selected === 1 ? 'this block' : `these ${selected} blocks`;
     return { placeholder: `Talk ${these} through with ${who}…`, label: `Start a thread with ${who} about ${these} on Sketchbook page ${page.title}` };
   }
+  if (lead && samePerson(who, lead)) return { placeholder: `Ask ${who}, or give it work, on this page…`, label: `Ask ${who} about Sketchbook page ${page.title}, or give it work there` };
   return { placeholder: `Ask ${who} about this page…`, label: `Ask ${who} about Sketchbook page ${page.title}` };
 }
 
 // In Files, with a file open, the bar asks about it: of the agent
 // last asked about it, if one was, as the thread it starts goes to that agent
-// unless the message @-mentions another (core/fileThread.ts agentOnFile). The
+// unless the message @-mentions another (core/fileThread.ts agentOnFile); else,
+// while the board has a coordinator, of it, by name, as with a page. The
 // placeholder shortens a long path to its end; the label has it whole.
-export function fileBar(path: string, agent?: string): { placeholder: string; label: string } {
-  const who = agent ?? 'agents';
+export function fileBar(path: string, agent?: string, lead?: string): { placeholder: string; label: string } {
+  const who = agent ?? lead ?? 'agents';
+  if (lead && samePerson(who, lead)) return { placeholder: `Ask ${who}, or give it work, on ${fileLabel(path)}…`, label: `Ask ${who} about ${path} in Files, or give it work there` };
   return { placeholder: `Ask ${who} about ${fileLabel(path)}…`, label: `Ask ${who} about ${path} in Files` };
 }
 

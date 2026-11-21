@@ -7,7 +7,7 @@ import { useBoardCards } from '../src/core/cards';
 import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
 import { commentsForYou } from '../src/core/bell';
 import { concernsAgent } from '../src/core/concerns';
-import { CLOSE_AFTER_DELETE_MS, launchesOn } from '../src/core/roles';
+import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn } from '../src/core/roles';
 import { Presence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
@@ -17,6 +17,8 @@ import { askableCards } from './madeUpAsked';
 import { removeScratch } from './platform';
 import { threadsServer, type ThreadsServer, type ToolResult } from './threadsServer';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 
 // The kinds of card these tests' boards hold, as a part registers them (core/cards.ts): made up, as nothing here is a part's.
 before(() => {
@@ -155,6 +157,60 @@ describe('Threads over MCP and REST', () => {
     assert.deepEqual(owners(Date.now() + CLOSE_AFTER_DELETE_MS).closes, [work.owner], 'closed once its undo is past');
     tending.close();
   });
+
+  // An agent connected on its own (core/roles.ts) has no terminal to start owners in: it takes the coordinator's role on
+  // a board as it sleeps there by `tricot listen`, as each agent Tricot's terminal starts has it, is told so, lists the
+  // role's tools from then on, and owns what it sends on; the chat bar's threads go to the one @-mentioned, else to the
+  // one seen last; and the role goes with its session.
+  it('makes each agent connected on its own a coordinator as it listens, owning the work it sends on', async () => {
+    const boardId = (await request('POST', '/boards', { actor: 'Sam', title: 'On its own' })).json.id as string;
+    const claudeCode = (version: string) => ({ name: 'claude-code', version });
+    const said = async (client: Client, name: string, args: Record<string, unknown>) => {
+      const result = (await client.callTool({ name, arguments: args })) as ToolResult;
+      assert.ok(!result.isError, `${name} failed: ${result.content[0]?.text}`);
+      return result.content.map((c) => c.text).join('\n');
+    };
+    const listed = async (client: Client) => (await client.listTools()).tools.map((t) => t.name);
+    const lead = await server.connect('agent=Lead', claudeCode('2.1.300'));
+    assert.ok(!(await listed(lead)).includes('route_to_thread'), 'not before it listens');
+    const changed = new Promise<void>((resolve) => lead.setNotificationHandler(ToolListChangedNotificationSchema, () => resolve()));
+    const waited = await said(lead, 'wait_for_updates', { board_id: boardId, since: store.getBoard(boardId).seq });
+    assert.ok(waited.includes(LEAD_WORDS), 'told it coordinates');
+    await changed;
+    assert.deepEqual((await listed(lead)).filter((name) => ['route_to_thread', 'set_thread_status'].includes(name)), ['route_to_thread', 'set_thread_status']);
+    // A wait after another call, as an agent's next turn makes it (one at once is a spin, which waits).
+    const again = async (client: Client) => {
+      await said(client, 'get_board', { board_id: boardId });
+      return said(client, 'wait_for_updates', { board_id: boardId, since: store.getBoard(boardId).seq, seconds: 1 });
+    };
+    assert.ok(!(await again(lead)).includes(LEAD_WORDS), 'told once');
+
+    const other = await server.connect('agent=Other', claudeCode('2.1.300'));
+    assert.ok((await said(other, 'wait_for_updates', { board_id: boardId, since: store.getBoard(boardId).seq })).includes(LEAD_WORDS), 'each that listens coordinates');
+    assert.ok((await listed(other)).includes('route_to_thread'));
+    const plain = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Tidy the header.', door: 'canvas' })).json as Thread;
+    assert.equal(plain.owner, 'Other', 'one that @-mentions none goes to the coordinator seen last');
+
+    const asked = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead make the footer sticky.', door: 'canvas' })).json as Thread;
+    assert.equal(asked.owner, 'Lead', 'one that @-mentions a coordinator is its');
+    const started = await said(lead, 'route_to_thread', { thread_id: asked.id, message_id: asked.messages[0].id, title: 'Sticky footer' });
+    const work = store.getBoard(boardId).threads!.find((t) => t.title === 'Sticky footer')!;
+    assert.deepEqual([work.owner, work.status, work.launch], ['Lead', 'working', undefined], 'its own, with no agent to start');
+    assert.match(started, /which you own, its work at work\. .* Hand its work now to a background agent of your own/);
+    assert.deepEqual(launchesOn(store.getBoard(boardId), () => false), [], 'no terminal starts anything for it');
+    await said(lead, 'set_thread_status', { thread_id: work.id, status: 'needs-you', summary: 'Sticky on phones too?' });
+    assert.equal(store.getThread(work.id).thread.status, 'needs-you');
+    const loose = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'A note to self.' })).json as Thread;
+    const refused = (await lead.callTool({ name: 'set_thread_status', arguments: { thread_id: loose.id, status: 'done' } })) as ToolResult;
+    assert.match(refused.content[0].text, /has no owner/, 'only for a thread it owns');
+
+    await (lead.transport as StreamableHTTPClientTransport).terminateSession(); // its session ends
+    await lead.close();
+    const after = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead and the header?', door: 'canvas' })).json as Thread;
+    assert.equal(after.owner, undefined, 'its role went with its session');
+    assert.equal(((await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'And the logo?', door: 'canvas' })).json as Thread).owner, 'Other', 'the other keeps its own');
+    assert.ok(!(await again(other)).includes(LEAD_WORDS), 'told once');
+  });
 });
 
 // What the bell lists besides threads (core/bell.ts): a reply to a person's comment, but not one that @-mentions other people.
@@ -178,7 +234,7 @@ describe('What an agent is working on', () => {
       let at = Date.now();
       const step = (input: StepInput) => steps.record('Claude', { session: 's1', thread: thread.id, at: (at += 10), ...input });
       step({ text: 'Updating its to-do list', tool: 'c1', plan: { set: [{ text: 'Find it', status: 'done' }, { text: 'Fix it', status: 'now' }] } });
-      step({ text: 'Editing src/a.ts', worker: 'w1', role: 'Explore', files: ['src/a.ts'] });
+      step({ text: 'Editing src/a.ts', worker: 'w1', role: 'Explore', files: ['src/a.ts'], thread: undefined }); // naming nothing of its own: where its session is
       step({ text: 'Updating its to-do list', tool: 'c2', plan: { add: 'Test it' } });
       step({ text: 'Updating its to-do list', tool: 'c3', plan: { update: { id: '2', status: 'done' } } });
       step({ text: 'Running npm test', running: true, tool: 't1' });
@@ -192,9 +248,18 @@ describe('What an agent is working on', () => {
       assert.deepEqual(work.trail.map((t) => [t.text, t.role, t.ms]).slice(-2), [['Updating its to-do list', undefined, undefined], ['Ran npm test', undefined, 4100]], "a step that lasted shows its end in its start's place");
       assert.ok(work.trail.some((t) => t.role === 'Explore'));
 
+      // A subagent handed a thread of its own (core/roles.ts), which it named, has work of its own there.
+      const other = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'And the footer.' })).json as Thread;
+      step({ text: 'Reading the thread', worker: 'w2', thread: other.id });
+      step({ text: 'Updating its to-do list', worker: 'w2', tool: 'c4', thread: undefined, plan: { set: [{ text: 'Move the footer', status: 'now' }] } });
+      step({ text: 'Editing src/footer.ts', worker: 'w2', thread: undefined, files: ['src/footer.ts'] });
+      const handed = steps.work(boardKey(store.getBoard(boardId))).find((w) => w.thread === other.id)!;
+      assert.deepEqual([handed.plan, handed.files], [[{ text: 'Move the footer', status: 'now' }], ['src/footer.ts']]);
+      assert.deepEqual(steps.work(boardKey(store.getBoard(boardId))).find((w) => w.thread === thread.id)!.files, ['src/a.ts'], "and its session's stays its own");
+
       step({ text: 'Finished its turn', done: true });
       step({ text: 'Reading src/b.ts' });
-      const [next] = steps.work(boardKey(store.getBoard(boardId)));
+      const next = steps.work(boardKey(store.getBoard(boardId))).find((w) => w.thread === thread.id)!;
       assert.deepEqual(next.files, [], 'a new turn has changed no file yet');
       assert.equal(next.plan?.length, 3, 'its plan stays');
     } finally {

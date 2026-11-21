@@ -1,5 +1,11 @@
 /* ---- shared bits ------------------------------------------------------ */
 
+/* A menu drawn at the page's root (shared/onTop.tsx): its wrapper draws no box
+   of its own, so the menu is placed and styled as if it were the only one. */
+.on-top {
+  display: contents;
+}
+
 /* The wordmark's face: Cal Sans (SIL Open Font License, fonts/OFL.txt),
    bundled so the app never asks a font service for it. It has one weight,
    so the wordmark is set at 400 and never made bolder by the browser.

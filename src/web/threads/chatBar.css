@@ -11,7 +11,7 @@
   left: 0;
   right: 0;
   bottom: 20px;
-  z-index: 20;
+  z-index: var(--z-floating);
   width: min(720px, calc(100% - 48px));
   margin-inline: auto;
   display: flex;
@@ -882,7 +882,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 30;
+    z-index: var(--z-cover);
     height: min(78vh, 640px);
     border-left: none;
     border-top: 1px solid var(--border);

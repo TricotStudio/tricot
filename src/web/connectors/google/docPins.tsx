@@ -5,6 +5,7 @@ import { ownedBy, useCanvas } from '../../canvas/context';
 import { Icon } from '../../shared/components';
 import { askToUnpin } from '../../shared/confirm';
 import { MentionTextarea, COMMENT_LENSES } from '../../shared/mentions';
+import { insideOf } from '../../shared/onTop';
 import type { DocWords } from './api';
 
 // Asking agents about words in a Google Doc's paragraph, in the doc editor:
@@ -42,7 +43,7 @@ export function DocAskPrompt(props: {
   textRef.current = text;
   useEffect(() => {
     const away = (e: MouseEvent) => {
-      if (!root.current?.contains(e.target as Node) && !textRef.current.trim()) onClose();
+      if (!insideOf(e.target as Element, root.current) && !textRef.current.trim()) onClose();
     };
     document.addEventListener('mousedown', away, true);
     return () => document.removeEventListener('mousedown', away, true);

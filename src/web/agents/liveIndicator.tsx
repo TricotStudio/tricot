@@ -39,7 +39,7 @@ const LIVE_CARD_DELAY_MS = 150;
 // away, what the board has heard of its work (the peek's body, peek.tsx): its plan and how far along it is, what it
 // and its helpers are doing now, the files it changed. That is where work an agent does from its own terminal shows,
 // with no message on the board to open the peek from.
-export function LiveIndicator({ live, agents = [], work }: { live: boolean; agents?: AgentPresence[]; work?: (agent: AgentPresence) => ReactNode }) {
+export function LiveIndicator({ live, agents = [], work, titleOf }: { live: boolean; agents?: AgentPresence[]; work?: (agent: AgentPresence) => ReactNode; titleOf?: (thread: string) => string | undefined }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const label = useRef<HTMLButtonElement>(null);
@@ -117,7 +117,7 @@ export function LiveIndicator({ live, agents = [], work }: { live: boolean; agen
                   </div>
                   <p className="live-agent-meaning">{a.stuck ? STUCK_MEANING : AGENT_STATES[a.state].meaning(a.lastSeen)}</p>
                   {work?.(a)}
-                  <AgentWorkNow agent={a.name} />
+                  <AgentWorkNow agent={a.name} titleOf={titleOf} />
                 </li>
               ))}
             </ul>

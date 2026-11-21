@@ -57,6 +57,7 @@ export interface AgentPresence {
   name: string;
   lastSeen: string;
   state: AgentState;
+  coordinator?: true; // the board's coordinator (core/roles.ts): the chat bar's threads go to it
   focus?: AgentFocus; // only while its last call about the card is recent
   stuck?: true; // asleep, and a wake its terminal typed into it started no turn
 }
@@ -77,6 +78,9 @@ export class Presence {
   private boards = new Map<string, Map<string, Entry>>();
   private connected = new Map<string, { name: string; lastSeen: number }>(); // by name, lower-cased
   private sessions = new Map<string, AgentSession>(); // its latest session's details, by name, lower-cased
+  // The boards agents connected on their own coordinate, as they took the role by listening there (core/roles.ts,
+  // mcp/session.ts): by board key, each agent's name, lower-cased, and the session that holds the role, until it ends.
+  private led = new Map<string, Map<string, { name: string; holder: string }>>();
   private shown = new Map<string, string>(); // board id -> last presence viewers were told about
   private timer: NodeJS.Timeout;
   // The agents Tricot's terminals hold to wake, and whether each is asleep.
@@ -133,10 +137,39 @@ export class Presence {
 
   // The board's coordinators (core/roles.ts): the agents on it now whose latest
   // session took that role, the one seen last first. Each agent Tricot's terminal
-  // starts is one, so `tricot claude codex` has two.
+  // starts is one, so `tricot claude codex` has two; and an agent connected on its
+  // own is one on the board it took the role on by listening there (lead).
   coordinatorsOn(boardId: string): string[] {
-    const on = this.list(boardId).filter((a) => a.state !== 'away' && this.sessions.get(a.name.toLowerCase())?.role?.kind === 'coordinator');
+    const on = this.list(boardId).filter((a) => a.state !== 'away' && a.coordinator);
     return on.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)).map((a) => a.name);
+  }
+
+  // An agent connected on its own takes the coordinator's role on a board, held
+  // by its session (`holder`) until the session ends (unlead) or another of
+  // its name takes it over.
+  lead(boardId: string, name: string, holder: string): void {
+    let leads = this.led.get(boardId);
+    if (!leads) this.led.set(boardId, (leads = new Map()));
+    leads.set(name.toLowerCase(), { name, holder });
+  }
+
+  // Whether this agent's session holds the coordinator's role on the board.
+  leads(boardId: string, name: string, holder: string): boolean {
+    return this.led.get(boardId)?.get(name.toLowerCase())?.holder === holder;
+  }
+
+  // Whether an agent of this name coordinates a board it took the role on by listening: a new session of its, as after
+  // its client reconnected, lists the role's tools from the start.
+  ledBy(name: string): boolean {
+    return [...this.led.values()].some((leads) => leads.has(name.toLowerCase()));
+  }
+
+  // The session ended: the roles it held go with it.
+  unlead(holder: string): void {
+    for (const [board, leads] of this.led) {
+      for (const [key, lead] of leads) if (lead.holder === holder) leads.delete(key);
+      if (!leads.size) this.led.delete(board);
+    }
   }
 
   startWaiting(boardId: string, name: string): void {
@@ -173,6 +206,8 @@ export class Presence {
       const known = [...agents.keys()].some((name) => name.toLowerCase() === record.name.toLowerCase());
       if (!known && record.asleep) agents.set(record.name, { lastSeen: record.at, waiting: 0, stoppedWaiting: 0 });
     }
+    const leads = this.led.get(boardId);
+    const coordinates = (name: string) => this.sessions.get(name.toLowerCase())?.role?.kind === 'coordinator' || Boolean(leads?.has(name.toLowerCase()));
     return [...agents]
       .filter(([name, e]) => e.waiting > 0 || now - e.lastSeen < PRESENT_MS || this.stateOf(e, now, boardId, name) === 'asleep')
       .map(([name, e]): AgentPresence => {
@@ -181,6 +216,7 @@ export class Presence {
           name,
           lastSeen: new Date(seenAt(e, now)).toISOString(),
           state,
+          ...(coordinates(name) && { coordinator: true as const }),
           ...(e.focus && now - e.focus.at < FOCUS_MS ? { focus: { kind: e.focus.kind, id: e.focus.id } } : {}),
           ...(state === 'asleep' && this.sleepers.held(boardId, name)?.stuck && { stuck: true as const }),
         };

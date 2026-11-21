@@ -3,6 +3,7 @@ import type { Block, BlockVersion, VersionSummary } from '../../core/types';
 import { api } from '../shared/api';
 import { Icon, timeAgo } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
+import { OnTop, usePlace } from '../shared/onTop';
 import { useCanvas } from './context';
 
 // A block keeps what it showed before each change. Its header shows which
@@ -27,6 +28,8 @@ export function VersionChip(props: {
 
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, root);
+  // Drawn on top, so the blocks around it, the canvas's controls and the chat bar don't cover it.
+  const place = usePlace(open, root, menu, { align: 'end', gap: 6 });
 
   // Listed afresh on opening, and as the block moves on or loses versions while open.
   useEffect(() => {
@@ -109,63 +112,65 @@ export function VersionChip(props: {
         v{viewing ?? block.rev}
       </button>
       {open && (
-        <div className="menu-panel version-menu nowheel" role="menu" aria-label="Earlier versions of this block" ref={menu}>
-          <p className="version-menu-title">Earlier versions of this block</p>
-          {versions?.map((v) => {
-            const current = v.rev === block.rev;
-            const shown = viewing === null ? current : v.rev === viewing;
-            return (
-              <div key={v.rev} className="version-row" role="none">
-                <button
-                  role="menuitem"
-                  className={`menu-item version-item${shown ? ' is-shown' : ''}`}
-                  aria-current={shown || undefined}
-                  title={v.change ? `${v.by.name} ${v.change}` : undefined}
-                  onClick={() => view(v.rev)}
-                >
-                  <strong>
-                    v{v.rev} · {current ? 'now' : timeAgo(v.at)}
-                  </strong>
-                  <span>{v.by.name}</span>
-                </button>
-                {onDelete && !current && (
+        <OnTop from={root}>
+          <div className="menu-panel version-menu" role="menu" aria-label="Earlier versions of this block" ref={menu} style={place}>
+            <p className="version-menu-title">Earlier versions of this block</p>
+            {versions?.map((v) => {
+              const current = v.rev === block.rev;
+              const shown = viewing === null ? current : v.rev === viewing;
+              return (
+                <div key={v.rev} className="version-row" role="none">
                   <button
                     role="menuitem"
-                    className="version-delete"
-                    disabled={busy}
-                    aria-label={`Delete version ${v.rev}`}
-                    title={`Delete v${v.rev}`}
-                    onClick={() => void remove(v.rev)}
+                    className={`menu-item version-item${shown ? ' is-shown' : ''}`}
+                    aria-current={shown || undefined}
+                    title={v.change ? `${v.by.name} ${v.change}` : undefined}
+                    onClick={() => view(v.rev)}
                   >
-                    <Icon name="x" />
+                    <strong>
+                      v{v.rev} · {current ? 'now' : timeAgo(v.at)}
+                    </strong>
+                    <span>{v.by.name}</span>
                   </button>
-                )}
-              </div>
-            );
-          })}
-          {onDelete && earlier > 0 && (
-            <div className="version-menu-foot" role="none">
-              <span>{earlier} earlier</span>
-              <button role="menuitem" className="version-delete-all" disabled={busy} onClick={() => void remove()}>
-                {earlier === 1 ? 'Delete the earlier version' : 'Delete all earlier versions'}
-              </button>
-            </div>
-          )}
-          <p className="version-menu-note">
-            {versions || error ? 'Click one to view it; Restore makes it current.' : 'Loading…'}
+                  {onDelete && !current && (
+                    <button
+                      role="menuitem"
+                      className="version-delete"
+                      disabled={busy}
+                      aria-label={`Delete version ${v.rev}`}
+                      title={`Delete v${v.rev}`}
+                      onClick={() => void remove(v.rev)}
+                    >
+                      <Icon name="x" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             {onDelete && earlier > 0 && (
-              <span aria-hidden="true">
-                {' '}
-                <Icon name="x" /> deletes it.
-              </span>
+              <div className="version-menu-foot" role="none">
+                <span>{earlier} earlier</span>
+                <button role="menuitem" className="version-delete-all" disabled={busy} onClick={() => void remove()}>
+                  {earlier === 1 ? 'Delete the earlier version' : 'Delete all earlier versions'}
+                </button>
+              </div>
             )}
-          </p>
-          {error && (
-            <p className="menu-error error" role="alert">
-              {error}
+            <p className="version-menu-note">
+              {versions || error ? 'Click one to view it; Restore makes it current.' : 'Loading…'}
+              {onDelete && earlier > 0 && (
+                <span aria-hidden="true">
+                  {' '}
+                  <Icon name="x" /> deletes it.
+                </span>
+              )}
             </p>
-          )}
-        </div>
+            {error && (
+              <p className="menu-error error" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+        </OnTop>
       )}
     </span>
   );

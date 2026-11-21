@@ -856,6 +856,7 @@ function Preview(props: {
           <div
             className={`files-code${drawn ? ` is-preview is-${kind}` : ' is-source'}`}
             tabIndex={drawn ? 0 : undefined}
+            data-pane={drawn || undefined}
             aria-label={drawn ? `${file}, drawn${textual ? '. Double-click to edit its source.' : ''}` : undefined}
             onDoubleClick={drawn ? toSource : undefined}
           >

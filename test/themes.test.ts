@@ -83,6 +83,24 @@ describe('The theme registry', () => {
     const offenders = componentStyles().filter((file) => /data-theme/.test(withoutComments(readFileSync(file, 'utf8'))));
     assert.deepEqual(offenders.map((f) => path.relative(web, f)), [], 'use a token from the theme files instead');
   });
+
+  // What covers what across the page is one order, the layers in base.css:
+  // a z-index names one of them, or orders pieces inside one part (0 to 9).
+  it('sets where a piece sits on the page by a layer of base.css, never by a number of its own', () => {
+    const base = withoutComments(readFileSync(path.join(web, 'styles/base.css'), 'utf8'));
+    const layers = new Set([...base.matchAll(/(--z-[\w-]+)\s*:/g)].map((m) => m[1]));
+    assert.ok(layers.has('--z-popover') && layers.has('--z-cover'), `only ${[...layers].join(', ')} were read from base.css`);
+    const offenders = componentStyles().flatMap((file) =>
+      [...withoutComments(readFileSync(file, 'utf8')).matchAll(/z-index\s*:\s*([^;}]+)/g)]
+        .map((m) => m[1].trim())
+        .filter((value) => {
+          const named = [...value.matchAll(/var\((--z-[\w-]+)\)/g)].map((m) => m[1]);
+          return named.length ? !named.every((name) => layers.has(name)) : !/^\d$/.test(value);
+        })
+        .map((value) => `${path.relative(web, file)}: z-index: ${value}`),
+    );
+    assert.deepEqual(offenders, [], 'name a layer of base.css (--z-popover, --z-dialog...), or keep to 0-9 inside one part');
+  });
 });
 
 describe('The theme before first paint', () => {

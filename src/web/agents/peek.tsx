@@ -33,10 +33,15 @@ const roleWords = (role: string): string => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-// This agent's work on the board: the session on `thread` if it has one there, else its latest.
+const helpersWords = (n: number): string => `${n} helper${n === 1 ? '' : 's'}`;
+
+// This agent's work on the board: on `thread`, the work there, the one with a plan first; else its latest. Never
+// another thread's for one asked about: an agent's sessions and subagents each have work of their own.
 export function useAgentWork(agent: string, thread?: string): AgentWork | undefined {
   const mine = useWork().filter((work) => samePerson(work.agent, agent));
-  return (thread && mine.find((work) => work.thread === thread)) || mine[0];
+  if (!thread) return mine[0];
+  const there = mine.filter((work) => work.thread === thread);
+  return there.find((work) => work.plan) ?? there[0];
 }
 
 // How long it has been at it: "12 min", "2 h".
@@ -53,9 +58,9 @@ function useWorkNow(agent: string, thread?: string) {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, []);
-  // Its lines now, and its helpers', live first: what it is doing.
+  // Its lines now, and its helpers', live first: what it is doing; on `thread`, there alone.
   const live = steps
-    .filter((step) => samePerson(step.agent, agent) && !step.done && phaseOf(step, now))
+    .filter((step) => samePerson(step.agent, agent) && !step.done && phaseOf(step, now) && (thread === undefined || step.thread === thread))
     .sort((a, b) => Number(phaseOf(b, now) === 'live') - Number(phaseOf(a, now) === 'live') || Date.parse(b.at) - Date.parse(a.at));
   return { work, live, now, busy: live.some((step) => phaseOf(step, now) === 'live') };
 }
@@ -97,7 +102,7 @@ function WorkSections({ agent, work, live, now, compact = false }: { agent: stri
       <section className="peek-sec" aria-label={live.length ? 'Right now' : 'Lately'}>
         <div className="peek-sec-head">
           <span>{live.length ? 'Right now' : 'Lately'}</span>
-          {live.some((step) => step.role) && <span className="peek-count">{new Set(live.filter((step) => step.role).map((step) => step.role)).size} helpers</span>}
+          {live.some((step) => step.role) && <span className="peek-count">{helpersWords(new Set(live.filter((step) => step.role).map((step) => step.role)).size)}</span>}
         </div>
         <div className="peek-rows">
           {live.map((step) => (
@@ -125,12 +130,32 @@ function WorkSections({ agent, work, live, now, compact = false }: { agent: stri
 }
 
 // The peek's body under an agent in the live card, right away: nothing when the board has heard none of its work.
-export function AgentWorkNow({ agent }: { agent: string }) {
+// Where it works in more than one place at once (two sessions of one name, or subagents each on a thread of their
+// own, core/roles.ts), each is its own, under the thread it is in (`titleOf`), the latest first.
+const SHOWN_PLACES = 3;
+export function AgentWorkNow({ agent, titleOf }: { agent: string; titleOf?: (thread: string) => string | undefined }) {
   const { work, live, now } = useWorkNow(agent);
+  const all = useWork().filter((w) => samePerson(w.agent, agent));
   if (!work && !live.length) return null;
+  if (all.length < 2) {
+    return (
+      <div className="peek-inline" aria-label={`What ${agent} is working on`}>
+        <WorkSections agent={agent} work={work} live={live} now={now} compact />
+      </div>
+    );
+  }
   return (
     <div className="peek-inline" aria-label={`What ${agent} is working on`}>
-      <WorkSections agent={agent} work={work} live={live} now={now} compact />
+      {all.slice(0, SHOWN_PLACES).map((place, at) => {
+        const title = place.thread && titleOf?.(place.thread);
+        return (
+          <div key={`${place.thread ?? ''}:${place.since}:${at}`} className="peek-place">
+            <p className="peek-place-head">{title ? `In “${title}”` : 'Elsewhere'}</p>
+            <WorkSections agent={agent} work={place} live={live.filter((step) => (place.thread ? step.thread === place.thread : !step.thread))} now={now} compact />
+          </div>
+        );
+      })}
+      {all.length > SHOWN_PLACES && <p className="peek-more">{all.length - SHOWN_PLACES} more places</p>}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { boardKey, type BoardSummary } from '../../core/types';
 import { api, type LiveBoard } from '../shared/api';
 import { admissionsStore, TicketedSource } from '../shared/seat';
 import { approvalsStore } from '../shared/approvalsStore';
+import { folderWanted, onFolderWanted, tellFolder } from '../shared/folderChanges';
 import { StepsStore } from '../agents';
 import { onBoardsChanged } from './boardChanges';
 import { feedFor } from './events';
@@ -48,7 +49,21 @@ export function useBoard(boardId: string) {
       onWork: (work) => steps.setWork(work),
       onApprovals: (list) => approvalsStore.set(list),
       onAdmissions: (list) => admissionsStore.set(list),
+      onFiles: (change) => tellFolder(shown.current?.id ?? boardId, change),
     });
+    // What changes in its project folder, asked for on the stream while a Files view listens:
+    // once a render's views have started and stopped, so one that moves to the same folder asks nothing.
+    let asked = false;
+    const watch = () => session.watchFolder(folderWanted(shown.current?.id ?? boardId));
+    const stopWanting = onFolderWanted(() => {
+      if (asked) return;
+      asked = true;
+      queueMicrotask(() => {
+        asked = false;
+        watch();
+      });
+    });
+    watch();
     const recheck = () => document.visibilityState === 'visible' && session.recheck();
     document.addEventListener('visibilitychange', recheck);
     window.addEventListener('focus', recheck);
@@ -58,6 +73,7 @@ export function useBoard(boardId: string) {
       document.removeEventListener('visibilitychange', recheck);
       window.removeEventListener('focus', recheck);
       window.removeEventListener('online', recheck);
+      stopWanting();
       session.stop();
     };
   }, [boardId, steps]);

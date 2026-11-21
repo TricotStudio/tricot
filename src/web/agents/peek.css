@@ -6,7 +6,7 @@
    and live lines carry the live dot. */
 .peek {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-menu);
   display: grid;
   overflow: auto;
   background: var(--surface);
@@ -270,6 +270,21 @@
 }
 .peek-inline .peek-files {
   padding: 8px 0 0;
+}
+
+/* An agent at work in more than one place at once: each place under the thread it is in. */
+.peek-place + .peek-place {
+  margin-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.peek-place-head {
+  margin: 8px 0 0;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

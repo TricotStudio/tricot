@@ -280,7 +280,7 @@
 .site-failed.is-full {
   position: absolute;
   inset: 0;
-  z-index: 30;
+  z-index: var(--z-cover);
   background: var(--bg);
 }
 

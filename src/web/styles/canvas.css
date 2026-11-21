@@ -510,9 +510,10 @@ page.canvas-bottom {
   text-align: center;
   pointer-events: none;
 }
-/* It lies over the canvas's own layers: the Add menu or form open over it
-   hides it, where a narrow canvas puts the two in the same place. */
-.canvas:has(.add-menu, .add-link) .canvas-empty {
+/* The Add menu or form open over it hides it, where a narrow canvas puts the
+   two in the same place. The menu is drawn on top, outside the canvas
+   (shared/onTop.tsx): its button says it is open. */
+.canvas:has(.toolbar-add > button[aria-expanded='true'], .add-link) .canvas-empty {
   visibility: hidden;
 }
 .canvas-error {

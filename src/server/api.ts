@@ -14,7 +14,7 @@ import { asPerson, fromThisComputer, peopleChange, personOnly, readerOf, type Pe
 import { osHome } from '../platform/paths';
 import type { Approvals } from './approvals';
 import type { Connectors } from './connectors';
-import { openStepsStream, openStream, type Reader } from './live';
+import { openStepsStream, openStream, type FolderWatch, type Reader } from './live';
 import type { PairingSessions } from './pairing';
 import type { Presence } from './presence';
 import type { Seats } from './seats';
@@ -82,6 +82,22 @@ export function createApiRouter(
 ): Router {
   const api = Router();
   const watches = new ProjectWatches(); // the project folders a Files view is open on (projectWatch.ts)
+  // What changes in a board's project folder, for a person's stream while a
+  // Files view is open on it: the paths, once they settle. The view reads the
+  // list again, and the file open if it is among them. A board with no folder,
+  // or one that can't be read, has nothing to watch.
+  const watchFolder: FolderWatch = (board, send) => {
+    const folder = (board as Board & { folder?: string }).folder;
+    let real: string;
+    try {
+      if (!folder) return () => {};
+      real = projectFolder(folder).real;
+    } catch {
+      return () => {};
+    }
+    const listed = async () => (await listProjectFiles(folder)).files.map((file) => file.path);
+    return watches.listen(real, listed, send);
+  };
   const on = routesOn(api, '/api');
 
   // A step from an agent's harness while it works: one line of what it is
@@ -262,20 +278,6 @@ export function createApiRouter(
     const board = store.getBoard(param(req, 'boardId'));
     res.json(await listProjectFiles(projectFolderOf(board)));
   });
-  // What changes in it, while a Files view is open on it, as server-sent
-  // events (projectWatch.ts): `change`, with the paths that changed, once
-  // they settle. The view reads the list again, and the file open if it is
-  // among them. A person's, as the list is.
-  on(routes.projectFilesLive, personOnly(person), (req, res) => {
-    const board = store.getBoard(param(req, 'boardId'));
-    const folder = projectFolderOf(board);
-    const { real } = projectFolder(folder);
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    res.write('retry: 2000\n\n');
-    const listed = async () => (await listProjectFiles(folder)).files.map((file) => file.path);
-    const stop = watches.listen(real, listed, (change) => void res.write(`event: change\ndata: ${JSON.stringify(change)}\n\n`));
-    req.on('close', stop);
-  });
   on(routes.projectFile, personOnly(person), async (req, res) => {
     const { path: file, lines } = projectFileParams.parse(req.query);
     const board = store.getBoard(param(req, 'boardId'));
@@ -439,9 +441,11 @@ export function createApiRouter(
   });
 
   // Server-sent events: each change to the board, and who is on it (see live.ts),
-  // and to a person, the requests for permission waiting.
+  // and to a person, the requests for permission waiting, and, asked for while
+  // its Files view is open (`files=1`), what changes in its project folder.
   on(routes.boardStream, (req, res) => {
-    openStream(store, presence, req, res, param(req, 'boardId'), steps, readerFor(req));
+    const reader = readerFor(req);
+    openStream(store, presence, req, res, param(req, 'boardId'), steps, reader, reader && req.query.files === '1' ? watchFolder : undefined);
   });
 
   // A Tricot terminal's view of the agents it started and holds to wake on

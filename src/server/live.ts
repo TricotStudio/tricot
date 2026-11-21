@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { cardOf } from '../core/cards';
 import type { BoardChange } from '../core/changes';
+import type { FolderChange } from '../core/projectFiles';
 import { sealedApproval, type Approval } from '../core/approvals';
 import type { Store } from '../core/store';
 import { boardKey, type Board } from '../core/types';
@@ -41,6 +42,12 @@ export interface Reader {
 //             whether the ticket it came with no longer holds
 //   admissions what waits to be let in to act for the person, to a seat
 //   hello     on connecting: where the board is
+//   files     what changed in the board's project folder, once it settles, to
+//             a person whose page asked for it (`files=1`) while its Files view
+//             is open (projectWatch.ts). On the board's own stream, not one of
+//             its own: a browser holds six connections to a host, and a page
+//             that took two ran out of them with a few tabs open, leaving every
+//             read waiting.
 //   ping      every so often, so a page can tell a dead connection from a quiet
 //             board, and compare itself with the server (the same as GET .../live)
 //   reset     the page must fetch the board
@@ -96,7 +103,10 @@ export function sendPersonal(store: Store, reader: Reader | undefined, write: (t
   };
 }
 
-export function openStream(store: Store, presence: Presence | undefined, req: Request, res: Response, boardId: string, steps?: Steps, reader?: Reader): void {
+// What changes in a board's project folder, told to `send` until the function it returns is called.
+export type FolderWatch = (board: Board, send: (change: FolderChange) => void) => () => void;
+
+export function openStream(store: Store, presence: Presence | undefined, req: Request, res: Response, boardId: string, steps?: Steps, reader?: Reader, folder?: FolderWatch): void {
   const board = store.getBoard(boardId);
   const key = boardKey(board);
   res.writeHead(200, {
@@ -138,6 +148,7 @@ export function openStream(store: Store, presence: Presence | undefined, req: Re
     );
   }
   unsubscribe.push(sendPersonal(store, reader, write, () => res.end()));
+  if (folder) unsubscribe.push(folder(board, (change) => write(frame('files', change))));
 
   unsubscribe.push(
     store.subscribeDeleted(boardId, () => {

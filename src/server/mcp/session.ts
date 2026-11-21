@@ -29,6 +29,7 @@ import type { Steps } from '../steps';
 import type { ToolCosts } from '../toolCosts';
 import type { Hangups } from './hangups';
 import type { Extra, Tool } from './tool';
+import { LEAD_WORDS } from '../../core/roles';
 import type { ToolGroups } from './toolGroups';
 import type { Sayer } from '../../core/words';
 import { Phrases } from './words';
@@ -69,6 +70,9 @@ export interface Connection {
   hangups?: Hangups;
   woken?: string; // the terminal that wakes it, by the word its address names it by
   listenAt?: string; // the board's address, as the agent's client reached it
+  // As it sleeps by `tricot listen` on a board: takes the coordinator's role there (core/roles.ts), and says whether it
+  // took it now, to be told so. None for a session that has a role, or that Tricot's terminal wakes.
+  lead?(boardKey: string, extra: Extra): Promise<boolean>;
 }
 
 // Whether a session sleeps between turns by `tricot listen`
@@ -544,19 +548,22 @@ export function createSession(store: Store, getActor: () => Actor, options: McpO
       // A session that sleeps by `tricot listen` doesn't wait. With
       // its listener running, its turn ends here; without one, it is given
       // the command to run before it ends its turn, after acting on what
-      // came for it, if anything did.
+      // came for it, if anything did. It takes the coordinator's role there,
+      // as each agent Tricot's terminal starts has it, and is told so first
+      // (core/roles.ts).
+      const leads = (await connection.lead?.(key, extra)) ? `${LEAD_WORDS}\n` : '';
       if (mode === 'sleep') {
         // New for it is what came after its cursor, and after what its
         // listener holds it from: a stale cursor doesn't keep it from sleeping.
         const from = options.presence?.sleepers.held(key, getActor().name)?.since ?? since;
         const heard = concerning(board, Math.max(since, from));
-        const said = updates(board, since, { seconds: 0, heard, said: heard ? LISTEN_WORDS.act : LISTEN_WORDS.asleep });
+        const said = updates(board, since, { seconds: 0, heard, said: `${leads}${heard ? LISTEN_WORDS.act : LISTEN_WORDS.asleep}` });
         if (!heard) listener.slept(key, readTo(key, board));
         return said;
       }
       const heard = concerning(board, since);
       const { line, own } = listener.command(board);
-      const start = heard ? LISTEN_WORDS.startAct(line, by.background) : LISTEN_WORDS.start(line, by.background);
+      const start = `${leads}${heard ? LISTEN_WORDS.startAct(line, by.background) : LISTEN_WORDS.start(line, by.background)}`;
       const said = updates(board, since, { seconds: 0, heard, said: own ? start : `${start}\n${LISTEN_WORDS.older(options.version)}` });
       listener.gave(key, pageEnd.get(key) ?? board.seq);
       return said;

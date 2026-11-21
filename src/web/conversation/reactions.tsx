@@ -8,6 +8,7 @@ import type { CardKinds, CardReaction } from '../shared/cardKinds';
 import { useCardKinds } from '../shared/cardKindsContext';
 import { Icon, timeAgo } from '../shared/components';
 import { menuStep, useDismiss, useReadOnly } from '../shared/hooks';
+import { OnTop, usePlace } from '../shared/onTop';
 import './reactions.css';
 
 // Under a comment or a thread message: a chip for each of 👍, 👎 and 👀 left on
@@ -129,6 +130,9 @@ function Picker({ item, me, busy, onPick }: { item: Reactable; me: Actor; busy: 
     if (escape) button.current?.focus();
   }, []);
   useDismiss(open, close, root);
+  // Drawn on top (shared/onTop.tsx), so the chat bar and the panels around a
+  // conversation don't cover it: over the button, the first emoji over it.
+  const place = usePlace(open, button, menu, { side: 'above', gap: 6, shift: -4 });
   useEffect(() => {
     if (open) menu.current?.querySelector<HTMLButtonElement>('button')?.focus();
   }, [open]);
@@ -160,29 +164,31 @@ function Picker({ item, me, busy, onPick }: { item: Reactable; me: Actor; busy: 
         <Icon name="react" />
       </button>
       {open && (
-        <div className="reaction-picker" role="menu" aria-label="Reactions" ref={menu} onKeyDown={move}>
-          {EMOJIS.map((emoji) => {
-            const mine = hasReaction(item, emoji, me);
-            return (
-              <button
-                key={emoji}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={mine}
-                aria-label={EMOJI_NAMES[emoji]}
-                title={mine ? `${EMOJI_NAMES[emoji]}: take yours back` : EMOJI_NAMES[emoji]}
-                tabIndex={-1}
-                disabled={busy}
-                onClick={() => {
-                  onPick(emoji);
-                  close(true);
-                }}
-              >
-                {emoji}
-              </button>
-            );
-          })}
-        </div>
+        <OnTop from={root}>
+          <div className="reaction-picker" role="menu" aria-label="Reactions" ref={menu} onKeyDown={move} style={place}>
+            {EMOJIS.map((emoji) => {
+              const mine = hasReaction(item, emoji, me);
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={mine}
+                  aria-label={EMOJI_NAMES[emoji]}
+                  title={mine ? `${EMOJI_NAMES[emoji]}: take yours back` : EMOJI_NAMES[emoji]}
+                  tabIndex={-1}
+                  disabled={busy}
+                  onClick={() => {
+                    onPick(emoji);
+                    close(true);
+                  }}
+                >
+                  {emoji}
+                </button>
+              );
+            })}
+          </div>
+        </OnTop>
       )}
     </span>
   );

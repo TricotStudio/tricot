@@ -371,22 +371,29 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   // Blocks selected on it go with what's sent, as what the thread it starts is
   // about: agents talk it through there before they make anything.
   const selection = usePageSelection(overPage?.id);
-  const pageWords = overPage && pageBar(overPage, selection?.blockIds.length);
+  // The board's coordinator a message from the bar goes to, when it @-mentions none (core/roles.ts): the one seen last.
+  const lead = present.filter((a) => a.coordinator && a.state !== 'away').sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
+  const pageWords = overPage && pageBar(overPage, selection?.blockIds.length, lead);
   // In Files, with a file open, it asks about the file, of the agent last asked about it, if one was.
   const overFile = !docked && door === 'threads' && !shownPage ? shownFile : undefined;
   const fileAgent = useMemo(() => overFile && agentOnFile(board, overFile.named, boardAgents(board, present.map((a) => a.name))), [board, overFile, present]);
-  const fileWords = overFile && fileBar(overFile.path, fileAgent);
+  const fileWords = overFile && fileBar(overFile.path, fileAgent, lead);
   // Floating over a canvas that can be drawn on, its drawing tools float
   // beside the bar, in a capsule of their own on its left, the options of the
   // tool that is on in a tray over it (DrawOptions). The capsule stays
   // while the bar floats, so it comes and goes in motion (chatBar.css),
   // inert while it is away. It leaves in motion only once it has been there
-  // (`was-shown`), so a bar that opens away from a canvas plays no leaving.
+  // in this floating bar (`was-shown`): a bar that opens away from a canvas,
+  // the dock closing over Files included, plays no leaving, as the capsule
+  // is made anew each time the bar floats again.
   const drawable = useDrawTools().present && !docked;
   const [toolsSeen, setToolsSeen] = useState(false);
   useEffect(() => {
     if (drawable) setToolsSeen(true);
   }, [drawable]);
+  const toolsGone = useCallback((capsule: HTMLDivElement | null) => {
+    if (!capsule) setToolsSeen(false);
+  }, []);
   fieldKey.current = draftKey;
   const draft = drafts[draftKey] ?? '';
   const setDraft = (key: string, body: string) => set((current) => ({ drafts: { ...current.drafts, [key]: body } }));
@@ -595,7 +602,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
           {threadsList}
           {!listOpen && <WorkStrip board={board} routed={follow} onOpen={(id) => showThread(id)} onFollow={followTo} onDismiss={routed.done} />}
           {bar && (
-            <div className={`chat-tools${drawable ? ' is-shown' : toolsSeen ? ' was-shown' : ''}`} inert={!drawable}>
+            <div ref={toolsGone} className={`chat-tools${drawable ? ' is-shown' : toolsSeen ? ' was-shown' : ''}`} inert={!drawable}>
               <div className="chat-tools-sheet">
                 <DrawToolbar />
               </div>

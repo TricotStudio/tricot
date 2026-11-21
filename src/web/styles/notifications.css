@@ -42,7 +42,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: var(--z-popover);
   width: min(420px, calc(100vw - 32px));
   max-height: min(70vh, 560px);
   display: flex;

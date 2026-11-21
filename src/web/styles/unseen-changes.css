@@ -57,16 +57,12 @@
   background: var(--exploring);
   color: var(--surface);
 }
+/* Drawn on top, under the chip (versions.tsx, shared/onTop.tsx). */
 .version-menu {
-  top: calc(100% + 6px);
   width: min(260px, calc(100vw - 32px));
   max-height: 320px;
   overflow: auto;
   cursor: default;
-}
-/* Above the blocks around it while its versions are open. */
-.react-flow__node:has(.version-menu) {
-  z-index: 1000 !important;
 }
 .version-menu-title {
   margin: 0;

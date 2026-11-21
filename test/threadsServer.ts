@@ -22,7 +22,8 @@ export interface ThreadsServer<S extends Store = Store> {
   call(agent: ThreadsAgent, name: string, args?: Record<string, unknown>): Promise<ToolResult>;
   callText(agent: ThreadsAgent, name: string, args?: Record<string, unknown>): Promise<string>;
   request(method: 'GET' | 'POST', route: string, body?: Record<string, unknown>): Promise<{ status: number; json: any }>;
-  connect(query: string): Promise<Client>; // one more session, its MCP address's query as given (`agent=Router&role=coordinator`)
+  // One more session, its MCP address's query as given (`agent=Router&role=coordinator`), as a client of this name.
+  connect(query: string, as?: { name: string; version: string }): Promise<Client>;
   stop(): Promise<void>;
 }
 
@@ -64,8 +65,8 @@ export async function threadsServer<S extends Store = Store>(edition: Edition = 
       });
       return { status: response.status, json: await response.json() };
     },
-    async connect(query) {
-      const client = new Client({ name: 'test-client', version: '1.0.0' });
+    async connect(query, as = { name: 'test-client', version: '1.0.0' }) {
+      const client = new Client(as);
       await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp?${query}`)));
       more.push(client);
       return client;

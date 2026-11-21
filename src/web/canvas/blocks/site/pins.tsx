@@ -11,6 +11,7 @@ import type { Pin } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
 import { askToUnpin } from '../../../shared/confirm';
 import { MentionTextarea, COMMENT_LENSES } from '../../../shared/mentions';
+import { insideOf } from '../../../shared/onTop';
 import { ownedBy, useCanvas } from '../../context';
 
 const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
@@ -38,7 +39,7 @@ export function SiteAskPrompt(props: {
   textRef.current = text;
   useEffect(() => {
     const away = (e: MouseEvent) => {
-      if (!root.current?.contains(e.target as Node) && !textRef.current.trim()) onClose();
+      if (!insideOf(e.target as Element, root.current) && !textRef.current.trim()) onClose();
     };
     document.addEventListener('mousedown', away, true);
     return () => document.removeEventListener('mousedown', away, true);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { agentKinds, findAgent } from '../../../core/agents/registry';
-import { clip, listNames } from '../../../core/format';
+import { clip, listNames, samePerson } from '../../../core/format';
 import { boardAgents } from '../../../core/mentions';
 import { orchestratorName, STATUS_WORDS, type SessionRole } from '../../../core/roles';
 import { BoardError } from '../../../core/store';
@@ -126,6 +126,62 @@ function orchestratorTools({ store, getActor }: ToolContext, thread: string): To
       handler: async ({ status, summary }) => {
         const owned = store.setThreadStatus(thread, status, getActor(), summary);
         return text(`The work of thread "${clip(owned.title, 80)}" is ${STATUS_WORDS[status]}${status === 'done' ? ': the coordinator tells the person' : ''}.`);
+      },
+    }),
+  ];
+}
+
+// The coordinator's tools for an agent connected on its own (core/roles.ts LEAD_WORDS): listed once it takes the role
+// on a board by listening there (mcp.ts), never before. It owns the threads it sends work to, so it names no agent to
+// start, and says where the work of any of them stands.
+export function leadTools({ store, getActor }: ToolContext, leads: (boardKey: string) => boolean): Tool[] {
+  const lead = (threadId: string) => {
+    const { board, thread } = store.getThread(threadId);
+    if (!leads(boardKey(board))) throw new BoardError(`You don't coordinate ${clip(board.title, 60)}: listen on it with wait_for_updates to take the role.`);
+    return thread;
+  };
+  return [
+    defineTool({
+      name: 'route_to_thread',
+      title: 'Send on to a thread',
+      description:
+        "Send a person's message from the chat bar on to the thread its work belongs to, or start a new thread for new work, which you own: hand its work to a background agent of your own with the thread id. Where it was asked, you say where it went, and the person is taken there.",
+      schema: {
+        thread_id: z.string().describe('The thread the person asked in'),
+        message_id: z.string().describe('Their message, as get_thread lists it'),
+        to_thread_id: z.string().optional().describe('A thread of the board the work belongs to: their message goes there'),
+        title: fields.groupTitle.optional().describe('For new work: the title of the thread to start, a few words'),
+        brief: fields.message.optional().describe("For new work: what the work needs besides the person's message, in a few sentences"),
+      },
+      handler: async ({ thread_id, message_id, to_thread_id, title, brief }) => {
+        const actor = getActor();
+        if (to_thread_id && (title || brief)) throw new BoardError('Pass to_thread_id to send it to a thread of the board, or title (with brief) to start one: not both.');
+        if (!to_thread_id && !title) throw new BoardError('Pass to_thread_id to send it to a thread of the board, or title (with brief) to start one for new work.');
+        lead(thread_id);
+        if (to_thread_id) {
+          const { from, to } = store.routeToThread(thread_id, message_id, actor, { threadId: to_thread_id });
+          const whose = !to.owner ? ': no agent owns it, so whoever answers there takes it' : samePerson(to.owner, actor.name) ? ', which you own: take it up, or hand it on with its thread id' : `, which ${to.owner} owns: it hears it now`;
+          return text(`Sent it to thread "${clip(to.title, 80)}" [thread id: ${to.id}]${whose}. You said where it went in "${clip(from.title, 80)}", and the person is taken there.`);
+        }
+        const { from, to } = store.routeToThread(thread_id, message_id, actor, { title: title!, brief, owner: actor.name });
+        return text(
+          `Started thread "${clip(to.title, 80)}" [thread id: ${to.id}], which you own, its work at work. You said where it went in "${clip(from.title, 80)}", and the person is taken there. Hand its work now to a background agent of your own (your Agent tool) with the thread id ${to.id}: it reads the thread with get_thread first, reports there with reply_in_thread, and ends with set_thread_status.`,
+        );
+      },
+    }),
+    defineTool({
+      name: 'set_thread_status',
+      title: 'Set thread status',
+      description: 'Say where the work of a thread you own stands: working, needs-you while it waits on a person, or done. A summary goes in the thread first.',
+      schema: {
+        thread_id: z.string().describe('A thread you own'),
+        status: z.enum(STATUSES).describe('working, needs-you or done'),
+        summary: fields.message.optional().describe('What to say in the thread first, in Markdown: for done, what changed and how to see it'),
+      },
+      handler: async ({ thread_id, status, summary }) => {
+        lead(thread_id);
+        const owned = store.setThreadStatus(thread_id, status, getActor(), summary);
+        return text(`The work of thread "${clip(owned.title, 80)}" is ${STATUS_WORDS[status]}.`);
       },
     }),
   ];

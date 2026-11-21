@@ -4,6 +4,7 @@ import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, LENSES, lensChoice, presetLens } fro
 import type { ThreadLens } from '../../core/types';
 import { Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
+import { OnTop } from '../shared/onTop';
 import { useRoster } from '../shared/mentions';
 import { LENS_MENU_WIDTH, lensMenuPlace, type LensMenuPlace } from './lensPlace';
 import { lensTone } from './lensTone';
@@ -47,7 +48,8 @@ export function LensPicker(props: {
   useDismiss(open, close, anchor);
 
   // Fixed by the chip, so the list or panel it sits in doesn't clip it, and
-  // inside the window (lensPlace.ts); it follows the chip while either
+  // inside the window (lensPlace.ts); drawn on top (shared/onTop.tsx), so the
+  // chat bar and what's beside the dock don't cover it; it follows the chip while either
   // scrolls or the window resizes. Whether it fits under the chip takes its
   // height, drawn at its width: so it is placed again, before it shows, each
   // time it is drawn at a new width (opening the first time, it had none).
@@ -93,17 +95,19 @@ export function LensPicker(props: {
         {chip}
       </button>
       {open && place && (
-        <LensMenu
-          id={id}
-          root={menu}
-          lens={lens}
-          generalLine={note}
-          place={place}
-          onPick={(next) => {
-            close();
-            onPick(next);
-          }}
-        />
+        <OnTop from={anchor}>
+          <LensMenu
+            id={id}
+            root={menu}
+            lens={lens}
+            generalLine={note}
+            place={place}
+            onPick={(next) => {
+              close();
+              onPick(next);
+            }}
+          />
+        </OnTop>
       )}
     </span>
   );

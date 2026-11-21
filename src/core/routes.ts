@@ -45,7 +45,6 @@ export const routes = {
   boardSearch: get('/api/boards/:boardId/search'),
   projectFiles: get('/api/boards/:boardId/files'), // the files in the board's project folder, for its Files view
   projectFile: get('/api/boards/:boardId/files/read'), // one of them, ?path=src/index.ts (&lines=120-180), for its preview
-  projectFilesLive: get('/api/boards/:boardId/files/live'), // what changes in it, as server-sent events, while its Files view is open: the view reads the list again
   projectSearch: get('/api/boards/:boardId/files/search'), // ?q=text (&case=1 &word=1 &regex=1): the lines of its files that match, as an IDE's Find in Files, for Files' search of what is inside them
   projectImage: get('/api/boards/:boardId/files/image'), // a picture of them, ?path=docs/shot.png: its bytes, for its preview
   projectFileBlock: post('/api/boards/:boardId/files/block'), // its code block on the board's Files canvas, made the first time

@@ -69,7 +69,8 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
   const sentTo = routed && board.threads?.find((t) => t.id === routed.to);
   if (!working.length && !sentTo) return null;
   const live = (thread: Thread) => steps.some((s) => s.thread === thread.id && phaseOf(s, now) === 'live');
-  const progressOf = (thread: Thread) => planProgress(work.find((w) => samePerson(w.agent, thread.owner!) && w.thread === thread.id)?.plan);
+  // Its plan, as the owner or the subagent it handed the thread to wrote it (server/steps.ts noteWork).
+  const progressOf = (thread: Thread) => planProgress(work.find((w) => samePerson(w.agent, thread.owner!) && w.thread === thread.id && w.plan)?.plan);
   const peeked = peeking ? working.find((thread) => thread.id === peeking) : undefined;
   return (
     <div className="work-strip" role="group" aria-label="Work under way">

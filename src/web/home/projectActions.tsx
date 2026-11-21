@@ -6,6 +6,7 @@ import { archiveBoard, boardEdit, goalItem, stillHeld, updateBoard } from '../li
 import { UndoToast, useUndoShortcut } from '../canvas';
 import { Icon } from '../shared/components';
 import { useMenu } from '../shared/hooks';
+import { OnTop, usePlace } from '../shared/onTop';
 import './projectActions.css';
 
 // Changing a board from Home without opening it: a ⋯ menu on each row to
@@ -26,6 +27,8 @@ interface MenuProps {
 // focus. Above the row's link, as the squares are.
 export function ProjectMenu({ title, hasGoal, onEdit, onArchive }: MenuProps) {
   const { open, setOpen, close, root, button, menu, onKeyDown } = useMenu();
+  // Drawn on top (shared/onTop.tsx): inside its row it stayed under the next row's ⋯.
+  const place = usePlace(open, button, menu, { align: 'end', gap: 6 });
   const pick = (action: () => void) => () => {
     close(false);
     action();
@@ -45,18 +48,20 @@ export function ProjectMenu({ title, hasGoal, onEdit, onArchive }: MenuProps) {
         <Icon name="more" />
       </button>
       {open && (
-        <div className="menu-panel project-menu-panel" role="menu" aria-label={title} ref={menu} onKeyDown={onKeyDown}>
-          <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" aria-keyshortcuts="R" onClick={pick(() => onEdit('title'))}>
-            Rename…<kbd aria-hidden>R</kbd>
-          </button>
-          <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" onClick={pick(() => onEdit('goal'))}>
-            {goalItem(hasGoal)}
-          </button>
-          <div role="separator" className="menu-rule" />
-          <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" aria-keyshortcuts="A" onClick={pick(onArchive)}>
-            Archive<kbd aria-hidden>A</kbd>
-          </button>
-        </div>
+        <OnTop from={root}>
+          <div className="menu-panel project-menu-panel" role="menu" aria-label={title} ref={menu} onKeyDown={onKeyDown} style={place}>
+            <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" aria-keyshortcuts="R" onClick={pick(() => onEdit('title'))}>
+              Rename…<kbd aria-hidden>R</kbd>
+            </button>
+            <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" onClick={pick(() => onEdit('goal'))}>
+              {goalItem(hasGoal)}
+            </button>
+            <div role="separator" className="menu-rule" />
+            <button type="button" role="menuitem" tabIndex={-1} className="menu-item is-line" aria-keyshortcuts="A" onClick={pick(onArchive)}>
+              Archive<kbd aria-hidden>A</kbd>
+            </button>
+          </div>
+        </OnTop>
       )}
     </div>
   );

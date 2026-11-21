@@ -39,7 +39,9 @@ export function dismissClick(press: Press, release?: Release): boolean {
 }
 
 // What does something when pressed, by what it is: a link, a control, a
-// field, an element with a role people click, anything in the tab order. And
+// field, an element with a role people click, anything in the tab order but a
+// pane that is in it only so a keyboard can scroll it (`data-pane`: a file's
+// preview, read rather than pressed, so a click on it is a click away). And
 // the board's own surfaces that do something on a press without saying so
 // in their markup: a task card (a read-only one isn't in the tab order), a
 // row of the decisions table and its approvals fold (rows that open the
@@ -57,7 +59,7 @@ const INTERACTIVE = [
   'label',
   'summary',
   '[contenteditable]:not([contenteditable="false"])',
-  '[tabindex]:not([tabindex^="-"])',
+  '[tabindex]:not([tabindex^="-"]):not([data-pane])',
   ...['button', 'link', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'checkbox', 'radio', 'switch', 'slider', 'spinbutton', 'combobox', 'textbox', 'searchbox', 'treeitem'].map(
     (role) => `[role="${role}"]`,
   ),

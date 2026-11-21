@@ -40,8 +40,9 @@ export interface ThreadStart {
 }
 
 // Where a coordinator sends a person's message on to (core/roles.ts): a thread
-// of the board, or a new one, titled, that an orchestrator owns.
-export type RouteTarget = { threadId: string } | { title: string; brief?: string; owner: string; launch: string };
+// of the board, or a new one, titled, that an orchestrator owns, which Tricot's
+// terminal starts as `launch`; or, with none, that the coordinator owns itself.
+export type RouteTarget = { threadId: string } | { title: string; brief?: string; owner: string; launch?: string };
 
 export interface Routed {
   from: Thread; // where it was asked
