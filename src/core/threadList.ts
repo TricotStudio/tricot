@@ -19,18 +19,14 @@ import type { BoardViewName } from './pages';
 import { fileLabel, fileTag, threadFile } from './fileThread';
 import { clip, samePerson } from './format';
 import { peopleIn } from './mentions';
+import { inConversation } from './roles';
 import { blocksWords } from './threadSelection';
 import { threadWaiting, threadWork } from './threads';
 import type { Board, Thread, ThreadMessage, ThreadRef } from './types';
 
-// Whether a thread is part of the board's conversation rather than work: what
-// a person asked from a chat bar, or an agent asked the board, that no one has
-// taken on as work. Work handed out has a status, and nothing else does: a
-// coordinator's route_to_thread starts it working, and its owner says where it
-// stands (core/roles.ts). A thread of the conversation that gets one leaves it
-// as work, its ask staying there as "Taken on by …". Nothing stored marks a
-// quick question, so every edition and every older Tricot reads the same.
-export const inConversation = (thread: Pick<Thread, 'status'>): boolean => !thread.status;
+// Whether a thread is part of the board's conversation rather than work: the one predicate, kept with the roles that
+// give a thread its status (core/roles.ts), and read from here.
+export { inConversation };
 
 // The last message seen in each thread, by thread id.
 export type ThreadsSeen = Record<string, string>;

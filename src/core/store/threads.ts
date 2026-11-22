@@ -16,7 +16,7 @@ import { requestCardsHeight, requestTitle } from '../requests';
 import { pageLens, pageName } from '../scratchPad';
 import { blocksWords, selectionBlocks, selectionGroup, selectionPage, threadCards } from '../threadSelection';
 import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT, TITLE_LENGTH, lensName, presetLens, sameLens, showsWork, threadTitle, threadWork } from '../threads';
-import { STATUS_WORDS } from '../roles';
+import { inConversation, STATUS_WORDS } from '../roles';
 import { type Actor, type Block, type Board, type Group, type MessageLens, type ScratchPage, type Thread, type ThreadDoor, type ThreadLens, type ThreadMessage, type ThreadRef, type ThreadStatus, boardKey } from '../types';
 
 // How a thread starts besides its message and lens: as the board's General
@@ -58,6 +58,17 @@ const alone = (thread: Thread, messageId: string, actor: Actor): boolean =>
 
 // How long a quote of the message sent on may be, in the thread it goes to.
 const QUOTED = 4000;
+
+// Why a thread of the board's conversation takes no status (setThreadStatus), and what to do instead: send the person's
+// latest message not sent on yet to a thread of its own, whose status is then set.
+function quickQuestionWords(thread: Thread): string {
+  const sentOn = new Set(thread.messages.flatMap((m) => (m.sent ? [m.sent.messageId] : [])));
+  const asked = thread.messages.findLast((m) => m.author.kind === 'human' && !sentOn.has(m.id));
+  const send = asked
+    ? `Send ${asked.author.name}'s message on with route_to_thread first (thread_id: ${thread.id}, message_id: ${asked.id}, and a title for new work)`
+    : "Send a person's message on with route_to_thread first";
+  return `Thread "${clip(thread.title, 60)}" is a quick question in the board's conversation, so it has no status to set: work goes in a thread of its own. ${send}, then say where the work stands in the thread it goes to.`;
+}
 
 // Threads: conversations through which people work on the project with agents. A person (or an agent)
 // starts one with a message, and agents answer in it, through its lens. A message's @-mentions say which
@@ -325,12 +336,16 @@ export class Threads {
   }
 
   // Where the work of a thread an agent owns stands (core/roles.ts): said by
-  // its owner, or a person. A summary goes in the thread first.
+  // its owner, or a person. A summary goes in the thread first. Only work has a
+  // status: a thread of the board's conversation (a quick question a coordinator
+  // owns) never gets one here, as that would make it work that nothing sent on,
+  // and its work goes to a thread of its own with route_to_thread instead.
   setThreadStatus(threadId: string, status: ThreadStatus, actor: Actor, summary?: string): Thread {
     const { board, thread } = this.repo.getThread(threadId);
     guardArchived(board);
     if (!thread.owner) throw new BoardError(`Thread "${clip(thread.title, 60)}" has no owner, so its work has no status to set.`);
     if (actor.kind === 'agent' && !samePerson(actor.name, thread.owner)) throw new BoardError(`Thread "${clip(thread.title, 60)}" is ${thread.owner}'s: only its owner says where its work stands.`);
+    if (inConversation(thread)) throw new BoardError(quickQuestionWords(thread));
     if (optional(summary)) this.postToThread(thread.id, summary!, actor);
     if (thread.status === status) return thread;
     thread.status = status;

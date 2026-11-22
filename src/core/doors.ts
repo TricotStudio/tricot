@@ -7,6 +7,7 @@
 // the right thing and pass the thread's id with it, which links it back.
 
 import { threadFile } from './fileThread';
+import { askedOfCoordinator } from './roles';
 import type { Board, Thread, ThreadDoor } from './types';
 import { saying, type Told } from './words';
 
@@ -71,16 +72,33 @@ export function doorPlace(door: ThreadDoor, told?: Told): string | undefined {
 // started over a Sketchbook page is about that page, and with blocks
 // selected there, about those blocks; one started in Files, about the
 // file open there, which `board` names.
-export function doorNote(thread: Pick<Thread, 'id' | 'door' | 'pageId' | 'blockIds'>, board?: Pick<Board, 'pages'>, told?: Told): string | undefined {
+//
+// A quick question that came to the agent reading it as the board's
+// coordinator (`viewer`, roles.ts askedOfCoordinator) says where it was asked
+// and what it is about the same way, and what card it aims at when its door
+// says (a part's: a decision, a task), and then, in place of how to make what
+// it asks for, to answer a question there and send work on first: a
+// coordinator does no work itself, and work it starts in the conversation
+// shows nowhere as work.
+export function doorNote(thread: Pick<Thread, 'id' | 'door' | 'pageId' | 'blockIds' | 'owner' | 'status'>, board?: Pick<Board, 'pages'>, told?: Told, viewer?: string): string | undefined {
   const id = thread.id;
   const file = board && threadFile(board, thread);
-  if (file) return fileNote(id, file.page.id, file.blockId, file.path, told);
+  const coordinating = askedOfCoordinator(thread, viewer);
+  if (file) return fileNote(id, file.page.id, file.blockId, file.path, told, coordinating);
   if (thread.pageId) {
     const page = thread.pageId;
-    if (thread.blockIds?.length) return selectionNote(id, page, thread.blockIds, told);
+    if (thread.blockIds?.length) return selectionNote(id, page, thread.blockIds, told, coordinating);
+    if (coordinating) return `It was started over Sketchbook page [page id: ${page}], so it's about that page: read it with get_canvas(page_id: ${page}). ${coordinatorNote(id)}`;
     return `It was started over Sketchbook page [page id: ${page}], so it's about that page: read it with get_canvas(page_id: ${page}), work on it there with add_block(page_id: ${page}, thread_id: ${id}) and the other canvas tools, and reply.`;
   }
   if (!thread.door) return undefined;
+  if (coordinating) {
+    // A part's door keeps the card it aims at (Studio's decision or task), the routing after it.
+    const aim = thread.door === 'threads' ? undefined : told?.line(`door.${thread.door}`, { id, from: `It was started from ${doorPlace(thread.door, told)}` });
+    if (aim) return `${aim} ${coordinatorNote(id)}`;
+    const place = doorPlace(thread.door, told);
+    return place ? `It was started from ${place}. ${coordinatorNote(id)}` : coordinatorNote(id);
+  }
   if (thread.door === 'threads') {
     return saying(told, 'door.threads', [
       ['from', `It was started from ${doorPlace('threads')}, so it's open-ended: talk it through, and if it lands as `],
@@ -92,6 +110,11 @@ export function doorNote(thread: Pick<Thread, 'id' | 'door' | 'pageId' | 'blockI
   return told?.line(`door.${thread.door}`, { id, from: `It was started from ${doorPlace(thread.door, told)}` });
 }
 
+// What the board's coordinator is told of a quick question that came to it, after what the ask says of itself: a
+// question it answers there, and anything that is work it sends to a thread of its own before anyone starts on it.
+const coordinatorNote = (id: string): string =>
+  `It's yours as the board's coordinator: answer a question here, but send anything that is work on with route_to_thread(thread_id: ${id}) before anyone starts on it, to the thread it belongs to or to a new one.`;
+
 const SELECTION_IDS = 12;
 
 // What an agent answering a thread over blocks selected on a page is told:
@@ -99,10 +122,11 @@ const SELECTION_IDS = 12;
 // it makes there is shown beside them. The ids are the blocks as they were when
 // the thread started, so this stays the same as the page changes. A group that
 // offers cards says the decision or tasks it may make there (`thread.selection`).
-function selectionNote(id: string, page: string, blockIds: string[], told?: Told): string {
+function selectionNote(id: string, page: string, blockIds: string[], told: Told | undefined, coordinating: boolean): string {
   const listed = blockIds.slice(0, SELECTION_IDS).join(', ');
   const blocks = blockIds.length === 1 ? `1 block selected [block id: ${listed}]` : `${blockIds.length} blocks selected [block ids: ${listed}${blockIds.length > SELECTION_IDS ? `, and ${blockIds.length - SELECTION_IDS} more` : ''}]`;
   const about = `It was started over Sketchbook page [page id: ${page}] with ${blocks}, so it's about those blocks: read them with get_canvas(page_id: ${page}).`;
+  if (coordinating) return `${about} ${coordinatorNote(id)}`;
   return (
     told?.line('thread.selection', { id, page, about }) ??
     [
@@ -118,9 +142,10 @@ function selectionNote(id: string, page: string, blockIds: string[], told?: Told
 // is about the file, to talk through first, and the file changes only once the
 // person asks. The block is a copy as it was when the file was last opened in
 // Files, so the file itself, in the agent's repository, is what to read.
-function fileNote(id: string, page: string, block: string, path: string | undefined, told?: Told): string {
+function fileNote(id: string, page: string, block: string, path: string | undefined, told: Told | undefined, coordinating: boolean): string {
   const file = path ? `the file ${path}` : 'a file whose block has been removed from Files since';
   const about = `It was started in Files about ${file} [page id: ${page}; block id: ${block}], so it's about that file: read it in your repository, or with get_block(block_id: ${block}), a copy as it was when the file was last opened in Files.`;
+  if (coordinating) return `${about} ${coordinatorNote(id)}`;
   return (
     told?.line('thread.file', { id, about }) ??
     [

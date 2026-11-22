@@ -47,7 +47,7 @@ export function threadTools({ store, getActor, words, session: { told } }: ToolC
       readOnly: true,
       handler: async ({ thread_id }) => {
         const { board, thread } = store.getThread(thread_id);
-        told.readAll(threadAsRead(board, thread, words));
+        told.readAll(threadAsRead(board, thread, getActor().name, words));
         const view = agentBoard(board, getActor().name);
         return text(threadDetail(view, view.threads!.find((item) => item.id === thread.id)!, getActor().name, words));
       },

@@ -25,6 +25,7 @@ import type { AgentRule } from '../core/agentRules';
 import { presenceRank, type PresenceState } from '../core/delivery';
 import type { CardKindName } from '../core/pins';
 import type { SessionRole } from '../core/roles';
+import { Leads } from './leads';
 import { Listeners } from './listeners';
 import { Sleepers } from './sleepers';
 
@@ -78,9 +79,6 @@ export class Presence {
   private boards = new Map<string, Map<string, Entry>>();
   private connected = new Map<string, { name: string; lastSeen: number }>(); // by name, lower-cased
   private sessions = new Map<string, AgentSession>(); // its latest session's details, by name, lower-cased
-  // The boards agents connected on their own coordinate, as they took the role by listening there (core/roles.ts,
-  // mcp/session.ts): by board key, each agent's name, lower-cased, and the session that holds the role, until it ends.
-  private led = new Map<string, Map<string, { name: string; holder: string }>>();
   private shown = new Map<string, string>(); // board id -> last presence viewers were told about
   private timer: NodeJS.Timeout;
   // The agents Tricot's terminals hold to wake, and whether each is asleep.
@@ -90,10 +88,14 @@ export class Presence {
 
   // `onSweep` runs with each sweep too, for other checks that are due lazily
   // (what runs out of time), so nothing needs a timer of its own.
+  // `leads`: the boards agents connected on their own coordinate, as they took the role by listening there
+  // (core/roles.ts, mcp/session.ts), held by their names' sessions (leads.ts); start.ts gives one that carries them over
+  // a restart.
   constructor(
     private readonly onChange: (boardId: string) => void,
     private readonly now: () => number = Date.now,
     private readonly onSweep: () => void = () => {},
+    private readonly leads: Leads = new Leads({ now }),
   ) {
     this.sleepers = new Sleepers(now, (boardId) => this.announce(boardId));
     this.timer = setInterval(() => this.sweep(), SWEEP_MS);
@@ -144,32 +146,27 @@ export class Presence {
     return on.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)).map((a) => a.name);
   }
 
-  // An agent connected on its own takes the coordinator's role on a board, held
-  // by its session (`holder`) until the session ends (unlead) or another of
-  // its name takes it over.
-  lead(boardId: string, name: string, holder: string): void {
-    let leads = this.led.get(boardId);
-    if (!leads) this.led.set(boardId, (leads = new Map()));
-    leads.set(name.toLowerCase(), { name, holder });
+  // An agent connected on its own takes the coordinator's role on a board, held by its session (`holder`) with any other
+  // session of its name, until the last of them ends (unlead, leads.ts): whether its name takes it now.
+  lead(boardId: string, name: string, holder: string): boolean {
+    return this.leads.take(boardId, name, holder);
   }
 
-  // Whether this agent's session holds the coordinator's role on the board.
-  leads(boardId: string, name: string, holder: string): boolean {
-    return this.led.get(boardId)?.get(name.toLowerCase())?.holder === holder;
+  // Whether an agent of this name coordinates the board through any session of its.
+  coordinates(boardId: string, name: string): boolean {
+    return this.leads.holds(boardId, name);
   }
 
-  // Whether an agent of this name coordinates a board it took the role on by listening: a new session of its, as after
-  // its client reconnected, lists the role's tools from the start.
-  ledBy(name: string): boolean {
-    return [...this.led.values()].some((leads) => leads.has(name.toLowerCase()));
+  // A session of this name started: it holds the roles its name holds, and takes back those that ended moments ago,
+  // as when its client connected again or Tricot restarted (leads.ts). Whether it coordinates a board, to list the
+  // role's tools from the start.
+  resume(name: string, holder: string): boolean {
+    return this.leads.resume(name, holder);
   }
 
-  // The session ended: the roles it held go with it.
+  // The session ended: a role only it held parts, for a session of its name to take back for a few minutes.
   unlead(holder: string): void {
-    for (const [board, leads] of this.led) {
-      for (const [key, lead] of leads) if (lead.holder === holder) leads.delete(key);
-      if (!leads.size) this.led.delete(board);
-    }
+    this.leads.release(holder);
   }
 
   startWaiting(boardId: string, name: string): void {
@@ -206,8 +203,7 @@ export class Presence {
       const known = [...agents.keys()].some((name) => name.toLowerCase() === record.name.toLowerCase());
       if (!known && record.asleep) agents.set(record.name, { lastSeen: record.at, waiting: 0, stoppedWaiting: 0 });
     }
-    const leads = this.led.get(boardId);
-    const coordinates = (name: string) => this.sessions.get(name.toLowerCase())?.role?.kind === 'coordinator' || Boolean(leads?.has(name.toLowerCase()));
+    const coordinates = (name: string) => this.sessions.get(name.toLowerCase())?.role?.kind === 'coordinator' || this.leads.holds(boardId, name);
     return [...agents]
       .filter(([name, e]) => e.waiting > 0 || now - e.lastSeen < PRESENT_MS || this.stateOf(e, now, boardId, name) === 'asleep')
       .map(([name, e]): AgentPresence => {

@@ -28,7 +28,10 @@
 //   owns the threads it sends work to itself: it hands each one's work to a
 //   background agent of its own (its harness's subagent), whose steps go to that
 //   thread once it names it (server/steps.ts), and which reports there and says
-//   where its work stands. It holds the role until its session ends.
+//   where its work stands. Its name holds the role while any session of its
+//   holds it, and a session of its name that starts within a few minutes of
+//   the last one ending, as when its client connects again or Tricot restarts,
+//   takes it back with the role's tools listed from the start (server/leads.ts).
 // - The person follows along on the page: the dock moves to the thread their
 //   message was sent to, and the chat bar lists the threads at work and those
 //   waiting on them (web/threads/workStrip.tsx).
@@ -65,6 +68,22 @@ export function roleOf(query: Record<string, unknown>): SessionRole | undefined 
 // The agent a person's message in a thread is for when it @-mentions nobody:
 // its owner, else the one its lens is routed to.
 export const threadAgent = (thread: Pick<Thread, 'owner' | 'lens'>): string | undefined => thread.owner ?? thread.lens?.agent;
+
+// Whether a thread is part of the board's conversation rather than work: what
+// a person asked from a chat bar, or an agent asked the board, that no one has
+// taken on as work. Work handed out has a status, and nothing else does: a
+// coordinator's route_to_thread starts it working, and its owner says where it
+// stands. Its status is never set on a thread of the conversation
+// (store/threads.ts setThreadStatus): its work goes to a thread of its own, so
+// it shows as work. Nothing stored marks a quick question, so every edition and
+// every older Tricot reads the same; core/threadList.ts says how the page reads it.
+export const inConversation = (thread: Pick<Thread, 'status'>): boolean => !thread.status;
+
+// Whether a thread is a quick question that came to this agent as the board's coordinator: one of the conversation that
+// it owns, as a coordinator owns what people ask from a chat bar. What it is told of the thread's aim is then to answer a
+// question there and send work on (doors.ts doorNote), never to make the work itself.
+export const askedOfCoordinator = (thread: Pick<Thread, 'owner' | 'status'>, viewer: string | undefined): boolean =>
+  viewer !== undefined && thread.owner !== undefined && samePerson(thread.owner, viewer) && inConversation(thread);
 
 // What a thread's status reads as, to people and agents.
 export const STATUS_WORDS: Record<ThreadStatus, string> = {

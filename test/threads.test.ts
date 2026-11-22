@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -8,7 +8,10 @@ import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/co
 import { answersForYou, commentsForYou } from '../src/core/bell';
 import { conversationWaitingOn, inConversation, threadGroups, threadsWaitingOn, waitsOnYou } from '../src/core/threadList';
 import { concernsAgent } from '../src/core/concerns';
+import { doorNote } from '../src/core/doors';
+import type { Told } from '../src/core/words';
 import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn } from '../src/core/roles';
+import { Leads, leadsFile, RESUME_MS } from '../src/server/leads';
 import { Presence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
@@ -103,6 +106,7 @@ describe('Threads over MCP and REST', () => {
     await said(coordinator, 'get_board', { board_id: boardId });
     const toLast = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Rename the board.', door: 'canvas' })).json as Thread;
     assert.equal(toLast.owner, 'Router', 'the coordinator seen last');
+    assert.ok((await said(coordinator, 'get_thread', { thread_id: toLast.id })).includes(`It's yours as the board's coordinator: answer a question here, but send anything that is work on with route_to_thread(thread_id: ${toLast.id})`), "told so of its own quick question");
 
     const message = asked.messages[0].id;
     const started = await said(coordinator, 'route_to_thread', { thread_id: asked.id, message_id: message, title: 'Sign-in on mobile', brief: 'The button hides under the keyboard.', agent: 'claude' });
@@ -247,12 +251,74 @@ describe('Threads over MCP and REST', () => {
     const refused = (await lead.callTool({ name: 'set_thread_status', arguments: { thread_id: loose.id, status: 'done' } })) as ToolResult;
     assert.match(refused.content[0].text, /has no owner/, 'only for a thread it owns');
 
-    await (lead.transport as StreamableHTTPClientTransport).terminateSession(); // its session ends
+    // A quick question it owns is the conversation's. What it is told of one, with the ask and in the thread, says to
+    // answer a question there and send work on before anyone starts on it, in place of how to make what it asks for;
+    // another agent reads the thread's aim as before. Its status is never set: that would make it work nothing sent on.
+    const since = store.getBoard(boardId).seq;
+    const ask = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead can the footer fade in?', door: 'threads' })).json as Thread;
+    const yours = `It's yours as the board's coordinator: answer a question here, but send anything that is work on with route_to_thread(thread_id: ${ask.id}) before anyone starts on it, to the thread it belongs to or to a new one.`;
+    assert.ok((await said(lead, 'get_updates', { board_id: boardId, since })).includes(`It was started from the threads list. ${yours}`), 'with the ask');
+    assert.ok((await said(lead, 'get_thread', { thread_id: ask.id })).includes(`It was started from the threads list. ${yours}`), 'in the thread');
+    const asOther = await said(other, 'get_thread', { thread_id: ask.id });
+    assert.ok(asOther.includes("so it's open-ended: talk it through") && !asOther.includes("It's yours as the board's coordinator"), 'another agent reads it as before');
+    // A part's door keeps the card it aims at for the coordinator too, with the routing after it.
+    const memos = { line: (id: string, vars: Record<string, string>) => (id === 'door.place.memos' ? 'the Memos tab' : id === 'door.memos' ? `${vars.from}, so the aim is a memo.` : undefined) } as unknown as Told;
+    const viaMemos = { ...ask, door: 'memos' } as unknown as Thread;
+    assert.equal(doorNote(viaMemos, undefined, memos, 'Lead'), `It was started from the Memos tab, so the aim is a memo. ${yours}`, "a part's door keeps its aim");
+    assert.equal(doorNote(viaMemos, undefined, memos, 'Sam'), 'It was started from the Memos tab, so the aim is a memo.', 'and reads as before to anyone else');
+    const overPageRead = await said(lead, 'get_thread', { thread_id: overPage.id });
+    assert.ok(overPageRead.includes(`so it's about that page: read it with get_canvas(page_id: ${page}). It's yours as the board's coordinator`) && !overPageRead.includes('add_block(page_id'), 'over a page too');
+    const quick = (await lead.callTool({ name: 'set_thread_status', arguments: { thread_id: ask.id, status: 'done', summary: 'It fades in now.' } })) as ToolResult;
+    assert.ok(quick.isError);
+    assert.equal(
+      quick.content[0].text,
+      `Thread "${store.getThread(ask.id).thread.title}" is a quick question in the board's conversation, so it has no status to set: work goes in a thread of its own. Send Sam's message on with route_to_thread first (thread_id: ${ask.id}, message_id: ${ask.messages[0].id}, and a title for new work), then say where the work stands in the thread it goes to.`,
+    );
+    assert.deepEqual([store.getThread(ask.id).thread.status, store.getThread(ask.id).thread.messages.length], [undefined, 1], 'still a quick question, with no summary posted');
+
+    // Its name holds the role: a second session of it, as when its client connects again, lists the role's tools from the
+    // start and serves the role at once, and keeps it when the first ends.
+    const reconnected = await server.connect('agent=Lead', claudeCode('2.1.300'));
+    assert.deepEqual((await listed(reconnected)).filter((name) => ['route_to_thread', 'set_thread_status'].includes(name)), ['route_to_thread', 'set_thread_status'], 'listed from the start');
+    await said(reconnected, 'set_thread_status', { thread_id: work.id, status: 'done', summary: 'Sticky on every screen.' });
+    await (lead.transport as StreamableHTTPClientTransport).terminateSession(); // its first session ends
     await lead.close();
+    assert.equal(((await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead and the footer links?', door: 'canvas' })).json as Thread).owner, 'Lead', 'kept by its other session');
+
+    await (reconnected.transport as StreamableHTTPClientTransport).terminateSession(); // its last session ends
+    await reconnected.close();
     const after = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead and the header?', door: 'canvas' })).json as Thread;
-    assert.equal(after.owner, undefined, 'its role went with its session');
+    assert.equal(after.owner, undefined, 'its role went with its last session');
     assert.equal(((await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'And the logo?', door: 'canvas' })).json as Thread).owner, 'Other', 'the other keeps its own');
     assert.ok(!(await again(other)).includes(LEAD_WORDS), 'told once');
+    // A session of its name that starts soon after takes the role back, its tools listed from the start (server/leads.ts).
+    const back = await server.connect('agent=Lead', claudeCode('2.1.300'));
+    assert.ok((await listed(back)).includes('route_to_thread'), 'taken back');
+    assert.equal(((await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: '@Lead and the favicon?', door: 'canvas' })).json as Thread).owner, 'Lead');
+  });
+
+  // Tricot restarting ends every session at once: as it stops it keeps who coordinates which board, and a session of that
+  // name that starts soon after takes the role back; a later one, or one after a stop that kept nothing, does not.
+  it("carries a coordinator's role over a restart, for a few minutes", () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'tricot-leads-'));
+    try {
+      let now = Date.now();
+      const stopping = new Leads({ dataDir, now: () => now });
+      stopping.take('board-a', 'Lead', 'session-1');
+      stopping.carryOut();
+      now += 30_000;
+      const started = new Leads({ dataDir, now: () => now });
+      assert.equal(existsSync(leadsFile(dataDir)), false, 'read once');
+      assert.equal(started.holds('board-a', 'Lead'), false, 'no one coordinates until a session of its name starts');
+      assert.equal(started.resume('Other', 'session-2'), false);
+      assert.equal(started.resume('Lead', 'session-3'), true);
+      assert.equal(started.holds('board-a', 'Lead'), true);
+      started.carryOut();
+      now += RESUME_MS + 1_000;
+      assert.equal(new Leads({ dataDir, now: () => now }).resume('Lead', 'session-4'), false, 'too long after the stop');
+    } finally {
+      removeScratch(dataDir);
+    }
   });
 });
 

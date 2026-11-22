@@ -29,6 +29,7 @@ import { createMcpServer, type McpOptions } from './mcp';
 import { Hangups } from './mcp/hangups';
 import { ToolGroups } from './mcp/toolGroups';
 import { PairingSessions } from './pairing';
+import type { Leads } from './leads';
 import { Presence } from './presence';
 import { Seats, type SeatNews } from './seats';
 import { createLeasesRouter } from './leasesRoutes';
@@ -83,6 +84,9 @@ export function createApp(
     seats?: Seats;
     // The agent commands that need this board (leases.ts). None: no lease is served.
     leases?: Leases;
+    // The boards agents connected on their own coordinate (leads.ts), which
+    // startServer carries over a restart. None: kept in memory (tests).
+    leads?: Leads;
     // The model and thinking level each agent starts on (agentRules.ts), kept
     // in the data folder: startServer gives them. None: kept in memory (tests).
     agentRules?: AgentRulesStore;
@@ -139,6 +143,7 @@ export function createApp(
         console.error('Checking first looks failed:', error);
       }
     },
+    options.leads,
   );
   // Agents present on a board can be mentioned and assigned before they've written to it.
   store.presentAgents = (key) => presence.list(key).map((a) => a.name);

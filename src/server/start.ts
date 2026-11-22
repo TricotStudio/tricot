@@ -16,6 +16,7 @@ import { securePrivateDir } from '../platform/dataDir';
 import { takeFailure, type Command } from '../install/handoff';
 import { builtPagePolicy, devPagePolicy } from './headers';
 import { Leases } from './leases';
+import { Leads } from './leads';
 import type { ToolGroups } from './mcp/toolGroups';
 import { acquireLock, publishLock, releaseLock } from '../platform/lock';
 import { osHome } from '../platform/paths';
@@ -153,9 +154,11 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
     // The model and thinking level each agent starts on (agentRules.ts), kept in the data folder too.
     const agentRules = new AgentRulesStore({ dataDir });
     const leases = new Leases({ stopWhenUnused: options.stopWhenUnused, goneMs: options.leaseGoneMs });
+    // The boards agents connected on their own coordinate (leads.ts), carried over a restart through the data folder.
+    const leads = new Leads({ dataDir });
     // An area's files, from the repository the board's agents were started in (commitFiles.ts).
     const commitFiles = new CommitFiles(dataDir);
-    const app = createApp(store, { host, mcpUrl, connectors, version: options.version, source: options.source, token, liveSteps, pagePolicy, folder, updates, sites, seats, leases, agentRules, commitFiles, chooseFolder: () => chooseFolder(osHome()), ...(options.cli && { cli: options.cli }), ...(options.parts && { parts: options.parts }), ...(options.toolGroups && { toolGroups: options.toolGroups }) });
+    const app = createApp(store, { host, mcpUrl, connectors, version: options.version, source: options.source, token, liveSteps, pagePolicy, folder, updates, sites, seats, leases, leads, agentRules, commitFiles, chooseFolder: () => chooseFolder(osHome()), ...(options.cli && { cli: options.cli }), ...(options.parts && { parts: options.parts }), ...(options.toolGroups && { toolGroups: options.toolGroups }) });
     const httpServer = createServer(app);
     if (options.setupWeb) {
       await options.setupWeb(app, httpServer);
@@ -196,6 +199,7 @@ export async function startServer(options: StartOptions): Promise<RunningServer>
         leases.stop();
         await sites?.close();
         await store.flush();
+        leads.carryOut();
         releaseLock(dataDir);
         httpServer.closeAllConnections();
         await new Promise<void>((resolve) => httpServer.close(() => resolve()));

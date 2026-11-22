@@ -108,29 +108,32 @@ export function createMcpServer(store: Store, getActor: () => Actor, given: McpO
     options.presence?.connect(name);
     const tool = agentOfMcpClient(server.server.getClientVersion()?.name)?.id;
     options.presence?.started(name, { ...(tool && { tool }), ...(runsOn && { runsOn }), ...(role && { role }) });
-    // An agent that coordinates a board already, as after its client reconnected: its role's tools from the start,
-    // for a client that doesn't hear the list change. They serve it once it listens there again and takes the role back.
-    if (options.presence?.ledBy(name)) for (const tool of leading) tool.enable();
+    // An agent connected on its own whose name coordinates a board, or did until moments ago, as after its client
+    // connected again or Tricot restarted (leads.ts): this session holds the role with it, its tools listed from the
+    // start and serving it at once, so they never leave a coordinator that stays one.
+    if (!role && !woken && options.presence?.resume(name, holder)) for (const tool of leading) tool.enable();
   };
 
   // Which agent's client this is decides how long one wait may last (session.ts longestWait).
   const client = () => server.server.getClientVersion();
   // An agent connected on its own takes a board's coordinator role as it listens there, as each agent Tricot's terminal
-  // starts is one (core/roles.ts): its coordinator's tools, made with the rest and listed from then on.
+  // starts is one (core/roles.ts): its coordinator's tools, made with the rest and listed from then on. Its name holds
+  // the role, so they serve it in every session of its name (leads.ts), and none takes them away while it stays one.
   const holder = randomUUID();
-  const leadsOn = (key: string) => Boolean(options.presence?.leads(key, getActor().name, holder));
+  const leadsOn = (key: string) => Boolean(options.presence?.coordinates(key, getActor().name));
   let leading: { enable(): void; enabled: boolean }[] = [];
+  // Whether it is to be told it coordinates the board now: its name takes the role, or this session lists its tools only now.
   const lead = async (key: string, extra: Extra): Promise<boolean> => {
     const presence = options.presence;
-    const name = getActor().name;
-    if (!presence || leadsOn(key)) return false;
-    presence.lead(key, name, holder);
-    if (leading.some((tool) => !tool.enabled)) {
+    if (!presence) return false;
+    const took = presence.lead(key, getActor().name, holder);
+    const listing = leading.some((tool) => !tool.enabled);
+    if (listing) {
       for (const tool of leading) tool.enable();
       // On the call's own stream as well, which a client hears though it opened no stream of its own for notices.
       await extra.sendNotification({ method: 'notifications/tools/list_changed' }).catch(() => {});
     }
-    return true;
+    return took || listing;
   };
   const session = createSession(store, getActor, options, {
     clientName: () => client()?.name,
@@ -142,7 +145,8 @@ export function createMcpServer(store: Store, getActor: () => Actor, given: McpO
   });
   // Its connection closed: a listener of its is told its session is gone
   // (server/listeners.ts), a Codex Tricot wakes is let go of (codexWake.ts),
-  // and a board it coordinated is left without it.
+  // and a board it coordinated is left without it, unless another session of
+  // its name holds the role, or one starts in a few minutes (leads.ts).
   server.server.onclose = () => {
     session.close();
     options.presence?.unlead(holder);
