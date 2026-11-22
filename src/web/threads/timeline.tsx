@@ -21,8 +21,10 @@ import { useRelays, type Relay } from './relays';
 import { draftMessage, isLocal, replyInThread, startThread, unsentStarts } from './send';
 import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } from './threads';
 import { ThreadsList } from './threadsList';
+import { useBall } from './ballTravel';
 import { useThreadsSeen } from './threadsSeen';
 import { ownedThreads, threadTone, WorkPanel } from './timelineWork';
+import { moveWork } from './workMotion';
 import { gutterOf, lanesOf, Unwound, Yarn, YarnBall, type Span, type Strand } from './yarn';
 import './timeline.css';
 
@@ -120,15 +122,17 @@ export function TimelineView({ board, name, route, away }: Props) {
   const [lit, setLit] = useState<string | null>(null);
   const [workShown, showWork] = useStoredFlag('tricot:home-work', () => window.innerWidth >= ROOM_FOR_WORK);
   // Folded for now by a click away or Esc, the kept choice left as it is: the next visit opens it again.
+  // Each way it folds or unfolds moves it (workMotion.ts); a visit lands on it as it is.
   const [workAway, setWorkAway] = useState(false);
   const showWorkNow = useCallback(
-    (next: boolean) => {
-      setWorkAway(false);
-      showWork(next);
-    },
+    (next: boolean) =>
+      moveWork(next ? 'open' : 'close', () => {
+        setWorkAway(false);
+        showWork(next);
+      }),
     [showWork],
   );
-  const dismissWork = useCallback(() => setWorkAway(true), []);
+  const dismissWork = useCallback(() => moveWork('close', () => setWorkAway(true)), []);
   const open = useCallback((id: string) => go.timeline(board.id, id), [board.id]);
   useThreadsOpenHere(board.id, open);
   // The board's own address lands here: it moves to Home's own, in place, so Back skips it.
@@ -397,6 +401,8 @@ function MainConversation(props: {
   const groups = useMemo(() => threadGroups(board, name, seen, Date.now()), [board, name, seen]);
   const [listOpen, setListOpen] = useState(false);
   const listButton = useRef<HTMLButtonElement>(null);
+  // The ball flies up to it from the floating bar's threads button as a view switch brings Home, and back (ballTravel.ts).
+  useBall('yarn', () => listButton.current, true);
   const [error, setError] = useState<string | null>(null);
   const { remove, toast } = useUndoDelete(name, (e) => setError(e instanceof Error ? e.message : String(e)));
 

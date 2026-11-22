@@ -114,6 +114,22 @@
   pointer-events: stroke;
   cursor: pointer;
 }
+/* The ball flying up to the top of the yarn from the floating bar's threads
+   button (ballTravel.ts): the ball here is hidden until it lands, and the
+   strands unwind from it as it does. */
+:root[data-ball-moving] .timeline-skein > .timeline-skein-button {
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ball-moving='yarn'] .yarn-unwound > g {
+    animation: yarn-unwinds 200ms linear 280ms both;
+  }
+}
+@keyframes yarn-unwinds {
+  from {
+    opacity: 0;
+  }
+}
 .timeline-skein {
   position: absolute;
   top: 10px;
@@ -906,10 +922,14 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   border-bottom: 1px solid var(--border);
 }
 /* Its button folds it into the rail, where the rail's own button is: a panel
-   shown, its side filled (as Files' panel buttons); folded, an outline. */
+   shown, its side filled (as Files' panel buttons); folded, an outline. The
+   two are drawn at the same place, 22px in from Work's right edge and 29px
+   down from its top, so the button stays put, under the pointer that pressed
+   it, as Work folds and unfolds. */
 .work-toggle {
   width: 28px;
   height: 28px;
+  margin-right: -6px;
   color: var(--muted);
 }
 .work-toggle .icon {
@@ -932,7 +952,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 16px 0;
+  padding: 19px 0 16px;
   border: none;
   background: none;
   color: var(--muted);
@@ -1242,5 +1262,214 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   .work-rail > .icon {
     order: 1;
     margin-left: auto;
+  }
+}
+
+/* ---- Work folding and unfolding (workMotion.ts) ----------------------------
+   In the dock's family (chatBar.css): its curves, its pace (--dock-pace, so
+   the two are retimed together), its contents' rise and fold
+   (dock-content-in, dock-content-out). One view transition carries it, as
+   it carries the bar docking. Unfolding, Work grows out of its rail: the
+   rail's sheet widens to the left and drops to its foot, from the top right
+   corner the two share, on the dock's curve, the rail's words fading as it
+   sets off; then the panel's head, and its groups one after another, rise
+   in as it lands, as the tools rise in their capsule. Folding, the other way
+   round: the groups fold away first, from the foot up, the head last, as
+   the tools fold away; then the sheet closes back into the rail, slow to
+   start and quickening, and lands just past its place and back, as the bar
+   closes over the tools; the rail's count and word rise in as it lands.
+   The button stays where it is throughout, at the top right.
+   The transition draws the sheet itself while it changes size, as the dock's
+   draws the bar's box, so its corners, edge and lift keep their size; the
+   pictures inside it keep theirs too, held at its top right, so the panel
+   is uncovered rather than stretched. Only pictures move, by transform and
+   opacity, and the page is not pictured: the conversation under Work stays
+   live and is never laid out again on a frame.
+   Below 900px, where Work is in the page's flow, and in a browser without
+   view transitions, the panel uncovers itself from the rail by its own
+   clip, its head and groups rising in the same; folding, they fold away
+   first and the rail comes back at once. With reduced motion it is open or
+   folded at once (workMotion.ts sets none of this). */
+
+:root {
+  --work-sheet: calc(340ms * var(--dock-pace)); /* unfolding, as the dock's panel slides in */
+  --work-fold: calc(360ms * var(--dock-pace)); /* folding, as the bar closes over the tools */
+  --work-fold-ease: cubic-bezier(0.5, 0, 0.2, 1.15); /* slow to start, quickening, just past and back */
+  --work-box-lag: calc(30ms * var(--dock-pace)); /* Work's own sheet comes back this long before the move ends */
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-work-move] {
+    view-transition-name: none; /* no picture of the page: it stays live */
+  }
+  :root[data-work-move] .work {
+    view-transition-name: home-work;
+  }
+  /* Work gives its sheet to the transition, which draws it, once the picture
+     of Work as it was is taken (workMotion.ts). */
+  :root[data-work-box] .work {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  ::view-transition-group(home-work) {
+    animation-duration: var(--work-sheet);
+    animation-timing-function: var(--dock-ease);
+  }
+  :root[data-work-move='close']::view-transition-group(home-work) {
+    animation-duration: var(--work-fold);
+    animation-timing-function: var(--work-fold-ease);
+  }
+  /* The sheet, as Work draws it (.work). Its edge is a border, so the
+     pictures are held to its outer edge, where Work's own edge is. Its own
+     animation does nothing to it: it only ends a beat before the move does,
+     when Work's own sheet comes back (workMotion.ts). */
+  ::view-transition-image-pair(home-work) {
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: work-sheet calc(var(--work-sheet) - var(--work-box-lag)) both;
+  }
+  :root[data-work-move='close']::view-transition-image-pair(home-work) {
+    animation-duration: calc(var(--work-fold) - var(--work-box-lag));
+  }
+  ::view-transition-old(home-work),
+  ::view-transition-new(home-work) {
+    inset: -1px -1px auto auto;
+    width: auto;
+    height: auto;
+    mix-blend-mode: normal;
+  }
+  /* What Work showed goes as it sets off: the rail's words, or the panel's
+     button, its groups gone already. Taken with its own sheet, which the
+     drawn one shows instead: clipped off, its edge and the pixel the
+     picture blurs it into. */
+  ::view-transition-old(home-work) {
+    clip-path: inset(2px round calc(var(--radius) - 2px));
+    animation: dock-fade-out calc(90ms * var(--dock-pace)) linear both;
+  }
+  /* What it shows is there at once, and moves on its own (below). */
+  ::view-transition-new(home-work) {
+    animation: none;
+  }
+
+  /* Unfolding, the head's words and its rule, then each group, rise in as
+     the sheet lands. The button is in place from the start. */
+  :root[data-work-move='open'] .work-head {
+    animation: work-rule-in calc(130ms * var(--dock-pace)) ease-out calc(120ms * var(--dock-pace)) both;
+  }
+  :root[data-work-move='open'] .work-head > :not(.work-toggle),
+  :root[data-work-move='open'] .work-body > * {
+    animation: dock-content-in calc(130ms * var(--dock-pace)) ease-out calc(var(--work-rise, 300ms) * var(--dock-pace)) both;
+  }
+  :root[data-work-move='open'] .work-head > :not(.work-toggle) {
+    --work-rise: 120ms;
+  }
+  :root[data-work-move='open'] .work-body > :nth-child(1) {
+    --work-rise: 150ms;
+  }
+  :root[data-work-move='open'] .work-body > :nth-child(2) {
+    --work-rise: 180ms;
+  }
+  :root[data-work-move='open'] .work-body > :nth-child(3) {
+    --work-rise: 210ms;
+  }
+  :root[data-work-move='open'] .work-body > :nth-child(4) {
+    --work-rise: 240ms;
+  }
+  :root[data-work-move='open'] .work-body > :nth-child(5) {
+    --work-rise: 270ms;
+  }
+
+  /* Folding, the groups fold away first, from the foot up, then the head's
+     words; the sheet sets off once they have (FOLD_FIRST_MS), and they stay
+     gone while it closes. */
+  :root[data-work-leaving] .work-head {
+    animation: work-rule-out calc(70ms * var(--dock-pace)) ease-in calc(60ms * var(--dock-pace)) both;
+  }
+  :root[data-work-leaving] .work-head > :not(.work-toggle),
+  :root[data-work-leaving] .work-body > * {
+    animation: dock-content-out calc(70ms * var(--dock-pace)) ease-in calc(var(--work-fold-at, 48ms) * var(--dock-pace)) both;
+  }
+  :root[data-work-leaving] .work-head > :not(.work-toggle) {
+    --work-fold-at: 60ms;
+  }
+  :root[data-work-leaving] .work-body > :nth-last-child(1) {
+    --work-fold-at: 0ms;
+  }
+  :root[data-work-leaving] .work-body > :nth-last-child(2) {
+    --work-fold-at: 12ms;
+  }
+  :root[data-work-leaving] .work-body > :nth-last-child(3) {
+    --work-fold-at: 24ms;
+  }
+  :root[data-work-leaving] .work-body > :nth-last-child(4) {
+    --work-fold-at: 36ms;
+  }
+  :root[data-work-move='close'] .work-head > :not(.work-toggle),
+  :root[data-work-move='close'] .work-body > * {
+    opacity: 0;
+  }
+  :root[data-work-move='close'] .work-head {
+    border-bottom-color: transparent;
+  }
+
+  /* Folded, the rail's count and word rise in as the sheet lands. */
+  :root[data-work-move='close'] .work-rail > :not(.icon) {
+    animation: dock-content-in calc(130ms * var(--dock-pace)) ease-out calc(230ms * var(--dock-pace)) both;
+  }
+  :root[data-work-move='close'] .work-rail > .work-rail-label {
+    animation-delay: calc(260ms * var(--dock-pace));
+  }
+  :root[data-work-plain][data-work-move='close'] .work-rail > :not(.icon) {
+    animation-delay: 0ms;
+  }
+  :root[data-work-plain][data-work-move='close'] .work-rail > .work-rail-label {
+    animation-delay: calc(30ms * var(--dock-pace));
+  }
+
+  /* Without the transition: the panel uncovers itself from the rail. Its
+     lift shows once it is open. */
+  :root[data-work-plain][data-work-move='open'] .work {
+    animation: work-unfold var(--work-sheet) var(--dock-ease) backwards;
+  }
+}
+
+@keyframes work-sheet {
+  to {
+    border-radius: var(--radius);
+  }
+}
+@keyframes work-rule-in {
+  from {
+    border-bottom-color: transparent;
+  }
+}
+@keyframes work-rule-out {
+  to {
+    border-bottom-color: transparent;
+  }
+}
+@keyframes work-unfold {
+  from {
+    clip-path: inset(0 0 calc(100% - 128px) calc(100% - 44px) round var(--radius));
+  }
+  to {
+    clip-path: inset(0 round var(--radius));
+  }
+}
+/* In the page's flow, a line folded: the panel drops open from it. */
+@media (max-width: 900px) {
+  @keyframes work-unfold {
+    from {
+      clip-path: inset(0 0 calc(100% - 46px) 0);
+    }
+    to {
+      clip-path: inset(0);
+    }
   }
 }

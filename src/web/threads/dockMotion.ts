@@ -29,14 +29,14 @@ const BOX = '::view-transition-image-pair(chat-bar)';
 
 let moving = 0; // the latest move, so an earlier one's end doesn't end it
 
-function reducedMotion(): boolean {
+export function reducedMotion(): boolean {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 // The move's pace (--dock-pace, chatBar.css), which scales all its timings,
 // so these timers keep in step with the motion they wait for. Full length
-// without it.
-function pace(): number {
+// without it. Work's folding on Home moves at the same pace (workMotion.ts).
+export function pace(): number {
   const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-pace'));
   return value > 0 ? value : 1;
 }

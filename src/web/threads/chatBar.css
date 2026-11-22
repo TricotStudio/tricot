@@ -294,6 +294,113 @@
   height: 24px;
   background: var(--border);
 }
+/* The button's place, with the rule after it (ThreadsButton). Every floating
+   bar keeps it, shut where the bar has no button (Home's, whose ball of yarn
+   tops its yarn), so the button comes and goes with the view, as the drawing
+   tools do. Shut, it takes no room: its column shuts (0fr), and its margin
+   cancels the bar's gap after it. */
+.chat-ball {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 0fr);
+  margin-right: -8px;
+}
+.chat-ball.is-shown {
+  grid-template-columns: minmax(0, 1fr);
+  margin-right: 0;
+}
+.chat-ball-in {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-ball:not(.is-shown) :is(.chat-threads, .chat-sep) {
+  opacity: 0;
+}
+.chat-ball:not(.is-shown) .chat-threads {
+  transform: scale(0.6);
+}
+/* In the drawing tools' family, and in step with them when both come or go
+   (Sketchbook to Home and back): the same durations and curves, so the field
+   moves as one. Coming: the field draws back as the place opens, then the
+   ball rises in, settling just past and back. Going: the ball folds away
+   first, then the field closes over its place, slow to start and quickening,
+   and lands just past its edge and back. A bar that never had it
+   (`was-shown` unset) has no going to play. Between the bar and Home's yarn,
+   the ball flies instead (ballTravel.ts, below): the place opens or closes as
+   here, the ball in it hidden. */
+@media (prefers-reduced-motion: no-preference) {
+  .chat-ball {
+    transition:
+      grid-template-columns 320ms var(--ease-out),
+      margin-right 320ms var(--ease-out);
+  }
+  .chat-ball :is(.chat-threads, .chat-sep) {
+    transition:
+      transform 300ms var(--dock-settle) 110ms,
+      opacity 160ms linear 110ms,
+      background 0.12s,
+      color 0.12s;
+  }
+  .chat-ball:not(.is-shown) {
+    transition: none;
+  }
+  .chat-ball:not(.is-shown) :is(.chat-threads, .chat-sep) {
+    transition:
+      transform 120ms var(--ease-exit),
+      opacity 120ms linear,
+      background 0.12s,
+      color 0.12s;
+  }
+  .chat-ball.was-shown {
+    animation: ball-close 460ms;
+  }
+}
+/* The ball flying between the bar and the top of Home's yarn (ballTravel.ts):
+   a layer over the page with a picture of each, the bar's and the yarn's, the
+   first fading as the other shows, moved and scaled on each frame. The ball
+   it lands on is hidden till then, and, coming into the bar, rises no more. */
+.ball-travel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-floating);
+  transform-origin: 0 0;
+  pointer-events: none;
+  font-size: 14px;
+}
+.ball-travel > div {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+:root[data-ball-moving] .chat-ball .chat-threads {
+  visibility: hidden;
+}
+:root[data-ball-moving='bar'] .chat-ball .chat-threads {
+  transition: none;
+}
+@keyframes ball-close {
+  0% {
+    grid-template-columns: minmax(0, 1fr);
+    margin-right: 0;
+    animation-timing-function: cubic-bezier(0.55, 0, 0.8, 0.2);
+  }
+  68% {
+    grid-template-columns: minmax(0, 0fr);
+    margin-right: -8px;
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  83% {
+    margin-right: -12px;
+    animation-timing-function: ease-in-out;
+  }
+  100% {
+    grid-template-columns: minmax(0, 0fr);
+    margin-right: -8px;
+  }
+}
 
 /* What goes with what's sent: blocks selected on a Sketchbook page,
    in the ink of a selected block, its ✕ letting go of them. */
