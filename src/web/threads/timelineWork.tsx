@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { planProgress } from '../../core/agentWork';
 import { clip, samePerson } from '../../core/format';
 import { shownTitle } from '../../core/threads';
@@ -6,7 +6,7 @@ import type { Board, BoardEvent, Thread } from '../../core/types';
 import { AgentWorkOn, phaseOf, StepText, stepWords, useAgents, useSteps, useWork } from '../agents';
 import type { WorkGroup, WorkRow, WorkSquare } from '../shared/boardViews';
 import { useBoardViews } from '../shared/boardViewsContext';
-import { ActorBadge } from '../shared/components';
+import { ActorBadge, Icon } from '../shared/components';
 import { go } from '../shared/pages';
 import type { StrandTone } from './yarn';
 
@@ -18,6 +18,9 @@ import type { StrandTone } from './yarn';
 // Studio does its tasks; with none, Work is the threads alone. A row opens its
 // thread in the main pane, or its card; pointing at one lights its thread's
 // strand. The thread open has its row lit, with its agent's plan under it.
+// It folds to a slim rail (its button at the top right, where the panel's own
+// is), which keeps what waits on the viewer in sight as a count: the main pane
+// takes the room. Whether it is folded is the viewer's, kept in this browser.
 
 const CORE_GROUPS: WorkGroup[] = [
   { id: 'needs-you', label: 'Needs you' },
@@ -117,9 +120,13 @@ interface Props {
   current?: string; // the thread open in the main pane
   lit: string | null;
   onLight: (thread: string | null) => void;
+  shown: boolean; // unfolded: the panel; folded, the rail
+  onShow: (shown: boolean) => void;
 }
 
-export function WorkPanel({ board, name, current, lit, onLight }: Props) {
+const WORK_ID = 'board-home-work';
+
+export function WorkPanel({ board, name, current, lit, onLight, shown, onShow }: Props) {
   const slot = useBoardViews().work();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -130,12 +137,56 @@ export function WorkPanel({ board, name, current, lit, onLight }: Props) {
   const rows: WorkRow[] = [...useThreadRows({ board, now }), ...(slot?.rows({ board, name }) ?? [])];
   const groups = groupsWith(slot?.groups ?? []);
   const open = rows.filter((r) => r.group !== 'done').length;
+  const waiting = rows.filter((r) => r.square === 'waiting').length; // on a person: needs you, in review
+  // Folding or unfolding from its button, the focus goes to the button in its place.
+  const toggle = useRef<HTMLButtonElement>(null);
+  const moved = useRef(false);
+  useLayoutEffect(() => {
+    if (moved.current) toggle.current?.focus();
+    moved.current = false;
+  }, [shown]);
+  const show = (next: boolean) => {
+    moved.current = true;
+    onLight(null); // a row pointed at goes with the panel
+    onShow(next);
+  };
+  const counts = [waiting ? `${waiting} waiting on you` : '', open ? `${open} open` : 'nothing open'].filter(Boolean).join(', ');
+
+  if (!shown) {
+    return (
+      <aside className="work is-folded" id={WORK_ID} aria-label="Work">
+        <button
+          type="button"
+          ref={toggle}
+          className="work-rail"
+          aria-expanded={false}
+          aria-controls={WORK_ID}
+          aria-label={`Show Work: ${counts}`}
+          title={`Show Work: ${counts}`}
+          onClick={() => show(true)}
+        >
+          <Icon name="panel-right" />
+          {waiting > 0 && (
+            <span className="work-rail-count" aria-hidden>
+              {waiting}
+            </span>
+          )}
+          <span className="work-rail-label" aria-hidden>
+            Work
+          </span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
-    <aside className="work" aria-label="Work">
+    <aside className="work" id={WORK_ID} aria-label="Work">
       <header className="work-head">
         <h2>Work</h2>
         <span className="work-open">{open ? `${open} open` : 'Nothing open'}</span>
+        <button type="button" ref={toggle} className="icon-button work-toggle" aria-expanded aria-controls={WORK_ID} onClick={() => show(false)} title="Hide Work" aria-label="Hide Work">
+          <Icon name="panel-right" />
+        </button>
       </header>
       <div className="work-body">
         {rows.length === 0 && (

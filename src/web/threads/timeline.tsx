@@ -11,7 +11,7 @@ import { planProgress } from '../../core/agentWork';
 import { api } from '../shared/api';
 import type { Away } from '../shared/boardHost';
 import { Icon } from '../shared/components';
-import { useReadOnly } from '../shared/hooks';
+import { useReadOnly, useStoredFlag } from '../shared/hooks';
 import { go, linkTo, replaceAddress, type BoardRoute } from '../shared/pages';
 import { ChatBar } from './chatBar';
 import { replyPlaceholder } from './chatDoor';
@@ -86,8 +86,12 @@ interface Props {
   away: Away;
 }
 
+// Work starts shown where there is room beside the conversation, and folded where it would sit under it.
+const ROOM_FOR_WORK = 900;
+
 export function TimelineView({ board, name, route, away }: Props) {
   const [lit, setLit] = useState<string | null>(null);
+  const [workShown, showWork] = useStoredFlag('tricot:home-work', () => window.innerWidth > ROOM_FOR_WORK);
   const open = useCallback((id: string) => go.timeline(board.id, id), [board.id]);
   useThreadsOpenHere(board.id, open);
   // The board's own address lands here: it moves to Home's own, in place, so Back skips it.
@@ -113,7 +117,7 @@ export function TimelineView({ board, name, route, away }: Props) {
   });
   const strands = ownedThreads(board).map(strandOf);
   return (
-    <section className="board-timeline" aria-label="Home">
+    <section className={`board-timeline${workShown ? '' : ' is-work-folded'}`} aria-label="Home">
       <div className="timeline-main">
         {thread ? (
           <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={thread.owner && thread.status ? strandOf(thread) : undefined} onSeeItem={away.markSeen} />
@@ -121,7 +125,7 @@ export function TimelineView({ board, name, route, away }: Props) {
           <MainConversation key={board.id} board={board} name={name} away={away} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
         )}
       </div>
-      <WorkPanel board={board} name={name} current={thread?.id} lit={lit} onLight={setLit} />
+      <WorkPanel board={board} name={name} current={thread?.id} lit={lit} onLight={setLit} shown={workShown} onShow={showWork} />
     </section>
   );
 }
