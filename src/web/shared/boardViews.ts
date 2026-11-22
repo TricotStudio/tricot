@@ -225,9 +225,10 @@ export interface WorkGroup {
   quiet?: boolean; // its rows a line each, the latest few shown until asked for the rest (as Done is)
 }
 
-// Its marker, in the colour of where it stands: a person's turn (amber), at work, not started yet (hollow), done
-// (green), or set aside for later (dotted).
-export type WorkSquare = 'waiting' | 'working' | 'todo' | 'done' | 'later';
+// Its marker, in the colour of where it stands, from the one map of the status colours (styles/base.css,
+// `--status-*`): not started yet (to do), at work (in progress), a person's turn (in review), blocked, done,
+// or set aside for later (to do's, hollow).
+export type WorkSquare = 'todo' | 'working' | 'waiting' | 'blocked' | 'done' | 'later';
 
 // A row of Work: a piece of work where it stands.
 export interface WorkRow {

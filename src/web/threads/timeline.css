@@ -19,8 +19,6 @@
   display: flex;
   flex-direction: column;
   --column: 720px;
-  /* A thread at work: the yarn's neutral, between the text and the paper. */
-  --strand-work: color-mix(in srgb, var(--muted) 78%, var(--bg));
 }
 .timeline-main {
   position: relative;
@@ -192,6 +190,11 @@
   flex: none;
   color: var(--faint);
 }
+.yarn-label.is-back .icon {
+  flex: none;
+  font-size: 14px;
+  color: var(--muted);
+}
 /* What the keyboard is on: the strand's ring, drawn by the yarn, names it;
    the list itself is for a screen reader. */
 .yarn-keys {
@@ -233,8 +236,7 @@
   color: var(--muted);
   pointer-events: none;
 }
-.yarn-hint kbd,
-.strand-peek-foot kbd {
+.yarn-hint kbd {
   display: inline-grid;
   place-items: center;
   min-width: 20px;
@@ -249,109 +251,6 @@
 }
 .yarn-hint kbd + kbd {
   margin-left: -2px;
-}
-
-/* ---- a strand picked up: its peek, beside the yarn ----------------------- */
-
-.strand-peek {
-  position: absolute;
-  left: max(16px, calc(var(--column-left) - 24px));
-  z-index: 4;
-  width: min(460px, calc(100% - 48px));
-  max-height: min(520px, calc(100% - 140px));
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  font-size: 13.5px;
-}
-.strand-peek-head {
-  flex: none;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: start;
-  column-gap: 10px;
-  padding: 12px 10px 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-.strand-peek-head > .work-square {
-  margin-top: 7px;
-}
-.strand-peek-title h3 {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 14.5px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-.strand-peek-who {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 3px 0 0;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.strand-peek-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.strand-peek-now {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.strand-peek-step {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.strand-peek-progress {
-  flex: 1;
-  margin: 0;
-}
-.strand-peek-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 10px 14px;
-}
-.strand-peek-earlier {
-  margin: 0 0 10px;
-  font-size: 12.5px;
-  color: var(--faint);
-}
-.strand-peek-messages > * + * {
-  margin-top: 14px;
-}
-.strand-peek .thread-message .thread-prose,
-.strand-peek .thread-message .thread-bubble {
-  font-size: 13.5px;
-  line-height: 1.5;
-}
-.strand-peek-foot {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 8px 8px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: var(--surface-2);
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.strand-peek-foot > span {
-  margin-right: auto;
 }
 
 /* The bar's chip, aimed at a thread: a long name ends in an ellipsis. */
@@ -549,12 +448,9 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* Waiting on you: its square in review's violet, its words in the amber that says so, as Work's Needs you. */
 .timeline-sent-state.is-waiting {
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-  background: var(--open-bg);
   color: var(--open-ink);
-  font-size: 11.5px;
   font-weight: 500;
 }
 
@@ -920,7 +816,9 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   color: var(--text);
 }
 
-/* A square in the colour of where work stands, as its strand is drawn. */
+/* A square in the colour of where work stands, as its strand is drawn: the
+   one map of the status colours (styles/base.css) that a part's cards read
+   too. For later is to do's, hollow. */
 .work-square {
   flex: none;
   display: inline-block;
@@ -929,23 +827,24 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   border-radius: 2px;
   background: var(--faint);
 }
-.work-square.is-waiting {
-  background: var(--open);
+.work-square.is-todo {
+  background: var(--status-to-do);
 }
 .work-square.is-working {
-  background: var(--strand-work);
+  background: var(--status-in-progress);
+}
+.work-square.is-waiting {
+  background: var(--status-in-review);
+}
+.work-square.is-blocked {
+  background: var(--status-blocked);
 }
 .work-square.is-done {
-  background: var(--decided);
-}
-.work-square.is-todo {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--faint);
+  background: var(--status-done);
 }
 .work-square.is-later {
   background: transparent;
-  outline: 1.5px dotted var(--faint);
-  outline-offset: -1.5px;
+  box-shadow: inset 0 0 0 1.5px var(--status-to-do);
 }
 
 /* ---- a narrow window: Work under the conversation -------------------------- */

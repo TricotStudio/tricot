@@ -13,6 +13,28 @@
   --pin-bg: var(--exploring-bg);
   --pin-ink: var(--exploring-ink);
 
+  /* Where a piece of work stands, in the status colours: one map that Home's
+     Work and yarn and a part's cards (their lanes, squares and chips) all
+     read, each in its three strengths. What is set aside for later takes
+     to do's, drawn hollow. A thread takes the status nearest its own: at
+     work is in progress, waiting on a person is in review, not started is
+     to do. */
+  --status-to-do: var(--deferred);
+  --status-to-do-bg: var(--deferred-bg);
+  --status-to-do-ink: var(--deferred-ink);
+  --status-in-progress: var(--exploring);
+  --status-in-progress-bg: var(--exploring-bg);
+  --status-in-progress-ink: var(--exploring-ink);
+  --status-in-review: var(--provisional);
+  --status-in-review-bg: var(--provisional-bg);
+  --status-in-review-ink: var(--provisional-ink);
+  --status-blocked: var(--danger);
+  --status-blocked-bg: var(--danger-bg);
+  --status-blocked-ink: var(--danger);
+  --status-done: var(--decided);
+  --status-done-bg: var(--decided-bg);
+  --status-done-ink: var(--decided-ink);
+
   --radius: 10px;
   --radius-sm: 6px;
   --radius-xs: 4px;

@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Icon } from '../shared/components';
 
 // The yarn beside Home's conversation (timeline.tsx): the conversation is one
 // strand, plied from the two yarns of Tricot's mark, with a knit stitch at each
@@ -12,8 +13,11 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 // (`[data-yarn-branch]`).
 // What it shows is said by the rows and by Work too; a strand is a quicker
 // way to the thread it is. Pointing at one names it beside the pointer, and a
-// click picks it up (timeline.tsx: a peek of it, and the chat bar aimed at it);
-// the strand the keyboard is on (`ring`) is ringed in focus blue and named.
+// click opens its thread in the main pane (timeline.tsx), as a control does,
+// so a panel over the board stays open for it (dismissClick.ts); the strand
+// the keyboard is on (`ring`) is ringed in focus blue and named. With a thread
+// open, the conversation's strand is the way back to it (`onBack`), as
+// "Conversation" and Esc are: pointing at it lifts it and says so.
 
 export type StrandTone = 'working' | 'waiting' | 'todo' | 'done';
 
@@ -35,7 +39,8 @@ const LANE_W = 6;
 const KNIT = 26; // how far down a strand turns from the conversation's into its lane
 const DIM = 0.28;
 
-const TONES: Record<StrandTone, string> = { working: 'var(--strand-work)', waiting: 'var(--open)', todo: 'var(--faint)', done: 'var(--decided)' };
+// Each in the status colour of the task status nearest it (styles/base.css), as its square in Work is.
+const TONES: Record<StrandTone, string> = { working: 'var(--status-in-progress)', waiting: 'var(--status-in-review)', todo: 'var(--status-to-do)', done: 'var(--status-done)' };
 const mix = (color: string, pct: number, other = 'var(--bg)') => `color-mix(in srgb, ${color} ${pct}%, ${other})`;
 
 // Each strand's lane, by when it ran: the lowest lane free since the strand
@@ -89,18 +94,20 @@ interface Props {
   strands: readonly Strand[];
   lanes: ReadonlyMap<string, number>;
   version: string; // changes when what the rows show does
-  lit?: string | null; // the strand pointed at, in Work or here, or picked up: the others fade
+  lit?: string | null; // the strand pointed at, in Work or here, or the keyboard is on: the others fade
   ring?: string | null; // the strand the keyboard is on
   focus?: Strand | 'trunk'; // a thread open: its strand alone beside its messages, or the conversation's for one of its own
-  onPick?: (id: string, at: { clientY: number }) => void;
+  onPick?: (id: string) => void;
   onLight?: (id: string | null) => void;
+  onBack?: () => void; // a thread open: a click on the conversation's strand goes back to it
 }
 
-export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight }: Props) {
+export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight, onBack }: Props) {
   const uid = useId().replace(/[^\w-]/g, '');
   const svg = useRef<SVGSVGElement>(null);
   const [laid, setLaid] = useState<Laid | null>(null);
   const [pointed, setPointed] = useState<{ id: string; y: number } | null>(null); // the strand under the pointer, and where
+  const [backAt, setBackAt] = useState<number | null>(null); // where the pointer is on the conversation's strand, with a thread open
   useLayoutEffect(() => {
     const yarn = svg.current;
     const el = yarn?.parentElement;
@@ -190,13 +197,14 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       <path
         key={`h${s.id}`}
         className="yarn-hit"
+        role="button"
         d={d}
         fill="none"
         stroke="transparent"
         strokeWidth={14}
-        onClick={(e) => {
-          setPointed(null); // picked up, its peek names it
-          onPick(s.id, { clientY: e.clientY });
+        onClick={() => {
+          setPointed(null);
+          onPick(s.id);
         }}
         onPointerEnter={(e) => {
           setPointed({ id: s.id, y: yOf(e) });
@@ -209,6 +217,31 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
         }}
       />
     );
+  // With a thread open, the conversation's strand along `d` goes back to it:
+  // pointed at, it is lifted on a halo under it and named.
+  const trunkD = `M${TRUNK_X} -80 L ${TRUNK_X} ${height}`;
+  const back = () => {
+    if (!onBack) return;
+    if (backAt !== null) under.push(<path key="halo" d={trunkD} fill="none" style={{ stroke: mix('var(--text)', 12, 'transparent') }} strokeWidth={TRUNK_W + 10} strokeLinecap="round" />);
+    hits.push(
+      <path
+        key="back"
+        className="yarn-hit"
+        role="button"
+        d={trunkD}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={18}
+        onClick={() => {
+          setBackAt(null);
+          onBack();
+        }}
+        onPointerEnter={(e) => setBackAt(yOf(e))}
+        onPointerMove={(e) => setBackAt(yOf(e))}
+        onPointerLeave={() => setBackAt(null)}
+      />,
+    );
+  };
   // The ring round the strand the keyboard is on: its paths, drawn wider in focus blue under it.
   const rings: ReactNode[] = [];
   const ringed = (id: string, d: string) => {
@@ -221,12 +254,14 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
   if (focus === 'trunk') {
     // One of the conversation's own threads open: its messages are stitches on the conversation's strand.
     width = gutterOf(0);
+    back();
     rows.forEach((row, i) => over.push(stitch(`m${i}`, TRUNK_X, row.mark, 'trunk')));
   } else if (focus) {
     // A thread open: the conversation's strand rests behind, and the thread's runs beside its messages.
     width = gutterOf(1);
     const x = LANE_X;
-    under.push(<g key="trunk" opacity={DIM}>{strand('t', `M${TRUNK_X} -80 L ${TRUNK_X} ${height}`, 'trunk', TRUNK_W)}</g>);
+    back();
+    under.push(<g key="trunk" opacity={backAt === null ? DIM : 1}>{strand('t', trunkD, 'trunk', TRUNK_W)}</g>);
     knitOff(focus.id, -30, x, focus.tone, 1);
     lines.push(<g key="own">{strand('s', `M${x} ${KNIT - 30} L ${x} ${height}`, focus.tone, LANE_W, focus.tone === 'todo')}</g>);
     rows.forEach((row, i) => over.push(stitch(`m${i}`, x, row.mark, focus.tone)));
@@ -272,6 +307,12 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       <span className="yarn-label-status">{named.status}</span>
     </span>
   );
+  const backLabel = onBack && backAt !== null && (
+    <span className="yarn-label yarn-part is-back" style={{ left: TRUNK_X + 16, top: Math.max(0, backAt - 12) }} aria-hidden>
+      <Icon name="arrow-left" />
+      <span className="yarn-label-title">Back to the conversation</span>
+    </span>
+  );
 
   return (
     <>
@@ -284,13 +325,14 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
         <Ply id={`${uid}-fibre`} a="transparent" b="rgb(255 255 255 / 0.28)" pitch={3.5} angle={-30} />
       </defs>
       {under}
-      {(!focus || focus === 'trunk') && strand('trunk', `M${TRUNK_X} -80 L ${TRUNK_X} ${height}`, 'trunk', TRUNK_W)}
+      {(!focus || focus === 'trunk') && strand('trunk', trunkD, 'trunk', TRUNK_W)}
       {rings}
       {lines}
       {over}
       {hits}
     </svg>
     {label}
+    {backLabel}
     </>
   );
 }

@@ -34,7 +34,6 @@ const ICONS = {
   'arrow-right': <path d="M3 8h10M9 4l4 4-4 4" />,
   'arrow-left': <path d="M13 8H3M7 4 3 8l4 4" />,
   'arrow-up': <path d="M8 13V3M4 7l4-4 4 4" />,
-  'arrow-down': <path d="M8 3v10M4 9l4 4 4-4" />,
   'arrow-up-left': <path d="M11.5 11.5 4.5 4.5M4.5 10V4.5H10" />,
   'chevron-down': <path d="m4.5 6.25 3.5 3.5 3.5-3.5" />,
   'chevron-left': <path d="M9.75 4.5 6.25 8l3.5 3.5" />,

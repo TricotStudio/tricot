@@ -35,7 +35,7 @@ const CORE_GROUPS: WorkGroup[] = [
 ];
 const QUIET_SHOWN = 3;
 
-const SQUARE_WORDS: Record<WorkSquare, string> = { waiting: 'Waiting on a person', working: 'At work', todo: 'Not started', done: 'Done', later: 'For later' };
+const SQUARE_WORDS: Record<WorkSquare, string> = { waiting: 'Waiting on a person', blocked: 'Blocked', working: 'At work', todo: 'Not started', done: 'Done', later: 'For later' };
 
 // The groups, the core's with a part's placed among them.
 function groupsWith(added: readonly WorkGroup[]): WorkGroup[] {
@@ -143,7 +143,7 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow, o
   const rows: WorkRow[] = [...useThreadRows({ board, now }), ...(slot?.rows({ board, name }) ?? [])];
   const groups = groupsWith(slot?.groups ?? []);
   const open = rows.filter((r) => r.group !== 'done').length;
-  const waiting = rows.filter((r) => r.square === 'waiting').length; // on a person: needs you, in review
+  const waiting = rows.filter((r) => r.square === 'waiting' || r.square === 'blocked').length; // on a person: needs you, in review, blocked
   // Folding or unfolding from its button, the focus goes to the button in its place.
   const toggle = useRef<HTMLButtonElement>(null);
   const moved = useRef(false);
