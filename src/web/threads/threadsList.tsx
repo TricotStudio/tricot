@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { clip, samePerson } from '../../core/format';
 import { withoutLeadingMentions } from '../../core/mentions';
 import { madeInWords, type ThreadEntry, type ThreadGroups } from '../../core/threadList';
@@ -34,10 +34,11 @@ interface Props {
   onDelete: (thread: Thread) => void;
   onClose?: (escape: boolean) => void; // the popover's
   toggle?: RefObject<HTMLElement | null>; // the button that opens the popover, which toggles it
+  mark?: (thread: Thread) => ReactNode; // beside a row's time: on a board's Home, its strand's square
 }
 
 export function ThreadsList(props: Props) {
-  const { groups, name, current, readOnly, page, onOpen, onNew, onDelete, onClose, toggle } = props;
+  const { groups, name, current, readOnly, page, onOpen, onNew, onDelete, onClose, toggle, mark } = props;
   const root = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const [allEarlier, setAllEarlier] = useState(false);
@@ -69,7 +70,17 @@ export function ThreadsList(props: Props) {
   const none = waiting.length + recent.length + earlier.length === 0;
   const earlierShown = allEarlier ? earlier : earlier.slice(0, EARLIER_SHOWN);
   const row = (entry: ThreadEntry, compact = false) => (
-    <ThreadRow key={entry.thread.id} entry={entry} name={name} compact={compact} current={entry.thread.id === current} readOnly={readOnly} onOpen={() => onOpen(entry.thread.id)} onDelete={() => onDelete(entry.thread)} />
+    <ThreadRow
+      key={entry.thread.id}
+      entry={entry}
+      name={name}
+      compact={compact}
+      current={entry.thread.id === current}
+      readOnly={readOnly}
+      mark={mark?.(entry.thread)}
+      onOpen={() => onOpen(entry.thread.id)}
+      onDelete={() => onDelete(entry.thread)}
+    />
   );
   return (
     <div className={`threads-pop${page ? ' is-page' : ''}`} ref={root} role={page ? 'region' : 'dialog'} aria-label="Threads" tabIndex={page ? -1 : undefined} onKeyDown={onKeyDown}>
@@ -120,8 +131,8 @@ export function ThreadsList(props: Props) {
 // title and what it made. Your turn is the amber square before the time; new
 // replies, the blue dot. The row's button is stretched over it, under
 // Delete, which shows on hover or focus in the time's place.
-function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; current: boolean; readOnly: boolean; onOpen: () => void; onDelete: () => void }) {
-  const { entry, name, compact, current, readOnly, onOpen, onDelete } = props;
+function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; current: boolean; readOnly: boolean; mark?: ReactNode; onOpen: () => void; onDelete: () => void }) {
+  const { entry, name, compact, current, readOnly, mark, onOpen, onDelete } = props;
   const { thread, waiting, unread } = entry;
   const title = shownTitle(thread);
   const last = thread.messages.at(-1);
@@ -144,6 +155,7 @@ function ThreadRow(props: { entry: ThreadEntry; name: string; compact: boolean; 
       </button>
       <span className="tl-end">
         {waiting ? <span className="tl-turn" aria-hidden /> : unread && <span className="new-dot" aria-hidden />}
+        {mark}
         <span className="tl-time" title={new Date(thread.updatedAt).toLocaleString()}>
           {compact ? shortDate(thread.updatedAt) : shortAgo(thread.updatedAt)}
         </span>

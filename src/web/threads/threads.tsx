@@ -797,6 +797,7 @@ export function Conversation(props: {
               name={name}
               foot={Boolean(onItsWay(d)) || i === lineAt || d.item.id === agentLine}
               arriving={d.item.author.kind === 'agent' && !opened.current!.ids.has(d.item.id)}
+              prev={drawn[i - 1]?.item}
               onOpen={onOpen}
               onEdit={onEdit}
               onThread={onThread}
@@ -843,6 +844,13 @@ export function footsOf(board: Board, thread: Thread | undefined, drawn: Drawn<T
 // conversation draws its messages with it too, several threads' in one
 // (timeline.tsx), with a tag that says where a thread was asked (`tag`), its
 // own time (`when`) and what was sent on from it (`children`).
+//
+// Read as a conversation, in every place that draws one: the viewer's own
+// messages are compact bubbles on the right, with no name; an agent's reply
+// is prose on the left at a reading size and measure, its first paragraph a
+// little heavier to skim by; another person's message reads on the left too,
+// under their name, as an agent's does. Messages from one author in a row
+// (`prev`) sit close, as one turn; turns sit well apart (threads.css).
 export function MessageRow(props: {
   board: Board;
   thread: Thread;
@@ -856,49 +864,91 @@ export function MessageRow(props: {
   onThread?: (id: string) => void;
   tag?: ReactNode;
   when?: (iso: string) => string;
+  prev?: ThreadMessage; // the message drawn just before it: one of the same author's makes this one part of their turn
+  next?: ThreadMessage; // and the one after, else the next of its thread
   children?: ReactNode;
 }) {
-  const { board, thread, drawn: d, after, name, foot, arriving, onOpen, onEdit, onThread, tag, when = timeAgo, children } = props;
+  const { board, thread, drawn: d, after, name, foot, arriving, onOpen, onEdit, onThread, tag, when = timeAgo, prev, next = after[0], children } = props;
   const message = d.item;
   const way = onItsWay(d);
   const draft = message.id === d.outgoing?.key;
   const reactions = draft || isLocal(thread) ? null : <Reactions item={message} place={{ threadId: thread.id }} name={name} />;
   const state = way === 'sending' ? ' is-sending' : way === 'failed' ? ' is-unsent' : '';
+  const mine = message.author.kind === 'human' && samePerson(message.author.name, name);
+  const turn = (other: ThreadMessage | undefined) =>
+    Boolean(other && other.author.kind === message.author.kind && samePerson(other.author.name, message.author.name) && Math.abs(Date.parse(other.at) - Date.parse(message.at)) < TURN_MS);
+  const cont = turn(prev);
+  const who = mine ? ' is-mine' : message.author.kind === 'agent' ? ' is-agent' : ' is-person';
+  const time = (
+    <span className="thread-message-time" title={new Date(message.at).toLocaleString()}>
+      {when(message.at)}
+    </span>
+  );
+  const rest = (
+    <>
+      {message.sent && <SentOn board={board} sent={message.sent} onThread={onThread} />}
+      {message.refs?.length ? <WorkCards board={board} refs={message.refs} onOpen={onOpen} /> : null}
+      {children}
+      {way || foot ? (
+        <MessageFoot board={board} where={{ thread }} said={message} after={after} onItsWay={way} outgoing={d.outgoing} onEdit={onEdit} onConnect={onOpen}>
+          {reactions}
+        </MessageFoot>
+      ) : (
+        reactions
+      )}
+    </>
+  );
+  const li = {
+    id: draft ? undefined : commentAnchor(message.id),
+    className: `thread-message${who}${cont ? ' is-cont' : ''}${arriving ? ' is-arriving' : ''}${state}`,
+    'data-at': message.at,
+    'data-message': message.id,
+    onAnimationEnd: (e: React.AnimationEvent<HTMLLIElement>) => e.currentTarget.classList.remove('is-flash'),
+  };
+  if (mine) {
+    // Yours: a bubble on the right, its time under it at the end of your turn, with what it asked for beside.
+    const last = !turn(next);
+    return (
+      <li {...li}>
+        <div className="thread-message-main">
+          <div className="thread-bubble" aria-label={`You, ${when(message.at)}`}>
+            <CommentText comment={message} />
+          </div>
+          <div className="thread-message-meta">
+            {last && tag}
+            <SaidTo board={board} said={message} />
+            {message.lens && <MessageLensChip lens={message.lens} thread={thread} />}
+            <ViaSkill via={message.via} />
+            {(last || way) && time}
+          </div>
+          {rest}
+        </div>
+      </li>
+    );
+  }
   return (
-    <li
-      id={draft ? undefined : commentAnchor(message.id)}
-      className={`thread-message${arriving ? ' is-arriving' : ''}${state}`}
-      data-at={message.at}
-      data-message={message.id}
-      onAnimationEnd={(e) => e.currentTarget.classList.remove('is-flash')}
-    >
+    <li {...li}>
       <ActorBadge actor={message.author} showName={false} />
       <div className="thread-message-main">
         <div className="thread-message-head">
           <strong>{message.author.name}</strong>
           <SaidTo board={board} said={message} />
           {message.lens && <MessageLensChip lens={message.lens} thread={thread} />}
-          <span className="thread-message-time" title={new Date(message.at).toLocaleString()}>
-            {when(message.at)}
-          </span>
+          {time}
           <ViaSkill via={message.via} />
           {tag}
         </div>
-        <CommentText comment={message} />
-        {message.sent && <SentOn board={board} sent={message.sent} onThread={onThread} />}
-        {message.refs?.length ? <WorkCards board={board} refs={message.refs} onOpen={onOpen} /> : null}
-        {children}
-        {way || foot ? (
-          <MessageFoot board={board} where={{ thread }} said={message} after={after} onItsWay={way} outgoing={d.outgoing} onEdit={onEdit} onConnect={onOpen}>
-            {reactions}
-          </MessageFoot>
-        ) : (
-          reactions
-        )}
+        <div className="thread-prose">
+          <CommentText comment={message} />
+        </div>
+        {rest}
       </div>
     </li>
   );
 }
+
+// Messages from one author this close together read as one turn.
+const TURN_MS = 10 * 60_000;
 
 // Where a coordinator sent a message on (core/roles.ts): the thread, to open.
 function SentOn({ board, sent, onThread }: { board: Board; sent: NonNullable<ThreadMessage['sent']>; onThread?: (id: string) => void }) {

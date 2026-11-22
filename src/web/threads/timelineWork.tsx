@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { planProgress } from '../../core/agentWork';
 import { clip, samePerson } from '../../core/format';
 import { shownTitle } from '../../core/threads';
@@ -7,6 +7,7 @@ import { AgentWorkOn, phaseOf, StepText, stepWords, useAgents, useSteps, useWork
 import type { WorkGroup, WorkRow, WorkSquare } from '../shared/boardViews';
 import { useBoardViews } from '../shared/boardViewsContext';
 import { ActorBadge, Icon } from '../shared/components';
+import { followPress, useDismiss } from '../shared/hooks';
 import { go } from '../shared/pages';
 import type { StrandTone } from './yarn';
 
@@ -19,8 +20,12 @@ import type { StrandTone } from './yarn';
 // thread in the main pane, or its card; pointing at one lights its thread's
 // strand. The thread open has its row lit, with its agent's plan under it.
 // It folds to a slim rail (its button at the top right, where the panel's own
-// is), which keeps what waits on the viewer in sight as a count: the main pane
-// takes the room. Whether it is folded is the viewer's, kept in this browser.
+// is), which keeps what waits on the viewer in sight as a count. Whether it is
+// folded is the viewer's, kept in this browser, from its button. Over the
+// content, it also goes as the other panels of the board do (shared/hooks.ts
+// useDismiss, followPress, dismissClick.ts): a plain click on what does
+// nothing else outside it, or Esc inside it, folds it for now, leaving the
+// choice kept as it was.
 
 const CORE_GROUPS: WorkGroup[] = [
   { id: 'needs-you', label: 'Needs you' },
@@ -121,12 +126,13 @@ interface Props {
   lit: string | null;
   onLight: (thread: string | null) => void;
   shown: boolean; // unfolded: the panel; folded, the rail
-  onShow: (shown: boolean) => void;
+  onShow: (shown: boolean) => void; // from its buttons: the viewer's choice, kept
+  onDismiss: () => void; // a click away or Esc: folded for now
 }
 
 const WORK_ID = 'board-home-work';
 
-export function WorkPanel({ board, name, current, lit, onLight, shown, onShow }: Props) {
+export function WorkPanel({ board, name, current, lit, onLight, shown, onShow, onDismiss }: Props) {
   const slot = useBoardViews().work();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -150,6 +156,26 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow }:
     onLight(null); // a row pointed at goes with the panel
     onShow(next);
   };
+  // A click away: a press outside it that does nothing else, once it is over, as for the docked conversation
+  // and the changes feed. The focus stays where the click put it. Below 900px Work is in the page's flow, not over it.
+  const panel = useRef<HTMLElement>(null);
+  const press = useRef<(() => void) | null>(null); // a click away under way: calls it off
+  const away = useCallback(
+    (escape: boolean, event: MouseEvent | KeyboardEvent) => {
+      if (escape || window.matchMedia('(max-width: 900px)').matches) return; // Esc is its own, from inside it (below)
+      const follow = followPress(event as MouseEvent, (dismissed) => {
+        press.current = null;
+        if (!dismissed) return;
+        onLight(null);
+        onDismiss();
+      });
+      if (!follow) return;
+      press.current?.();
+      press.current = follow;
+    },
+    [onDismiss, onLight],
+  );
+  useDismiss(shown, away, panel, undefined, true);
   const counts = [waiting ? `${waiting} waiting on you` : '', open ? `${open} open` : 'nothing open'].filter(Boolean).join(', ');
 
   if (!shown) {
@@ -180,7 +206,20 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow }:
   }
 
   return (
-    <aside className="work" id={WORK_ID} aria-label="Work">
+    <aside
+      ref={panel}
+      className="work"
+      id={WORK_ID}
+      aria-label="Work"
+      onKeyDown={(e) => {
+        // Esc, from anywhere in it, folds it for now, and the focus goes to the rail.
+        if (e.key !== 'Escape' || e.defaultPrevented) return;
+        e.preventDefault();
+        moved.current = true;
+        onLight(null);
+        onDismiss();
+      }}
+    >
       <header className="work-head">
         <h2>Work</h2>
         <span className="work-open">{open ? `${open} open` : 'Nothing open'}</span>

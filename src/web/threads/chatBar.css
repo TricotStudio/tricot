@@ -578,9 +578,6 @@
   padding: 18px;
   gap: 14px;
 }
-.thread-dock .thread-messages {
-  gap: 18px;
-}
 .thread-dock .thread-message .actor-mark {
   width: 26px;
   height: 26px;

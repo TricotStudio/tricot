@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
 import { samePerson } from '../../core/format';
 import { threadGroups, threadTag } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import type { Board, Thread, ThreadLens, ThreadMessage } from '../../core/types';
 import { phaseOf, useAgents, useSteps, useWork } from '../agents';
+import { StrandPeek } from './timelinePeek';
 import { onItsWay, outbox, settledKeys, useMentionable, withOutgoing, type Drawn } from '../conversation';
 import { useUndoDelete } from '../canvas';
 import { planProgress } from '../../core/agentWork';
@@ -14,7 +15,7 @@ import { Icon } from '../shared/components';
 import { useReadOnly, useStoredFlag } from '../shared/hooks';
 import { go, linkTo, replaceAddress, type BoardRoute } from '../shared/pages';
 import { ChatBar } from './chatBar';
-import { replyPlaceholder } from './chatDoor';
+import { replyingTo } from './chatDoor';
 import { lensChoices, messageLensOf } from './lensChoices';
 import { draftMessage, isLocal, replyInThread, startThread } from './send';
 import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } from './threads';
@@ -86,12 +87,23 @@ interface Props {
   away: Away;
 }
 
-// Work starts shown where there is room beside the conversation, and folded where it would sit under it.
-const ROOM_FOR_WORK = 900;
+// Work comes over the content from the right: it starts shown where the window has room for it beside the
+// conversation's column (timeline.css), and folded where it would cover some of it.
+const ROOM_FOR_WORK = 1424;
 
 export function TimelineView({ board, name, route, away }: Props) {
   const [lit, setLit] = useState<string | null>(null);
-  const [workShown, showWork] = useStoredFlag('tricot:home-work', () => window.innerWidth > ROOM_FOR_WORK);
+  const [workShown, showWork] = useStoredFlag('tricot:home-work', () => window.innerWidth >= ROOM_FOR_WORK);
+  // Folded for now by a click away or Esc, the kept choice left as it is: the next visit opens it again.
+  const [workAway, setWorkAway] = useState(false);
+  const showWorkNow = useCallback(
+    (next: boolean) => {
+      setWorkAway(false);
+      showWork(next);
+    },
+    [showWork],
+  );
+  const dismissWork = useCallback(() => setWorkAway(true), []);
   const open = useCallback((id: string) => go.timeline(board.id, id), [board.id]);
   useThreadsOpenHere(board.id, open);
   // The board's own address lands here: it moves to Home's own, in place, so Back skips it.
@@ -107,17 +119,23 @@ export function TimelineView({ board, name, route, away }: Props) {
     return () => clearInterval(timer);
   }, []);
   const thread = route.threadId ? board.threads?.find((t) => t.id === route.threadId) : undefined;
-  const strandOf = (t: Thread): Strand => ({
+  const work = useWork();
+  const strandOf = (t: Thread): Strand => {
+    const tone = threadTone(t, agents);
+    const progress = tone === 'working' ? planProgress(work.find((w) => w.thread === t.id && w.plan)?.plan) : undefined;
+    return {
     id: t.id,
-    title: `${shownTitle(t)}: ${t.owner}`,
-    tone: threadTone(t, agents),
+    title: shownTitle(t),
+    status: tone === 'waiting' ? 'needs you' : tone === 'done' ? 'done' : tone === 'todo' ? 'not started' : `at work${progress ? ` · ${progress.done}/${progress.total}` : ''}`,
+    tone,
     from: t.startedAt,
     ...(t.status === 'done' && { to: t.updatedAt }),
     live: steps.some((s) => s.thread === t.id && !s.done && phaseOf(s, now) === 'live'),
-  });
+    };
+  };
   const strands = ownedThreads(board).map(strandOf);
   return (
-    <section className={`board-timeline${workShown ? '' : ' is-work-folded'}`} aria-label="Home">
+    <section className="board-timeline" aria-label="Home">
       <div className="timeline-main">
         {thread ? (
           <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={thread.owner && thread.status ? strandOf(thread) : undefined} onSeeItem={away.markSeen} />
@@ -125,7 +143,7 @@ export function TimelineView({ board, name, route, away }: Props) {
           <MainConversation key={board.id} board={board} name={name} away={away} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
         )}
       </div>
-      <WorkPanel board={board} name={name} current={thread?.id} lit={lit} onLight={setLit} shown={workShown} onShow={showWork} />
+      <WorkPanel board={board} name={name} current={thread?.id} lit={lit} onLight={setLit} shown={workShown && !workAway} onShow={showWorkNow} onDismiss={dismissWork} />
     </section>
   );
 }
@@ -280,13 +298,74 @@ function MainConversation(props: {
     else if (atFoot.current) el.scrollTop = el.scrollHeight;
   }, [count, filter, board.id]);
 
-  // The bar: a new ask, as the chat bar's, which the coordinator answers here or sends on.
+  // A strand picked up (yarn.tsx, timelinePeek.tsx): its peek beside the yarn,
+  // and the bar aimed at its thread until it is put down (the chip's ✕, Esc,
+  // or picking up another). Where the peek sits: by the strand, in the pane.
+  const pane = useRef<HTMLDivElement>(null);
+  const [picked, setPicked] = useState<{ id: string; top: number } | null>(null);
+  const aimed = picked ? board.threads?.find((t) => t.id === picked.id && t.status) : undefined;
+  const pick = (id: string, at: { clientY: number }) => {
+    const box = pane.current?.getBoundingClientRect();
+    const top = box ? Math.max(56, Math.min(at.clientY - box.top - 48, box.height - 520)) : 56;
+    setPicked({ id, top: Math.max(56, top) });
+    onLight(null);
+    requestAnimationFrame(() => field.current?.focus({ preventScroll: true }));
+  };
+  const putDown = useCallback(() => setPicked(null), []);
+  useEffect(() => {
+    if (!picked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('[role="dialog"], .popover[open], .threads-pop')) return;
+      putDown();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [picked, putDown]);
+
+  // The keyboard on the yarn: ← → between strands, Enter picks one up, ⌘ Enter opens it, Esc goes back.
+  const order = [...visible].sort((a, b) => (lanes.get(a.id) ?? 0) - (lanes.get(b.id) ?? 0) || a.from.localeCompare(b.from)).map((s) => s.id);
+  const [ring, setRing] = useState<string | null>(null);
+  const keys = useRef<HTMLDivElement>(null);
+  const branchOf = (id: string) => scroller.current?.querySelector<HTMLElement>(`[data-yarn-branch="${CSS.escape(id)}"]`);
+  const ringOn = (id: string | null) => {
+    setRing(id);
+    if (id) branchOf(id)?.scrollIntoView({ block: 'nearest' });
+  };
+  const onYarnKey = (e: ReactKeyboardEvent) => {
+    const at = ring ? order.indexOf(ring) : -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      if (!order.length) return;
+      e.preventDefault();
+      const step = e.key === 'ArrowRight' ? 1 : -1;
+      ringOn(order[at < 0 ? 0 : (at + step + order.length) % order.length]);
+    } else if (e.key === 'Enter' && ring) {
+      e.preventDefault();
+      if (e.metaKey || e.ctrlKey) onOpen(ring);
+      else {
+        const card = branchOf(ring)?.getBoundingClientRect();
+        pick(ring, { clientY: card ? card.top + card.height / 2 : (pane.current?.getBoundingClientRect().top ?? 0) + 200 });
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (picked) putDown();
+      else keys.current?.blur();
+    }
+  };
+
+  // The bar: a new ask, as the chat bar's, which the coordinator answers here or sends on; aimed at a strand
+  // picked up, a reply in its thread, as the thread's own reply box sends it (send.ts).
   const field = useRef<HTMLInputElement>(null);
-  const [draft, setDraft] = useDraft(board.id, 'bar');
-  const lenses = useMemo(() => lensChoices(undefined), []);
+  const [draft, setDraft] = useDraft(board.id, aimed?.id ?? 'bar');
+  const lenses = useMemo(() => lensChoices(aimed?.lens), [aimed?.lens]);
+  const listening = agents.filter((a) => a.state !== 'away').map((a) => a.name);
   const send = () => {
     const { body: text, lens: asked } = splitLensCommand(draft.trim(), lenses.map((l) => l.name));
     if (!text) return;
+    if (aimed) {
+      replyInThread(aimed, name, text, asked ? messageLensOf(asked, aimed.lens) : undefined);
+      setDraft('');
+      return;
+    }
     const own = asked ? messageLensOf(asked, undefined) : undefined;
     const sending = startThread({ boardId: board.id, name, names, text, door: 'threads', lens: null, own }, (made) => {
       markSeen(made);
@@ -304,7 +383,7 @@ function MainConversation(props: {
     setDraft(lens ? `^${lens.name} ${body}` : body);
     field.current?.focus();
   };
-  // The spool: the threads list, over the bar.
+  // The skein at the top of the yarn: the threads list, dropping open under it, each row with its strand's square.
   const groups = useMemo(() => threadGroups(board, name, seen, Date.now()), [board, name, seen]);
   const [listOpen, setListOpen] = useState(false);
   const listButton = useRef<HTMLButtonElement>(null);
@@ -336,6 +415,8 @@ function MainConversation(props: {
         onEdit={editUnsent}
         onThread={onOpen}
         when={clock}
+        prev={shown[i - 1]?.drawn.item}
+        next={shown[i + 1]?.drawn.item}
         tag={
           <>
             {tag && <span className="dock-door timeline-tag">{tag}</span>}
@@ -354,8 +435,9 @@ function MainConversation(props: {
     );
   });
 
+  const aimedAgent = aimed && replyingTo(aimed, listening);
   return (
-    <div className="timeline-conversation" style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
+    <div className="timeline-conversation" ref={pane} style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
       <header className="timeline-head">
         <h2>Conversation</h2>
         <span className="timeline-with">{coordinator ? `with ${ownName(coordinator)}, the board's coordinator` : "with the board's agents"}</span>
@@ -367,43 +449,82 @@ function MainConversation(props: {
           ))}
         </div>
       </header>
-      <div
-        className="timeline-scroll"
-        ref={scroller}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          atFoot.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-          scrolls.set(board.id, { top: el.scrollTop, foot: atFoot.current });
-        }}
-      >
-        <div className="timeline-rows">
-          <Yarn strands={visible} lanes={lanes} version={`${count}:${filter}:${gutter}`} lit={lit} onPick={onOpen} onLight={onLight} />
-          {rows.length ? (
-            <ol className="thread-messages timeline-messages">{rows}</ol>
-          ) : (
-            <p className="timeline-empty">
-              {filter === 'all'
-                ? 'Nothing asked yet. Ask below: the coordinator answers here, and sends work on to agents of its own, whose threads knit off this one.'
-                : filter === 'yours'
-                  ? 'You have asked nothing here yet.'
-                  : 'Nothing has been sent on yet.'}
-            </p>
-          )}
+      <div className="timeline-scroll-wrap">
+        <div
+          className="timeline-scroll"
+          ref={scroller}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            atFoot.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            scrolls.set(board.id, { top: el.scrollTop, foot: atFoot.current });
+          }}
+        >
+          <div className="timeline-rows">
+            <Yarn strands={visible} lanes={lanes} version={`${count}:${filter}:${gutter}`} lit={lit ?? picked?.id ?? ring} ring={ring} onPick={pick} onLight={onLight} />
+            {order.length > 0 && (
+              <div
+                ref={keys}
+                className="yarn-keys yarn-part"
+                tabIndex={0}
+                role="listbox"
+                aria-label="Threads in the yarn: ← → move between them, Enter picks one up and the bar talks to it, ⌘ Enter opens it"
+                aria-activedescendant={ring ? `strand-${ring}` : undefined}
+                onFocus={() => ring ?? ringOn(picked?.id ?? order.findLast((id) => visible.find((s) => s.id === id)?.tone !== 'done') ?? order[0])}
+                onBlur={() => setRing(null)}
+                onKeyDown={onYarnKey}
+              >
+                {visible.map((s) => (
+                  <span key={s.id} id={`strand-${s.id}`} role="option" aria-selected={s.id === ring}>
+                    {s.title}, {s.status}
+                  </span>
+                ))}
+              </div>
+            )}
+            {rows.length ? (
+              <ol className="thread-messages timeline-messages">{rows}</ol>
+            ) : (
+              <p className="timeline-empty">
+                {filter === 'all'
+                  ? 'Nothing asked yet. Ask below: the coordinator answers here, and sends work on to agents of its own, whose threads knit off this one.'
+                  : filter === 'yours'
+                    ? 'You have asked nothing here yet.'
+                    : 'Nothing has been sent on yet.'}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-      {!readOnly && (
-        <div className="timeline-foot">
+        {/* The skein: where the strands begun earlier come from, and the threads list. */}
+        <div className="timeline-skein">
+          <button
+            type="button"
+            ref={listButton}
+            className="timeline-skein-button"
+            aria-expanded={listOpen}
+            aria-haspopup="dialog"
+            aria-label={groups.waiting.length ? `Threads: ${groups.waiting.length} waiting on you` : 'Threads'}
+            title={groups.waiting.length ? `Threads, ${groups.waiting.length} waiting on you` : 'Every thread'}
+            onClick={() => setListOpen((was) => !was)}
+          >
+            <Icon name="thread" />
+            {groups.waiting.length > 0 && (
+              <span className="chat-count" aria-hidden>
+                {groups.waiting.length}
+              </span>
+            )}
+          </button>
           {listOpen && (
             <ThreadsList
               groups={groups}
               name={name}
               readOnly={readOnly}
+              mark={(t) => (t.owner && t.status ? <span className={`work-square is-${threadTone(t, agents)}`} aria-hidden /> : null)}
               onOpen={(id) => {
                 setListOpen(false);
                 onOpen(id);
               }}
               onNew={() => {
                 setListOpen(false);
+                putDown();
                 field.current?.focus();
               }}
               onDelete={(gone) => remove([gone.id])}
@@ -414,17 +535,64 @@ function MainConversation(props: {
               toggle={listButton}
             />
           )}
+        </div>
+        {ring && (
+          <p className="yarn-hint" aria-hidden>
+            <kbd>←</kbd>
+            <kbd>→</kbd> strands <kbd>Enter</kbd> pick up, and the bar talks to it <kbd>⌘</kbd>
+            <kbd>Enter</kbd> open <kbd>Esc</kbd> back to the conversation
+          </p>
+        )}
+      </div>
+      {aimed && picked && (
+        <StrandPeek
+          key={aimed.id}
+          board={board}
+          name={name}
+          thread={aimed}
+          place={{ top: picked.top }}
+          onOpen={() => onOpen(aimed.id)}
+          onClose={putDown}
+          onEdit={(body, lens) => {
+            setDraft(lens ? `^${lens.name} ${body}` : body);
+            field.current?.focus();
+          }}
+        />
+      )}
+      {!readOnly && (
+        <div className="timeline-foot">
           <ChatBar
             docked={false}
             value={draft}
             onValue={setDraft}
             onSend={send}
-            placeholder={coordinator ? `Ask ${ownName(coordinator)}, or give it work…` : 'What do you want to work through?'}
-            label="Ask in the board's conversation"
+            placeholder={
+              aimed
+                ? aimedAgent
+                  ? `Reply to ${ownName(aimedAgent)} in this thread…`
+                  : 'Reply in this thread…'
+                : coordinator
+                  ? `Ask ${ownName(coordinator)}, or give it work…`
+                  : 'What do you want to work through?'
+            }
+            label={aimed ? `Reply in ${shownTitle(aimed)}` : "Ask in the board's conversation"}
             sendLabel="Send"
             field={field}
             lenses={lenses}
-            threads={{ count: groups.waiting.length, open: listOpen, onOpen: () => setListOpen((was) => !was), button: listButton }}
+            context={
+              aimed
+                ? {
+                    label: shownTitle(aimed),
+                    title: `The bar talks to “${shownTitle(aimed)}” now: what you send goes to that thread.`,
+                    icon: 'thread',
+                    remove: { label: 'Put the thread down', title: 'Put it down (Esc): the bar talks to the conversation again' },
+                    onRemove: () => {
+                      putDown();
+                      field.current?.focus();
+                    },
+                  }
+                : undefined
+            }
             error={error}
           />
         </div>
@@ -499,6 +667,7 @@ function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; 
   const readOnly = useReadOnly();
   const agents = useAgents();
   const listening = agents.filter((a) => a.state !== 'away').map((a) => a.name);
+  const agent = replyingTo(thread, listening);
   const { markSeen } = useThreadsSeen(board);
   const lastId = thread.messages.at(-1)?.id;
   useEffect(() => {
@@ -555,17 +724,25 @@ function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; 
         <Yarn strands={[]} lanes={EMPTY} version={`${thread.id}:${count}`} focus={strand ?? 'trunk'} />
       </Conversation>
       {!readOnly && (
-        <div className="timeline-foot is-docked">
+        <div className="timeline-foot">
+          {/* The one bar, aimed at the thread open: its chip's ✕ goes back to the conversation. */}
           <ChatBar
-            docked
+            docked={false}
             value={draft}
             onValue={setDraft}
             onSend={send}
-            placeholder={replyPlaceholder(thread, listening)}
+            placeholder={agent ? `Reply to ${ownName(agent)} in this thread…` : 'Reply in this thread…'}
             label={`Reply in ${thread.title}`}
             sendLabel="Send"
             field={field}
             lenses={lenses}
+            context={{
+              label: shownTitle(thread),
+              title: `The bar talks to “${shownTitle(thread)}”: what you send goes to this thread.`,
+              icon: 'thread',
+              remove: { label: 'Back to the conversation', title: 'Back to the conversation (Esc)' },
+              onRemove: back,
+            }}
             error={error}
           />
         </div>

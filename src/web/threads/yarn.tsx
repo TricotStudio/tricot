@@ -10,14 +10,17 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 // where the rows in it are once laid out: the messages (`li[data-at]`, by when
 // each was said) and the cards that say where a thread was sent on
 // (`[data-yarn-branch]`).
-// It is a picture: what it shows is said by the rows and by Work, and a strand
-// is only a quicker way to the thread it is.
+// What it shows is said by the rows and by Work too; a strand is a quicker
+// way to the thread it is. Pointing at one names it beside the pointer, and a
+// click picks it up (timeline.tsx: a peek of it, and the chat bar aimed at it);
+// the strand the keyboard is on (`ring`) is ringed in focus blue and named.
 
 export type StrandTone = 'working' | 'waiting' | 'todo' | 'done';
 
 export interface Strand {
   id: string; // the thread's
   title: string;
+  status: string; // where its work stands, in words: "at work · 2/5", "needs you"
   tone: StrandTone;
   from: string; // when it was started: where it knits off, unless a card in the rows says
   to?: string; // when its work was done: where it is tied off
@@ -60,16 +63,19 @@ interface Laid {
 }
 
 // Where the rows are in what holds them, from its top as it scrolls, and how
-// tall what it holds is: its rows, never the yarn itself, which would keep the
-// height it had once the rows are fewer.
-function measure(el: HTMLElement, yarn: Element): Laid {
+// tall what it holds is: its rows, never the yarn itself (its picture and its
+// label), which would keep the height it had once the rows are fewer.
+function measure(el: HTMLElement): Laid {
   const top = el.getBoundingClientRect().top - el.scrollTop;
-  const below = [...el.children].filter((child) => child !== yarn).map((child) => child.getBoundingClientRect().bottom - top);
+  const below = [...el.children].filter((child) => !child.classList.contains('yarn-part')).map((child) => child.getBoundingClientRect().bottom - top);
   const height = Math.max(el.clientHeight, ...below.map((bottom) => bottom + parseFloat(getComputedStyle(el).paddingBottom || '0')));
   const rows = [...el.querySelectorAll<HTMLElement>('li[data-at]')].map((row) => {
     const r = row.getBoundingClientRect();
-    const mark = (row.querySelector('.actor-mark') ?? row).getBoundingClientRect();
-    return { at: Date.parse(row.dataset.at ?? ''), top: r.top - top, bottom: r.bottom - top, mark: mark.top - top + mark.height / 2 };
+    // The stitch: at the author's mark, or the first line of a bubble of the viewer's own.
+    const badge = row.querySelector('.actor-mark');
+    const bubble = badge ? null : row.querySelector('.thread-bubble');
+    const m = (badge ?? bubble ?? row).getBoundingClientRect();
+    return { at: Date.parse(row.dataset.at ?? ''), top: r.top - top, bottom: r.bottom - top, mark: m.top - top + (badge ? m.height / 2 : 18) };
   });
   const branches: Record<string, number> = {};
   for (const card of el.querySelectorAll<HTMLElement>('[data-yarn-branch]')) {
@@ -83,22 +89,24 @@ interface Props {
   strands: readonly Strand[];
   lanes: ReadonlyMap<string, number>;
   version: string; // changes when what the rows show does
-  lit?: string | null; // the strand pointed at, in Work or here: the others fade
+  lit?: string | null; // the strand pointed at, in Work or here, or picked up: the others fade
+  ring?: string | null; // the strand the keyboard is on
   focus?: Strand | 'trunk'; // a thread open: its strand alone beside its messages, or the conversation's for one of its own
-  onPick?: (id: string) => void;
+  onPick?: (id: string, at: { clientY: number }) => void;
   onLight?: (id: string | null) => void;
 }
 
-export function Yarn({ strands, lanes, version, lit, focus, onPick, onLight }: Props) {
+export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight }: Props) {
   const uid = useId().replace(/[^\w-]/g, '');
   const svg = useRef<SVGSVGElement>(null);
   const [laid, setLaid] = useState<Laid | null>(null);
+  const [pointed, setPointed] = useState<{ id: string; y: number } | null>(null); // the strand under the pointer, and where
   useLayoutEffect(() => {
     const yarn = svg.current;
     const el = yarn?.parentElement;
     if (!yarn || !el) return;
     const again = () => {
-      const next = measure(el, yarn);
+      const next = measure(el);
       setLaid((was) => (was && JSON.stringify(was) === JSON.stringify(next) ? was : next));
     };
     again();
@@ -107,7 +115,7 @@ export function Yarn({ strands, lanes, version, lit, focus, onPick, onLight }: P
     for (const child of el.children) observer.observe(child);
     return () => observer.disconnect();
   }, [version]);
-  if (!laid) return <svg ref={svg} className="yarn" width={0} height={0} aria-hidden />;
+  if (!laid) return <svg ref={svg} className="yarn yarn-part" width={0} height={0} aria-hidden />;
 
   const { height, rows, branches } = laid;
   const last = rows.length ? Math.max(...rows.map((r) => r.bottom)) : 40;
@@ -176,6 +184,7 @@ export function Yarn({ strands, lanes, version, lit, focus, onPick, onLight }: P
   const liveDot = (key: string, x: number, y: number, opacity = 1) => (
     <circle key={key} className="yarn-live" cx={x} cy={y} r={4.5} style={{ fill: 'var(--open)', stroke: 'var(--bg)' }} strokeWidth={2.5} opacity={opacity} />
   );
+  const yOf = (event: { clientY: number }) => event.clientY - (svg.current?.getBoundingClientRect().top ?? 0);
   const hit = (s: Strand, d: string) =>
     onPick && (
       <path
@@ -185,13 +194,28 @@ export function Yarn({ strands, lanes, version, lit, focus, onPick, onLight }: P
         fill="none"
         stroke="transparent"
         strokeWidth={14}
-        onClick={() => onPick(s.id)}
-        onPointerEnter={() => onLight?.(s.id)}
-        onPointerLeave={() => onLight?.(null)}
-      >
-        <title>{s.title}</title>
-      </path>
+        onClick={(e) => {
+          setPointed(null); // picked up, its peek names it
+          onPick(s.id, { clientY: e.clientY });
+        }}
+        onPointerEnter={(e) => {
+          setPointed({ id: s.id, y: yOf(e) });
+          onLight?.(s.id);
+        }}
+        onPointerMove={(e) => setPointed({ id: s.id, y: yOf(e) })}
+        onPointerLeave={() => {
+          setPointed(null);
+          onLight?.(null);
+        }}
+      />
     );
+  // The ring round the strand the keyboard is on: its paths, drawn wider in focus blue under it.
+  const rings: ReactNode[] = [];
+  const ringed = (id: string, d: string) => {
+    if (id === ring) rings.push(<path key={`r${rings.length}`} d={d} fill="none" style={{ stroke: 'var(--focus)' }} strokeWidth={LANE_W + 6} strokeLinecap="round" />);
+  };
+  // Where each strand is, for the label that names it: its lane and where it knits off.
+  const placed = new Map<string, { x: number; y: number }>();
 
   let width: number;
   if (focus === 'trunk') {
@@ -219,17 +243,39 @@ export function Yarn({ strands, lanes, version, lit, focus, onPick, onLight }: P
       if (tied !== undefined && tied > end) tied = end;
       const top = knitAt === undefined ? -80 : knitAt + KNIT;
       const bottom = tied === undefined ? height : tied - KNIT;
-      if (knitAt !== undefined) knitOff(s.id, knitAt, x, s.tone, opacity);
-      if (bottom > top) lines.push(<g key={`l${s.id}`} opacity={opacity}>{strand('s', `M${x} ${top} L ${x} ${bottom}`, s.tone, LANE_W, s.tone === 'todo')}</g>);
-      if (tied !== undefined) tieOff(s.id, tied, x, opacity);
+      placed.set(s.id, { x, y: knitAt ?? Math.max(0, top) });
+      if (knitAt !== undefined) {
+        knitOff(s.id, knitAt, x, s.tone, opacity);
+        ringed(s.id, `M${TRUNK_X} ${knitAt} C ${TRUNK_X + 16} ${knitAt}, ${x} ${knitAt + 6}, ${x} ${knitAt + KNIT}`);
+      }
+      if (bottom > top) {
+        lines.push(<g key={`l${s.id}`} opacity={opacity}>{strand('s', `M${x} ${top} L ${x} ${bottom}`, s.tone, LANE_W, s.tone === 'todo')}</g>);
+        ringed(s.id, `M${x} ${top} L ${x} ${bottom}`);
+      }
+      if (tied !== undefined) {
+        tieOff(s.id, tied, x, opacity);
+        ringed(s.id, `M${x} ${tied - KNIT} C ${x} ${tied - 6}, ${TRUNK_X + 16} ${tied}, ${TRUNK_X} ${tied}`);
+      }
       else if (s.live) over.push(liveDot(`v${s.id}`, x, end, opacity));
       hits.push(hit(s, `M${x} ${Math.max(top - KNIT, -80)} L ${x} ${tied ?? height}`));
     }
     rows.forEach((row, i) => over.push(stitch(`m${i}`, TRUNK_X, row.mark, 'trunk')));
   }
 
+  // The label: the strand pointed at, beside the pointer; else the one the keyboard is on, where it knits off.
+  const named = pointed ? strands.find((s) => s.id === pointed.id) : ring ? strands.find((s) => s.id === ring) : undefined;
+  const at = named && (pointed?.id === named.id ? { x: placed.get(named.id)?.x ?? LANE_X, y: pointed.y } : placed.get(named.id));
+  const label = named && at && (
+    <span className="yarn-label yarn-part" style={{ left: at.x + 14, top: Math.max(0, at.y - 12) }} aria-hidden>
+      <span className={`work-square is-${named.tone}`} />
+      <span className="yarn-label-title">{named.title}</span>
+      <span className="yarn-label-status">{named.status}</span>
+    </span>
+  );
+
   return (
-    <svg ref={svg} className={`yarn${lit ? ' is-lit' : ''}`} width={width} height={height} aria-hidden>
+    <>
+    <svg ref={svg} className={`yarn yarn-part${lit ? ' is-lit' : ''}`} width={width} height={height} aria-hidden>
       <defs>
         <Ply id={`${uid}-trunk`} a="var(--brand-warp)" b="var(--brand-weft)" pitch={7} angle={34} />
         {(Object.keys(TONES) as StrandTone[]).map((tone) => (
@@ -239,10 +285,13 @@ export function Yarn({ strands, lanes, version, lit, focus, onPick, onLight }: P
       </defs>
       {under}
       {(!focus || focus === 'trunk') && strand('trunk', `M${TRUNK_X} -80 L ${TRUNK_X} ${height}`, 'trunk', TRUNK_W)}
+      {rings}
       {lines}
       {over}
       {hits}
     </svg>
+    {label}
+    </>
   );
 }
 

@@ -5,7 +5,7 @@ import { listNames } from '../../core/format';
 import { splitLensCommand } from '../../core/lensCommand';
 import { THREAD_TEXT_LIMIT } from '../../core/threads';
 import { listeningLabel } from './chatDoor';
-import { Icon, timeAgo } from '../shared/components';
+import { Icon, timeAgo, type IconName } from '../shared/components';
 import { openConnect, toolOf, useConnectedAgents, useInstalledAgents } from '../conversation';
 import { useAgents } from '../agents';
 import { useCardKinds } from '../shared/cardKindsContext';
@@ -35,8 +35,10 @@ interface Props {
   // The threads button, floating only: how many threads wait on you, and the list it opens.
   threads?: { count: number; open: boolean; onOpen: () => void; button?: RefObject<HTMLButtonElement | null> };
   // What goes with what's sent, as a chip before the field: blocks selected
-  // on a Sketchbook page ("2 blocks"), its ✕ letting go of them.
-  context?: { label: string; title: string; onRemove: () => void };
+  // on a Sketchbook page ("2 blocks"), its ✕ letting go of them; or, on a
+  // board's Home, the thread the bar is aimed at (timeline.tsx), its ✕
+  // putting the thread down.
+  context?: { label: string; title: string; onRemove: () => void; icon?: IconName; remove?: { label: string; title: string } };
   error?: string | null;
 }
 
@@ -80,9 +82,9 @@ export function ChatBar(props: Props) {
       )}
       {context && (
         <span className="chat-context" title={context.title}>
-          <Icon name="group" />
+          <Icon name={context.icon ?? 'group'} />
           <span className="chat-context-label">{context.label}</span>
-          <button type="button" className="chat-context-remove" onClick={context.onRemove} aria-label={`Leave out ${context.label}`} title="Leave them out (deselects them)">
+          <button type="button" className="chat-context-remove" onClick={context.onRemove} aria-label={context.remove?.label ?? `Leave out ${context.label}`} title={context.remove?.title ?? 'Leave them out (deselects them)'}>
             <Icon name="x" />
           </button>
         </span>

@@ -1,22 +1,40 @@
 /* A board's Home (timeline.tsx): the conversation in the main pane with its
-   yarn in the gutter beside it (yarn.tsx), and Work on the right
-   (timelineWork.tsx). A thread picked takes the main pane. */
+   yarn in the gutter beside it (yarn.tsx), and Work over it on the right
+   (timelineWork.tsx). A thread picked takes the main pane.
+
+   The bar at the foot sits where the chat bar floats on every other view
+   (chatBar.css .chat-float): centred in the tab's column, as wide as it
+   (--column), 20px off the foot, so moving between views leaves it where it
+   is. The messages are a column of that width under it, the yarn to its
+   left (--column-left, --yarn-left: where the yarn starts, from what the
+   pane holds), and Work comes over the content from the right rather than
+   pushing it aside. */
 
 .board-timeline {
   grid-column: 1;
   grid-row: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  /* A thread at work: the yarn's neutral, between the text and the paper. */
-  --strand-work: color-mix(in srgb, var(--muted) 78%, var(--bg));
-}
-.timeline-main {
   position: relative;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  --column: 720px;
+  /* A thread at work: the yarn's neutral, between the text and the paper. */
+  --strand-work: color-mix(in srgb, var(--muted) 78%, var(--bg));
+}
+.timeline-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.timeline-conversation,
+.timeline-thread {
+  --column-left: max(calc(var(--yarn-gutter) + 8px), calc((100% - var(--column)) / 2));
+  --column-right: max(24px, calc((100% - var(--column)) / 2));
+  --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
 }
 .timeline-conversation {
   position: relative;
@@ -34,7 +52,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 12px;
-  padding: 14px 28px 10px 32px;
+  padding: 14px var(--column-right) 10px var(--column-left);
 }
 .timeline-head h2 {
   margin: 0;
@@ -79,11 +97,268 @@
    fades under the head. The gutter is as wide as the yarn needs
    (--yarn-gutter, from timeline.tsx). */
 
+/* The scroller, with the skein at the top of its yarn (and the keys' hint
+   beside it) over it, not in it: they stay as the conversation scrolls. */
+.timeline-scroll-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .timeline-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+  mask-image: linear-gradient(to bottom, transparent, #000 40px);
+}
+
+/* ---- the skein: the threads list, at the top of the yarn ----------------
+   The spool the chat bar had, with its count of threads waiting on you; the
+   strands of threads begun earlier come out from under it as the top fades. */
+.timeline-skein {
+  position: absolute;
+  top: 2px;
+  left: calc(var(--yarn-left) + 14px);
+  z-index: 3;
+}
+.timeline-skein-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background-color 0.12s,
+    border-color 0.12s;
+}
+.timeline-skein-button .icon {
+  width: 18px;
+  height: 18px;
+}
+.timeline-skein-button:hover,
+.timeline-skein-button[aria-expanded='true'] {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+/* The list drops open under it, rather than rising over a bar. */
+.timeline-skein .threads-pop {
+  top: calc(100% + 6px);
+  right: auto;
+  bottom: auto;
+  left: 0;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(560px, 70vh);
+  transform-origin: 0 0;
+}
+.timeline-skein .tl-end .work-square {
+  margin-left: 2px;
+}
+
+/* ---- pointing at a strand, and the keyboard on the yarn ------------------ */
+
+.yarn-label {
+  position: absolute;
+  z-index: 2;
+  margin-left: var(--yarn-left);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.yarn-label-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.yarn-label-status {
+  flex: none;
+  color: var(--faint);
+}
+/* What the keyboard is on: the strand's ring, drawn by the yarn, names it;
+   the list itself is for a screen reader. */
+.yarn-keys {
+  position: absolute;
+  top: 0;
+  left: var(--yarn-left);
+  width: var(--yarn-gutter);
+  height: 100%;
+  pointer-events: none;
+}
+.yarn-keys:focus,
+.yarn-keys:focus-visible {
+  outline: none;
+}
+.yarn-keys > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.yarn-hint {
+  position: absolute;
+  top: 4px;
+  left: calc(var(--column-left) - 8px);
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.yarn-hint kbd,
+.strand-peek-foot kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+}
+.yarn-hint kbd + kbd {
+  margin-left: -2px;
+}
+
+/* ---- a strand picked up: its peek, beside the yarn ----------------------- */
+
+.strand-peek {
+  position: absolute;
+  left: max(16px, calc(var(--column-left) - 24px));
+  z-index: 4;
+  width: min(460px, calc(100% - 48px));
+  max-height: min(520px, calc(100% - 140px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  font-size: 13.5px;
+}
+.strand-peek-head {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: start;
+  column-gap: 10px;
+  padding: 12px 10px 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.strand-peek-head > .work-square {
+  margin-top: 7px;
+}
+.strand-peek-title h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.strand-peek-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.strand-peek-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.strand-peek-now {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.strand-peek-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strand-peek-progress {
+  flex: 1;
+  margin: 0;
+}
+.strand-peek-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px;
+}
+.strand-peek-earlier {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+.strand-peek-messages > * + * {
+  margin-top: 14px;
+}
+.strand-peek .thread-message .thread-prose,
+.strand-peek .thread-message .thread-bubble {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.strand-peek-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.strand-peek-foot > span {
+  margin-right: auto;
+}
+
+/* The bar's chip, aimed at a thread: a long name ends in an ellipsis. */
+.board-timeline .chat-context-label {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .timeline-rows {
   position: relative;
@@ -91,11 +366,10 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 36px 40px 128px var(--yarn-gutter);
+  padding: 36px var(--column-right) 128px var(--column-left);
 }
 .timeline-messages {
-  max-width: 760px;
-  gap: 18px;
+  max-width: var(--column);
 }
 .timeline-empty {
   max-width: 52ch;
@@ -105,7 +379,7 @@
 }
 .yarn {
   position: absolute;
-  left: 0;
+  left: var(--yarn-left);
   top: 0;
   z-index: 1;
   overflow: visible;
@@ -124,11 +398,16 @@
 }
 
 /* The day between messages, and where the viewer was last here. */
+.timeline-messages > .timeline-divider {
+  margin: 28px 0 2px;
+}
+.timeline-messages > .timeline-divider:first-child {
+  margin-top: 0;
+}
 .timeline-divider {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 2px 0;
   font-size: 12px;
   font-weight: 500;
   color: var(--faint);
@@ -279,14 +558,16 @@
   font-weight: 500;
 }
 
-/* The bar at the foot: floating over the conversation, beside the yarn. */
+/* The bar at the foot: floating over the conversation, where it floats on
+   every view (chatBar.css .chat-float). */
 .timeline-foot {
   position: absolute;
-  left: var(--yarn-gutter);
-  right: 40px;
-  bottom: 22px;
+  left: 0;
+  right: 0;
+  bottom: 20px;
   z-index: 2;
-  max-width: 760px;
+  width: min(var(--column), calc(100% - 48px));
+  margin-inline: auto;
   display: flex;
 }
 body:has(.timeline-foot .chat-bar) .threads-toast {
@@ -296,17 +577,19 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 /* ---- a thread, open in the main pane ------------------------------------- */
 
 .timeline-thread {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
+/* Its title over the column, the way back before it. */
 .timeline-thread-head {
   flex: none;
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 12px 28px 12px 24px;
+  padding: 12px var(--column-right) 12px max(24px, calc(var(--column-left) - 152px));
   border-bottom: 1px solid var(--border);
 }
 .timeline-thread-head .dock-title {
@@ -343,32 +626,36 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 24px 40px 24px var(--yarn-gutter);
+  padding: 24px var(--column-right) 110px var(--column-left);
   gap: 14px;
 }
 .timeline-thread .thread-messages,
 .timeline-thread .threads-quiet,
 .timeline-thread .threads-intro {
-  max-width: 760px;
-}
-.timeline-thread .thread-messages {
-  gap: 18px;
-}
-.timeline-thread .timeline-foot {
-  position: static;
-  flex: none;
-  max-width: calc(760px + var(--yarn-gutter) + 40px);
-  padding: 0 40px 18px var(--yarn-gutter);
+  max-width: var(--column);
 }
 
-/* ---- Work ---------------------------------------------------------------- */
+
+/* ---- Work ----------------------------------------------------------------
+   Over the content from the right, a floating sheet that stops above the
+   bar's row, so it never covers the bar: on a window wide enough for both,
+   it sits beside the column. */
 
 .work {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  bottom: 92px;
+  z-index: 5;
+  width: 340px;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow-lg);
 }
 .work-head {
   flex: none;
@@ -392,14 +679,11 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   opacity: 0.35;
 }
 
-/* Folded: a slim rail, the whole of it the button that unfolds it, with what
-   waits on the viewer kept in sight as an amber count. The main pane takes
-   the room. */
-.board-timeline.is-work-folded {
-  grid-template-columns: minmax(0, 1fr) 48px;
-}
+/* Folded: a slim rail at the top right, the whole of it the button that
+   unfolds it, with what waits on the viewer kept in sight as an amber count. */
 .work.is-folded {
-  overflow: hidden;
+  bottom: auto;
+  width: 44px;
 }
 .work-rail {
   flex: 1;
@@ -666,39 +950,39 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 
 /* ---- a narrow window: Work under the conversation -------------------------- */
 
-@media (max-width: 1100px) {
-  .board-timeline {
-    grid-template-columns: minmax(0, 1fr) 300px;
-  }
-}
 @media (max-width: 900px) {
+  /* The bar floats across the window's foot, as on every view here (chatBar.css). */
+  .timeline-foot {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 12px;
+    z-index: var(--z-floating);
+    width: auto;
+    margin: 0;
+  }
   .board-timeline {
-    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 76px;
   }
   .timeline-main {
     height: 72vh;
   }
-  .timeline-head,
+  .timeline-conversation,
+  .timeline-thread {
+    --column-right: 16px;
+  }
   .timeline-thread-head {
-    padding-inline: 16px;
+    padding-left: 16px;
   }
-  .timeline-rows,
-  .timeline-thread .threads-conversation {
-    padding-right: 16px;
-  }
-  .timeline-foot {
-    right: 16px;
-  }
-  .timeline-thread .timeline-foot {
-    padding-right: 16px;
-  }
-  .work {
-    border-left: none;
+  /* Work under the conversation, in the page's flow; folded, a line: Work, and what waits on you. */
+  .work,
+  .work.is-folded {
+    position: static;
+    width: auto;
+    border: none;
     border-top: 1px solid var(--border);
-  }
-  /* Under the conversation, folded is a line: Work, and what waits on you. */
-  .board-timeline.is-work-folded {
-    grid-template-columns: minmax(0, 1fr);
+    border-radius: 0;
+    box-shadow: none;
   }
   .work-rail {
     flex-direction: row;

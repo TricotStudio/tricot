@@ -106,6 +106,8 @@ const timeline = () => ({
   bar: Boolean($('.timeline-foot .chat-bar')),
   dock: Boolean($('.chat-float, aside.thread-dock')),
   yarn: Boolean($('.board-timeline svg.yarn')),
+  skein: Boolean($('.board-timeline .timeline-skein-button')),
+  spoolInBar: Boolean($('.timeline-foot .chat-threads')),
 });
 const results = {};
 const root = createRoot(document.body.appendChild(document.createElement('div')));
@@ -209,6 +211,6 @@ export interface Results {
   panel?: { open: boolean; headings: string[]; rows: string[]; notify: { label: string; on: boolean } | null };
   opened?: { panelClosed: boolean; docked: boolean; text: boolean };
   mention?: { hash: string; shown: boolean };
-  timeline: { hash: string; shown: boolean; conversation: string; work: string; bar: boolean; dock: boolean; yarn: boolean };
+  timeline: { hash: string; shown: boolean; conversation: string; work: string; bar: boolean; dock: boolean; yarn: boolean; skein: boolean; spoolInBar: boolean };
   fullAddress: BoardShown;
 }

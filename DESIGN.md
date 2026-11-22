@@ -257,7 +257,8 @@ Six soft yarns, each a status hue chalked down, are the brand's accents: for the
 - **Title** (600, 16px, 1.35): the board name in the top bar.
 - **Heading** (600, 14px): section headings in panels and thread titles. Projects panel headings step up to 15px.
 - **Body** (400, 14px, 1.5): default text, buttons (at 500), inputs, and note text on the canvas. Goals and prose cap at about 72ch.
-- **Body small** (400, 13px, 1.45): comments, thread messages, other canvas blocks' content.
+- **Body small** (400, 13px, 1.45): comments, other canvas blocks' content.
+- **Conversation** (400, 15px, 1.6, a measure of about 70 characters): thread messages, wherever a conversation is drawn (Home, the thread panel, a picked-up strand's peek). The viewer's own messages are compact bubbles on the right (the sunk sheet, 14px corners with the one at the foot of the tail at 4px, 15px at 1.5) with no name, their time under the last of a turn; an agent's reply is prose on the left under its mark and name, its first paragraph at 500; another person's reads on the left under their name, as an agent's does. A turn's messages sit 6px apart, turns 24px.
 - **Label** (500, 12px): counts, meta lines, small buttons' secondary text, actor names.
 - **Caption** (500, 11px): tags, block kinds, tab counts.
 - **Code** (400, mono, about 12px or 0.88em inline): MCP commands, ids, links, Mermaid source.
