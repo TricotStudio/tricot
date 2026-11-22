@@ -93,9 +93,15 @@ const ICONS = {
   'knitted-plug': (
     <path d="M6.25 1.5v2.25M9.75 1.5v2.25M4.75 3.75h6.5v1.5a3.25 3.25 0 0 1-6.5 0ZM8 8.5v1.75c0 3.35 3.4 3.75 3.6 1.35.09-.9-.39-1.44-1.09-1.57M6.16 12.85c-1.05.84-2.36 1.43-3.91 1.4" />
   ),
-  // A spool of thread, for the board's threads.
+  // A ball of yarn, its end running off along its foot: the board's threads,
+  // wherever they are named. It is the ball Home's strands unwind from
+  // (threads/yarn.tsx YarnBall), drawn to read at icon size: two passes one
+  // way and one across, and an end off to the right, so it is never a lens.
   thread: (
-    <path d="M4.5 1.75h7a1 1 0 0 1 0 2h-7a1 1 0 0 1 0-2ZM4.5 12.25h7a1 1 0 0 1 0 2h-7a1 1 0 0 1 0-2ZM5.25 3.75v8.5M10.75 3.75v8.5M5.25 6.25l5.5-1.25M5.25 8.75l5.5-1.25M5.25 11.25l5.5-1.25M10.75 8.5c.9 0 1.2.8 2 .8.55 0 .9-.35 1.1-.7" />
+    <>
+      <circle cx="7" cy="6.75" r="5.25" />
+      <path d="M1.81 7.55Q6.75 6.32 10.29 2.66M3.63 10.77Q8.6 9.52 12.17 5.84M3.71 2.66Q5.27 7.75 8.9 11.64M7 12h7" />
+    </>
   ),
   // A smiley with a small plus, for adding a reaction to a comment.
   react: (

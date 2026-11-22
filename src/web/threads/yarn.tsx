@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Icon } from '../shared/components';
 
 // The yarn beside Home's conversation (timeline.tsx): the conversation is one
@@ -18,6 +18,9 @@ import { Icon } from '../shared/components';
 // the keyboard is on (`ring`) is ringed in focus blue and named. With a thread
 // open, the conversation's strand is the way back to it (`onBack`), as
 // "Conversation" and Esc are: pointing at it lifts it and says so.
+// At the top, every strand that runs on past what is in view unwinds from a
+// ball of yarn (`Unwound`, `YarnBall`), pinned over the scroller, which opens
+// the threads list; the threads' icon is that ball drawn small.
 
 export type StrandTone = 'working' | 'waiting' | 'todo' | 'done';
 
@@ -42,6 +45,65 @@ const DIM = 0.28;
 // Each in the status colour of the task status nearest it (styles/base.css), as its square in Work is.
 const TONES: Record<StrandTone, string> = { working: 'var(--status-in-progress)', waiting: 'var(--status-in-review)', todo: 'var(--status-to-do)', done: 'var(--status-done)' };
 const mix = (color: string, pct: number, other = 'var(--bg)') => `color-mix(in srgb, ${color} ${pct}%, ${other})`;
+const cleanId = (id: string) => id.replace(/[^\w-]/g, '');
+
+// The plies each picture of yarn draws its lengths with, under its own `uid`.
+function Plies({ uid }: { uid: string }) {
+  return (
+    <>
+      <Ply id={`${uid}-trunk`} a="var(--brand-warp)" b="var(--brand-weft)" pitch={7} angle={34} />
+      {(Object.keys(TONES) as StrandTone[]).map((tone) => (
+        <Ply key={tone} id={`${uid}-${tone}`} a={TONES[tone]} b={mix(TONES[tone], 50)} pitch={7} angle={34} />
+      ))}
+      <Ply id={`${uid}-fibre`} a="transparent" b="rgb(255 255 255 / 0.28)" pitch={3.5} angle={-30} />
+    </>
+  );
+}
+
+// A length of yarn along `d`: its edge, its two plies and a light twist of fibre over them; dotted while not started.
+function length(uid: string, key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false): ReactNode {
+  const color = tone === 'trunk' ? 'var(--brand-warp)' : TONES[tone];
+  if (dash) return <path key={key} d={d} fill="none" style={{ stroke: color }} strokeWidth={width - 2} strokeLinecap="round" strokeDasharray="2 6" />;
+  const edge = tone === 'trunk' ? mix('var(--brand-warp)', 55, 'var(--text)') : mix(color, 70, 'var(--text)');
+  return (
+    <g key={key}>
+      <path d={d} fill="none" style={{ stroke: edge }} strokeWidth={width + 1.6} strokeLinecap="round" />
+      <path d={d} fill="none" style={{ stroke: `url(#${uid}-${tone})` }} strokeWidth={width} strokeLinecap="round" />
+      <path d={d} fill="none" style={{ stroke: `url(#${uid}-fibre)` }} strokeWidth={width - 2} strokeLinecap="round" />
+    </g>
+  );
+}
+
+// Where a strand's own lane runs, from the top of the rows: what the ball needs to unwind the ones that run on
+// past what is in view.
+export interface Span {
+  id: string;
+  x: number;
+  knit?: number; // where it knits off the conversation's strand, when that is shown
+  top: number;
+  bottom: number;
+  tone: StrandTone;
+}
+
+// Where a knit-off from the conversation's strand at `knit` to the lane at `x`
+// crosses the height `y`, and which way it runs there: so a strand unwound
+// from the ball while its knit-off is half in view meets what shows of it.
+function acrossKnit(knit: number, x: number, y: number): { x: number; dx: number; dy: number } {
+  const [x0, x1, x2, x3] = [TRUNK_X, TRUNK_X + 16, x, x];
+  const [y0, y1, y2, y3] = [knit, knit, knit + 6, knit + KNIT];
+  const at = (t: number, a: number, b: number, c: number, d: number) => (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t ** 2 * c + t ** 3 * d;
+  const slope = (t: number, a: number, b: number, c: number, d: number) => 3 * (1 - t) ** 2 * (b - a) + 6 * (1 - t) * t * (c - b) + 3 * t ** 2 * (d - c);
+  let [lo, hi] = [0, 1]; // the curve only goes down: halve to where it is at `y`
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (at(mid, y0, y1, y2, y3) < y) lo = mid;
+    else hi = mid;
+  }
+  const t = (lo + hi) / 2;
+  const [dx, dy] = [slope(t, x0, x1, x2, x3), slope(t, y0, y1, y2, y3)];
+  const n = Math.hypot(dx, dy) || 1;
+  return { x: at(t, x0, x1, x2, x3), dx: dx / n, dy: dy / n };
+}
 
 // Each strand's lane, by when it ran: the lowest lane free since the strand
 // before it there was tied off.
@@ -100,10 +162,11 @@ interface Props {
   onPick?: (id: string) => void;
   onLight?: (id: string | null) => void;
   onBack?: () => void; // a thread open: a click on the conversation's strand goes back to it
+  onSpans?: (spans: Span[]) => void; // where each strand's lane runs, as it changes
 }
 
-export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight, onBack }: Props) {
-  const uid = useId().replace(/[^\w-]/g, '');
+export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight, onBack, onSpans }: Props) {
+  const uid = cleanId(useId());
   const svg = useRef<SVGSVGElement>(null);
   const [laid, setLaid] = useState<Laid | null>(null);
   const [pointed, setPointed] = useState<{ id: string; y: number } | null>(null); // the strand under the pointer, and where
@@ -122,6 +185,16 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     for (const child of el.children) observer.observe(child);
     return () => observer.disconnect();
   }, [version]);
+  // Where the lanes run, told once drawn and only when it changed.
+  const spans = useRef<Span[]>([]);
+  const told = useRef('');
+  useLayoutEffect(() => {
+    const key = JSON.stringify(spans.current);
+    if (!onSpans || key === told.current) return;
+    told.current = key;
+    onSpans(spans.current);
+  });
+  spans.current = [];
   if (!laid) return <svg ref={svg} className="yarn yarn-part" width={0} height={0} aria-hidden />;
 
   const { height, rows, branches } = laid;
@@ -139,21 +212,7 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
   const over: ReactNode[] = [];
   const lines: ReactNode[] = [];
   const hits: ReactNode[] = [];
-  const ply = (tone: StrandTone | 'trunk') => `url(#${uid}-${tone})`;
-
-  // A length of yarn along `d`: its edge, its two plies and a light twist of fibre over them; dotted while not started.
-  const strand = (key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false) => {
-    const color = tone === 'trunk' ? 'var(--brand-warp)' : TONES[tone];
-    if (dash) return <path key={key} d={d} fill="none" style={{ stroke: color }} strokeWidth={width - 2} strokeLinecap="round" strokeDasharray="2 6" />;
-    const edge = tone === 'trunk' ? mix('var(--brand-warp)', 55, 'var(--text)') : mix(color, 70, 'var(--text)');
-    return (
-      <g key={key}>
-        <path d={d} fill="none" style={{ stroke: edge }} strokeWidth={width + 1.6} strokeLinecap="round" />
-        <path d={d} fill="none" style={{ stroke: ply(tone) }} strokeWidth={width} strokeLinecap="round" />
-        <path d={d} fill="none" style={{ stroke: `url(#${uid}-fibre)` }} strokeWidth={width - 2} strokeLinecap="round" />
-      </g>
-    );
-  };
+  const strand = (key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false) => length(uid, key, d, tone, width, dash);
   // A knit stitch, a V of two loops, where a message sits on its strand.
   const stitch = (key: string, x: number, y: number, tone: StrandTone | 'trunk') => {
     const ink = tone === 'trunk' ? mix('var(--brand-warp)', 60, 'var(--text)') : mix(TONES[tone], 70, 'var(--text)');
@@ -284,6 +343,7 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
         ringed(s.id, `M${TRUNK_X} ${knitAt} C ${TRUNK_X + 16} ${knitAt}, ${x} ${knitAt + 6}, ${x} ${knitAt + KNIT}`);
       }
       if (bottom > top) {
+        spans.current.push({ id: s.id, x, knit: knitAt, top, bottom, tone: s.tone });
         lines.push(<g key={`l${s.id}`} opacity={opacity}>{strand('s', `M${x} ${top} L ${x} ${bottom}`, s.tone, LANE_W, s.tone === 'todo')}</g>);
         ringed(s.id, `M${x} ${top} L ${x} ${bottom}`);
       }
@@ -318,11 +378,7 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     <>
     <svg ref={svg} className={`yarn yarn-part${lit ? ' is-lit' : ''}`} width={width} height={height} aria-hidden>
       <defs>
-        <Ply id={`${uid}-trunk`} a="var(--brand-warp)" b="var(--brand-weft)" pitch={7} angle={34} />
-        {(Object.keys(TONES) as StrandTone[]).map((tone) => (
-          <Ply key={tone} id={`${uid}-${tone}`} a={TONES[tone]} b={mix(TONES[tone], 50)} pitch={7} angle={34} />
-        ))}
-        <Ply id={`${uid}-fibre`} a="transparent" b="rgb(255 255 255 / 0.28)" pitch={3.5} angle={-30} />
+        <Plies uid={uid} />
       </defs>
       {under}
       {(!focus || focus === 'trunk') && strand('trunk', trunkD, 'trunk', TRUNK_W)}
@@ -344,5 +400,113 @@ function Ply({ id, a, b, pitch, angle }: { id: string; a: string; b: string; pit
       <rect width={pitch} height={pitch} style={{ fill: a }} />
       <rect width={pitch / 2} height={pitch} style={{ fill: b }} />
     </pattern>
+  );
+}
+
+// ---- the ball the strands unwind from ---------------------------------------
+
+// The ball of yarn at the top of the yarn (timeline.tsx), centred on the
+// conversation's strand, and where the strands unwound from it meet the yarn
+// as drawn, from the top of what is in view.
+const BALL = { x: TRUNK_X, y: 30, r: 17 };
+const UNWOUND = 78;
+
+// Every strand that runs on past the top of what is in view, and the
+// conversation's own, unwound from the ball around its lower right to where
+// it goes on: its lane, or what shows of its knit-off while that is half
+// under. Drawn over the scroller, not in it, on a cover of the paper that
+// hides the yarn under it, so it stays as the conversation scrolls; where the
+// strands run past is read as it scrolls. A click on one opens its thread,
+// and pointing at one lights it, as on the yarn.
+export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
+  spans: readonly Span[];
+  scroller: RefObject<HTMLElement | null>;
+  width: number; // the yarn's gutter
+  lit?: string | null;
+  onPick?: (id: string) => void;
+  onLight?: (id: string | null) => void;
+}) {
+  const uid = cleanId(useId());
+  const [scrolled, setScrolled] = useState(0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const again = () => setScrolled(el.scrollTop);
+    again();
+    el.addEventListener('scroll', again, { passive: true });
+    return () => el.removeEventListener('scroll', again);
+  }, [scroller]);
+  // Each strand running past the top, where it goes on and which way: down its lane, or along its knit-off.
+  const cut = scrolled + UNWOUND;
+  const shown = spans
+    .filter((s) => (s.knit ?? s.top) < cut && s.bottom > cut)
+    .map((s) => ({ ...s, on: s.knit !== undefined && s.top > cut ? acrossKnit(s.knit, s.x, cut) : { x: s.x, dx: 0, dy: 1 } }))
+    .sort((a, b) => a.x - b.x);
+  const { x: bx, y: by, r } = BALL;
+  return (
+    <svg className="yarn-unwound" width={width} height={UNWOUND} aria-hidden>
+      <defs>
+        <Plies uid={uid} />
+      </defs>
+      <rect className="yarn-cover" x={-8} y={0} width={width + 8} height={UNWOUND + 0.5} />
+      {shown.map((s, i) => {
+        const a = ((12 + i * (70 / Math.max(1, shown.length - 1))) * Math.PI) / 180;
+        const sx = +(bx + r * 0.8 * Math.sin(a)).toFixed(1);
+        const sy = +(by + r * 0.8 * Math.cos(a)).toFixed(1);
+        const [ex, cx, cy] = [s.on.x, s.on.x - s.on.dx * 26, UNWOUND - s.on.dy * 26].map((n) => +n.toFixed(1));
+        const d = `M${sx} ${sy} C ${sx + 6} ${sy + 14}, ${cx} ${cy}, ${ex} ${UNWOUND}`;
+        return (
+          <g key={s.id} opacity={lit && lit !== s.id ? DIM : 1}>
+            {length(uid, 's', d, s.tone, LANE_W, s.tone === 'todo')}
+            {onPick && (
+              <path
+                className="yarn-hit"
+                role="button"
+                d={d}
+                fill="none"
+                stroke="transparent"
+                strokeWidth={14}
+                onClick={() => onPick(s.id)}
+                onPointerEnter={() => onLight?.(s.id)}
+                onPointerLeave={() => onLight?.(null)}
+              />
+            )}
+          </g>
+        );
+      })}
+      {length(uid, 'trunk', `M${bx} ${by + 10} L ${bx} ${UNWOUND}`, 'trunk', TRUNK_W)}
+    </svg>
+  );
+}
+
+// The ball itself: a light core wound over with the mark's two yarns, in
+// passes at two angles, under a ring. The threads' icon (shared/components.tsx
+// `thread`) is it drawn at icon size, its end running off along the foot.
+export function YarnBall() {
+  const uid = cleanId(useId());
+  const { r } = BALL;
+  const c = r + 3; // the ball's centre in its own box, with room for the button's ring
+  const winds: ReactNode[] = [];
+  const pass = (angle: number, offsets: number[], yarn: 'warp' | 'weft', bend: number) =>
+    offsets.forEach((off) => {
+      const rad = (angle * Math.PI) / 180;
+      const [dx, dy, nx, ny, l] = [Math.cos(rad), Math.sin(rad), -Math.sin(rad), Math.cos(rad), r + 4];
+      const at = (along: number, across: number) => `${(c + nx * across + dx * along).toFixed(1)} ${(c + ny * across + dy * along).toFixed(1)}`;
+      winds.push(<path key={`${yarn}${off}`} d={`M${at(-l, off)} Q ${at(0, off + bend)} ${at(l, off)}`} fill="none" style={{ stroke: `var(--brand-${yarn})` }} strokeWidth={2} strokeLinecap="round" />);
+    });
+  pass(28, [-13, -8.5, -4, 0.5, 5, 9.5, 14], 'warp', 5);
+  pass(118, [-2, 2.5, 7, 11.5], 'weft', 4);
+  const ring = mix('var(--brand-warp)', 60, 'var(--text)');
+  return (
+    <svg className="yarn-ball" width={2 * c} height={2 * c} viewBox={`0 0 ${2 * c} ${2 * c}`} aria-hidden>
+      <defs>
+        <clipPath id={`${uid}-ball`}>
+          <circle cx={c} cy={c} r={r - 0.6} />
+        </clipPath>
+      </defs>
+      <circle cx={c} cy={c} r={r} style={{ fill: mix('var(--brand-warp)', 24) }} />
+      <g clipPath={`url(#${uid}-ball)`}>{winds}</g>
+      <circle cx={c} cy={c} r={r} fill="none" style={{ stroke: ring }} strokeWidth={1.4} />
+    </svg>
   );
 }

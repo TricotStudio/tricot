@@ -112,44 +112,65 @@
 }
 
 /* ---- the skein: the threads list, at the top of the yarn ----------------
-   The spool the chat bar had, with its count of threads waiting on you; the
-   strands of threads begun earlier come out from under it as the top fades. */
+   A ball of yarn pinned at the top of the yarn, centred on the
+   conversation's strand (yarn.tsx YarnBall), with its count of threads
+   waiting on you knotted on it. Every strand that runs on past the top
+   unwinds from it (yarn.tsx Unwound), drawn on a cover of the paper over the
+   yarn's top, so they stay as the conversation scrolls. */
+.yarn-unwound {
+  position: absolute;
+  top: 0;
+  left: var(--yarn-left);
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+.yarn-cover {
+  fill: var(--bg);
+}
+.yarn-unwound .yarn-hit {
+  pointer-events: stroke;
+  cursor: pointer;
+}
 .timeline-skein {
   position: absolute;
-  top: 2px;
+  top: 10px;
   left: calc(var(--yarn-left) + 14px);
   z-index: 3;
 }
 .timeline-skein-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--muted);
-  font: inherit;
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
-  transition:
-    color 0.12s,
-    background-color 0.12s,
-    border-color 0.12s;
+  transition: background-color 0.12s;
 }
-.timeline-skein-button .icon {
-  width: 18px;
-  height: 18px;
+.timeline-skein-button .yarn-ball {
+  display: block;
 }
 .timeline-skein-button:hover,
 .timeline-skein-button[aria-expanded='true'] {
-  border-color: var(--border);
-  background: var(--surface-2);
-  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.timeline-skein-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+/* The count, a knot on the ball's shoulder, ringed in the paper. */
+.timeline-skein-button .chat-count {
+  position: absolute;
+  top: -3px;
+  left: 24px;
+  box-shadow: 0 0 0 2.5px var(--bg);
 }
 /* The list drops open under it, rather than rising over a bar. */
 .timeline-skein .threads-pop {
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: auto;
   bottom: auto;
   left: 0;

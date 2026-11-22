@@ -220,7 +220,7 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent);
 }
 
-/* The spool at its left end, with how many threads have new replies. */
+/* The threads, a ball of yarn (the `thread` icon), at its left end, with how many wait on you. */
 .chat-threads {
   flex: none;
   position: relative;

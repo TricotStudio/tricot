@@ -21,7 +21,7 @@ import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } fr
 import { ThreadsList } from './threadsList';
 import { useThreadsSeen } from './threadsSeen';
 import { ownedThreads, threadTone, WorkPanel } from './timelineWork';
-import { gutterOf, lanesOf, Yarn, type Strand } from './yarn';
+import { gutterOf, lanesOf, Unwound, Yarn, YarnBall, type Span, type Strand } from './yarn';
 import './timeline.css';
 
 // A board's Home (the core's view 'timeline', at /home: board/coreViews.tsx).
@@ -32,8 +32,9 @@ import './timeline.css';
 // the coordinator sent an ask on, a card under it names the thread it went to
 // and where its work stands. Its yarn (yarn.tsx) runs beside it: the
 // conversation one plied strand, each thread an agent owns knitting off it
-// where it was sent on. The bar at its foot asks something new, as the chat
-// bar does, and its spool opens the threads list.
+// where it was sent on, and every strand running on past the top unwinding
+// from a ball of yarn, which opens the threads list. The bar at its foot asks
+// something new, as the chat bar does.
 //
 // A thread picked (its card, its strand, its row in Work, the threads list,
 // or anything that asks the dock to open one) opens in the main pane, at its
@@ -257,6 +258,7 @@ function MainConversation(props: {
   // Kept at the latest as messages come, unless the viewer scrolled up to
   // read, and where it was left when a thread opened over it.
   const scroller = useRef<HTMLDivElement>(null);
+  const [spans, setSpans] = useState<Span[]>([]); // where the strands' lanes run, for the ball they unwind from
   // What is on screen is seen: a thread of the conversation once its latest
   // message is in view (or the ask its coordinator's word is drawn under, as
   // the card), as its replies come. One scrolled out of sight still waits.
@@ -423,7 +425,7 @@ function MainConversation(props: {
           }}
         >
           <div className="timeline-rows">
-            <Yarn strands={visible} lanes={lanes} version={`${count}:${filter}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} />
+            <Yarn strands={visible} lanes={lanes} version={`${count}:${filter}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} />
             {order.length > 0 && (
               <div
                 ref={keys}
@@ -456,7 +458,8 @@ function MainConversation(props: {
             )}
           </div>
         </div>
-        {/* The skein: where the strands begun earlier come from, and the threads list. */}
+        {/* The skein: the ball of yarn the strands running on past the top unwind from, and the threads list. */}
+        <Unwound spans={spans} scroller={scroller} width={gutter} lit={lit ?? ring} onPick={onOpen} onLight={onLight} />
         <div className="timeline-skein">
           <button
             type="button"
@@ -468,7 +471,7 @@ function MainConversation(props: {
             title={groups.waiting.length ? `Threads, ${groups.waiting.length} waiting on you` : 'Every thread'}
             onClick={() => setListOpen((was) => !was)}
           >
-            <Icon name="thread" />
+            <YarnBall />
             {groups.waiting.length > 0 && (
               <span className="chat-count" aria-hidden>
                 {groups.waiting.length}

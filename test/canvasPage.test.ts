@@ -137,7 +137,7 @@ describe("Tricot Canvas's page, built with no registry of a part's", SKIP, () =>
     const { timeline } = results;
     assert.ok(timeline.shown && timeline.yarn && timeline.bar, JSON.stringify(timeline));
     assert.equal(timeline.dock, false, 'no floating bar or docked panel over it');
-    assert.ok(timeline.skein && !timeline.spoolInBar, 'the threads list is the skein at the top of the yarn, not a spool in the bar');
+    assert.ok(timeline.skein && !timeline.threadsInBar, 'the threads list opens from the ball at the top of the yarn, not from a button in the bar');
     assert.match(timeline.conversation, /Can you sketch the address step\?.*Sketched it on the page/);
     assert.match(timeline.work, /^Work Nothing open Nothing handed out yet/, 'no thread an agent owns, and none of the cards the board carries');
     assert.doesNotMatch(timeline.work, /T1|Wire up Stripe|review|backlog/i, timeline.work);
