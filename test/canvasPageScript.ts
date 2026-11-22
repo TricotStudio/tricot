@@ -138,8 +138,8 @@ root.render(h(${root.component}));
       // The mention opens where it is said; the answer in the conversation, on the board's Home, at the answer, which
       // it then has seen.
       rows().find((row) => row.innerText.includes('Mentioned you'))?.click();
-      await wait(300);
-      for (let i = 0; i < 40 && !document.body.innerText.includes('should the address come before the cart'); i++) await wait(100);
+      // Its words are in the bell's own row too: wait for the panel to close, then for the page to show them.
+      for (let i = 0; i < 80 && ($('.inbox.bell .inbox-panel') || !document.body.innerText.includes('should the address come before the cart')); i++) await wait(100);
       await wait(300);
       results.mention = { hash: location.hash, shown: document.body.innerText.replace(/\\s+/g, ' ').includes('should the address come before the cart') };
       $('.inbox.bell button').click();
