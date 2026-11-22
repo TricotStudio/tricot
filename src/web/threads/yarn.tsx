@@ -62,17 +62,17 @@ function Plies({ uid }: { uid: string }) {
 }
 
 // A length of yarn along `d`: its edge, its two plies and a light twist of fibre over them; dotted while not started.
-// Its ends are rounded, or cut square where it runs on into a length drawn elsewhere (`cut`), so the two meet flush.
-function length(uid: string, key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false, cut = false): ReactNode {
+// Its ends are rounded: one that runs on into a length drawn elsewhere is cut flush by a clip (Unwound), never
+// drawn with square ends, which Safari left without their plies on a straight up-and-down length.
+function length(uid: string, key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false): ReactNode {
   const color = tone === 'trunk' ? 'var(--brand-warp)' : TONES[tone];
   if (dash) return <path key={key} d={d} fill="none" style={{ stroke: color }} strokeWidth={width - 2} strokeLinecap="round" strokeDasharray="2 6" />;
   const edge = tone === 'trunk' ? mix('var(--brand-warp)', 55, 'var(--text)') : mix(color, 70, 'var(--text)');
-  const cap = cut ? 'butt' : 'round';
   return (
     <g key={key}>
-      <path d={d} fill="none" style={{ stroke: edge }} strokeWidth={width + 1.6} strokeLinecap={cap} />
-      <path d={d} fill="none" style={{ stroke: `url(#${uid}-${tone})` }} strokeWidth={width} strokeLinecap={cap} />
-      <path d={d} fill="none" style={{ stroke: `url(#${uid}-fibre)` }} strokeWidth={width - 2} strokeLinecap={cap} />
+      <path d={d} fill="none" style={{ stroke: edge }} strokeWidth={width + 1.6} strokeLinecap="round" />
+      <path d={d} fill="none" style={{ stroke: `url(#${uid}-${tone})` }} strokeWidth={width} strokeLinecap="round" />
+      <path d={d} fill="none" style={{ stroke: `url(#${uid}-fibre)` }} strokeWidth={width - 2} strokeLinecap="round" />
     </g>
   );
 }
@@ -462,36 +462,42 @@ export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
     <svg className="yarn-unwound" width={width} height={UNWOUND} aria-hidden>
       <defs>
         <Plies uid={uid} />
+        {/* Where they stop: flush, a pixel into the yarn the cover's foot shows, so they meet it without a seam. */}
+        <clipPath id={`${uid}-cut`}>
+          <rect x={-8} y={-8} width={width + 16} height={UNWOUND + 9} />
+        </clipPath>
       </defs>
       <rect className="yarn-cover" x={-8} y={0} width={width + 8} height={UNWOUND + 0.5} />
-      {shown.map((s, i) => {
-        const a = ((12 + i * (70 / Math.max(1, shown.length - 1))) * Math.PI) / 180;
-        const sx = +(bx + r * 0.8 * Math.sin(a)).toFixed(1);
-        const sy = +(by + r * 0.8 * Math.cos(a)).toFixed(1);
-        const [ex, cx, cy] = [s.on.x, s.on.x - s.on.dx * 26, UNWOUND - s.on.dy * 26].map((n) => +n.toFixed(1));
-        // On a pixel past the cover's foot, the way it goes there, and cut square: it runs on into the yarn
-        // under the cover without a seam. Its other end is under the ball.
-        const d = `M${sx} ${sy} C ${sx + 6} ${sy + 14}, ${cx} ${cy}, ${ex} ${UNWOUND} l ${+s.on.dx.toFixed(2)} ${+s.on.dy.toFixed(2)}`;
-        return (
-          <g key={s.id} opacity={lit && lit !== s.id ? DIM : 1}>
-            {length(uid, 's', d, s.tone, LANE_W, s.tone === 'todo', true)}
-            {onPick && (
-              <path
-                className="yarn-hit"
-                role="button"
-                d={d}
-                fill="none"
-                stroke="transparent"
-                strokeWidth={14}
-                onClick={() => onPick(s.id)}
-                onPointerEnter={() => onLight?.(s.id)}
-                onPointerLeave={() => onLight?.(null)}
-              />
-            )}
-          </g>
-        );
-      })}
-      {length(uid, 'trunk', `M${bx} ${by + 10} L ${bx} ${UNWOUND + 1}`, 'trunk', TRUNK_W, false, true)}
+      <g clipPath={`url(#${uid}-cut)`}>
+        {shown.map((s, i) => {
+          const a = ((12 + i * (70 / Math.max(1, shown.length - 1))) * Math.PI) / 180;
+          const sx = +(bx + r * 0.8 * Math.sin(a)).toFixed(1);
+          const sy = +(by + r * 0.8 * Math.cos(a)).toFixed(1);
+          const [ex, cx, cy] = [s.on.x, s.on.x - s.on.dx * 26, UNWOUND - s.on.dy * 26].map((n) => +n.toFixed(1));
+          // On past the cover's foot, the way it goes there, and cut flush a pixel under it (`cut`): it runs on into
+          // the yarn under the cover without a seam. Its other end is under the ball.
+          const d = `M${sx} ${sy} C ${sx + 6} ${sy + 14}, ${cx} ${cy}, ${ex} ${UNWOUND} l ${+(s.on.dx * 6).toFixed(2)} ${+(s.on.dy * 6).toFixed(2)}`;
+          return (
+            <g key={s.id} opacity={lit && lit !== s.id ? DIM : 1}>
+              {length(uid, 's', d, s.tone, LANE_W, s.tone === 'todo')}
+              {onPick && (
+                <path
+                  className="yarn-hit"
+                  role="button"
+                  d={d}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={14}
+                  onClick={() => onPick(s.id)}
+                  onPointerEnter={() => onLight?.(s.id)}
+                  onPointerLeave={() => onLight?.(null)}
+                />
+              )}
+            </g>
+          );
+        })}
+        {length(uid, 'trunk', `M${bx} ${by + 10} L ${bx} ${UNWOUND + 6}`, 'trunk', TRUNK_W)}
+      </g>
     </svg>
   );
 }
