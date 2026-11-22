@@ -110,6 +110,16 @@
   overflow-y: auto;
   mask-image: linear-gradient(to bottom, transparent, #000 40px);
 }
+/* In it, 100% is its width without its scrollbar, which takes room where the
+   system draws one (--scrollbar, measured in timeline.tsx; 0 where they float
+   over the page). Added back, the rows and the yarn stand where the head,
+   the bar and the skein over the scroller do, from the pane's whole width:
+   the strands meet the ball, and the bar stays where it is on every view. */
+.timeline-scroll {
+  --column-left: max(calc(var(--yarn-gutter) + 8px), calc((100% + var(--scrollbar, 0px) - var(--column)) / 2));
+  --column-right: calc(max(24px, calc((100% + var(--scrollbar, 0px) - var(--column)) / 2)) - var(--scrollbar, 0px));
+  --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
+}
 
 /* ---- the skein: the threads list, at the top of the yarn ----------------
    A ball of yarn pinned at the top of the yarn, centred on the
@@ -489,6 +499,317 @@
 }
 body:has(.timeline-foot .chat-bar) .threads-toast {
   bottom: 84px;
+}
+
+/* ---- relays: what of the work handed out needs the viewer ----------------
+   A card from a thread (relayCard.tsx), never the coordinator speaking: led
+   by the thread's name, with no author's badge. Its border takes the colour
+   of where its thread stands (--tone, and --ink for its words), never a
+   stripe, and the thread's strand stitches into its left edge (yarn.tsx).
+   A question is shown in full; something done, a card blocked and a question
+   answered are a line or two. */
+.relay-card,
+.relay-stack {
+  max-width: 620px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 14px;
+}
+.relay-card {
+  padding: 10px 14px 12px;
+  border-color: color-mix(in srgb, var(--tone) 50%, var(--border));
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.relay-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.relay-head > .icon {
+  flex: none;
+  font-size: 15px;
+  color: var(--faint);
+}
+.relay-thread {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.relay-thread:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.relay-label {
+  margin-right: 5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.relay-kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.relay-kind .work-square,
+.relay-row > .work-square {
+  background: var(--tone);
+}
+.relay-kind.is-blocked {
+  color: var(--status-blocked-ink);
+}
+.relay-kind.is-blocked .icon {
+  font-size: 13px;
+}
+.relay-time {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+/* A question in full, up to six lines: the thread holds the rest. */
+.relay-body {
+  max-width: 41em;
+  max-height: 9.3em;
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.relay-body > * {
+  margin: 0;
+}
+.relay-body > * + * {
+  margin-top: 6px;
+}
+.relay-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.relay-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background-color 0.12s;
+}
+.relay-btn .icon {
+  font-size: 14px;
+}
+.relay-btn:hover {
+  border-color: var(--text);
+}
+.relay-btn.is-quiet {
+  padding: 0 6px;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+.relay-btn.is-quiet:hover {
+  color: var(--text);
+}
+.relay-btn[aria-pressed='true'] {
+  border-color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, var(--surface));
+  color: var(--ink);
+}
+.relay-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.relay-hint kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+}
+/* A line: done, blocked, answered. */
+.relay-card:not(.is-asking) {
+  padding: 7px 10px 7px 14px;
+}
+.relay-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding-left: 23px;
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--muted);
+}
+.relay-text,
+.relay-answer > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.relay-answer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.relay-answer .icon {
+  flex: none;
+  font-size: 14px;
+  color: var(--status-done);
+}
+.relay-line .relay-btn {
+  height: 26px;
+  margin-left: auto;
+}
+.relay-card.is-blocked .relay-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  color: var(--text);
+}
+/* Answered, it recedes onto the paper, a line of who answered and what. */
+.relay-card.is-answered {
+  background: none;
+}
+.relay-card.is-answered .relay-thread {
+  font-weight: 500;
+}
+/* Its thread is where the bar answers, until it is sent or let go. */
+.relay-card.is-aimed,
+.relay-row.is-aimed {
+  scroll-margin: 16px 0 120px;
+}
+.relay-card.is-aimed {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 18%, transparent);
+}
+.timeline-foot.is-aimed .chat-bar {
+  border-color: color-mix(in srgb, var(--tone) 60%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--tone) 20%, transparent),
+    var(--shadow-lg);
+}
+
+/* What came in while the viewer was away: one card, what needs them first. */
+.relay-stack {
+  overflow: hidden;
+}
+.relay-stack-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 7px 14px;
+  font-size: 13px;
+}
+.relay-stack-head strong {
+  font-weight: 600;
+}
+.relay-group {
+  padding: 6px 12px 3px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.relay-group.is-needs-you {
+  color: var(--open-ink);
+}
+.relay-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 38px;
+  padding: 4px 10px 4px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.relay-row-main {
+  min-width: 0;
+}
+.relay-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.relay-row .relay-thread {
+  flex: none;
+  max-width: 45%;
+}
+.relay-row .relay-text {
+  color: var(--muted);
+}
+.relay-row .relay-text b {
+  font-weight: 500;
+  color: var(--ink);
+}
+.relay-row .relay-text b.is-blocked {
+  color: var(--status-blocked-ink);
+}
+.relay-row.is-done .relay-thread,
+.relay-row.is-answered .relay-thread {
+  font-weight: 500;
+  color: var(--muted);
+}
+.relay-row .relay-time {
+  margin-left: 0;
+}
+.relay-row .relay-btn {
+  height: 26px;
+}
+.relay-row.is-aimed {
+  align-items: start;
+  padding-block: 9px 11px;
+  background: color-mix(in srgb, var(--tone) 7%, var(--surface));
+}
+.relay-row.is-aimed > .work-square {
+  margin-top: 5px;
+}
+.relay-row .relay-body {
+  margin-top: 4px;
 }
 
 /* ---- a thread, open in the main pane ------------------------------------- */
@@ -890,6 +1211,9 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   .timeline-conversation,
   .timeline-thread {
     --column-right: 16px;
+  }
+  .timeline-scroll {
+    --column-right: calc(16px - var(--scrollbar, 0px));
   }
   .timeline-thread-head {
     padding-left: 16px;

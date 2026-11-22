@@ -9,8 +9,9 @@ import { Icon } from '../shared/components';
 // is done. With a thread open, its own strand runs beside its messages and the
 // conversation's rests behind it. Drawn over the gutter of what holds it, from
 // where the rows in it are once laid out: the messages (`li[data-at]`, by when
-// each was said) and the cards that say where a thread was sent on
-// (`[data-yarn-branch]`).
+// each was said), the cards that say where a thread was sent on
+// (`[data-yarn-branch]`) and the relays of a thread's moments that need the
+// viewer (`[data-yarn-relay]`, relayCard.tsx), which its strand stitches into.
 // What it shows is said by the rows and by Work too; a strand is a quicker
 // way to the thread it is. Pointing at one names it beside the pointer, and a
 // click opens its thread in the main pane (timeline.tsx), as a control does,
@@ -61,15 +62,17 @@ function Plies({ uid }: { uid: string }) {
 }
 
 // A length of yarn along `d`: its edge, its two plies and a light twist of fibre over them; dotted while not started.
-function length(uid: string, key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false): ReactNode {
+// Its ends are rounded, or cut square where it runs on into a length drawn elsewhere (`cut`), so the two meet flush.
+function length(uid: string, key: string, d: string, tone: StrandTone | 'trunk', width: number, dash = false, cut = false): ReactNode {
   const color = tone === 'trunk' ? 'var(--brand-warp)' : TONES[tone];
   if (dash) return <path key={key} d={d} fill="none" style={{ stroke: color }} strokeWidth={width - 2} strokeLinecap="round" strokeDasharray="2 6" />;
   const edge = tone === 'trunk' ? mix('var(--brand-warp)', 55, 'var(--text)') : mix(color, 70, 'var(--text)');
+  const cap = cut ? 'butt' : 'round';
   return (
     <g key={key}>
-      <path d={d} fill="none" style={{ stroke: edge }} strokeWidth={width + 1.6} strokeLinecap="round" />
-      <path d={d} fill="none" style={{ stroke: `url(#${uid}-${tone})` }} strokeWidth={width} strokeLinecap="round" />
-      <path d={d} fill="none" style={{ stroke: `url(#${uid}-fibre)` }} strokeWidth={width - 2} strokeLinecap="round" />
+      <path d={d} fill="none" style={{ stroke: edge }} strokeWidth={width + 1.6} strokeLinecap={cap} />
+      <path d={d} fill="none" style={{ stroke: `url(#${uid}-${tone})` }} strokeWidth={width} strokeLinecap={cap} />
+      <path d={d} fill="none" style={{ stroke: `url(#${uid}-fibre)` }} strokeWidth={width - 2} strokeLinecap={cap} />
     </g>
   );
 }
@@ -127,12 +130,13 @@ interface Laid {
   height: number;
   rows: { at: number; top: number; bottom: number; mark: number }[];
   branches: Record<string, number>;
+  relays: { id: string; y: number; edge: number }[]; // a relay of a thread: the height of its head, and its left edge
 }
 
 // Where the rows are in what holds them, from its top as it scrolls, and how
 // tall what it holds is: its rows, never the yarn itself (its picture and its
 // label), which would keep the height it had once the rows are fewer.
-function measure(el: HTMLElement): Laid {
+function measure(el: HTMLElement, yarn: SVGSVGElement): Laid {
   const top = el.getBoundingClientRect().top - el.scrollTop;
   const below = [...el.children].filter((child) => !child.classList.contains('yarn-part')).map((child) => child.getBoundingClientRect().bottom - top);
   const height = Math.max(el.clientHeight, ...below.map((bottom) => bottom + parseFloat(getComputedStyle(el).paddingBottom || '0')));
@@ -149,7 +153,12 @@ function measure(el: HTMLElement): Laid {
     const r = card.getBoundingClientRect();
     branches[card.dataset.yarnBranch!] ??= r.top - top + r.height / 2; // the first, where it knits off
   }
-  return { height: Math.round(height), rows, branches };
+  const left = yarn.getBoundingClientRect().left;
+  const relays = [...el.querySelectorAll<HTMLElement>('[data-yarn-relay]')].map((card) => {
+    const r = card.getBoundingClientRect();
+    return { id: card.dataset.yarnRelay!, y: Math.round(r.top - top + Math.min(r.height / 2, 20)), edge: Math.round(r.left - left) };
+  });
+  return { height: Math.round(height), rows, branches, relays };
 }
 
 interface Props {
@@ -176,7 +185,7 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     const el = yarn?.parentElement;
     if (!yarn || !el) return;
     const again = () => {
-      const next = measure(el);
+      const next = measure(el, yarn);
       setLaid((was) => (was && JSON.stringify(was) === JSON.stringify(next) ? was : next));
     };
     again();
@@ -352,6 +361,12 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
         ringed(s.id, `M${x} ${tied - KNIT} C ${x} ${tied - 6}, ${TRUNK_X + 16} ${tied}, ${TRUNK_X} ${tied}`);
       }
       else if (s.live) over.push(liveDot(`v${s.id}`, x, end, opacity));
+      // Where it is relayed into the conversation: a stitch on its lane, and a short length of it into the card's edge.
+      for (const relay of laid.relays) {
+        if (relay.id !== s.id || relay.y < top || relay.y > bottom) continue;
+        lines.push(<g key={`r${s.id}${relay.y}`} opacity={opacity}>{strand('s', `M${x} ${relay.y} L ${relay.edge - 1} ${relay.y}`, s.tone, LANE_W - 1)}</g>);
+        over.push(<g key={`rs${s.id}${relay.y}`} opacity={opacity}>{stitch('s', x, relay.y, s.tone)}</g>);
+      }
       hits.push(hit(s, `M${x} ${Math.max(top - KNIT, -80)} L ${x} ${tied ?? height}`));
     }
     rows.forEach((row, i) => over.push(stitch(`m${i}`, TRUNK_X, row.mark, 'trunk')));
@@ -454,10 +469,12 @@ export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
         const sx = +(bx + r * 0.8 * Math.sin(a)).toFixed(1);
         const sy = +(by + r * 0.8 * Math.cos(a)).toFixed(1);
         const [ex, cx, cy] = [s.on.x, s.on.x - s.on.dx * 26, UNWOUND - s.on.dy * 26].map((n) => +n.toFixed(1));
-        const d = `M${sx} ${sy} C ${sx + 6} ${sy + 14}, ${cx} ${cy}, ${ex} ${UNWOUND}`;
+        // On a pixel past the cover's foot, the way it goes there, and cut square: it runs on into the yarn
+        // under the cover without a seam. Its other end is under the ball.
+        const d = `M${sx} ${sy} C ${sx + 6} ${sy + 14}, ${cx} ${cy}, ${ex} ${UNWOUND} l ${+s.on.dx.toFixed(2)} ${+s.on.dy.toFixed(2)}`;
         return (
           <g key={s.id} opacity={lit && lit !== s.id ? DIM : 1}>
-            {length(uid, 's', d, s.tone, LANE_W, s.tone === 'todo')}
+            {length(uid, 's', d, s.tone, LANE_W, s.tone === 'todo', true)}
             {onPick && (
               <path
                 className="yarn-hit"
@@ -474,7 +491,7 @@ export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
           </g>
         );
       })}
-      {length(uid, 'trunk', `M${bx} ${by + 10} L ${bx} ${UNWOUND}`, 'trunk', TRUNK_W)}
+      {length(uid, 'trunk', `M${bx} ${by + 10} L ${bx} ${UNWOUND + 1}`, 'trunk', TRUNK_W, false, true)}
     </svg>
   );
 }

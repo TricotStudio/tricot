@@ -3,6 +3,6 @@
 export { agentLineAt, LoopLine, SaidTo } from './agentTalk';
 export { MessageFoot, openConnect } from './delivery';
 export { anchor as commentAnchor, Discussion, FOCUS_PIN, showComments, useMentionable } from './discussion';
-export { newestMine, onItsWay, outbox, settledKeys, useOutgoing, withOutgoing, type Drawn, type Outgoing } from './outbox';
+export { newestMine, onItsWay, outbox, settledKeys, useOutgoing, withOutgoing, type Again, type Drawn, type Outgoing } from './outbox';
 export { Reactions } from './reactions';
 export { SayToListen, toolOf, useConnectedAgents, useInstalledAgents } from './wake';

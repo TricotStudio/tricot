@@ -105,13 +105,15 @@ describe('The registry of board views', () => {
     assert.equal(views.agentWork(), work);
   });
 
-  it("lists no work of a part's on a board's Home until a part registers its own, and takes it once", () => {
+  it("lists and relays no work of a part's on a board's Home until a part registers its own, and takes it once", () => {
     const views = new BoardViews();
-    assert.equal(views.work(), undefined, "Home's Work lists the threads agents own alone");
-    const slot = { groups: [{ id: 'backlog', label: 'Backlog', before: 'done' }], rows: () => [] };
+    assert.equal(views.work(), undefined, "Home's Work lists the threads agents own alone, and its conversation relays only theirs");
+    const blocked = { key: 'card:1', kind: 'blocked' as const, title: 'A card', at: '2026-01-01T00:00:00.000Z', line: 'It waits on a key.', open: () => {} };
+    const slot = { groups: [{ id: 'backlog', label: 'Backlog', before: 'done' }], rows: () => [], relays: () => [blocked] };
     views.withWork(slot);
     assert.throws(() => views.withWork(slot), /two sets of work on a board's Home/);
     assert.equal(views.work(), slot);
+    assert.deepEqual(views.work()?.relays?.({ board: {} as never, name: 'Sam' }), [blocked], "what the conversation relays of the part's cards comes with its Work");
   });
 
   it('draws and names nothing of the board context, and offers no Keep in context, until a part registers it, and takes it once', () => {

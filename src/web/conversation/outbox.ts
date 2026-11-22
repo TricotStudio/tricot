@@ -1,13 +1,18 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { samePerson } from '../../core/format';
 import type { Actor, MessageLens } from '../../core/types';
+import { seatPrompt } from '../shared/seat';
 
 // What a person sends to agents, shown the moment they send it and settled
 // when the server has it (discussion.tsx, threads.tsx). Until the board has
 // the message, the page draws it from here, "Sending…"; if the server refuses
 // it, "Not sent", with Retry. Once the board has it, it is drawn from the
 // board under the same key it was drawn under before, so nothing is drawn
-// twice or drawn again. Kept in memory for the page's life, nowhere else.
+// twice or drawn again. Kept in memory for the page's life, and what isn't
+// sent yet for the tab's too (sessionStorage): a reload, or a page stuck
+// sending, brings it back "Not sent", to send again with Retry when its
+// sender said how (`again`, `resends`) or to Edit back into its bar. One the
+// board had after all is matched to it as any is, and settles.
 
 export interface Outgoing {
   key: string; // what it is drawn under, before the board has it and after
@@ -19,6 +24,14 @@ export interface Outgoing {
   state: 'sending' | 'sent' | 'failed';
   error?: string;
   id?: string; // its id on the board, once the server says it
+  again?: Again; // how to send it again once the page has reloaded
+}
+
+// How to send one again after a reload, as plain data: the kind of send a
+// sender registered with `outbox.resends`, and what that send needs.
+export interface Again {
+  kind: string;
+  with: unknown;
 }
 
 // Sends it; resolves to its id on the board, and the place it ended up in
@@ -26,10 +39,35 @@ export interface Outgoing {
 // says where it arrived (arrived()) before it shows the new place.
 type Sent = { id: string; place?: string };
 export type Post = (key: string) => Promise<Sent | undefined>;
+export type Resend = (what: unknown, key: string) => Promise<Sent | undefined>;
+
+const KEPT = 'tricot:unsent';
+const RELOADED = 'the page reloaded before Tricot had it';
+
+// How long a send waits for Tricot before it says it isn't sent. A request
+// the browser holds back never fails on its own (every connection it allows
+// to Tricot taken by the streams of open tabs, say): it is still sent if it
+// can, and then settles as any does. Retry waits on that same request rather
+// than send a second, so nothing arrives twice. While the browser asks to be
+// let in (seat.ts), the person is answering that, and it waits on.
+const SEND_WAIT_MS = 20_000;
+const NO_ANSWER = 'no answer from Tricot yet';
+
+// What the tab kept of what wasn't sent, back as not sent.
+function kept(): Outgoing[] {
+  try {
+    const items = JSON.parse(sessionStorage.getItem(KEPT) ?? '[]') as Outgoing[];
+    return Array.isArray(items) ? items.filter((o) => o && typeof o.key === 'string' && typeof o.place === 'string' && typeof o.body === 'string').map((o) => ({ ...o, state: 'failed', error: RELOADED })) : [];
+  } catch {
+    return []; // no storage here (a test, a private window): kept in memory alone
+  }
+}
 
 class Outbox {
-  private items: Outgoing[] = [];
+  private items: Outgoing[] = kept();
   private readonly posts = new Map<string, Post>();
+  private readonly resenders = new Map<string, Resend>();
+  private readonly flying = new Map<string, Promise<Sent | undefined>>(); // what is out, until it settles
   private readonly keys = new Map<string, string>(); // board id -> the key it was drawn under
   private readonly listeners = new Set<() => void>();
   private next = 0;
@@ -44,18 +82,29 @@ class Outbox {
   // The key a message on the board was drawn under while it was being sent.
   keyOf = (id: string): string | undefined => this.keys.get(id);
 
-  send(place: string, body: string, known: string[], post: Post, lens?: MessageLens): Outgoing {
-    const outgoing: Outgoing = { key: `out-${Date.now().toString(36)}-${this.next++}`, place, body, ...(lens && { lens }), at: new Date().toISOString(), known, state: 'sending' };
+  send(place: string, body: string, known: string[], post: Post, lens?: MessageLens, again?: Again): Outgoing {
+    const outgoing: Outgoing = { key: `out-${Date.now().toString(36)}-${this.next++}`, place, body, ...(lens && { lens }), at: new Date().toISOString(), known, state: 'sending', ...(again && { again }) };
     this.posts.set(outgoing.key, post);
     this.update([...this.items, outgoing]);
-    void this.attempt(outgoing.key);
+    this.attempt(outgoing.key);
     return outgoing;
   }
 
   retry(key: string): void {
-    if (!this.find(key) || this.find(key)!.state !== 'failed') return;
+    if (!this.find(key) || this.find(key)!.state !== 'failed' || !this.canRetry(key)) return;
     this.change(key, { state: 'sending', error: undefined });
-    void this.attempt(key);
+    this.attempt(key);
+  }
+
+  // Whether it can be sent again as it is: still out, by the send that made it, or after a reload by its kind's sender.
+  canRetry = (key: string): boolean => {
+    const kind = this.find(key)?.again?.kind;
+    return this.flying.has(key) || this.posts.has(key) || (kind !== undefined && this.resenders.has(kind));
+  };
+
+  // How a kind of send is made again from its `again`, for what a reload brought back.
+  resends(kind: string, resend: Resend): void {
+    this.resenders.set(kind, resend);
   }
 
   // Taken back (to edit, after it failed), or settled once the board has it.
@@ -73,16 +122,36 @@ class Outbox {
     this.change(key, { state: 'sent', ...(sent && { id: sent.id }), ...(sent?.place && { place: sent.place }) });
   }
 
-  private async attempt(key: string): Promise<void> {
-    const post = this.posts.get(key);
-    if (!post) return;
-    try {
-      this.arrived(key, await post(key));
-    } catch (error) {
-      // A fetch that never reached the server says so in the browser's words; these are plainer.
-      const message = error instanceof TypeError ? "couldn't reach Tricot" : error instanceof Error ? error.message : String(error);
-      this.change(key, { state: 'failed', error: message });
+  // Sends it, or waits again on the request still out for it, and says it isn't sent once that takes too long.
+  private attempt(key: string): void {
+    let flight = this.flying.get(key);
+    if (!flight) {
+      const again = this.find(key)?.again;
+      const resend = again && this.resenders.get(again.kind);
+      const post = this.posts.get(key) ?? (resend && ((k: string) => resend(again!.with, k)));
+      if (!post) return;
+      flight = post(key);
+      this.flying.set(key, flight);
+      // However late it settles: the server had it after all, or it says why not.
+      flight.then(
+        (sent) => this.arrived(key, sent),
+        (error) => {
+          // A fetch that never reached the server says so in the browser's words; these are plainer.
+          const message = error instanceof TypeError ? "couldn't reach Tricot" : error instanceof Error ? error.message : String(error);
+          this.change(key, { state: 'failed', error: message });
+        },
+      );
+      void flight.catch(() => undefined).finally(() => this.flying.delete(key));
     }
+    const out = flight;
+    const late = () => {
+      if (this.flying.get(key) !== out || this.find(key)?.state !== 'sending') return;
+      const asking = seatPrompt.get()?.state;
+      if (asking === 'asking' || asking === 'waiting') timer = setTimeout(late, SEND_WAIT_MS);
+      else this.change(key, { state: 'failed', error: NO_ANSWER });
+    };
+    let timer = setTimeout(late, SEND_WAIT_MS);
+    void out.catch(() => undefined).finally(() => clearTimeout(timer));
   }
 
   private find(key: string): Outgoing | undefined {
@@ -96,6 +165,13 @@ class Outbox {
 
   private update(items: Outgoing[]): void {
     this.items = items;
+    try {
+      const unsent = items.filter((o) => o.state !== 'sent');
+      if (unsent.length) sessionStorage.setItem(KEPT, JSON.stringify(unsent));
+      else sessionStorage.removeItem(KEPT);
+    } catch {
+      // Not kept for the tab: a reload loses it, as before.
+    }
     for (const listener of this.listeners) listener();
   }
 }

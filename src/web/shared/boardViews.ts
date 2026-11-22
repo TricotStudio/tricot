@@ -247,9 +247,22 @@ export interface WorkRow {
   open(): void;
 }
 
+// A moment of a part's card that needs the viewer, which Home's conversation relays as it relays a thread's
+// (threads/relays.ts): a card blocked, such as a task. It opens the card, as it has no thread to answer in.
+export interface WorkRelay {
+  key: string;
+  kind: 'blocked';
+  title: string;
+  label?: string; // its number before its title (T5)
+  at: string; // when it moved there
+  line: string; // what holds it, in a line
+  open(): void;
+}
+
 export interface WorkSlot {
   groups: WorkGroup[];
   rows(props: { board: Board; name: string }): WorkRow[];
+  relays?(props: { board: Board; name: string }): WorkRelay[]; // what of its cards Home's conversation relays
 }
 
 const PLAIN_WORDS: PageWords = { nameGate: 'Your name is attached to what you add, so everyone can see who did what.' };

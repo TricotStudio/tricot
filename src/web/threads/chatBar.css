@@ -16,7 +16,6 @@
   margin-inline: auto;
   display: flex;
   justify-content: center;
-  gap: 8px;
 }
 
 /* Over a canvas that can be drawn on, the canvas's drawing tools (canvas/tools)
@@ -24,10 +23,12 @@
    corners and lift, a small gap between, so drawing and talking read as two
    jobs on one baseline, the pair as wide as the bar alone.
    The capsule comes and goes with that canvas (another tab, a block's full
-   view), so it is always there while the bar floats, and away it takes no
-   room: its column shuts (0fr), cancelling the float's gap too, and the
-   capsule waits under the bar's left end, which is drawn over it. Where it
-   waits is --tools-away, which the dock's move (below) shares. */
+   view), so it is always there while the bar floats, on every view, beside
+   the dock's bar or a view's own (Home's: chatBar.tsx), and away it takes no
+   room: its column shuts (0fr), the gap with it (the capsule's own margin,
+   so it needs nothing of what holds the bar), and it waits under the bar's
+   left end, which is drawn over it. Where it waits is --tools-away, which
+   the dock's move (below) shares. */
 :root {
   --tools-away: translateX(48px) scale(0.94);
 }
@@ -36,13 +37,13 @@
   flex: none;
   display: grid;
   grid-template-columns: minmax(0, 0fr);
-  margin-right: -8px;
+  margin-right: 0;
 }
 .chat-tools.is-shown {
   grid-template-columns: minmax(0, 1fr);
-  margin-right: 0;
+  margin-right: 8px;
 }
-.chat-float > .chat-bar {
+.chat-tools + .chat-bar {
   z-index: 1;
 }
 /* The options of the tool that is on (canvas/tools/DrawOptions.tsx), in a
@@ -84,8 +85,13 @@
    tucking in under it in plain sight, and lands just past its edge and back.
    Only the shut column and the gap are laid out again on each frame: the
    rest is transform and opacity. A capsule that was never there (a bar that
-   opens away from a canvas, `was-shown` unset) has no leaving to play. */
+   opens away from a canvas, `was-shown` unset) has no leaving to play.
+   A view that sets the bar narrower (board.css) eases it there and back, so
+   the bar never jumps as the capsule comes or goes with the view. */
 @media (prefers-reduced-motion: no-preference) {
+  .chat-float {
+    transition: width 320ms var(--ease-out);
+  }
   .chat-tools {
     transition:
       grid-template-columns 320ms var(--ease-out),
@@ -147,27 +153,27 @@
     animation: tools-tuck 460ms;
   }
 }
-/* The bar closing: its edge sweeps over the shut column, then the gap's
-   cancelling runs 12px past it, the bar's edge landing beyond its place,
-   and comes back. */
+/* The bar closing: its edge sweeps over the shut column and the gap, then
+   runs 12px past them, the bar's edge landing beyond its place, and comes
+   back. */
 @keyframes tools-close {
   0% {
     grid-template-columns: minmax(0, 1fr);
-    margin-right: 0;
+    margin-right: 8px;
     animation-timing-function: cubic-bezier(0.55, 0, 0.8, 0.2);
   }
   68% {
     grid-template-columns: minmax(0, 0fr);
-    margin-right: -8px;
+    margin-right: 0;
     animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
   }
   83% {
-    margin-right: -20px;
+    margin-right: -12px;
     animation-timing-function: ease-in-out;
   }
   100% {
     grid-template-columns: minmax(0, 0fr);
-    margin-right: -8px;
+    margin-right: 0;
   }
 }
 /* The capsule under it, in step: whole until the bar has covered it. */

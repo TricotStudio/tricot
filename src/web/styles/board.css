@@ -61,8 +61,8 @@
 }
 /* Its window is narrower than the screen, so the chat bar is too, clear of
    the hint beside the canvas's zoom controls (canvas.css) on a 1440px
-   screen. On a narrower canvas the bar would cover the hint, which gives
-   way. */
+   screen, easing to it and back (chatBar.css). On a narrower canvas the bar
+   would cover the hint, which gives way. */
 .board-layout-overview > .chat-float {
   width: min(660px, calc(100% - 48px));
 }

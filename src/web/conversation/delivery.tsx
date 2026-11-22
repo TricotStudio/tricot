@@ -84,9 +84,12 @@ export function MessageFoot({ board, where, said, after, onItsWay, outgoing, onE
     line = (
       <p className="delivery is-failed" role="alert" title={outgoing.error}>
         <span className="delivery-text">Not sent{outgoing.error ? `: ${outgoing.error}` : ''}</span>
-        <button type="button" className="delivery-action" onClick={() => outbox.retry(outgoing.key)}>
-          Retry
-        </button>
+        {/* One a reload brought back whose sender can't make it again is only edited back into its bar. */}
+        {outbox.canRetry(outgoing.key) && (
+          <button type="button" className="delivery-action" onClick={() => outbox.retry(outgoing.key)}>
+            Retry
+          </button>
+        )}
         {onEdit && (
           <button
             type="button"

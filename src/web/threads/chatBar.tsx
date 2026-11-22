@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent, RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { LISTEN_PHRASE, notListeningHere, sayTo } from '../../core/delivery';
 import { ApprovalChip } from '../access';
 import { listNames } from '../../core/format';
@@ -8,6 +8,7 @@ import { listeningLabel } from './chatDoor';
 import { Icon, timeAgo, type IconName } from '../shared/components';
 import { openConnect, toolOf, useConnectedAgents, useInstalledAgents } from '../conversation';
 import { useAgents } from '../agents';
+import { DrawOptions, DrawToolbar, useDrawTools } from '../canvas';
 import { useCardKinds } from '../shared/cardKindsContext';
 import { MentionInput, type LensChoice } from '../shared/mentions';
 import './chatBar.css';
@@ -20,6 +21,8 @@ import './chatBar.css';
 // threads button; at its right, who's listening and Send. Enter sends; @
 // mentions an agent or a person, / calls an agent's skill, and ^ asks for a
 // lens on that one message (^Design), which is left out of what is sent.
+// Floating, a canvas's drawing tools sit beside it on its left (ToolsCapsule),
+// whichever view draws it: the dock's bar, or a view's own (Home's).
 
 interface Props {
   docked: boolean; // at the foot of the docked conversation, rather than floating
@@ -56,7 +59,7 @@ export function ChatBar(props: Props) {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape' && !docked) field.current?.blur();
   };
-  return (
+  const bar = (
     <form className={`chat-bar${docked ? ' is-docked' : ''}`} onSubmit={submit} aria-label="Talk to agents">
       {threads && (
         <>
@@ -112,6 +115,67 @@ export function ChatBar(props: Props) {
         </p>
       )}
     </form>
+  );
+  return (
+    <>
+      {!docked && <ToolsCapsule />}
+      {bar}
+    </>
+  );
+}
+
+// Floating over a canvas that can be drawn on, its drawing tools float beside
+// the bar in a capsule of their own on its left, the options of the tool that
+// is on in a tray over it (canvas/tools: DrawToolbar, DrawOptions). Every
+// floating bar has it, drawn while the bar is: shown while such a canvas is
+// (drawTools.ts `present`), hidden and inert while none is, so it comes and
+// goes in motion (chatBar.css).
+//
+// Moving between views leaves the bar where it is, though a view may draw a
+// bar of its own (Home): the capsule of the bar a view switch makes takes
+// over from the capsule of the bar going, shown if that one was, so it leaves
+// from there as it would have, whatever view comes next. It leaves in motion
+// (`was-shown`) only once it has been on screen shown: a bar that opens away
+// from a canvas plays no leaving, the dock closing over Files included, and
+// nor does one made as a canvas goes while the bar was docked in the
+// conversation, as no capsule was shown then.
+let capsulesShown = 0; // capsules on screen drawn shown: one, or two for the moment one takes over
+
+function ToolsCapsule() {
+  const drawable = useDrawTools().present;
+  // Made while a shown one is on screen, going: it takes over from it, shown.
+  const [carried, setCarried] = useState(() => capsulesShown > 0);
+  const [seen, setSeen] = useState(carried);
+  const shown = drawable || carried;
+  const capsule = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!shown) return;
+    capsulesShown++;
+    return () => {
+      capsulesShown--;
+    };
+  }, [shown]);
+  // Styled once as it is made, before it changes: what it does next, coming
+  // in or leaving, moves from how it is now rather than from nothing.
+  useLayoutEffect(() => {
+    capsule.current?.getBoundingClientRect();
+    setCarried(false);
+  }, []);
+  // Seen once a frame is drawn with it shown. Made as a canvas goes, it is
+  // drawn shown only until the change lets go of that canvas, before any
+  // frame, so it has no leaving to play.
+  useEffect(() => {
+    if (!drawable) return;
+    const frame = requestAnimationFrame(() => setSeen(true));
+    return () => cancelAnimationFrame(frame);
+  }, [drawable]);
+  return (
+    <div ref={capsule} className={`chat-tools${shown ? ' is-shown' : seen ? ' was-shown' : ''}`} inert={!drawable}>
+      <div className="chat-tools-sheet">
+        <DrawToolbar />
+      </div>
+      <DrawOptions />
+    </div>
   );
 }
 

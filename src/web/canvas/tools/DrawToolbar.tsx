@@ -1,7 +1,8 @@
 // The drawing tools, in a capsule of their own on the floating chat bar's
-// left, which threads.tsx shows only while a canvas the person can draw on
-// is shown (drawTools.ts `present`). It stays drawn, hidden and inert, while
-// no such canvas is, so the capsule comes and goes in motion (chatBar.css).
+// left, which the bar (threads/chatBar.tsx), on every view, shows only while
+// a canvas the person can draw on is shown (drawTools.ts `present`). It stays
+// drawn, hidden and inert, while no such canvas is, so the capsule comes and
+// goes in motion (chatBar.css).
 // Select, then the Shape button, Text and the Pen. The Shape button holds the
 // last shape picked: a click puts the shape tool on with it, and the tray over
 // the tools (DrawOptions.tsx) then offers the shapes (rectangle, ellipse,

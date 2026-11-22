@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
 import { samePerson } from '../../core/format';
 import { threadGroups, threadTag } from '../../core/threadList';
@@ -16,7 +16,9 @@ import { go, linkTo, replaceAddress, type BoardRoute } from '../shared/pages';
 import { ChatBar } from './chatBar';
 import { replyingTo } from './chatDoor';
 import { lensChoices, messageLensOf } from './lensChoices';
-import { draftMessage, isLocal, replyInThread, startThread } from './send';
+import { RelayCard, RelayStack, toneOf } from './relayCard';
+import { useRelays, type Relay } from './relays';
+import { draftMessage, isLocal, replyInThread, startThread, unsentStarts } from './send';
 import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } from './threads';
 import { ThreadsList } from './threadsList';
 import { useThreadsSeen } from './threadsSeen';
@@ -64,6 +66,28 @@ function useDraft(boardId: string, key: string): [string, (value: string) => voi
 // Where the conversation was scrolled on each board, for coming back to it
 // from a thread: at its foot, it stays at the latest as messages come.
 const scrolls = new Map<string, { top: number; foot: boolean }>();
+
+// When the viewer came to each board's conversation, as this page opened it:
+// what was relayed since they were last here and before it came while they
+// were away, and arrives as one card (relayCard.tsx RelayStack).
+const cameIn = new Map<string, number>();
+
+// How wide the scroller's own scrollbar is (timeline.css .timeline-scroll): 0
+// where scrollbars float over the page, as on a Mac with a trackpad, and as
+// wide as the system draws them where they take room, as with a mouse.
+function useScrollbar(scroller: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const again = () => setWidth(el.offsetWidth - el.clientWidth);
+    again();
+    const watch = new ResizeObserver(again); // its content box narrows as a scrollbar comes
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [scroller]);
+  return width;
+}
 
 // Its agent's name, without the work an orchestrator is named after ("Claude · Sign-in flow").
 const ownName = (agent: string): string => agent.split(' · ')[0];
@@ -157,6 +181,14 @@ const FILTERS: { id: Filter; label: string; title: string }[] = [
   { id: 'sent', label: 'Sent on', title: 'The asks sent on to an agent of their own' },
 ];
 
+// A row of the conversation: something said, a relay, or the relays that came while the viewer was away.
+interface Entry {
+  at: string;
+  said?: Said;
+  relay?: Relay;
+  stack?: Relay[];
+}
+
 interface Said {
   thread: Thread;
   drawn: Drawn<ThreadMessage>;
@@ -229,7 +261,7 @@ function MainConversation(props: {
   const agents = useAgents();
   const names = useMentionable(name);
   const { seen, markSeen } = useThreadsSeen(board);
-  const [locals, setLocals] = useState<Thread[]>([]); // started here, until the board has them
+  const [locals, setLocals] = useState<Thread[]>(() => unsentStarts(board.id)); // started here, until the board has them, those a reload brought back not sent included
   const [filter, setFilter] = useState<Filter>('all');
   const threads = useMemo(
     () => [...(board.threads ?? []).filter((t) => !t.status), ...locals.filter((l) => !board.threads?.some((t) => t.id === l.id))],
@@ -237,6 +269,8 @@ function MainConversation(props: {
   );
   const owned = useMemo(() => ownedThreads(board), [board.threads]);
   const said = useSaid(board, threads, owned, name);
+  const relays = useRelays(board, name, agents);
+  const [arrived] = useState(() => cameIn.get(board.id) ?? cameIn.set(board.id, Date.now()).get(board.id)!);
   const settled = said.flatMap((s) => settledKeys([s.drawn])).join();
   useEffect(() => {
     for (const key of settled ? settled.split(',') : []) outbox.remove(key);
@@ -258,6 +292,7 @@ function MainConversation(props: {
   // Kept at the latest as messages come, unless the viewer scrolled up to
   // read, and where it was left when a thread opened over it.
   const scroller = useRef<HTMLDivElement>(null);
+  const scrollbar = useScrollbar(scroller);
   const [spans, setSpans] = useState<Span[]>([]); // where the strands' lanes run, for the ball they unwind from
   // What is on screen is seen: a thread of the conversation once its latest
   // message is in view (or the ask its coordinator's word is drawn under, as
@@ -289,7 +324,10 @@ function MainConversation(props: {
   }, [latest, filter, markSeen, seeItem]); // once per message, and as the filter shows others
   const atFoot = useRef(scrolls.get(board.id)?.foot ?? true);
   const restored = useRef(false);
-  const count = shown.reduce((n, s) => n + 1 + s.sentOn.length + (s.drawn.item.refs?.length ?? 0), 0);
+  // The relays shown with what was said: all but under Your asks.
+  const relaying = filter !== 'yours';
+  const relayed = relaying ? relays.map((r) => `${r.key}${r.needsYou ? '!' : ''}`).join() : '';
+  const count = `${shown.reduce((n, s) => n + 1 + s.sentOn.length + (s.drawn.item.refs?.length ?? 0), 0)}:${relayed}`;
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -329,9 +367,31 @@ function MainConversation(props: {
   const field = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useDraft(board.id, 'bar');
   const lenses = useMemo(() => lensChoices(undefined), []);
+  // Reply on a relay aims the bar at its thread for one message: sending, Esc or the chip's ✕ lets go, and so
+  // does its question being answered anywhere else.
+  const [aim, setAim] = useState<string | null>(null); // the relay's key
+  const aimed = aim ? relays.find((r) => r.key === aim && r.needsYou && r.thread) : undefined;
+  useEffect(() => {
+    if (aim && !aimed) setAim(null);
+  }, [aim, aimed]);
+  const reply = (relay: Relay) => {
+    setAim(aim === relay.key ? null : relay.key);
+    field.current?.focus();
+  };
+  // What it answers stays in sight over the bar, opened in place in the card of what came while the viewer was away.
+  useLayoutEffect(() => {
+    if (aim) scroller.current?.querySelector('.relay-card.is-aimed, .relay-row.is-aimed')?.scrollIntoView({ block: 'nearest' });
+  }, [aim]);
   const send = () => {
     const { body: text, lens: asked } = splitLensCommand(draft.trim(), lenses.map((l) => l.name));
     if (!text) return;
+    if (aimed?.thread) {
+      replyInThread(aimed.thread, name, text, asked ? messageLensOf(asked, aimed.thread.lens) : undefined);
+      setDraft('');
+      setAim(null);
+      atFoot.current = true;
+      return;
+    }
     const own = asked ? messageLensOf(asked, undefined) : undefined;
     const sending = startThread({ boardId: board.id, name, names, text, door: 'threads', lens: null, own }, (made) => {
       markSeen(made);
@@ -358,14 +418,31 @@ function MainConversation(props: {
 
   const coordinator = agents.filter((a) => a.coordinator && a.state !== 'away').sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
   const since = away.visit.sinceAt;
-  const sinceAt = since ? shown.findIndex((s) => s.drawn.item.at > since && !(s.drawn.item.author.kind === 'human' && samePerson(s.drawn.item.author.name, name))) : -1;
+  // What was said, with the relays at when they came: those that came while the viewer was away, as one card.
+  const whileAway = relaying && since ? relays.filter((r) => r.at > since && Date.parse(r.at) <= arrived) : [];
+  const stacked = new Set(whileAway.length > 1 ? whileAway.map((r) => r.key) : []);
+  const entries: Entry[] = [
+    ...shown.map((s) => ({ at: s.drawn.item.at, said: s })),
+    ...(relaying ? relays.filter((r) => !stacked.has(r.key)).map((relay) => ({ at: relay.at, relay })) : []),
+    ...(stacked.size ? [{ at: whileAway[0].at, stack: whileAway }] : []),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  const mineAt = (e: Entry) => Boolean(e.said && e.said.drawn.item.author.kind === 'human' && samePerson(e.said.drawn.item.author.name, name));
+  const sinceAt = since ? entries.findIndex((e) => e.at > since && !mineAt(e)) : -1;
   const now = Date.now();
   const rows: ReactNode[] = [];
-  shown.forEach((s, i) => {
-    const message = s.drawn.item;
-    const day = dayOf(message.at, now);
-    if (i === 0 || dayOf(shown[i - 1].drawn.item.at, now) !== day) rows.push(<Divider key={`day:${message.at}`} label={day} />);
+  entries.forEach((e, i) => {
+    const day = dayOf(e.at, now);
+    if (i === 0 || dayOf(entries[i - 1].at, now) !== day) rows.push(<Divider key={`day:${e.at}`} label={day} />);
     if (i === sinceAt && i > 0) rows.push(<Divider key="since" label="Since you were last here" fresh />);
+    if (e.relay) {
+      rows.push(<RelayCard key={`relay:${e.relay.key}`} relay={e.relay} name={name} clock={clock} aimed={aim === e.relay.key} onReply={reply} onLight={onLight} />);
+      return;
+    }
+    if (e.stack) {
+      rows.push(<RelayStack key="relays:away" relays={e.stack} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />);
+      return;
+    }
+    const s = e.said!;
     const tag = s.first ? threadTag(s.thread, board) : undefined;
     rows.push(
       <MessageRow
@@ -381,8 +458,8 @@ function MainConversation(props: {
         onEdit={editUnsent}
         onThread={onOpen}
         when={clock}
-        prev={shown[i - 1]?.drawn.item}
-        next={shown[i + 1]?.drawn.item}
+        prev={entries[i - 1]?.said?.drawn.item}
+        next={entries[i + 1]?.said?.drawn.item}
         tag={
           <>
             {tag && <span className="dock-door timeline-tag">{tag}</span>}
@@ -418,6 +495,7 @@ function MainConversation(props: {
         <div
           className="timeline-scroll"
           ref={scroller}
+          style={{ '--scrollbar': `${scrollbar}px` } as CSSProperties}
           onScroll={(e) => {
             const el = e.currentTarget;
             atFoot.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -509,17 +587,33 @@ function MainConversation(props: {
         )}
       </div>
       {!readOnly && (
-        <div className="timeline-foot">
+        <div
+          className={`timeline-foot${aimed ? ' is-aimed' : ''}`}
+          style={aimed ? toneOf(aimed.tone) : undefined}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && aimed && !e.defaultPrevented) setAim(null);
+          }}
+        >
+          {/* The bar asks the coordinator, or, after Reply on a relay, answers in its thread for one message. */}
           <ChatBar
             docked={false}
             value={draft}
             onValue={setDraft}
             onSend={send}
-            placeholder={coordinator ? `Ask ${ownName(coordinator)}, or give it work…` : 'What do you want to work through?'}
-            label="Ask in the board's conversation"
+            placeholder={aimed ? `Answer ${ownName(aimed.by ?? 'the agent')} in this thread…` : coordinator ? `Ask ${ownName(coordinator)}, or give it work…` : 'What do you want to work through?'}
+            label={aimed ? `Answer in ${aimed.title}` : "Ask in the board's conversation"}
             sendLabel="Send"
             field={field}
             lenses={lenses}
+            context={
+              aimed && {
+                label: aimed.title,
+                title: `Your answer goes to “${aimed.title}”, for this one message`,
+                icon: 'reply',
+                remove: { label: 'Let go of the thread', title: 'Ask the coordinator instead (Esc)' },
+                onRemove: () => setAim(null),
+              }
+            }
             error={error}
           />
         </div>

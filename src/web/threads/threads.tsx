@@ -13,7 +13,7 @@ import { api } from '../shared/api';
 import type { PlainQuestion } from '../shared/cardKinds';
 import { useBoardViews } from '../shared/boardViewsContext';
 import { useCardKinds } from '../shared/cardKindsContext';
-import { DrawOptions, DrawToolbar, useDrawTools, usePageSelection, useUndoDelete } from '../canvas';
+import { usePageSelection, useUndoDelete } from '../canvas';
 import { ChatBar } from './chatBar';
 import { moveDock } from './dockMotion';
 import { lookAtBoard } from './justMade';
@@ -387,22 +387,6 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const overFile = !docked && door === 'threads' && !shownPage ? shownFile : undefined;
   const fileAgent = useMemo(() => overFile && agentOnFile(board, overFile.named, boardAgents(board, present.map((a) => a.name))), [board, overFile, present]);
   const fileWords = overFile && fileBar(overFile.path, fileAgent, lead);
-  // Floating over a canvas that can be drawn on, its drawing tools float
-  // beside the bar, in a capsule of their own on its left, the options of the
-  // tool that is on in a tray over it (DrawOptions). The capsule stays
-  // while the bar floats, so it comes and goes in motion (chatBar.css),
-  // inert while it is away. It leaves in motion only once it has been there
-  // in this floating bar (`was-shown`): a bar that opens away from a canvas,
-  // the dock closing over Files included, plays no leaving, as the capsule
-  // is made anew each time the bar floats again.
-  const drawable = useDrawTools().present && !docked;
-  const [toolsSeen, setToolsSeen] = useState(false);
-  useEffect(() => {
-    if (drawable) setToolsSeen(true);
-  }, [drawable]);
-  const toolsGone = useCallback((capsule: HTMLDivElement | null) => {
-    if (!capsule) setToolsSeen(false);
-  }, []);
   fieldKey.current = draftKey;
   const draft = drafts[draftKey] ?? '';
   const setDraft = (key: string, body: string) => set((current) => ({ drafts: { ...current.drafts, [key]: body } }));
@@ -591,14 +575,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
         <div className="chat-float">
           {threadsList}
           {!listOpen && <WorkStrip board={board} routed={follow} onOpen={(id) => showThread(id)} onFollow={followTo} onDismiss={routed.done} />}
-          {bar && (
-            <div ref={toolsGone} className={`chat-tools${drawable ? ' is-shown' : toolsSeen ? ' was-shown' : ''}`} inert={!drawable}>
-              <div className="chat-tools-sheet">
-                <DrawToolbar />
-              </div>
-              <DrawOptions />
-            </div>
-          )}
+          {/* Over a canvas that can be drawn on, the bar has its drawing tools beside it, as every floating bar does (chatBar.tsx). */}
           {bar ?? (
             <button type="button" className="chat-threads-only" ref={listButton} onClick={toggleList} aria-expanded={listOpen} aria-haspopup="dialog">
               <Icon name="thread" /> Threads

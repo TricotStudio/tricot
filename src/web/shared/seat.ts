@@ -31,12 +31,42 @@ export const seatsSupported = (): boolean => typeof crypto !== 'undefined' && Bo
 
 // ---- the key, in IndexedDB --------------------------------------------------------------
 
+// The store can stop answering without a word: Safari's, once it has lost
+// its connection to it (after a restart of Tricot, or a sleep), leaves every
+// request on it pending. So what waits on it waits this long at most, then
+// fails in words a send shows ("Not sent", with Retry), and the next try
+// opens the store afresh rather than wait on the connection that was lost.
+const STORE_WAIT_MS = 5_000;
+const NOT_ANSWERING = "this browser's key for Tricot didn't answer: Retry, or reload the page if it still doesn't";
+
+function inTime<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      opening = undefined;
+      reject(new Error(NOT_ANSWERING));
+    }, STORE_WAIT_MS);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
 let opening: Promise<IDBDatabase> | undefined;
 function database(): Promise<IDBDatabase> {
   opening ??= new Promise((resolve, reject) => {
     const asked = indexedDB.open(DB_NAME, 1);
     asked.onupgradeneeded = () => asked.result.createObjectStore(STORE);
-    asked.onsuccess = () => resolve(asked.result);
+    asked.onsuccess = () => {
+      const db = asked.result;
+      // Closed under the page (the browser lost it, or another tab upgrades it): the next try opens it again.
+      db.onclose = () => {
+        opening = undefined;
+      };
+      db.onversionchange = () => {
+        db.close();
+        opening = undefined;
+      };
+      resolve(db);
+    };
     asked.onerror = () => {
       opening = undefined;
       reject(asked.error ?? new Error("This browser couldn't open its store for Tricot."));
@@ -46,22 +76,33 @@ function database(): Promise<IDBDatabase> {
 }
 
 // One transaction on the store: `change` reads what is held and says what to keep.
-async function transact<T>(change: (held: Held | undefined) => { keep?: Held; result: T }): Promise<T> {
-  const db = await database();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    const store = tx.objectStore(STORE);
-    let result: T;
-    const read = store.get(KEY);
-    read.onsuccess = () => {
-      const out = change(read.result as Held | undefined);
-      result = out.result;
-      if (out.keep) store.put(out.keep, KEY);
-    };
-    tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(tx.error ?? new Error("This browser couldn't keep its key for Tricot."));
-    tx.onabort = () => reject(tx.error ?? new Error("This browser couldn't keep its key for Tricot."));
-  });
+function transact<T>(change: (held: Held | undefined) => { keep?: Held; result: T }): Promise<T> {
+  return inTime(
+    database().then(
+      (db) =>
+        new Promise<T>((resolve, reject) => {
+          let tx: IDBTransaction;
+          try {
+            tx = db.transaction(STORE, 'readwrite');
+          } catch (error) {
+            opening = undefined; // its connection is gone: the next try opens a new one
+            reject(error);
+            return;
+          }
+          const store = tx.objectStore(STORE);
+          let result: T;
+          const read = store.get(KEY);
+          read.onsuccess = () => {
+            const out = change(read.result as Held | undefined);
+            result = out.result;
+            if (out.keep) store.put(out.keep, KEY);
+          };
+          tx.oncomplete = () => resolve(result);
+          tx.onerror = () => reject(tx.error ?? new Error("This browser couldn't keep its key for Tricot."));
+          tx.onabort = () => reject(tx.error ?? new Error("This browser couldn't keep its key for Tricot."));
+        }),
+    ),
+  );
 }
 
 const read = () => transact((held) => ({ result: held }));
@@ -133,7 +174,7 @@ export async function signedHeaders(method: string, url: string, body = ''): Pro
   const bodyHash = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)));
   const time = Date.now();
   const text = signedText({ method, path: target.pathname + target.search, bodyHash, time, counter: counted.counter, seat: counted.seat });
-  const signature = base64url(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, counted.keys.privateKey, new TextEncoder().encode(text)));
+  const signature = base64url(await inTime(crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, counted.keys.privateKey, new TextEncoder().encode(text))));
   return { [SEAT_HEADER]: counted.seat, [SEAT_TIME_HEADER]: String(time), [SEAT_SIGNATURE_HEADER]: signatureHeader(counted.counter, signature) };
 }
 

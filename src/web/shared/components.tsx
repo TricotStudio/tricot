@@ -44,6 +44,10 @@ const ICONS = {
   x: <path d="m4.5 4.5 7 7m0-7-7 7" />,
   edit: <path d="M3 13l.6-2.7 7-7a1.45 1.45 0 0 1 2.1 2.1l-7 7ZM9.4 4.6l2 2" />,
   check: <path d="m3.5 8.5 3 3 6-7" />,
+  // An arrow turning back: answering what was asked.
+  reply: <path d="M6.5 4 3 7.5 6.5 11M3 7.5h6.5a3.5 3.5 0 0 1 3.5 3.5v1.5" />,
+  // A circle struck through: held up, blocked.
+  blocked: <path d="M8 2.25a5.75 5.75 0 1 0 0 11.5 5.75 5.75 0 1 0 0-11.5ZM3.95 3.95l8.1 8.1" />,
   sync: <path d="M2.75 7.25A5.3 5.3 0 0 1 12.4 5M12.75 2.25V5H10M13.25 8.75A5.3 5.3 0 0 1 3.6 11M3.25 13.75V11H6" />,
   bell: <path d="M4 11.5h8l-1-1.5V7a3 3 0 0 0-6 0v3l-1 1.5ZM6.8 13.5a1.3 1.3 0 0 0 2.4 0" />,
   search: <path d="M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9ZM10.25 10.25 13.5 13.5" />,

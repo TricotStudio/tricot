@@ -1,5 +1,5 @@
 // The options of the tool that is on, in a tray over the tools' capsule
-// (threads.tsx places it, chatBar.css), so they are picked before drawing:
+// (threads/chatBar.tsx places it, chatBar.css), so they are picked before drawing:
 // what is picked here is what the tool draws from then on (drawTools.ts
 // `style`), kept for each tool in this browser. A shape: which one first
 // (rectangle, ellipse, diamond or arrow: the one place to choose it, beside its
