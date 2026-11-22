@@ -8,6 +8,7 @@
   position: fixed;
   z-index: var(--z-menu);
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* as wide as the peek: a long name ends in an ellipsis, never a sideways scroll */
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -241,6 +242,7 @@
    above, so the card's rows stay its rows. */
 .peek-inline {
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* the card's width: a long thread title ends in an ellipsis */
   margin-top: 8px;
   border-top: 1px solid var(--border);
   font-size: 12.5px;

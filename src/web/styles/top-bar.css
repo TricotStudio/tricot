@@ -311,8 +311,12 @@ button.live-label:hover,
   margin: 0;
   padding: 0;
 }
+/* One column as wide as the card, never wider: a line that doesn't wrap (a long
+   name, the thread an agent works in) ends in an ellipsis rather than
+   widening the column past the card's edge. */
 .live-agent {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   padding: 8px 10px;
 }
@@ -324,6 +328,9 @@ button.live-label:hover,
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+}
+.live-agent-head .actor {
   min-width: 0;
 }
 .live-agent-head .actor-name {
