@@ -8,7 +8,6 @@ import { listeningLabel } from './chatDoor';
 import { Icon, timeAgo, type IconName } from '../shared/components';
 import { openConnect, toolOf, useConnectedAgents, useInstalledAgents } from '../conversation';
 import { useAgents } from '../agents';
-import { useBall } from './ballTravel';
 import { DrawOptions, DrawToolbar, useDrawTools } from '../canvas';
 import { useCardKinds } from '../shared/cardKindsContext';
 import { MentionInput, type LensChoice } from '../shared/mentions';
@@ -121,6 +120,15 @@ export function ChatBar(props: Props) {
 // views leaves the bar where it is and what changes on it moves.
 const onScreen = { bars: 0, tools: 0, threads: 0, waiting: 0 };
 
+// Whether the floating bar on screen, as last drawn, shows its threads
+// button. Read as a view is drawn, before the page changes: Home, made as a
+// view switch takes that bar away, has its ball of yarn settle in at the top
+// of its yarn as the button folds into Home's own bar (timeline.tsx), a quiet
+// handoff, nothing crossing the screen.
+export function threadsButtonOnScreen(): boolean {
+  return onScreen.bars > 0 && onScreen.threads > 0;
+}
+
 // The threads button at the floating bar's left end, a small ball of yarn
 // with how many threads wait on you, and the rule after it. The dock's bar
 // has it on every view; a view that draws a bar of its own has none (Home,
@@ -140,9 +148,6 @@ function ThreadsButton({ threads }: { threads?: ThreadsOpener }) {
   const [said] = useState(() => before?.waiting ?? 0); // what a button going says as it goes
   const waiting = threads ? threads.count : said;
   const slot = useRef<HTMLSpanElement>(null);
-  // The ball itself, which flies here from the top of Home's yarn as a view
-  // switch brings the bar back, and there from here as it goes (ballTravel.ts).
-  useBall(threads ? 'bar' : null, () => slot.current?.querySelector<HTMLElement>('.chat-threads'), shown);
   useLayoutEffect(() => {
     onScreen.bars++;
     return () => {

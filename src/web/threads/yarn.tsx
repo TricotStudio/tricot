@@ -19,6 +19,11 @@ import { Icon } from '../shared/components';
 // the keyboard is on (`ring`) is ringed in focus blue and named. With a thread
 // open, the conversation's strand is the way back to it (`onBack`), as
 // "Conversation" and Esc are: pointing at it lifts it and says so.
+// Time runs down it quietly, in the viewer's own clock, in words of its own
+// drawing at the left of the conversation's strand: the hour, by the stitch of
+// the first row said in it (`hours`), and beside each knot when its thread's
+// work was done; a strand's label says when its work ran. They scroll with it,
+// under the ball.
 // At the top, every strand that runs on past what is in view unwinds from a
 // ball of yarn (`Unwound`, `YarnBall`), pinned over the scroller, which opens
 // the threads list; the threads' icon is that ball drawn small.
@@ -47,6 +52,49 @@ const DIM = 0.28;
 const TONES: Record<StrandTone, string> = { working: 'var(--status-in-progress)', waiting: 'var(--status-in-review)', todo: 'var(--status-to-do)', done: 'var(--status-done)' };
 const mix = (color: string, pct: number, other = 'var(--bg)') => `color-mix(in srgb, ${color} ${pct}%, ${other})`;
 const cleanId = (id: string) => id.replace(/[^\w-]/g, '');
+
+// ---- time along the yarn ----------------------------------------------------
+
+const WORDS_X = TRUNK_X - 11; // where the words at the left of the conversation's strand end: clear of its stitches and knots
+const WORDS_REACH = 56; // how far left of the yarn they may reach ("Sat 12:59 PM"), which the ball's cover hides too
+
+// Times in the viewer's own clock, as the rows' heads say them: "9:01 PM" where the clock runs to twelve, "21:01"
+// elsewhere; and the hour a row was said in, "9 PM" or "21:00".
+const clockFormat = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' });
+const twelve = clockFormat.formatToParts(0).some((p) => p.type === 'dayPeriod');
+const hourFormat = new Intl.DateTimeFormat([], twelve ? { hour: 'numeric' } : { hour: '2-digit', minute: '2-digit' });
+const clock = (t: number) => clockFormat.format(t);
+const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
+// A moment's day, where what is around it does not say it: "Sat", or "Nov 14" past a week.
+const dayWord = (t: number, now: number) => new Date(t).toLocaleDateString([], now - t < 6 * 86_400_000 ? { weekday: 'short' } : { month: 'short', day: 'numeric' });
+
+// A time drawn in the yarn: its period ("PM") a size smaller, after a thin space, to keep it short.
+const clockWords = (format: Intl.DateTimeFormat, t: number): ReactNode[] =>
+  format.formatToParts(t).map((p, i) => (p.type === 'dayPeriod' ? <tspan key={i} className="yarn-period">{p.value}</tspan> : p.type === 'literal' && !p.value.trim() ? '\u2009' : p.value));
+
+// How long work ran, for its label after when ("21m", "1h 20m", "2d 3h").
+function lasted(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  if (m < 1) return 'under a minute';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
+}
+
+// What a strand's label says after where its work stands, in the viewer's clock, with the day where it is not today:
+// when its work ran, and how long ("done · 8:40 – 9:01 PM (21m)"), or when it started ("needs you · started 8:40 PM"),
+// or, not started yet, since when it waits ("not started · since 8:40 PM").
+export function whenOf(s: Strand, now: number): string {
+  const from = Date.parse(s.from);
+  if (Number.isNaN(from)) return '';
+  const day = (t: number) => (sameDay(t, now) ? '' : `${dayWord(t, now)} `);
+  const to = s.to ? Date.parse(s.to) : NaN;
+  if (!(to >= from)) return ` · ${s.tone === 'todo' ? 'since' : 'started'} ${day(from)}${clock(from)}`;
+  const range = sameDay(from, to) ? `${day(from)}${clockFormat.formatRange(from, to)}` : `${day(from)}${clock(from)} – ${day(to)}${clock(to)}`;
+  return ` · ${range} (${lasted(to - from)})`;
+}
 
 // The plies each picture of yarn draws its lengths with, under its own `uid`.
 function Plies({ uid }: { uid: string }) {
@@ -172,9 +220,10 @@ interface Props {
   onLight?: (id: string | null) => void;
   onBack?: () => void; // a thread open: a click on the conversation's strand goes back to it
   onSpans?: (spans: Span[]) => void; // where each strand's lane runs, as it changes
+  hours?: boolean; // the hour where it turns between the rows: Home's conversation, whose dividers say the day
 }
 
-export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight, onBack, onSpans }: Props) {
+export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLight, onBack, onSpans, hours }: Props) {
   const uid = cleanId(useId());
   const svg = useRef<SVGSVGElement>(null);
   const [laid, setLaid] = useState<Laid | null>(null);
@@ -216,6 +265,17 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     const row = rows.find((r) => r.at >= t);
     return row ? row.top - 6 : end;
   };
+  // Where work done at `iso` is tied off: as `yAt`, but in the day it was done, so its time reads under that day's
+  // divider: when the next row is of a later day, just after the row before. `dayed` when the rows it follows are of
+  // another day, so its time says its day.
+  const tieAt = (iso: string): { y: number; dayed: boolean } | undefined => {
+    const y = yAt(iso);
+    const t = Date.parse(iso);
+    const i = rows.findIndex((r) => r.at >= t);
+    if (y === undefined || (i >= 0 && sameDay(rows[i].at, t))) return y === undefined ? y : { y, dayed: false };
+    const before = i < 0 ? rows.at(-1) : rows[i - 1];
+    return before ? { y: i < 0 ? end : before.bottom + 10, dayed: !sameDay(before.at, t) } : { y, dayed: false };
+  };
 
   const under: ReactNode[] = [];
   const over: ReactNode[] = [];
@@ -243,8 +303,11 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     under.push(<path key={`u${id}`} d={`M${TRUNK_X + 8} ${y - 3} A 9 5 0 0 0 ${TRUNK_X - 8} ${y - 3}`} fill="none" style={{ stroke: mix(color, 70, 'var(--text)') }} strokeWidth={4} opacity={opacity} />);
     over.push(<path key={`o${id}`} d={`M${TRUNK_X - 8} ${y - 3} A 9 5 0 0 0 ${TRUNK_X + 8} ${y + 1}`} fill="none" style={{ stroke: color }} strokeWidth={4} strokeLinecap="round" opacity={opacity} />);
   };
-  // Where a thread's work is done: it comes back to the conversation's strand and is tied off with a knot.
-  const tieOff = (id: string, y: number, x: number, opacity: number) => {
+  // Where a thread's work is done: it comes back to the conversation's strand and is tied off with a knot, when it was
+  // done beside it (`at`, with its day where the rows around it are of another).
+  const doneAt: { id: string; y: number; at: number; dayed: boolean; opacity: number }[] = [];
+  const tieOff = (id: string, y: number, x: number, opacity: number, at?: number, dayed = false) => {
+    if (at !== undefined && !Number.isNaN(at)) doneAt.push({ id, y, at, dayed, opacity });
     const color = TONES.done;
     const ink = mix(color, 70, 'var(--text)');
     lines.push(<g key={`t${id}`} opacity={opacity}>{strand('s', `M${x} ${y - KNIT} C ${x} ${y - 6}, ${TRUNK_X + 16} ${y}, ${TRUNK_X} ${y}`, 'done', LANE_W)}</g>);
@@ -341,7 +404,8 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       const opacity = lit && lit !== s.id ? DIM : 1;
       const knitAt = branches[s.id] ?? yAt(s.from);
       if (s.to && s.tone === 'done' && yAt(s.to) === undefined) continue; // done before what is shown
-      let tied = s.to && s.tone === 'done' ? yAt(s.to) : undefined;
+      const tie = s.to && s.tone === 'done' ? tieAt(s.to) : undefined;
+      let tied = tie?.y;
       if (tied !== undefined && knitAt !== undefined) tied = Math.max(tied, knitAt + 2 * KNIT + 16);
       if (tied !== undefined && tied > end) tied = end;
       const top = knitAt === undefined ? -80 : knitAt + KNIT;
@@ -357,7 +421,7 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
         ringed(s.id, `M${x} ${top} L ${x} ${bottom}`);
       }
       if (tied !== undefined) {
-        tieOff(s.id, tied, x, opacity);
+        tieOff(s.id, tied, x, opacity, Date.parse(s.to!), tie?.dayed);
         ringed(s.id, `M${x} ${tied - KNIT} C ${x} ${tied - 6}, ${TRUNK_X + 16} ${tied}, ${TRUNK_X} ${tied}`);
       }
       else if (s.live) over.push(liveDot(`v${s.id}`, x, end, opacity));
@@ -372,6 +436,46 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     rows.forEach((row, i) => over.push(stitch(`m${i}`, TRUNK_X, row.mark, 'trunk')));
   }
 
+  // Time, in the viewer's clock, in words at the left of the conversation's strand, each clear of the last: when each
+  // thread's work was done, beside its knot (of two knots tied together, the one drawn over), then the hour where it
+  // turns between the rows, by the stitch of the first row said in it, unless a knot just above already says a time in
+  // it. Rows hours apart have one, the later hour; a day's first, under its divider, has its own; rows minutes apart,
+  // none.
+  const times: ReactNode[] = [];
+  const taken: { y: number; hour: number }[] = [];
+  const hourOf = (t: number) => new Date(t).setMinutes(0, 0, 0);
+  const now = Date.now();
+  for (const k of doneAt.reverse()) {
+    if (taken.some((w) => Math.abs(w.y - k.y) < 14)) continue;
+    taken.push({ y: k.y, hour: hourOf(k.at) });
+    times.push(
+      <text key={`d${k.id}`} className="yarn-done" x={WORDS_X} y={k.y} dy="0.35em" textAnchor="end" opacity={k.opacity}>
+        {k.dayed && `${dayWord(k.at, now)} `}
+        {clockWords(clockFormat, k.at)}
+      </text>,
+    );
+  }
+  if (hours) {
+    let hour = NaN;
+    let last = -Infinity;
+    let prev = -Infinity; // the stitch of the row before
+    for (const row of rows) {
+      const at = hourOf(row.at);
+      const above = prev;
+      prev = row.mark;
+      if (Number.isNaN(at) || at === hour) continue;
+      hour = at;
+      if (taken.some((w) => w.hour === at && w.y > above && w.y < row.mark)) continue;
+      if (row.mark - last < 28 || taken.some((w) => Math.abs(w.y - row.mark) < 14)) continue;
+      last = row.mark;
+      times.push(
+        <text key={`h${at}`} className="yarn-hour" x={WORDS_X} y={row.mark} dy="0.35em" textAnchor="end">
+          {clockWords(hourFormat, at)}
+        </text>,
+      );
+    }
+  }
+
   // The label: the strand pointed at, beside the pointer; else the one the keyboard is on, where it knits off.
   const named = pointed ? strands.find((s) => s.id === pointed.id) : ring ? strands.find((s) => s.id === ring) : undefined;
   const at = named && (pointed?.id === named.id ? { x: placed.get(named.id)?.x ?? LANE_X, y: pointed.y } : placed.get(named.id));
@@ -379,7 +483,10 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     <span className="yarn-label yarn-part" style={{ left: at.x + 14, top: Math.max(0, at.y - 12) }} aria-hidden>
       <span className={`work-square is-${named.tone}`} />
       <span className="yarn-label-title">{named.title}</span>
-      <span className="yarn-label-status">{named.status}</span>
+      <span className="yarn-label-status">
+        {named.status}
+        {whenOf(named, now)}
+      </span>
     </span>
   );
   const backLabel = onBack && backAt !== null && (
@@ -400,6 +507,7 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       {rings}
       {lines}
       {over}
+      {times}
       {hits}
     </svg>
     {label}
@@ -467,7 +575,8 @@ export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
           <rect x={-8} y={-8} width={width + 16} height={UNWOUND + 9} />
         </clipPath>
       </defs>
-      <rect className="yarn-cover" x={-8} y={0} width={width + 8} height={UNWOUND + 0.5} />
+      {/* The paper over the yarn's top, the times at its left included. */}
+      <rect className="yarn-cover" x={-WORDS_REACH} y={0} width={width + WORDS_REACH} height={UNWOUND + 0.5} />
       <g clipPath={`url(#${uid}-cut)`}>
         {shown.map((s, i) => {
           const a = ((12 + i * (70 / Math.max(1, shown.length - 1))) * Math.PI) / 180;

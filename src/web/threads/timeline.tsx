@@ -13,7 +13,7 @@ import type { Away } from '../shared/boardHost';
 import { Icon } from '../shared/components';
 import { useReadOnly, useStoredFlag } from '../shared/hooks';
 import { go, linkTo, replaceAddress, type BoardRoute } from '../shared/pages';
-import { ChatBar } from './chatBar';
+import { ChatBar, threadsButtonOnScreen } from './chatBar';
 import { replyingTo } from './chatDoor';
 import { lensChoices, messageLensOf } from './lensChoices';
 import { RelayCard, RelayStack, toneOf } from './relayCard';
@@ -21,11 +21,10 @@ import { useRelays, type Relay } from './relays';
 import { draftMessage, isLocal, replyInThread, startThread, unsentStarts } from './send';
 import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } from './threads';
 import { ThreadsList } from './threadsList';
-import { useBall } from './ballTravel';
 import { useThreadsSeen } from './threadsSeen';
 import { ownedThreads, threadTone, WorkPanel } from './timelineWork';
 import { moveWork } from './workMotion';
-import { gutterOf, lanesOf, Unwound, Yarn, YarnBall, type Span, type Strand } from './yarn';
+import { gutterOf, lanesOf, Unwound, whenOf, Yarn, YarnBall, type Span, type Strand } from './yarn';
 import './timeline.css';
 
 // A board's Home (the core's view 'timeline', at /home: board/coreViews.tsx).
@@ -401,8 +400,18 @@ function MainConversation(props: {
   const groups = useMemo(() => threadGroups(board, name, seen, Date.now()), [board, name, seen]);
   const [listOpen, setListOpen] = useState(false);
   const listButton = useRef<HTMLButtonElement>(null);
-  // The ball flies up to it from the floating bar's threads button as a view switch brings Home, and back (ballTravel.ts).
-  useBall('yarn', () => listButton.current, true);
+  // Made as a view switch takes away a floating bar that showed its threads button, whose ball folds into the bar below
+  // as this one fades in at the top of the yarn and the whole yarn draws down from it: the same yarn arriving
+  // (timeline.css), once. It draws down through the scroller's window as the scroller is placed (above).
+  const [ballArrives, ballLanded] = useState(threadsButtonOnScreen);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!ballArrives || !el?.parentElement) return;
+    el.parentElement.style.setProperty('--yarn-from', `${el.scrollTop}px`);
+    el.parentElement.style.setProperty('--yarn-window', `${el.clientHeight}px`);
+    const done = setTimeout(() => ballLanded(false), 1000);
+    return () => clearTimeout(done);
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const { remove, toast } = useUndoDelete(name, (e) => setError(e instanceof Error ? e.message : String(e)));
 
@@ -453,7 +462,8 @@ function MainConversation(props: {
         tag={
           <>
             {tag && <span className="dock-door timeline-tag">{tag}</span>}
-            {!isLocal(s.thread) && (
+            {/* Only a message with a thread of its own, work, opens it: a quick question lives here. */}
+            {!isLocal(s.thread) && !inConversation(s.thread) && (
               <button type="button" className="timeline-open" onClick={() => onOpen(s.thread.id)} title={`Open “${shownTitle(s.thread)}” here, to read it on its own and reply in it`}>
                 Open thread <Icon name="arrow-right" />
               </button>
@@ -469,7 +479,7 @@ function MainConversation(props: {
   });
 
   return (
-    <div className="timeline-conversation" style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
+    <div className={`timeline-conversation${ballArrives ? ' is-ball-arriving' : ''}`} style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
       <header className="timeline-head">
         <h2>Conversation</h2>
         <span className="timeline-with">{coordinator ? `with ${ownName(coordinator)}, the board's coordinator` : "with the board's agents"}</span>
@@ -486,7 +496,7 @@ function MainConversation(props: {
           }}
         >
           <div className="timeline-rows">
-            <Yarn strands={visible} lanes={lanes} version={`${count}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} />
+            <Yarn strands={visible} lanes={lanes} version={`${count}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} hours />
             {order.length > 0 && (
               <div
                 ref={keys}
@@ -502,6 +512,7 @@ function MainConversation(props: {
                 {visible.map((s) => (
                   <span key={s.id} id={`strand-${s.id}`} role="option" aria-selected={s.id === ring}>
                     {s.title}, {s.status}
+                    {whenOf(s, now)}
                   </span>
                 ))}
               </div>

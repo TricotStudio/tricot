@@ -30,11 +30,14 @@
 }
 .timeline-conversation,
 .timeline-thread {
-  --column-left: max(calc(var(--yarn-gutter) + 8px), calc((100% - var(--column)) / 2));
+  --column-left: max(calc(var(--yarn-gutter) + var(--yarn-room, 8px)), calc((100% - var(--column)) / 2));
   --column-right: max(24px, calc((100% - var(--column)) / 2));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
 }
+/* The conversation's yarn draws times at its left (yarn.tsx): on a window too
+   narrow to centre the column, it keeps room for them (--yarn-room). */
 .timeline-conversation {
+  --yarn-room: 28px;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -88,7 +91,7 @@
    the bar and the skein over the scroller do, from the pane's whole width:
    the strands meet the ball, and the bar stays where it is on every view. */
 .timeline-scroll {
-  --column-left: max(calc(var(--yarn-gutter) + 8px), calc((100% + var(--scrollbar, 0px) - var(--column)) / 2));
+  --column-left: max(calc(var(--yarn-gutter) + var(--yarn-room, 8px)), calc((100% + var(--scrollbar, 0px) - var(--column)) / 2));
   --column-right: calc(max(24px, calc((100% + var(--scrollbar, 0px) - var(--column)) / 2)) - var(--scrollbar, 0px));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
 }
@@ -113,22 +116,6 @@
 .yarn-unwound .yarn-hit {
   pointer-events: stroke;
   cursor: pointer;
-}
-/* The ball flying up to the top of the yarn from the floating bar's threads
-   button (ballTravel.ts): the ball here is hidden until it lands, and the
-   strands unwind from it as it does. */
-:root[data-ball-moving] .timeline-skein > .timeline-skein-button {
-  visibility: hidden;
-}
-@media (prefers-reduced-motion: no-preference) {
-  :root[data-ball-moving='yarn'] .yarn-unwound > g {
-    animation: yarn-unwinds 200ms linear 280ms both;
-  }
-}
-@keyframes yarn-unwinds {
-  from {
-    opacity: 0;
-  }
 }
 .timeline-skein {
   position: absolute;
@@ -166,6 +153,62 @@
   left: 24px;
   box-shadow: 0 0 0 2.5px var(--bg);
 }
+/* The ball arriving: Home drawn as a view switch takes away the floating bar,
+   whose threads button folds into Home's own bar meanwhile (chatBar.tsx
+   threadsButtonOnScreen), a quiet handoff with nothing crossing the screen.
+   The ball fades in where it sits, with a hint of a turn settling just past
+   and back on the dock's settle, and the whole yarn arrives with it: it draws
+   down from the ball through what is in view, the strands under the ball
+   first, then the conversation's strand and every thread's with their
+   knit-offs, knots, stitches and the time along them, revealed top to bottom
+   by a clip, never laid out again. The clip runs in the scroller's own window
+   (--yarn-from, where it is scrolled to, and --yarn-window, how tall it is:
+   timeline.tsx), so the line it draws down to moves as one over the strands
+   under the ball and the yarn under them. The count is knotted on last. A
+   page opening on Home, the bar docked, or a thread open on Home before has
+   nothing to hand over. */
+@media (prefers-reduced-motion: no-preference) {
+  .is-ball-arriving .timeline-skein-button .yarn-ball {
+    animation:
+      yarn-ball-settles 360ms var(--dock-settle) 40ms both,
+      yarn-ball-shows 220ms linear 40ms both;
+  }
+  .is-ball-arriving :is(.yarn-unwound, .timeline-rows > .yarn) {
+    animation: yarn-draws-down 380ms cubic-bezier(0.45, 0, 0.25, 1) 120ms backwards;
+  }
+  .is-ball-arriving .yarn-unwound {
+    --yarn-from: 0px;
+  }
+  .is-ball-arriving .timeline-skein-button .chat-count {
+    animation: yarn-knot-ties 200ms var(--ease-out) 300ms both;
+  }
+}
+@keyframes yarn-ball-settles {
+  from {
+    transform: rotate(-14deg) scale(0.92);
+  }
+}
+@keyframes yarn-ball-shows {
+  from {
+    opacity: 0;
+  }
+}
+/* Wide either side, so what reaches past the yarn's box (a stitch into a
+   card) arrives with it. */
+@keyframes yarn-draws-down {
+  from {
+    clip-path: inset(0 -100vw calc(100% - var(--yarn-from, 0px)) -100vw);
+  }
+  to {
+    clip-path: inset(0 -100vw calc(100% - var(--yarn-from, 0px) - var(--yarn-window, 100vh)) -100vw);
+  }
+}
+@keyframes yarn-knot-ties {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
 /* The list drops open under it, rather than rising over a bar. */
 .timeline-skein .threads-pop {
   top: calc(100% + 8px);
@@ -189,7 +232,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 320px;
+  max-width: 420px; /* its title, and when its work ran */
   padding: 3px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -307,10 +350,30 @@
   pointer-events: stroke;
   cursor: pointer;
 }
+/* Time along the yarn, in the viewer's clock, at the left of the
+   conversation's strand: the hour where it turns, in the faint ink of a
+   message's time, and when a thread's work was done, in the ink of the green
+   its knot is tied in. A caption, a step under the strands. */
+.yarn-hour,
+.yarn-done {
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.yarn-hour {
+  fill: var(--faint);
+}
+.yarn-period {
+  font-size: 9px;
+}
+.yarn-done {
+  fill: var(--status-done-ink);
+}
 @media (prefers-reduced-motion: no-preference) {
   .yarn g,
   .yarn path,
-  .yarn circle {
+  .yarn circle,
+  .yarn text {
     transition: opacity 0.16s ease-out;
   }
 }

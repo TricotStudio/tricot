@@ -136,6 +136,7 @@ describe("Tricot Canvas's page, built with no registry of a part's", SKIP, () =>
   it("opens the board's Home: the conversation with its yarn, its own chat bar in place of the dock, and Work with the threads agents own and nothing of a part's", () => {
     const { timeline } = results;
     assert.ok(timeline.shown && timeline.yarn && timeline.bar, JSON.stringify(timeline));
+    assert.match(timeline.hours[0] ?? '', /\d/, 'the yarn marks the hour the conversation starts in, by its first message');
     assert.equal(timeline.dock, false, 'no floating bar or docked panel over it');
     assert.ok(timeline.skein && !timeline.threadsInBar, 'the threads list opens from the ball at the top of the yarn, not from a button in the bar');
     assert.match(timeline.conversation, /Can you sketch the address step\?.*Sketched it on the page/);
