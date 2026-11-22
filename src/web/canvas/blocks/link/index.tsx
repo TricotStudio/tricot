@@ -17,7 +17,7 @@ import { usePinTitles } from '../../pins';
 import { useTypedDrop } from '../../dropOverlay';
 import { MarkIcon, SourceIcon } from '../../sources/icon';
 import { siteMark } from '../../sources/sites';
-import type { AddContext, CardProps, Clip, FormProps, OverlayProps, Point, ToolsProps, WebBlockKind } from '../kind';
+import type { AddContext, CardProps, Clip, FormProps, OverlayProps, Point, PreviewProps, ToolsProps, WebBlockKind } from '../kind';
 import { LinkFrame } from './embed';
 
 type LinkBlock = Extract<Block, { type: 'link' }>;
@@ -324,6 +324,20 @@ function LinkOverlay({ block, name, pinId, onClose }: OverlayProps<LinkBlock>) {
   return editor ? <editor.Editor block={block} name={name} pinId={pinId} onClose={onClose} /> : null;
 }
 
+// A link as its card reads, without what it does: its site's or its
+// source's mark, its title (or its address), and its source's kind or host.
+// Nothing is fetched, from the site or a connector.
+function LinkPreview({ block }: PreviewProps<LinkBlock>) {
+  const source = linkSource(block.url);
+  return (
+    <div className="preview-link-card">
+      {source ? <SourceIcon mark={source.mark} /> : <SiteIcon url={block.url} />}
+      <span className="preview-link-title">{block.title || source?.name || linkAddress(block.url)}</span>
+      <span className="preview-link-host">{source ? `${sourceKind(source)} · ${linkHost(block.url)}` : linkHost(block.url)}</span>
+    </div>
+  );
+}
+
 export const link: WebBlockKind<LinkBlock> = {
   type: 'link',
   copyText: (block) => block.url,
@@ -332,6 +346,7 @@ export const link: WebBlockKind<LinkBlock> = {
     <LinkCard block={block} editing={editing} setEditing={setEditing} badges={badges} />
   ),
   Tools: LinkTools,
+  Preview: LinkPreview,
   overlay: { Component: LinkOverlay, changes: true },
   // Showing a comment on a part of the document opens the connector's editor there.
   opensOnPin: (block, pin) => Boolean(connectorOfLink(linkSource(block.url))?.editor?.opensPin(pin)),

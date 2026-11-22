@@ -30,6 +30,16 @@ export interface CardProps<B extends Block = Block> {
   badges: ReactNode;
 }
 
+// A block's picture away from its canvas, under the message that made it in a
+// conversation: what it says at a glance, at a size to read it by. It is
+// drawn in a link that opens the block, inside a small frame it fills and is
+// clipped by, and nothing in it takes a click or the focus: it holds no link,
+// button or field, and nothing that edits. Cheap to draw, as a conversation
+// may show many; it is drawn once its frame comes near the screen.
+export interface PreviewProps<B extends Block = Block> {
+  block: B;
+}
+
 export interface TitleProps<B extends Block = Block> {
   block: B;
   placed: PlacedPin[];
@@ -125,6 +135,8 @@ export interface WebBlockKind<B extends Block = any> {
   readonly type: B['type'];
   readonly Body: ComponentType<BodyProps<B>>;
   readonly Card?: ComponentType<CardProps<B>>;
+  // Its picture under the message that made it (PreviewProps). None: the message names it in a line, its kind and title.
+  readonly Preview?: ComponentType<PreviewProps<B>>;
   readonly Title?: ComponentType<TitleProps<B>>; // in place of the editable title (a code block's path)
   readonly Head?: ComponentType<TitleProps<B>>; // beside the title (a diff's totals, a chart's switch)
   readonly Tools?: ComponentType<ToolsProps<B>>; // in the block's toolbar when it is selected

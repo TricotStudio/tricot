@@ -8,7 +8,7 @@ import type { Block } from '../../../../core/types';
 import { useCanvas } from '../../context';
 import { useClickPick, type PlacedPin } from '../../pins';
 import { dragged, selecting, useLongEdit } from '../interaction';
-import type { ToolsProps, WebBlockKind } from '../kind';
+import type { PreviewProps, ToolsProps, WebBlockKind } from '../kind';
 import { DiagramView } from './diagramView';
 import { Mermaid } from './Mermaid';
 import { diagramPart, drawnParts, useArrowTwins } from './parts';
@@ -109,11 +109,22 @@ function DiagramTools({ block, viewing }: ToolsProps<Extract<Block, { type: 'dia
   );
 }
 
+// The diagram drawn small, whole in its frame. Mermaid loads, and draws it,
+// once the frame comes near the screen.
+function DiagramPreview({ block }: PreviewProps<Extract<Block, { type: 'diagram' }>>) {
+  return (
+    <div className="preview-diagram">
+      <Mermaid source={block.source} />
+    </div>
+  );
+}
+
 export const diagram: WebBlockKind<Extract<Block, { type: 'diagram' }>> = {
   type: 'diagram',
   copyText: (block) => block.source,
   Body: DiagramBody,
   Tools: DiagramTools,
+  Preview: DiagramPreview,
   overlay: { Component: DiagramView, refocus: true }, // its full view, in the pairing shell
   activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Diagram', icon: 'diagram', add: () => ({ content: { type: 'diagram', source: 'flowchart LR\n  A[Start] --> B[Next]' } }) },

@@ -5,8 +5,8 @@
 import type { Block } from '../../../../core/types';
 import { tabular } from '../../clip';
 import { useCanvas } from '../../context';
-import type { ToolsProps, WebBlockKind } from '../kind';
-import { ChartBody, ChartHead, SAMPLE_CHART, showChartData } from './chart';
+import type { PreviewProps, ToolsProps, WebBlockKind } from '../kind';
+import { ChartBody, ChartHead, ChartPlot, SAMPLE_CHART, showChartData } from './chart';
 import { ChartView } from './chartView';
 
 type ChartBlock = Extract<Block, { type: 'chart' }>;
@@ -21,12 +21,23 @@ function ChartTools({ block, viewing }: ToolsProps<ChartBlock>) {
   );
 }
 
+// The chart drawn small, as on its canvas, with nothing to pick on it.
+const nothing = () => {};
+function ChartPreview({ block }: PreviewProps<ChartBlock>) {
+  return (
+    <div className="preview-chart">
+      <ChartPlot block={block} marks={[]} pinnable={false} onPick={nothing} />
+    </div>
+  );
+}
+
 export const chart: WebBlockKind<ChartBlock> = {
   type: 'chart',
   copyText: (block) => tabular(block.columns, block.rows),
   Body: ChartBody,
   Head: ({ block, frozen }) => <ChartHead block={block} frozen={frozen} />,
   Tools: ChartTools,
+  Preview: ChartPreview,
   overlay: { Component: ChartView, refocus: true }, // its full view, in the pairing shell
   activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Chart', icon: 'chart', add: () => ({ content: SAMPLE_CHART, title: 'New chart' }) },

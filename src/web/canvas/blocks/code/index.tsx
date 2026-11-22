@@ -9,6 +9,7 @@ import { useCanvas } from '../../context';
 import type { AddContext, FormProps, Point, ToolsProps, WebBlockKind } from '../kind';
 import { AddCodeForm, CodeBody, CodeDropOverlay, CodeHead, isImageFile, readCodeFile, useCodeDrop, type NewCode } from './code';
 import { CodeView } from './codeView';
+import { CodePreview } from './preview';
 
 type CodeBlock = Extract<Block, { type: 'code' }>;
 
@@ -65,6 +66,7 @@ export const code: WebBlockKind<CodeBlock> = {
   Title: ({ block, placed, frozen }) => <CodeHead block={block} placed={placed} frozen={frozen} />, // named by its path
   ownPins: true, // its line comments and chips are in the body
   Tools: CodeTools,
+  Preview: CodePreview,
   overlay: { Component: CodeView, refocus: true }, // its full view, in the pairing shell
   activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Code', icon: 'code', Form: AddCode, toggles: true },

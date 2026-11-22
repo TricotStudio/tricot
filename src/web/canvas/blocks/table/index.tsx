@@ -9,6 +9,7 @@ import { tabular } from '../../clip';
 import { useCanvas, type PinDraft } from '../../context';
 import type { ToolsProps, WebBlockKind } from '../kind';
 import { TableBody } from './cells';
+import { TablePreview } from './preview';
 import { TableView } from './tableView';
 
 type TableBlock = Extract<Block, { type: 'table' }>;
@@ -78,6 +79,7 @@ export const table: WebBlockKind<TableBlock> = {
   copyText: (block) => tabular(block.columns, block.rows),
   Body: TableBody,
   Tools: TableTools,
+  Preview: TablePreview,
   PinScope: TablePinScope,
   overlay: { Component: TableView, refocus: true }, // its full view, in the pairing shell
   activate: (block, canvas) => canvas.openOverlay(block.id),

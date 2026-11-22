@@ -3,6 +3,7 @@
 // reach its files (test/webImports.test.ts).
 export { CanvasView } from './CanvasView';
 export { useWebBlockKinds } from './blocks/registry';
+export { BlockPreview, hasPreview } from './blocks/preview';
 export type { WebBlockKind } from './blocks/kind';
 export { useCanvas } from './context';
 export { focusBlock, openPin } from './focus';

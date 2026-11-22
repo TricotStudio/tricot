@@ -4,6 +4,7 @@
 import type { Block } from '../../../../core/types';
 import type { WebBlockKind } from '../kind';
 import { DiffBody, DiffHead } from './diff';
+import { DiffPreview } from './preview';
 
 type DiffBlock = Extract<Block, { type: 'diff' }>;
 
@@ -12,5 +13,6 @@ export const diff: WebBlockKind<DiffBlock> = {
   copyText: (block) => block.patch,
   Body: ({ block, placed }) => <DiffBody block={block} placed={placed} />,
   Head: ({ block }) => <DiffHead block={block} />,
+  Preview: DiffPreview,
   ownPins: true, // its line comments and chips are in the body
 };

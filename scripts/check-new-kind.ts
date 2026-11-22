@@ -157,6 +157,8 @@ export const quote: WebBlockKind<QuoteBlock> = {
       {block.speaker && <footer>— {block.speaker}</footer>}
     </blockquote>
   ),
+  // Its picture under the message that made it: drawn read-only inside a link, so no link, button or field of its own.
+  Preview: ({ block }) => <p className="preview-empty">“{block.quote}”</p>,
   menu: { label: 'Quote', icon: 'comment', add: () => ({ content: { type: 'quote', quote: 'Say something worth quoting', speaker: '' } }) },
 };
 `;

@@ -1,0 +1,244 @@
+/* ---- a block's picture away from its canvas (blocks/preview.tsx) ----------------
+   A frame of the canvas's sheet, 16:10, that each kind's picture fills and is
+   clipped by. What reads from its top and goes on (a note, a table, code, a
+   diff's files) fades out at the frame's foot rather than stopping on a cut
+   line. Nothing in it takes the pointer: it is a picture inside a link. */
+
+.block-preview {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.45;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.preview-note,
+.preview-table,
+.preview-code,
+.preview-diff {
+  height: 100%;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+.preview-empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--faint);
+}
+
+/* ---- an image: the picture, filling the frame or whole in it ---- */
+
+.preview-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.preview-image.is-filling {
+  object-fit: cover;
+}
+
+/* ---- a note: its first lines, read as the note reads, smaller ---- */
+
+.preview-note {
+  padding: 9px 12px 0;
+}
+.preview-note .md {
+  line-height: 1.5;
+}
+.preview-note .md :is(p, ul, ol, blockquote, pre, table) {
+  margin-bottom: 0.5em;
+}
+.preview-note .md :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0.6em 0 0.25em;
+}
+.preview-note .md img {
+  max-height: 7em;
+}
+.preview-link {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+/* A task list's box, drawn: ticked, it is filled in the text's own ink. */
+.preview-box {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.4em;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  vertical-align: -0.12em;
+}
+.preview-box.is-done {
+  border-color: var(--muted);
+  background: var(--muted);
+}
+
+/* ---- a table: its head and first rows, a line each ---- */
+
+/* Wider than its frame, it fades out at the right edge too. */
+.preview-table.is-wide {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent), linear-gradient(to right, #000 calc(100% - 16px), transparent);
+  mask-composite: intersect;
+}
+.preview-table table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.preview-table :is(th, td) {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.preview-table :is(th, td) > span {
+  display: block;
+  max-width: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-table :is(th, td) + :is(th, td) {
+  border-left: 1px solid var(--border);
+}
+.preview-table th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* ---- a diagram, drawn small and whole ---- */
+
+.preview-diagram {
+  height: 100%;
+  padding: 8px 10px;
+}
+.preview-diagram .mermaid {
+  width: 100%;
+  height: 100%;
+}
+.preview-diagram .mermaid svg {
+  display: block;
+  width: 100% !important; /* Mermaid sets its own width in the element's style */
+  height: 100% !important;
+  max-width: 100% !important;
+}
+.preview-diagram :is(.placeholder, .mermaid-error) {
+  margin: 0;
+  color: var(--faint);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+/* ---- a chart, drawn small ---- */
+
+.preview-chart {
+  height: 100%;
+}
+.preview-chart .chart {
+  height: 100%;
+  padding: 6px 8px 2px 4px;
+}
+.preview-chart .chart-top {
+  padding-bottom: 2px;
+}
+.preview-chart .chart-legend {
+  font-size: 10.5px;
+}
+
+/* ---- code: numbered lines from the first that matters ---- */
+
+.preview-code {
+  padding-top: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+.preview-code .diff-row {
+  grid-template-columns: var(--diff-num-w) minmax(0, 1fr);
+}
+.preview-code .diff-num {
+  padding-right: 8px;
+}
+.preview-code .diff-text {
+  overflow: hidden;
+}
+
+/* ---- a diff: its totals and its files ---- */
+
+.preview-diff {
+  padding: 9px 12px 0;
+  font-size: 11px;
+}
+.preview-diff-totals {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.preview-diff ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.preview-diff li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  white-space: nowrap;
+}
+.preview-diff-name {
+  flex: none;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.preview-diff-folder {
+  flex: 1 1 0; /* what room is left, so it gives way before the name */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--faint);
+}
+.preview-diff li :is(.diff-plus, .diff-minus) {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+/* ---- a link: its mark, its title and where it goes ---- */
+
+.preview-link-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 14px;
+}
+.preview-link-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.preview-link-host {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+}

@@ -12,7 +12,7 @@ import { webConnector } from '../../../connectors/registry';
 import { EditableText, useCanvas } from '../../context';
 import { DRAFT, type PlacedPin } from '../../pins';
 import { dragged, draftOf, selecting } from '../interaction';
-import type { AddContext, Point, ToolsProps, WebBlockKind } from '../kind';
+import type { AddContext, Point, PreviewProps, ToolsProps, WebBlockKind } from '../kind';
 import { ImageView } from './imageViewer';
 import { routes, routeUrl } from '../../../../core/routes';
 
@@ -183,6 +183,25 @@ function ImageBody({ block, placed }: { block: Extract<Block, { type: 'image' }>
   );
 }
 
+// Its picture, small: filling the frame when it is near the frame's own shape
+// (a screenshot), whole when it is much taller or wider (a phone's screen, a
+// strip), so nothing that matters is cut off. The picture is the one the
+// canvas shows, fetched when it comes near the screen; there is no smaller one.
+function ImagePreview({ block }: PreviewProps<ImageBlock>) {
+  const { naturalWidth: width, naturalHeight: height } = block;
+  const fills = Boolean(width && height && width / height > 1.25 && width / height < 2.1);
+  return (
+    <img
+      className={`preview-image${fills ? ' is-filling' : ''}`}
+      src={routeUrl(routes.asset, { id: block.assetId })}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+    />
+  );
+}
+
 // A new image block starts at its picture's natural size, within limits
 // (core/blocks/image/image.ts). The server reads the size; the browser, if it couldn't.
 async function imageSize(file: Blob, read: PixelSize | null): Promise<{ w: number; h: number }> {
@@ -215,6 +234,7 @@ export const image: WebBlockKind<ImageBlock> = {
   copyText: (block) => block.caption,
   Body: ImageBody,
   Tools: ImageTools,
+  Preview: ImagePreview,
   still: true,
   menu: { label: 'Image', icon: 'image', pick: { accept: 'image/png,image/jpeg,image/gif,image/webp' } },
   files: { accepts: (file) => file.type.startsWith('image/'), paste: true, add: addImages },

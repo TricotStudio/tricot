@@ -777,6 +777,101 @@
   color: var(--faint);
 }
 
+/* The blocks it made, as pictures (BlockPreviews): sheets of the canvas's,
+   each its picture over its name, side by side as the message has room for
+   (--across, from 1 to 3), none wider than 240px, or 320px alone, and the
+   row no wider than the prose's measure above it. Each keeps
+   its share of the row, its name ending in an ellipsis, so a message is never
+   widened. Under them, quietly, where they are and +N more. */
+.block-previews {
+  align-self: stretch; /* as wide as the message, even under a bubble, so the room it measures is the message's */
+  min-width: 0;
+  margin: 8px 0 2px;
+}
+.block-previews > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--across), minmax(0, 1fr));
+  gap: 8px;
+  font-size: 15px; /* the prose's, so the row ends where its measure does (41em) */
+  max-width: min(41em, calc(var(--across) * 240px + (var(--across) - 1) * 8px));
+}
+.block-previews.is-one > ul {
+  max-width: 320px;
+}
+.thread-message.is-mine .block-previews > ul {
+  margin-left: auto;
+}
+.block-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.12s;
+}
+.block-tile:hover {
+  border-color: var(--border-strong);
+}
+.block-tile:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.block-tile-name {
+  padding: 5px 10px 6px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block-tile:hover .block-tile-name {
+  color: var(--text);
+}
+.block-previews-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+.block-previews-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.block-previews-more {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.block-previews-more:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.block-previews-more:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
 /* ---- deleting a thread --------------------------------------------------------
    The toast that offers Undo is the canvas's (canvas/undo.tsx), held where
    the canvas's own sits, near the foot of the window, and lifted clear of

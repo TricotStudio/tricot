@@ -13,6 +13,7 @@ import { DRAFT, PinStrip, rehypePins, type PlacedPin, type QuotedMark } from '..
 import { PIN_COMPONENTS, dragged, draftOf, selecting, useLongEdit } from '../interaction';
 import type { ToolsProps, WebBlockKind } from '../kind';
 import { NoteView } from './noteView';
+import { NotePreview } from './preview';
 
 type NoteBlock = Extract<Block, { type: 'note' }>;
 
@@ -120,6 +121,7 @@ export const note: WebBlockKind<NoteBlock> = {
   Head: NoteHead,
   ownPins: true, // its pins are the words themselves, and its body draws the strip
   Tools: NoteTools,
+  Preview: NotePreview,
   overlay: { Component: NoteView, refocus: true }, // its full view, in the pairing shell
   activate: (block, canvas) => canvas.openOverlay(block.id),
   menu: { label: 'Note', icon: 'note', add: () => ({ content: { type: 'note', text: '' } }) },
