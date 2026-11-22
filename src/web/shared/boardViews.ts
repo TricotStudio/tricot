@@ -11,12 +11,12 @@ import { RefKinds } from './refKinds';
 // How a board's page is composed from views it is handed, rather than from the
 // ones it names, so what a part adds can move to a repository of its own: the
 // tabs, the pages of a card, the header's controls, the strip of what needs you,
-// the changes feed, what Home draws of a part's, its part of the search palette, its
+// the changes feed, what Projects draws of a part's, what a board's Home lists in its Work, its part of the search palette, its
 // wording of the name gate, its line in the live label's card and what it draws
 // on the board context's canvas (the sync marks, the selection bar, the name a
 // result or a card gives it) and the Keep in context of a Sketchbook page's
 // blocks are registered here, as block kinds, connectors and agents register in
-// theirs. The core registers the Sketchbook and the Files
+// theirs. The core registers the board's Home, the Sketchbook and the Files
 // (web/board/coreViews.tsx), a page with parts the rest (its views, its cards' own pages,
 // its strips and lists), and the board's page (web/board/BoardView.tsx) names none of them.
 //
@@ -24,8 +24,8 @@ import { RefKinds } from './refKinds';
 // App.tsx) and handed to BoardViewsProvider, not a list every page shares:
 // nothing is registered by loading a module, and it is never decided at run
 // time from what the server says. A page with a view or a slot unregistered
-// simply has no such tab, page or control: with a part's none, the board is the
-// Sketchbook and the Files, with none of a part's strips or lists, and an
+// simply has no such tab, page or control: with a part's none, the board is its
+// Home, the Sketchbook and the Files, with none of a part's strips or lists, and an
 // address of one of a part's pages opens the board's landing.
 
 export type { BoardRoute };
@@ -88,6 +88,10 @@ export interface BoardViewDef {
   controls?(host: BoardHost): ReactNode;
   // The layout class it asks of the board's page ('overview' for board-layout-overview).
   layout?: string;
+  // It draws its own conversation and chat bar (Home's), so the board's page
+  // draws no chat bar or docked conversation over it: the view answers what
+  // asks the dock to open a thread.
+  holdsChat?: boolean;
   render(host: BoardHost): ReactNode;
 }
 
@@ -116,14 +120,14 @@ export interface BoardFeed {
   panel(host: BoardHost): ReactNode;
 }
 
-// What Home draws that is a part's: the bell beside its search, the headline
+// What Projects (the list of boards, projects/Projects.tsx) draws that is a part's: the bell beside its search, the headline
 // over the projects and the list of needs under it, each project's tag and
 // column of work, and the first run that asks what the viewer is working on.
 // `report` is the server's report of the boards in use (core/projects.ts), with
-// the rows where a page with parts adds them. Home is plain where a slot is not registered
+// the rows where a page with parts adds them. Projects is plain where a slot is not registered
 // (Canvas registers none): a headline of its own, each project as its title, its
 // description, the agents on it and when it last changed, and no first run.
-export interface HomeSlots {
+export interface ProjectsSlots {
   controls(props: { report: BoardsReport | null; name: string }): ReactNode;
   needs(props: { report: BoardsReport; name: string }): ReactNode;
   headline?(props: { report: BoardsReport; name: string }): ReactNode;
@@ -131,7 +135,7 @@ export interface HomeSlots {
   projectTag?(props: { project: Project }): ReactNode;
   // What is on a project, in the row's column of its work (the status squares and what is settled).
   projectWork?(props: { project: Project }): ReactNode;
-  // Home's first run, shown in place of the list while there are no boards.
+  // The first run, shown in place of the list while there are no boards.
   firstRun?: {
     shows(boards: BoardSummary[], sending: boolean): boolean;
     render(props: { name: string; agents: AgentAround[]; onSending(sending: boolean): void; onEveryWay(): void }): ReactNode;
@@ -207,6 +211,46 @@ export interface BoardContextSlot {
   keep: KeepInContext;
 }
 
+// Home's Work, beside its conversation (threads/timelineWork.tsx): the work on a board by where it stands, in groups.
+// The core lists the threads agents own under its four groups, by their ids ('needs-you', 'in-progress', 'to-do',
+// 'done'); a part adds its own cards and groups with `withWork` (a part's tasks, with its backlog and its review), and
+// with none registered Work lists the threads alone.
+export type WorkGroupId = string;
+
+export interface WorkGroup {
+  id: WorkGroupId;
+  label: string;
+  hint?: string; // after its count, at the head's end
+  before?: WorkGroupId; // a group it goes before; else after the last
+  quiet?: boolean; // its rows a line each, the latest few shown until asked for the rest (as Done is)
+}
+
+// Its marker, in the colour of where it stands: a person's turn (amber), at work, not started yet (hollow), done
+// (green), or set aside for later (dotted).
+export type WorkSquare = 'waiting' | 'working' | 'todo' | 'done' | 'later';
+
+// A row of Work: a piece of work where it stands.
+export interface WorkRow {
+  key: string;
+  group: WorkGroupId;
+  square: WorkSquare;
+  title: string;
+  label?: string; // a card's number before its title (T5)
+  agent?: string; // the agent on it, whose mark leads its line
+  line?: ReactNode; // under the title: what is happening on it now
+  live?: boolean; // its agent has a step on it now
+  progress?: { done: number; total: number }; // how far along its agent's plan is
+  at: string; // when it last moved: the latest first in its group
+  end?: string; // at the row's end, else when it last moved, said briefly
+  thread?: string; // the thread whose strand pointing at it lights: the one it is, or the one it came from
+  open(): void;
+}
+
+export interface WorkSlot {
+  groups: WorkGroup[];
+  rows(props: { board: Board; name: string }): WorkRow[];
+}
+
 const PLAIN_WORDS: PageWords = { nameGate: 'Your name is attached to what you add, so everyone can see who did what.' };
 
 export class BoardViews {
@@ -217,11 +261,12 @@ export class BoardViews {
   private headerControls: ((host: BoardHost) => ReactNode) | undefined;
   private strip: ((host: BoardHost) => ReactNode) | undefined;
   private feedSlot: BoardFeed | undefined;
-  private homeSlots: HomeSlots | undefined;
+  private projectsSlots: ProjectsSlots | undefined;
   private searchSlot: SearchSlot | undefined;
   private wordsSet: PageWords | undefined;
   private boardContextSlot: BoardContextSlot | undefined;
   private agentWorkSlot: ((props: { board: Board; agent: AgentPresence }) => ReactNode) | undefined;
+  private workSlot: WorkSlot | undefined;
   private refKindsSet: RefKinds | undefined;
   private readonly noRefKinds = new RefKinds();
 
@@ -266,9 +311,9 @@ export class BoardViews {
     this.feedSlot = feed;
   }
 
-  withHome(slots: HomeSlots): void {
-    if (this.homeSlots) throw new Error('There are two sets of slots on Home.');
-    this.homeSlots = slots;
+  withProjects(slots: ProjectsSlots): void {
+    if (this.projectsSlots) throw new Error('There are two sets of slots on Projects.');
+    this.projectsSlots = slots;
   }
 
   withSearch(slot: SearchSlot): void {
@@ -293,6 +338,12 @@ export class BoardViews {
   withAgentWork(render: (props: { board: Board; agent: AgentPresence }) => ReactNode): void {
     if (this.agentWorkSlot) throw new Error('There are two renderers of what an agent is working on.');
     this.agentWorkSlot = render;
+  }
+
+  // What a part adds to Home's Work: its cards and the groups they stand in; none, Work lists the threads agents own.
+  withWork(slot: WorkSlot): void {
+    if (this.workSlot) throw new Error("There are two sets of work on a board's Home.");
+    this.workSlot = slot;
   }
 
   // The kinds of card a text can name, for the board's page (refKinds.ts); none, no #12 or T5.
@@ -362,8 +413,8 @@ export class BoardViews {
     return this.feedSlot;
   }
 
-  home(): HomeSlots | undefined {
-    return this.homeSlots;
+  projects(): ProjectsSlots | undefined {
+    return this.projectsSlots;
   }
 
   search(): SearchSlot | undefined {
@@ -381,6 +432,10 @@ export class BoardViews {
 
   agentWork(): ((props: { board: Board; agent: AgentPresence }) => ReactNode) | undefined {
     return this.agentWorkSlot;
+  }
+
+  work(): WorkSlot | undefined {
+    return this.workSlot;
   }
 
   refKinds(): RefKinds {

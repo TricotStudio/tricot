@@ -11,7 +11,7 @@ import './undo.css';
 // only hides it, as running out does, and undoes nothing. Anything deleted
 // stays restorable from the history for 30 days. Earlier versions deleted
 // from a block's versions menu are offered back the same way (`removed`).
-// Home's archived boards and deleted threads use the same toast (UndoToast)
+// Projects' archived boards and deleted threads use the same toast (UndoToast)
 // and shortcut.
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);

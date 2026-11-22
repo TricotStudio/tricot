@@ -126,7 +126,7 @@ export function BoardTopBar({ board, name, live, agents, controls }: TopBarProps
 }
 
 // Board-wide actions, kept out of the way: renaming and changing the goal
-// happen only here, and archiving is rare. Home's rows have the same Rename…
+// happen only here, and archiving is rare. Projects' rows have the same Rename…
 // and goal items (projectActions.tsx).
 export function BoardMenu({ board, name, onEdit }: { board: Board; name: string; onEdit: (field: HeadingField) => void }) {
   const { open, setOpen, close, root, button, menu, onKeyDown } = useMenu();
@@ -206,7 +206,7 @@ export function BoardMenu({ board, name, onEdit }: { board: Board; name: string;
           )}
         </div>
       )}
-      {deleting && <DeleteBoardDialog board={board} name={name} onClose={() => setDeleting(false)} onDeleted={go.home} />}    </div>
+      {deleting && <DeleteBoardDialog board={board} name={name} onClose={() => setDeleting(false)} onDeleted={go.projects} />}    </div>
   );
 }
 

@@ -30,7 +30,7 @@ export const routes = {
 
   // ---- boards -------------------------------------------------------------------------
   boards: get('/api/boards'),
-  needs: get('/api/needs'), // the boards in use and the agents around them, for Home and the board switcher; what waits on a person is added by a part, when it is there
+  needs: get('/api/needs'), // the boards in use and the agents around them, for Projects and the board switcher; what waits on a person is added by a part, when it is there
   createBoard: post('/api/boards'),
   board: get('/api/boards/:boardId'),
   updateBoard: post('/api/boards/:boardId'),

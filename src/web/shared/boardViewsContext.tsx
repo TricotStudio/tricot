@@ -3,7 +3,7 @@ import type { BoardViewName } from '../../core/pages';
 import { linkTo } from '../../core/pages';
 import { BoardViews } from './boardViews';
 
-// The views the page has registered (boardViews.ts), for the board's page, Home and
+// The views the page has registered (boardViews.ts), for the board's page, Projects and
 // the board switcher to ask. Wrapped round the page where it is built (App.tsx);
 // without a provider, as in a test, the page has none and shows no board.
 const NO_VIEWS = new BoardViews();

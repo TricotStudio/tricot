@@ -322,7 +322,7 @@ export function boardChoices(why: string, boards: BoardSummary[], lastHere?: str
     'Ask the person which board it goes on, then run the same command again with --board <id>, or with --new-board "<title>" for a new board. Nothing was added.',
     'The boards, latest first:',
     ...shown.map((board) => `  ${board.id.padEnd(width)}  ${board.title}`),
-    ...(rest > 0 ? [`  and ${rest} more, on Tricot's Home.`] : []),
+    ...(rest > 0 ? [`  and ${rest} more, on Tricot's Projects page.`] : []),
   ].join('\n');
 }
 

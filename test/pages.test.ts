@@ -17,14 +17,16 @@ const landing = (boardId: string): PageRoute => board(boardId, { landing: true }
 describe('The table of the core pages', () => {
   it('opens the page each link is to, whatever is in its values', () => {
     const id = 'a/b ?#é';
-    assert.deepEqual(pageAt(linkTo.home()), { page: 'home' });
-    assert.deepEqual(pageAt(linkTo.newBoard()), { page: 'home' });
+    assert.deepEqual(pageAt(linkTo.projects()), { page: 'projects' });
+    assert.deepEqual(pageAt(linkTo.newBoard()), { page: 'projects' });
     assert.deepEqual(pageAt(linkTo.connectors()), { page: 'connectors', from: undefined });
     assert.deepEqual(pageAt(linkTo.connectors(id)), { page: 'connectors', from: id });
     assert.deepEqual(pageAt(linkTo.board(id)), landing(id), "a board's own address lands on the registry's default view");
     assert.deepEqual(pageAt(linkTo.board(id, 'scratch')), board(id, { view: 'scratch' }));
     assert.deepEqual(pageAt(linkTo.board(id, 'files')), board(id, { view: 'files' }));
     assert.deepEqual(pageAt(linkTo.page(id, 'p 1/2')), board(id, { view: 'scratch', pageId: 'p 1/2' }));
+    assert.deepEqual(pageAt(linkTo.board(id, 'timeline')), board(id, { view: 'timeline' }), "the board's Home");
+    assert.deepEqual(pageAt(linkTo.thread(id, 't 1/2')), board(id, { view: 'timeline', threadId: 't 1/2' }), 'a thread open in it');
     assert.deepEqual(pageAt(linkTo.pin(id, 'p/1?')), board(id, { pinId: 'p/1?' }), 'a pin opens where the registry lands, then moves to its page or the board context');
     assert.deepEqual(pageAt(linkTo.files(id)), board(id, { view: 'files' }));
     assert.deepEqual(pageAt(linkTo.files(id, 'src/a b.ts')), board(id, { view: 'files', file: 'src/a b.ts' }));
@@ -34,7 +36,7 @@ describe('The table of the core pages', () => {
   });
 
   it('builds the addresses links have always had', () => {
-    assert.equal(linkTo.home(), '#/');
+    assert.equal(linkTo.projects(), '#/');
     assert.equal(linkTo.newBoard(), '#/?new');
     assert.equal(linkTo.connectors(), '#/connectors');
     assert.equal(linkTo.connectors('my board'), '#/connectors?from=my%20board');
@@ -42,6 +44,8 @@ describe('The table of the core pages', () => {
     assert.equal(linkTo.board('x', 'scratch'), '#/b/x/sketchbook');
     assert.equal(linkTo.board('x', 'files'), '#/b/x/files');
     assert.equal(linkTo.page('x', 'y'), '#/b/x/sketchbook/y');
+    assert.equal(linkTo.board('x', 'timeline'), '#/b/x/home');
+    assert.equal(linkTo.thread('x', 'y'), '#/b/x/home/y');
     assert.equal(linkTo.pin('x', 'y'), '#/b/x/overview/p/y');
     assert.equal(linkTo.files('x'), '#/b/x/files');
     assert.equal(linkTo.files('x', 'src/a b.ts'), '#/b/x/files?path=src%2Fa%20b.ts');
@@ -54,24 +58,25 @@ describe('The table of the core pages', () => {
   it("lands a board's own address, and any address no piece reads, on the registry's default view", () => {
     assert.deepEqual(pageAt(linkTo.board('x')), landing('x'), "the board's own address, as Home, the board switcher and `tricot` link it");
     assert.deepEqual(pageAt(onBoard('#/b/old-name', 'x')), landing('x'), "a renamed board's, at its new id");
-    for (const hash of ['#/b/x/', '#/b/x/nowhere', '#/b/x/filesx', '#/b/x/sketchbookx/', '#/b/x/overview/p/']) {
+    for (const hash of ['#/b/x/', '#/b/x/nowhere', '#/b/x/filesx', '#/b/x/sketchbookx/', '#/b/x/overview/p/', '#/b/x/homes']) {
       assert.deepEqual(pageAt(hash), hash === '#/b/x/sketchbookx/' ? board('x', { view: 'scratch' }) : landing('x'), hash);
     }
     assert.deepEqual(pageAt('#/b/x/sketchbook/'), board('x', { view: 'scratch' }), 'the Sketchbook, with no page named');
     assert.deepEqual(pageAt('#/b/x/files/'), board('x', { view: 'files' }), 'and the Files, with anything under them');
+    assert.deepEqual(pageAt('#/b/x/home/'), board('x', { view: 'timeline' }), 'and Home, with no thread named');
     assert.deepEqual(pageAt('#/b/x/sketchbook/y/more'), board('x', { view: 'scratch', pageId: 'y' }));
     assert.deepEqual(pageAt('#/b/x/files?path=a%2Fb&pair&more'), board('x', { view: 'files', file: 'a/b', pair: true }));
     assert.deepEqual(pageAt('#/b/x%2Fy/sketchbook'), board('x/y', { view: 'scratch' }), 'the id as one piece');
   });
 
-  it('opens Home for any other address', () => {
-    for (const hash of ['', '#', '#/', '#/?new', '#/nowhere', '#/b/', '#/b', '#/connector']) assert.deepEqual(pageAt(hash), { page: 'home' }, hash);
+  it('opens Projects for any other address', () => {
+    for (const hash of ['', '#', '#/', '#/?new', '#/nowhere', '#/b/', '#/b', '#/connector']) assert.deepEqual(pageAt(hash), { page: 'projects' }, hash);
   });
 
   it('carries a flag the page reads once, on the address it opens', () => {
     assert.ok(flags.newBoard.test(linkTo.newBoard()));
     assert.ok(flags.ask.test(linkTo.askAgents('x')));
-    assert.ok(!flags.ask.test(linkTo.context('x')) && !flags.newBoard.test(linkTo.home()));
+    assert.ok(!flags.ask.test(linkTo.context('x')) && !flags.newBoard.test(linkTo.projects()));
     assert.equal(linkTo.askAgents('x').replace(flags.ask, ''), linkTo.context('x'), 'taking it off leaves the page it opened');
   });
 

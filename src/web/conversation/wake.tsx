@@ -6,7 +6,7 @@ import './delivery.css';
 
 // Telling an agent to look (core/delivery.ts, LISTEN_PHRASE): an agent that
 // isn't listening on a board sees nothing there until it is told to, so where
-// a person waits on one (Home's first run, the line under a message nobody on
+// a person waits on one (Projects' first run, the line under a message nobody on
 // the board has seen) Tricot gives the words, with Copy: "In Claude Code,
 // say: “Start listening on Tricot”".
 

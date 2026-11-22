@@ -5,6 +5,7 @@ import { samePerson } from '../../core/format';
 import type { AgentAround, AgentHere, Project } from '../../core/projects';
 import type { BoardSummary } from '../../core/types';
 import { useBoardViews } from '../shared/boardViewsContext';
+import { useTitlePart } from '../shared/tabTitle';
 import { api } from '../shared/api';
 import { useApprovals } from '../access';
 import { archiveBoard, useBoards, useBoardsReport } from '../live';
@@ -19,17 +20,18 @@ import { BoardEditor, handOffFocus, ProjectMenu, useArchiveUndo, type EditField 
 import { Stitch } from '../shared/stitch';
 import { UpdateNotice } from '../update';
 
-// Home is where you come back to: the projects, one row each with its title,
+// Projects is where you come back to: the projects, one row each with its title,
 // its description, who is on it and when it last changed. What a page with parts adds is
-// registered on the page (shared/boardViews.ts HomeSlots):
+// registered on the page (shared/boardViews.ts ProjectsSlots):
 // what needs you across every project, most urgent first, each project's work
 // at a glance as status squares, and, until there is a project, asking what
 // you're working on instead.
-export function Home({ name }: { name: string }) {
+export function Projects({ name }: { name: string }) {
   const { boards, refresh } = useBoards();
   const [sending, setSending] = useState(false); // the first run's send, until its board opens
   const { report, error } = useBoardsReport(name);
-  const home = useBoardViews().home();
+  const slots = useBoardViews().projects();
+  useTitlePart('page', 'Projects');
   const [showArchived, setShowArchived] = useStoredFlag('tricot:show-archived', () => false);
   const { archive, held, toast } = useArchiveUndo(name, report?.projects);
   const [focusRow, setFocusRow] = useState<string | null>(null); // the row to take the focus back after an edit, by board id
@@ -40,16 +42,16 @@ export function Home({ name }: { name: string }) {
   // What agents are doing on each project now, for its row (steps.tsx).
   const steps = useStepsEverywhere();
   const agentOn = useAgentOn();
-  const firstRun = boards !== null && Boolean(home?.firstRun?.shows(boards, sending));
+  const firstRun = boards !== null && Boolean(slots?.firstRun?.shows(boards, sending));
 
   return (
     <div className="page">
       <TopBar
-        home
+        projects
         right={
           <>
             <Search />
-            {home?.controls({ report, name })}
+            {slots?.controls({ report, name })}
             <span className="topbar-sep" aria-hidden />
           </>
         }
@@ -69,11 +71,11 @@ export function Home({ name }: { name: string }) {
             </p>
           )
         ) : firstRun ? (
-          home?.firstRun?.render({ name, agents: report.agents, onSending: setSending, onEveryWay: openConnectPanel })
+          slots?.firstRun?.render({ name, agents: report.agents, onSending: setSending, onEveryWay: openConnectPanel })
         ) : (
           <>
-            {home?.headline ? home.headline({ report, name }) : <Headline />}
-            {home?.needs({ report, name })}
+            {slots?.headline ? slots.headline({ report, name }) : <Headline />}
+            {slots?.needs({ report, name })}
             <section className="projects" aria-labelledby="projects-title">
               <div className="projects-head">
                 <h2 id="projects-title">Projects</h2>
@@ -137,7 +139,7 @@ export function Home({ name }: { name: string }) {
   );
 }
 
-// Home's headline where nothing registered has more to say: who an agent is
+// The headline where nothing registered has more to say: who an agent is
 // waiting on for an OK (approvals.tsx), if any is.
 function Headline() {
   const waiting = waitingSentence(useApprovals());
@@ -177,7 +179,7 @@ function About() {
   );
 }
 
-// The footer's Connect an agent panel, opened from elsewhere on Home (the
+// The footer's Connect an agent panel, opened from elsewhere on Projects (the
 // first run's "Every way to connect").
 function openConnectPanel(): void {
   const details = document.querySelector<HTMLDetailsElement>('details.home-connect');
@@ -235,7 +237,7 @@ function NewProject({ name }: { name: string }) {
   );
 }
 
-// How a row takes the focus back after an edit: Home names the row by its
+// How a row takes the focus back after an edit: Projects names the row by its
 // board's id, which a new title changes, so the row with the new id takes it.
 interface RowFocus {
   focus: boolean;
@@ -248,7 +250,7 @@ interface RowFocus {
 // a square per item in play and what's settled. The whole row opens the board;
 // its ⋯ renames it, changes its goal or archives it.
 function ProjectRow({ project, name, onArchive, focus, onFocus, onFocused }: { project: Project; name: string; onArchive: (board: Project) => void } & RowFocus) {
-  const home = useBoardViews().home();
+  const slots = useBoardViews().projects();
   const [editing, setEditing] = useState<EditField | null>(null);
   const [saved, setSaved] = useState<{ title: string; goal?: string } | null>(null); // shown until the list catches up
   const row = useRef<HTMLLIElement>(null);
@@ -257,7 +259,7 @@ function ProjectRow({ project, name, onArchive, focus, onFocus, onFocused }: { p
   const { title, goal } = saved ?? project;
 
   return (
-    <li className={`project${home?.projectWork ? '' : ' is-plain'}${editing ? ' is-editing' : ''}`} ref={row}>
+    <li className={`project${slots?.projectWork ? '' : ' is-plain'}${editing ? ' is-editing' : ''}`} ref={row}>
       <div className="project-name">
         {editing ? (
           <BoardEditor
@@ -276,7 +278,7 @@ function ProjectRow({ project, name, onArchive, focus, onFocus, onFocused }: { p
               <a className="project-link" href={linkTo.board(project.id)}>
                 {title}
               </a>
-              {home?.projectTag?.({ project })}
+              {slots?.projectTag?.({ project })}
             </h3>
             {goal && (
               <p className="project-goal" title={goal}>
@@ -286,7 +288,7 @@ function ProjectRow({ project, name, onArchive, focus, onFocus, onFocused }: { p
           </>
         )}
       </div>
-      {home?.projectWork && <div className="project-work">{home.projectWork({ project })}</div>}
+      {slots?.projectWork && <div className="project-work">{slots.projectWork({ project })}</div>}
       <ProjectAgent project={project} />
       <time className="project-when" dateTime={project.updatedAt} title={`Last change ${new Date(project.updatedAt).toLocaleString()}`}>
         {timeAgo(project.updatedAt)}

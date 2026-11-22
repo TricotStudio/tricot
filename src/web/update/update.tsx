@@ -8,7 +8,7 @@ import { checkWords, lineOfAnswer, lineOfError, type CheckLine } from './updateC
 import './update.css';
 import { routes, routeUrl } from '../../core/routes';
 
-// "Tricot 0.2.0 is out": a quiet notice on Home (UpdateNotice) and in a
+// "Tricot 0.2.0 is out": a quiet notice on Projects (UpdateNotice) and in a
 // board's top bar (UpdateChip), from what the server last heard from GitHub
 // (GET /api/update, install/updates.ts). Update asks the server to update
 // itself (POST /api/update): it installs the new version, hands its address
@@ -21,8 +21,8 @@ import { routes, routeUrl } from '../../core/routes';
 // "Check for updates" (CheckForUpdates), in the menu under your name, asks
 // the server to check now (POST /api/update/check) and says what it found in
 // its row. A newer release shows in the notice at once, and the row's "See
-// the update" brings the notice up: Home's, focused; a board's chip, opened;
-// on a page with neither, Home.
+// the update" brings the notice up: Projects', focused; a board's chip, opened;
+// on a page with neither, Projects.
 
 const SKIPPED_KEY = 'tricot:update-skipped'; // localStorage: the version set aside
 const FAILURE_SEEN_KEY = 'tricot:update-failure-seen'; // localStorage: when the failure read was
@@ -217,10 +217,10 @@ export async function checkNow(): Promise<CheckLine> {
 const REVEAL_MS = 3000; // a page opening Home to show it takes this long, at most
 let notices = 0; // the notices on this page: Home's, or a board's chip
 
-// Brings the notice up: Home's, or a board's chip, or Home, which has one.
+// Brings the notice up: Projects', or a board's chip, or Projects, which has one.
 function revealUpdate(): void {
   set({ reveal: Date.now() });
-  if (notices === 0) go.home();
+  if (notices === 0) go.projects();
 }
 
 // For a notice: counts it on the page, and runs `bring` when the person asks
@@ -433,7 +433,7 @@ function CopyCommand({ text }: { text: string }) {
   );
 }
 
-// Home's: a quiet line above everything, while there is something to say.
+// Projects': a quiet line above everything, while there is something to say.
 export function UpdateNotice() {
   const s = useUpdate();
   const shown = shownOf(s);

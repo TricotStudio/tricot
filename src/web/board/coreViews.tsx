@@ -3,13 +3,29 @@ import { Icon } from '../shared/components';
 import { BoardViews } from '../shared/boardViews';
 import { linkTo } from '../shared/pages';
 import { ScratchPad } from '../scratch';
+import { threadsChanged, TimelineView } from '../threads';
 
-// The views the core registers (shared/boardViews.ts): the Sketchbook, a tab, and
-// the project's Files, which has a door instead (a quiet folder before the named
-// tabs, set apart from them, for those who want to read and pair on a file).
-// Everything else a board's page shows is registered by a page with parts, so a
-// page built with only these is a board of the Sketchbook and the Files.
+// The views the core registers (shared/boardViews.ts): the board's Home and the
+// Sketchbook, tabs, and the project's Files, which has a door instead (a quiet
+// folder before the named tabs, set apart from them, for those who want to read
+// and pair on a file). Everything else a board's page shows is registered by a
+// page with parts, so a page built with only these is a board of its Home, the
+// Sketchbook and the Files. Home is the first tab, so it is where a board
+// lands (the board's own address, and any address no view reads), unless a
+// page claims another landing; neither Canvas's nor Studio's does.
 export function coreBoardViews(views: BoardViews): BoardViews {
+  // Home: the board's conversation, with the threads agents own knitted off it,
+  // and its work beside it (threads/timeline.tsx). It holds its own chat bar,
+  // and opens a thread in its main pane rather than the docked panel.
+  views.add({
+    id: 'timeline',
+    label: 'Home',
+    link: (boardId) => linkTo.board(boardId, 'timeline'),
+    tab: ({ away }) => ({ changed: threadsChanged(away.events) }),
+    chat: () => 'threads',
+    holdsChat: true,
+    render: ({ board, name, route, away }) => <TimelineView board={board} name={name} route={route} away={away} />,
+  });
   views.add({
     id: 'scratch',
     label: 'Sketchbook',

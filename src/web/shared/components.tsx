@@ -215,7 +215,7 @@ export function StatusPill({ status }: { status: Status }) {
 // The board's one Markdown engine (markdown.tsx), from here as it always was.
 export { InlineMd, Md, type Beside } from './markdown';
 
-// A command or a config entry, with Copy: the Connect panel's, and Home's first run's (firstRun.tsx).
+// A command or a config entry, with Copy: the Connect panel's, and Projects' first run's (firstRun.tsx).
 export function CopyLine({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {

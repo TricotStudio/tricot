@@ -4,7 +4,7 @@ import { api } from '../shared/api';
 import { seenEverywhere } from './away';
 import { onBoardsChanged } from './boardChanges';
 
-// The boards in use and the agents around them, as Home lists them and the board
+// The boards in use and the agents around them, as Projects lists them and the board
 // switcher: one report from the server (core/projects.ts), which has the rows
 // that wait on the person too when a part is there to add them.
 

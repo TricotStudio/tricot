@@ -4,7 +4,7 @@ import './stitch.css';
 
 // "The agent is working on it", one small sign wherever an agent's words
 // show: the line under a person's message (delivery.tsx), a card's "taking a
-// look" pill (looking.tsx), a project's row on the home page (Home.tsx) and
+// look" pill (looking.tsx), a project's row on Projects (Projects.tsx) and
 // an ask-agents request (askAgents.tsx). While the agent works, a thread
 // knits a row of loops, holds it, then pulls it through, over and over. As
 // an agent picks something up ('casting': it has seen a message, or come to

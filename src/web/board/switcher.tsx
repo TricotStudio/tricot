@@ -8,16 +8,16 @@ import { useBoardsReport } from '../live';
 import { byRecent, matching, readRecent } from './recentBoards';
 import './switcher.css';
 
-// Going from one board to another without Home: the board's name in its
+// Going from one board to another without Projects: the board's name in its
 // header, chevron and all, or ⌘B (Ctrl B elsewhere) from any view of a board,
 // opens the boards in use, the ones opened here last first (recentBoards.ts).
 // Typing filters them by title and goal. Another board opens at its own
-// address, which lands on Status (core/pages.ts), from any view.
+// address, which lands on its Home (core/pages.ts), from any view.
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const SHORTCUT = isMac ? '⌘B' : 'Ctrl B';
 
-// Who is on it, as Home says, and when: "Claude working on T76 · just now"
+// Who is on it, as Projects says, and when: "Claude working on T76 · just now"
 // (its last call), "Claude, yesterday", or "no agent · 3h ago" (the board's
 // last change).
 function agentLine(project: Project, agentOn: (agent: { on?: string }) => string | undefined): string {
@@ -39,7 +39,7 @@ interface Props {
 
 export function BoardSwitcher({ boardId, name, title, children }: Props) {
   const [isOpen, setOpen] = useState(false);
-  // The boards and what needs the viewer on each, as Home has them, fetched while it's open.
+  // The boards and what needs the viewer on each, as Projects has them, fetched while it's open.
   const { report, error } = useBoardsReport(name, isOpen);
   const button = useRef<HTMLButtonElement>(null);
   const text = useRef<HTMLSpanElement>(null);
@@ -243,8 +243,8 @@ function SwitchPanel({ boardId, report, error, button, onClose }: PanelProps) {
         <a className="board-switch-link" href={linkTo.newBoard()}>
           <Icon name="plus" /> New board
         </a>
-        <a className="board-switch-link" href={linkTo.home()}>
-          All boards
+        <a className="board-switch-link" href={linkTo.projects()}>
+          All projects
         </a>
       </footer>
     </div>

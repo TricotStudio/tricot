@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { clip } from '../../core/format';
 
 // The tab's title, so a person with several tabs open can tell them apart:
-// "Tricot roadmap · Tricot" on a board, "Connectors · Tricot", and "Tricot"
-// on Home. The board's name comes first, because a browser cuts a long title
+// "Tricot roadmap · Tricot" on a board, "Connectors · Tricot", and
+// "Projects · Tricot" on the list of boards. The board's name comes first, because a browser cuts a long title
 // from the right. While the tab is in the background it also says what waits
 // for the person: "⏸ Claude needs you · Tricot roadmap" when an agent waits
 // for their OK (access/approvals.tsx), and "(2) Tricot roadmap · Tricot"
@@ -15,7 +15,7 @@ import { clip } from '../../core/format';
 // back. The shell writes it (shell/Shell.tsx).
 
 export interface TitleParts {
-  page?: string; // the page's own name: a board's, "Connectors"; Home has none
+  page?: string; // the page's own name: a board's, "Connectors", "Projects"
   replies: number; // agents' replies to the person since the tab went to the background
   needsYou: string; // who waits for the person's OK, in words: "⏸ Claude needs you" (core/approvals.ts needsYouTitle)
   hidden: boolean; // the tab is in the background

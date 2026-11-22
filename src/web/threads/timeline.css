@@ -1,0 +1,631 @@
+/* A board's Home (timeline.tsx): the conversation in the main pane with its
+   yarn in the gutter beside it (yarn.tsx), and Work on the right
+   (timelineWork.tsx). A thread picked takes the main pane. */
+
+.board-timeline {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  /* A thread at work: the yarn's neutral, between the text and the paper. */
+  --strand-work: color-mix(in srgb, var(--muted) 78%, var(--bg));
+}
+.timeline-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.timeline-conversation {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- its head: what it is, and what it shows ---------------------------- */
+
+.timeline-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 14px 28px 10px 32px;
+}
+.timeline-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.timeline-with {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+.timeline-filters {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.timeline-filters button {
+  padding: 2px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.timeline-filters button:hover {
+  color: var(--text);
+}
+.timeline-filters button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- the conversation, the yarn in its gutter ---------------------------
+   The latest at the foot, over the bar, which floats there; what scrolls up
+   fades under the head. The gutter is as wide as the yarn needs
+   (--yarn-gutter, from timeline.tsx). */
+
+.timeline-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+}
+.timeline-rows {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 36px 40px 128px var(--yarn-gutter);
+}
+.timeline-messages {
+  max-width: 760px;
+  gap: 18px;
+}
+.timeline-empty {
+  max-width: 52ch;
+  margin: 0 0 8px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.yarn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  overflow: visible;
+  pointer-events: none;
+}
+.yarn .yarn-hit {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .yarn g,
+  .yarn path,
+  .yarn circle {
+    transition: opacity 0.16s ease-out;
+  }
+}
+
+/* The day between messages, and where the viewer was last here. */
+.timeline-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--faint);
+}
+.timeline-divider::before,
+.timeline-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.timeline-divider.is-fresh {
+  color: var(--focus);
+}
+.timeline-divider.is-fresh::before,
+.timeline-divider.is-fresh::after {
+  background: color-mix(in srgb, var(--focus) 55%, transparent);
+}
+
+/* A message's reactions, while it has none: the button that adds one waits
+   at its top right until the message is pointed at, so the conversation
+   reads as the messages alone. */
+.board-timeline .thread-message {
+  position: relative;
+}
+.board-timeline .thread-message-head {
+  padding-right: 40px;
+}
+.board-timeline .thread-message-main > .reactions:not(:has(.reaction)) {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  margin: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.board-timeline .thread-message:is(:hover, :focus-within) > .thread-message-main > .reactions {
+  opacity: 1;
+}
+
+/* Where a thread was asked, and the way to it, in a message's head. */
+.timeline-tag {
+  align-self: center;
+  font-size: 11.5px;
+  line-height: 17px;
+}
+.timeline-open {
+  align-self: center;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+}
+.timeline-open .icon {
+  font-size: 13px;
+}
+.thread-message:hover .timeline-open,
+.timeline-open:focus-visible {
+  opacity: 1;
+}
+.timeline-open:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Where an ask was sent on: the thread, its agent, where its work stands. */
+.timeline-sent {
+  justify-self: start;
+  width: 100%;
+  max-width: 560px;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 38px;
+  padding: 7px 10px 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.timeline-sent > .icon {
+  font-size: 15px;
+  color: var(--faint);
+  transition: color 0.12s;
+}
+.timeline-sent:hover {
+  border-color: var(--border-strong);
+}
+.timeline-sent:hover > .icon:last-child {
+  color: var(--text);
+}
+.timeline-sent.is-lit {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 16%, transparent);
+}
+/* Its title, then its agent: the title gives way first. */
+.timeline-sent-what {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.timeline-sent-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.timeline-sent-by {
+  flex: none;
+  white-space: nowrap;
+  color: var(--faint);
+}
+.timeline-sent-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.timeline-sent-state.is-waiting {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--open-bg);
+  color: var(--open-ink);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+/* The bar at the foot: floating over the conversation, beside the yarn. */
+.timeline-foot {
+  position: absolute;
+  left: var(--yarn-gutter);
+  right: 40px;
+  bottom: 22px;
+  z-index: 2;
+  max-width: 760px;
+  display: flex;
+}
+body:has(.timeline-foot .chat-bar) .threads-toast {
+  bottom: 84px;
+}
+
+/* ---- a thread, open in the main pane ------------------------------------- */
+
+.timeline-thread {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.timeline-thread-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 28px 12px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.timeline-thread-head .dock-title {
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  padding: 3px 0 0;
+  border: none;
+}
+.timeline-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.timeline-back .icon {
+  font-size: 15px;
+}
+.timeline-back:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+.timeline-thread .threads-conversation {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 24px 40px 24px var(--yarn-gutter);
+  gap: 14px;
+}
+.timeline-thread .thread-messages,
+.timeline-thread .threads-quiet,
+.timeline-thread .threads-intro {
+  max-width: 760px;
+}
+.timeline-thread .thread-messages {
+  gap: 18px;
+}
+.timeline-thread .timeline-foot {
+  position: static;
+  flex: none;
+  max-width: calc(760px + var(--yarn-gutter) + 40px);
+  padding: 0 40px 18px var(--yarn-gutter);
+}
+
+/* ---- Work ---------------------------------------------------------------- */
+
+.work {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.work-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.work-head h2 {
+  margin: 0 auto 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.work-open {
+  font-size: 12px;
+  color: var(--faint);
+}
+.work-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 10px 16px;
+}
+.work-empty {
+  margin: 14px 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.work-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.work-group.is-needs-you .work-group-head {
+  color: var(--open-ink);
+}
+.work-count {
+  font-weight: 500;
+  color: var(--faint);
+}
+.work-hint {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--faint);
+}
+.work-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.work-row-open {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.work-row-open {
+  transition: background-color 0.12s;
+}
+.work-row-open:hover,
+.work-row.is-lit > .work-row-open,
+.work-row.is-current > .work-row-open {
+  background: var(--surface-2);
+}
+/* The thread open in the main pane: its row held, a firm hairline round it and its plan, as one piece. */
+.work-row.is-current {
+  border-radius: var(--radius-sm);
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+.work-row.is-current > .work-row-open {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.work-row.is-current > .work-row-open:only-child {
+  border-radius: var(--radius-sm);
+}
+.work-row-open > .work-square {
+  margin-top: 6px;
+}
+.work-row-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.work-group.is-needs-you .work-row-title {
+  font-weight: 600;
+}
+.work-row-label {
+  margin-right: 6px;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.work-row-end {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.work-row-line {
+  grid-column: 2 / -1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 19px;
+  color: var(--muted);
+}
+.work-row-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-group.is-needs-you .work-row-text {
+  color: var(--text);
+}
+.work-row-progress {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.work-meter {
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+.work-row-open:hover .work-meter,
+.work-row.is-lit .work-meter,
+.work-row.is-current .work-meter {
+  background: var(--border);
+}
+.work-meter > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--decided);
+}
+.work-row.is-quiet > .work-row-open {
+  padding-block: 5px;
+}
+.work-row.is-quiet .work-row-title {
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Open, its agent's plan under it says how far along it is: the row's own meter steps aside. */
+.work-row.is-current:has(> .peek-inline) .work-row-progress {
+  display: none;
+}
+.work-row > .peek-inline {
+  margin: 0;
+  padding: 0 10px 10px 34px;
+  border-top: none;
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+.work-more {
+  margin: 2px 0 0 24px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.work-more:hover {
+  color: var(--text);
+}
+
+/* A square in the colour of where work stands, as its strand is drawn. */
+.work-square {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--faint);
+}
+.work-square.is-waiting {
+  background: var(--open);
+}
+.work-square.is-working {
+  background: var(--strand-work);
+}
+.work-square.is-done {
+  background: var(--decided);
+}
+.work-square.is-todo {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--faint);
+}
+.work-square.is-later {
+  background: transparent;
+  outline: 1.5px dotted var(--faint);
+  outline-offset: -1.5px;
+}
+
+/* ---- a narrow window: Work under the conversation -------------------------- */
+
+@media (max-width: 1100px) {
+  .board-timeline {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+}
+@media (max-width: 900px) {
+  .board-timeline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .timeline-main {
+    height: 72vh;
+  }
+  .timeline-head,
+  .timeline-thread-head {
+    padding-inline: 16px;
+  }
+  .timeline-rows,
+  .timeline-thread .threads-conversation {
+    padding-right: 16px;
+  }
+  .timeline-foot {
+    right: 16px;
+  }
+  .timeline-thread .timeline-foot {
+    padding-right: 16px;
+  }
+  .work {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}

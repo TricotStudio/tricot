@@ -1,4 +1,4 @@
-/* Changing a board from its row on Home (projectActions.tsx): the ⋯ menu, the
+/* Changing a board from its row on Projects (projectActions.tsx): the ⋯ menu, the
    fields that rename it in place, an archived row's buttons, and the toast
    that offers to undo an archive. Loaded before styles.css, so a rule here
    that overrides one there names an extra class. */

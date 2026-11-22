@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { inWindow } from '../../core/delivery';
 import { barPlaceholder, barSends, doorName } from '../../core/doors';
 import { agentOnFile, type OpenFile } from '../../core/fileThread';
 import { listNames, samePerson } from '../../core/format';
 import { splitLensCommand } from '../../core/lensCommand';
-import { boardAgents, resolveMentions, splitQuestion } from '../../core/mentions';
+import { boardAgents, splitQuestion } from '../../core/mentions';
 import { STARTERS } from '../../core/requests';
 import { threadGroups, threadMade, threadTag } from '../../core/threadList';
-import { pageLens } from '../../core/scratchPad';
-import { shownTitle, threadTitle, threadWaiting } from '../../core/threads';
+import { shownTitle, threadWaiting } from '../../core/threads';
 import type { Actor, Board, MessageLens, ScratchPage, Thread, ThreadDoor, ThreadLens, ThreadMessage, ThreadRef } from '../../core/types';
 import { api } from '../shared/api';
 import type { PlainQuestion } from '../shared/cardKinds';
@@ -19,7 +18,7 @@ import { ChatBar } from './chatBar';
 import { moveDock } from './dockMotion';
 import { lookAtBoard } from './justMade';
 import { fileBar, pageBar, replyPlaceholder, viewOfDoor } from './chatDoor';
-import { agentLineAt, commentAnchor, LoopLine, MessageFoot, newestMine, onItsWay, outbox, Reactions, SaidTo, settledKeys, useMentionable, useOutgoing, withOutgoing, type Outgoing } from '../conversation';
+import { agentLineAt, commentAnchor, LoopLine, MessageFoot, onItsWay, outbox, Reactions, SaidTo, settledKeys, useMentionable, useOutgoing, withOutgoing, type Drawn } from '../conversation';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
 import { PanelHandle } from '../shared/PanelHandle';
 import { usePanelWidth } from '../shared/panelWidth';
@@ -36,17 +35,7 @@ import { useThreadsSeen } from './threadsSeen';
 import { WorkCards } from './threadWork';
 import './threads.css';
 import { OwnerChip, useRouted, WorkStrip, type Routed } from './workStrip';
-
-// A thread just started, drawn until the server has it: its first message is
-// in the outbox (outbox.ts). Nothing is sent to it, nor changed on it.
-const LOCAL = 'local-';
-const isLocal = (thread: Thread | undefined) => Boolean(thread?.id.startsWith(LOCAL));
-
-// A message being sent, drawn until the board has it.
-function draftMessage(o: Outgoing, name: string, names: string[]): ThreadMessage {
-  const mentions = resolveMentions(o.body, names);
-  return { id: o.key, author: { kind: 'human', name }, body: o.body, at: o.at, ...(o.lens && { lens: o.lens }), ...(mentions.length && { mentions }) };
-}
+import { draftMessage, isLocal, replyInThread, startThread as sendNewThread } from './send';
 
 // The board's threads: conversations with agents, each through a lens. The
 // chat bar floats at the foot of every tab (chatBar.tsx); what's sent from it
@@ -71,10 +60,32 @@ function draftMessage(o: Outgoing, name: string, names: string[]): ThreadMessage
 
 // Asks the dock to open on a thread, e.g. from the notifications list, the changes feed, a
 // notification or a card made from it. Where no dock of its board is there to
-// hear it (a card's own view, Home, another board), the board's tab opens
-// (`from`), and its dock opens on the thread there.
+// hear it (a card's own view, Projects, another board), the board's tab opens
+// (`from`), and its dock opens on the thread there. A view that holds its own
+// conversation (the board's Home, timeline.tsx) hears it in the dock's place.
 const docks: string[] = []; // the boards whose docks are on screen
 let asked: { id: string; thread?: Thread } | null = null;
+
+// Where a board's threads open while it is on screen: the dock, or the view
+// that holds its own conversation. It opens one asked for before it was here too.
+export function useThreadsOpenHere(boardId: string, open: (id: string, thread?: Thread) => void): void {
+  useEffect(() => {
+    docks.push(boardId);
+    if (asked) {
+      open(asked.id, asked.thread);
+      asked = null;
+    }
+    const onOpen = (e: Event) => {
+      const { id, thread } = (e as CustomEvent<{ id: string; thread?: Thread }>).detail;
+      open(id, thread);
+    };
+    window.addEventListener(OPEN_THREAD, onOpen);
+    return () => {
+      docks.splice(docks.indexOf(boardId), 1);
+      window.removeEventListener(OPEN_THREAD, onOpen);
+    };
+  }, [open, boardId]);
+}
 
 export function openThread(threadId: string, thread?: Thread, from?: { boardId: string; href: string }): void {
   if (!from || docks.includes(from.boardId)) {
@@ -93,7 +104,7 @@ export function threadTab(board: Board, threadId: string, fallback: BoardViewNam
 
 // ---- the dock ----------------------------------------------------------------
 
-// Home's "Ask an agent for the first questions" opens the Board Context with
+// Projects' "Ask an agent for the first questions" opens the Board Context with
 // ?ask on its address: the bar takes the focus with this starter in it,
 // selected so typing replaces it.
 const FIRST_QUESTIONS = STARTERS.find((s) => s.label === 'Risks and open questions')?.text ?? '';
@@ -206,7 +217,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     [keepCaret, placeCaret, focusBar],
   );
 
-  // Home's ask lands with the bar focused, its starter selected: at once, the
+  // Projects' ask lands with the bar focused, its starter selected: at once, the
   // bar being drawn by then, and again a frame later, after what else the
   // page puts in place.
   useEffect(() => {
@@ -228,23 +239,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   );
   // The notifications list, the changes feed or a card asks for a thread: this dock opens
   // on it, and one asked for from a card's view before this dock was here.
-  useEffect(() => {
-    const here = board.id;
-    docks.push(here);
-    if (asked) {
-      showThread(asked.id, asked.thread);
-      asked = null;
-    }
-    const onOpen = (e: Event) => {
-      const { id, thread } = (e as CustomEvent<{ id: string; thread?: Thread }>).detail;
-      showThread(id, thread);
-    };
-    window.addEventListener(OPEN_THREAD, onOpen);
-    return () => {
-      docks.splice(docks.indexOf(here), 1);
-      window.removeEventListener(OPEN_THREAD, onOpen);
-    };
-  }, [showThread, board.id]);
+  useThreadsOpenHere(board.id, showThread);
   const thread = page === 'thread' ? (threads.find((t) => t.id === selected) ?? (started?.id === selected ? started : undefined)) : undefined;
   // Docked: a thread, New thread or the list. One deleted (or not found)
   // while open lets the bar go back to the bottom.
@@ -315,7 +310,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   useBeside(docked, panel);
   useDismiss(docked && !listOpen, dismiss, panel, undefined, true);
   if (!docked) leaving.current = false;
-  // Leaving the board's tabs, for a card's view, Home or another project: a
+  // Leaving the board's tabs, for a card's view, Projects or another project: a
   // dismiss click under way closes it, as it would have, and the next
   // board's dock hears whether it was open (dockOnArrival).
   useEffect(
@@ -421,38 +416,18 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   // later (dockMotion.ts): the server may answer first, and then the panel
   // opens on the server's thread rather than an empty stand-in.
   const startThread = (text: string, from: ThreadDoor, lens: ThreadLens | null, own?: MessageLens, onPage?: ScratchPage, blockIds?: string[], onFile?: string) => {
-    const at = new Date().toISOString();
-    const me: Actor = { kind: 'human', name };
-    // Over a page, or a file, routed as the server will route it (core/scratchPad.ts pageLens).
-    const routed = onPage ? pageLens(onPage, lens) : onFile && fileAgent ? pageLens({ agent: { name: fileAgent } }, lens) : lens;
-    const local: Thread = {
-      id: `${LOCAL}${Date.now().toString(36)}`,
-      title: threadTitle(text, resolveMentions(text, names)),
-      door: from,
-      ...(onPage && { pageId: onPage.id }),
-      ...(onPage && blockIds?.length && { blockIds }),
-      startedBy: me,
-      startedAt: at,
-      updatedAt: at,
-      messages: [],
-      ...(routed && { lens: routed }),
-    };
-    let answered: Thread | null = null; // the server's, once it has it
-    const post = async (key: string) => {
-      const made = await api.startThread(board.id, name, text, lens ?? undefined, from, own, onPage?.id, blockIds, onFile);
-      const sent = { id: made.messages[0].id, place: `thread:${made.id}` };
-      answered = made;
-      outbox.arrived(key, sent); // drawn in the thread the server made under the same key
-      markSeen(made);
-      setStarted((current) => (current?.id === local.id ? made : current));
-      set((current) => (current.selected === local.id ? { selected: made.id } : {}));
-      return sent;
-    };
-    outbox.send(`thread:${local.id}`, text, [], post, own);
+    const sending = sendNewThread(
+      { boardId: board.id, name, names, text, door: from, lens, own, page: onPage, blockIds, file: onFile ? { path: onFile, agent: fileAgent } : undefined },
+      (made) => {
+        markSeen(made);
+        setStarted((current) => (current?.id === sending.local.id ? made : current));
+        set((current) => (current.selected === sending.local.id ? { selected: made.id } : {}));
+      },
+    );
     // What was sent leaves the bar as the panel takes it.
     carets.current.delete(from === 'threads' ? 'new' : 'bar');
     dock(true, () => {
-      const shown = answered ?? local;
+      const shown = sending.made() ?? sending.local;
       setStarted(shown);
       set((current) => ({
         open: true,
@@ -498,8 +473,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     setError(null);
     if (!through) {
       if (!thread || isLocal(thread)) return; // nothing goes to a thread the server hasn't made yet
-      const known = thread.messages.map((m) => m.id);
-      outbox.send(`thread:${thread.id}`, text, known, async () => newestMine((await api.postToThread(thread.id, name, text, own)).messages, known, name, text), own);
+      replyInThread(thread, name, text, own);
       setDraft(thread.id, '');
       return;
     }
@@ -727,7 +701,7 @@ const DOCK_USUAL = 440; // the conversation's width until it is dragged, at most
 
 // The open thread's title, and under it where it was started, what it made
 // (#78, T48, 3 blocks) and when, and its lens, whose chip changes it.
-function ThreadTitle(props: { board: Board; thread: Thread; readOnly: boolean; onPick: (lens: ThreadLens | null) => void }) {
+export function ThreadTitle(props: { board: Board; thread: Thread; readOnly: boolean; onPick: (lens: ThreadLens | null) => void }) {
   const { board, thread, readOnly, onPick } = props;
   const made = threadMade(board, thread);
   const tag = threadTag(thread, board);
@@ -769,8 +743,16 @@ function ThreadTitle(props: { board: Board; thread: Thread; readOnly: boolean; o
 // agent has that line too, and says who it is for ("Claude → Codex"); once
 // the loop guard holds one, the foot says the agents wait for a person
 // (agentTalk.tsx). An archived board's threads are only read.
-function Conversation(props: { board: Board; thread: Thread | undefined; name: string; onOpen: () => void; onEdit: (body: string, lens?: MessageLens) => void; onThread?: (id: string) => void }) {
-  const { board, thread, name, onOpen, onEdit, onThread } = props;
+export function Conversation(props: {
+  board: Board;
+  thread: Thread | undefined;
+  name: string;
+  onOpen: () => void;
+  onEdit: (body: string, lens?: MessageLens) => void;
+  onThread?: (id: string) => void;
+  children?: ReactNode; // drawn in the scroller after the messages (Home's yarn beside them)
+}) {
+  const { board, thread, name, onOpen, onEdit, onThread, children } = props;
   const readOnly = useReadOnly();
   const scroller = useRef<HTMLDivElement>(null);
   const names = useMentionable(name);
@@ -782,11 +764,7 @@ function Conversation(props: { board: Board; thread: Thread | undefined; name: s
   // Agents' replies that come while the thread is open fade in where the line was.
   const opened = useRef<{ id: string | undefined; ids: Set<string> } | null>(null);
   if (opened.current?.id !== thread?.id) opened.current = { id: thread?.id, ids: new Set(thread?.messages.map((m) => m.id)) };
-  const mine = (m: ThreadMessage) => m.author.kind === 'human' && samePerson(m.author.name, name);
-  const latest = drawn.findLastIndex((d) => d.item.author.kind === 'human');
-  const lineAt = latest >= 0 && mine(drawn[latest].item) ? latest : -1;
-  const agentAt = thread ? agentLineAt(board, thread.messages) : -1;
-  const agentLine = agentAt >= 0 ? thread!.messages[agentAt].id : undefined;
+  const { lineAt, agentLine } = footsOf(board, thread, drawn, name);
   // While that line speaks for the latest message, the line at the foot keeps quiet.
   const line = lineAt >= 0 ? drawn[lineAt] : undefined;
   const speaking = Boolean(line && thread && (onItsWay(line) || (inWindow(line.item, Date.now()) && (line.outgoing || threadWaiting(board, thread)?.message.id === line.item.id))));
@@ -809,54 +787,21 @@ function Conversation(props: { board: Board; thread: Thread | undefined; name: s
     <div className="threads-conversation" ref={scroller} aria-label={thread ? `Thread: ${shownTitle(thread)}` : 'New thread'} role="region">
       {thread ? (
         <ol className="thread-messages">
-          {drawn.map((d, i) => {
-            const message = d.item;
-            const way = onItsWay(d);
-            const draft = message.id === d.outgoing?.key;
-            const reactions = draft || isLocal(thread) ? null : <Reactions item={message} place={{ threadId: thread.id }} name={name} />;
-            const arriving = message.author.kind === 'agent' && !opened.current!.ids.has(message.id);
-            const state = way === 'sending' ? ' is-sending' : way === 'failed' ? ' is-unsent' : '';
-            return (
-              <li
-                key={d.key}
-                id={draft ? undefined : commentAnchor(message.id)}
-                className={`thread-message${arriving ? ' is-arriving' : ''}${state}`}
-                onAnimationEnd={(e) => e.currentTarget.classList.remove('is-flash')}
-              >
-                <ActorBadge actor={message.author} showName={false} />
-                <div className="thread-message-main">
-                  <div className="thread-message-head">
-                    <strong>{message.author.name}</strong>
-                    <SaidTo board={board} said={message} />
-                    {message.lens && <MessageLensChip lens={message.lens} thread={thread} />}
-                    <span className="thread-message-time" title={new Date(message.at).toLocaleString()}>
-                      {timeAgo(message.at)}
-                    </span>
-                    <ViaSkill via={message.via} />
-                  </div>
-                  <CommentText comment={message} />
-                  {message.sent && <SentOn board={board} sent={message.sent} onThread={onThread} />}
-                  {message.refs?.length ? <WorkCards board={board} refs={message.refs} onOpen={onOpen} /> : null}
-                  {way || i === lineAt || message.id === agentLine ? (
-                    <MessageFoot
-                      board={board}
-                      where={{ thread }}
-                      said={message}
-                      after={drawn.slice(i + 1).map((x) => x.item)}
-                      onItsWay={way}
-                      outgoing={d.outgoing}
-                      onEdit={onEdit}
-                      onConnect={onOpen}
-                    >
-                      {reactions}
-                    </MessageFoot>
-                  ) : (
-                    reactions
-                  )}
-                </div>
-              </li>
-            );
-          })}
+          {drawn.map((d, i) => (
+            <MessageRow
+              key={d.key}
+              board={board}
+              thread={thread}
+              drawn={d}
+              after={drawn.slice(i + 1).map((x) => x.item)}
+              name={name}
+              foot={Boolean(onItsWay(d)) || i === lineAt || d.item.id === agentLine}
+              arriving={d.item.author.kind === 'agent' && !opened.current!.ids.has(d.item.id)}
+              onOpen={onOpen}
+              onEdit={onEdit}
+              onThread={onThread}
+            />
+          ))}
           {[...ahead.values()].map(({ by, refs }) => (
             <li key={`ahead:${by.name}`} className="thread-message">
               <ActorBadge actor={by} showName={false} />
@@ -877,7 +822,81 @@ function Conversation(props: { board: Board; thread: Thread | undefined; name: s
       )}
       {thread && <LoopLine board={board} items={thread.messages} className="threads-quiet" />}
       {!readOnly && !speaking && <Listening board={board} thread={thread} />}
+      {children}
     </div>
+  );
+}
+
+// Which of a thread's drawn messages has the line under it that says what
+// became of it (delivery.tsx): the person's latest, while it is theirs
+// (`lineAt`), and an agent's latest to another agent (`agentLine`).
+export function footsOf(board: Board, thread: Thread | undefined, drawn: Drawn<ThreadMessage>[], name: string): { lineAt: number; agentLine: string | undefined } {
+  const latest = drawn.findLastIndex((d) => d.item.author.kind === 'human');
+  const mine = latest >= 0 && drawn[latest].item.author.kind === 'human' && samePerson(drawn[latest].item.author.name, name);
+  const agentAt = thread ? agentLineAt(board, thread.messages) : -1;
+  return { lineAt: mine ? latest : -1, agentLine: agentAt >= 0 ? thread!.messages[agentAt].id : undefined };
+}
+
+// One message of a thread, as a conversation draws it: who and when, its
+// text, where it was sent on, what it led to, and its reactions, with the
+// line that says what became of it when it has one (`foot`). Home's
+// conversation draws its messages with it too, several threads' in one
+// (timeline.tsx), with a tag that says where a thread was asked (`tag`), its
+// own time (`when`) and what was sent on from it (`children`).
+export function MessageRow(props: {
+  board: Board;
+  thread: Thread;
+  drawn: Drawn<ThreadMessage>;
+  after: ThreadMessage[]; // what came after it in its thread
+  name: string;
+  foot: boolean;
+  arriving: boolean;
+  onOpen: () => void;
+  onEdit: (body: string, lens?: MessageLens) => void;
+  onThread?: (id: string) => void;
+  tag?: ReactNode;
+  when?: (iso: string) => string;
+  children?: ReactNode;
+}) {
+  const { board, thread, drawn: d, after, name, foot, arriving, onOpen, onEdit, onThread, tag, when = timeAgo, children } = props;
+  const message = d.item;
+  const way = onItsWay(d);
+  const draft = message.id === d.outgoing?.key;
+  const reactions = draft || isLocal(thread) ? null : <Reactions item={message} place={{ threadId: thread.id }} name={name} />;
+  const state = way === 'sending' ? ' is-sending' : way === 'failed' ? ' is-unsent' : '';
+  return (
+    <li
+      id={draft ? undefined : commentAnchor(message.id)}
+      className={`thread-message${arriving ? ' is-arriving' : ''}${state}`}
+      data-at={message.at}
+      data-message={message.id}
+      onAnimationEnd={(e) => e.currentTarget.classList.remove('is-flash')}
+    >
+      <ActorBadge actor={message.author} showName={false} />
+      <div className="thread-message-main">
+        <div className="thread-message-head">
+          <strong>{message.author.name}</strong>
+          <SaidTo board={board} said={message} />
+          {message.lens && <MessageLensChip lens={message.lens} thread={thread} />}
+          <span className="thread-message-time" title={new Date(message.at).toLocaleString()}>
+            {when(message.at)}
+          </span>
+          <ViaSkill via={message.via} />
+          {tag}
+        </div>
+        <CommentText comment={message} />
+        {message.sent && <SentOn board={board} sent={message.sent} onThread={onThread} />}
+        {message.refs?.length ? <WorkCards board={board} refs={message.refs} onOpen={onOpen} /> : null}
+        {children}
+        {way || foot ? (
+          <MessageFoot board={board} where={{ thread }} said={message} after={after} onItsWay={way} outgoing={d.outgoing} onEdit={onEdit} onConnect={onOpen}>
+            {reactions}
+          </MessageFoot>
+        ) : (
+          reactions
+        )}
+      </div>
+    </li>
   );
 }
 

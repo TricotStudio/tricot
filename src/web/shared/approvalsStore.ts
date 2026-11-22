@@ -36,7 +36,7 @@ export class ApprovalsStore {
 }
 
 // The page's one list, whichever stream fills it: a board's (liveBoard.ts),
-// Home's steps stream (steps.tsx), or, on a page with neither, the
+// Projects' steps stream (steps.tsx), or, on a page with neither, the
 // approvals' own (approvals.tsx useApprovalsStream). Each frame is the whole
 // list, so a stream joining again needs nothing more. A browser holds only a
 // few streams per server across all its tabs, so a page opens no more than one.

@@ -1,7 +1,7 @@
 import type { AgentHere, Project } from '../../core/projects';
 import { useCardKinds } from '../shared/cardKindsContext';
 
-// The agents on a project, in words: Home's rows and the board switcher say
+// The agents on a project, in words: Projects' rows and the board switcher say
 // the same.
 
 // Who is on a project: the busiest agent there now, else the last one seen.

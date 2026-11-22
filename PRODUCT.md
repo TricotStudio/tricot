@@ -27,7 +27,7 @@ The board is a boundary object, after Maggie Appleton's *Planning with Agents*: 
 ## Operating Context
 
 - Runs locally: `npm install -g tricot` (or Homebrew, or `npx tricot`), then `tricot connect` finds the agents on the computer and connects them in one step, with each agent's hook (live steps, and "show me this on Tricot" from the agent's own terminal where it takes a prompt hook) and, for Claude Code and Codex, a Tricot skill that makes that request work even with Tricot stopped, after one question; `tricot canvas` starts the board on `http://127.0.0.1:4545`, or finds the one already running, and prints how to connect each agent. Agents connect over MCP Streamable HTTP: Claude Code, Codex, Pi, OMP, Gemini CLI, OpenCode, Grok Build, GitHub Copilot CLI, or any client that speaks it.
-- Home lists the projects, one row each with its title, its description, who is on it, when it last changed and what the agents on it are doing now; a new project is a title away.
+- The Projects page lists the boards, one row each with its title, its description, who is on it, when it last changed and what the agents on it are doing now; a new project is a title away.
 - Live steps: with the person's yes, a small hook in each agent's own settings shows what it is doing ("Running npm test"), for all six of those agents. It sends one line per step, never file contents or command output.
 - A board has a Sketchbook of pages (a canvas each, of typed blocks: note, with tickable task lists; table, diagram, image, link, diff, code, chart, scene, website) with named groups, labelled links, and pins on precise parts of a block that carry their own comment threads. It has threads, each through a lens (General, Legal, Design…), and a Files view of the project's folder, where a person reads a file, edits it, or pairs on it with an agent.
 - Live and asynchronous at once: an SSE feed updates the board, "since you were away" marks what changed, and *Live* shows which agents are listening, working, or not checking.
@@ -41,7 +41,7 @@ The board is a boundary object, after Maggie Appleton's *Planning with Agents*: 
 - Human identity is a self-chosen name stored in the browser; agents are labelled by `?agent=Name` or their MCP client name.
 - Connectors are internal, not plugins: Google Docs (the person picks each doc), GitHub, Figma and Linear (read-only), plus link cards that recognise common sites without signing in.
 - Terminology to keep: *board*, *page*, *Sketchbook*, *canvas*, *block*, *group*, *link*, *pin*, *thread*, *lens*, *live steps*.
-- Open source: the core and the `tricot` command are under Apache-2.0, free for anyone, companies included, and contributions come under the CLA. The source is at https://github.com/TricotStudio/tricot, and every running Tricot links to it from Home.
+- Open source: the core and the `tricot` command are under Apache-2.0, free for anyone, companies included, and contributions come under the CLA. The source is at https://github.com/TricotStudio/tricot, and every running Tricot links to it from Projects.
 
 ## Brand Commitments
 

@@ -53,7 +53,7 @@ function BoardDeleted({ board }: { board: LiveBoard | null }) {
       <div className="board-deleted">
         <h1>This board was deleted</h1>
         <p>{board ? `“${board.title}” was deleted by a person, for good. ` : ''}It is gone from Tricot, with everything on it.</p>
-        <a href={linkTo.home()}>Back to boards</a>
+        <a href={linkTo.projects()}>Back to projects</a>
       </div>
     </div>
   );
@@ -126,7 +126,7 @@ export function BoardView({ route, name }: Props) {
       <div className="page">
         <div className="empty empty-page">
           <p>{error}</p>
-          <a href={linkTo.home()}>Back to boards</a>
+          <a href={linkTo.projects()}>Back to projects</a>
         </div>
       </div>
     );
@@ -213,15 +213,18 @@ export function BoardView({ route, name }: Props) {
               opened is docked beside it, holding the bar (threads.tsx). Its door
               follows the view (core/doors.ts): over a Sketchbook page, it asks
               about that page, of the agent that made it; in Files, with a
-              file open, about that file; a view of a part's own follows its window. */}
-          <ThreadDock
-            board={board}
-            name={name}
-            door={shownView?.chat(host) ?? 'threads'}
-            page={shown === 'scratch' && route.pageId ? board.pages?.find((p) => p.id === route.pageId) : undefined}
-            file={shown === 'files' ? openFile : undefined}
-            onSeeItem={markSeen}
-          />
+              file open, about that file; a view of a part's own follows its window.
+              A view that holds its own conversation and bar (Home) has none. */}
+          {!shownView?.holdsChat && (
+            <ThreadDock
+              board={board}
+              name={name}
+              door={shownView?.chat(host) ?? 'threads'}
+              page={shown === 'scratch' && route.pageId ? board.pages?.find((p) => p.id === route.pageId) : undefined}
+              file={shown === 'files' ? openFile : undefined}
+              onSeeItem={markSeen}
+            />
+          )}
 
           {feedOpen && feed?.panel(host)}
         </div>

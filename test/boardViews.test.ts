@@ -43,13 +43,23 @@ describe('The registry of board views', () => {
     assert.throws(() => views.landOn('canvas'), /two landing views/);
   });
 
+  it("lands on the board's Home, the core's first tab, when no page claims a landing, a part's tabs placed after it", () => {
+    const views = new BoardViews();
+    views.add(view('timeline', { label: 'Home' }));
+    views.add(view('scratch', { label: 'Sketchbook' }));
+    views.add(view('canvas', { label: 'Overview', before: 'scratch' }));
+    assert.deepEqual(views.tabs().map((v) => v.id), ['timeline', 'canvas', 'scratch']);
+    assert.equal(views.viewAt(undefined)?.id, 'timeline', "the board's own address");
+    assert.equal(views.viewAt('nowhere')?.id, 'timeline', 'and any address no view reads');
+  });
+
   it('is nothing but empty when nothing is registered, and says so without throwing', () => {
     const views = new BoardViews();
     assert.deepEqual([views.tabs(), views.doors(), views.cardPages()], [[], [], []]);
     assert.equal(views.viewAt('canvas'), undefined);
     assert.equal(views.landingView(), undefined);
     assert.equal(views.useSession({} as never), undefined);
-    assert.deepEqual([views.feed(), views.home(), views.controls({} as never), views.needsStrip({} as never)], [undefined, undefined, undefined, undefined]);
+    assert.deepEqual([views.feed(), views.projects(), views.controls({} as never), views.needsStrip({} as never)], [undefined, undefined, undefined, undefined]);
     assert.ok(views.refKinds() instanceof RefKinds);
     assert.equal(views.refKinds(), views.refKinds(), 'the same one each time');
     assert.deepEqual(views.refKinds().kinds(), [], 'none, so #12 and T5 stay text');
@@ -68,8 +78,8 @@ describe('The registry of board views', () => {
     assert.throws(() => views.withNeedsStrip(() => null), /two strips/);
     views.withFeed({ open: () => false, toggle: () => null, panel: () => null });
     assert.throws(() => views.withFeed({ open: () => false, toggle: () => null, panel: () => null }), /two feeds/);
-    views.withHome({ controls: () => null, needs: () => null });
-    assert.throws(() => views.withHome({ controls: () => null, needs: () => null }), /two sets of slots on Home/);
+    views.withProjects({ controls: () => null, needs: () => null });
+    assert.throws(() => views.withProjects({ controls: () => null, needs: () => null }), /two sets of slots on Projects/);
     const kinds = new RefKinds();
     views.withRefKinds(kinds);
     assert.throws(() => views.withRefKinds(new RefKinds()), /two sets of reference kinds/);
@@ -93,6 +103,15 @@ describe('The registry of board views', () => {
     views.withAgentWork(work);
     assert.throws(() => views.withAgentWork(work), /two renderers of what an agent is working on/);
     assert.equal(views.agentWork(), work);
+  });
+
+  it("lists no work of a part's on a board's Home until a part registers its own, and takes it once", () => {
+    const views = new BoardViews();
+    assert.equal(views.work(), undefined, "Home's Work lists the threads agents own alone");
+    const slot = { groups: [{ id: 'backlog', label: 'Backlog', before: 'done' }], rows: () => [] };
+    views.withWork(slot);
+    assert.throws(() => views.withWork(slot), /two sets of work on a board's Home/);
+    assert.equal(views.work(), slot);
   });
 
   it('draws and names nothing of the board context, and offers no Keep in context, until a part registers it, and takes it once', () => {

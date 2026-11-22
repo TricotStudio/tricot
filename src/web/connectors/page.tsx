@@ -83,8 +83,8 @@ export function ConnectorsPage({ from }: { from?: string }) {
       <TopBar />
 
       <main className="connectors">
-        <a className="connectors-back" href={from ? linkTo.board(from) : linkTo.home()}>
-          <Icon name="arrow-left" /> {from ? (boardTitle ? `Back to ${boardTitle}` : 'Back to the board') : 'All boards'}
+        <a className="connectors-back" href={from ? linkTo.board(from) : linkTo.projects()}>
+          <Icon name="arrow-left" /> {from ? (boardTitle ? `Back to ${boardTitle}` : 'Back to the board') : 'All projects'}
         </a>
         <section className="connectors-intro">
           <h1>Connectors</h1>
@@ -365,7 +365,7 @@ function SetupStep({ text, folder, files }: { text: string; folder: string; file
   );
 }
 
-// ---- on Home -------------------------------------------------------------
+// ---- on Projects -------------------------------------------------------------
 
 // Each connector's state in a few words, beside its status square.
 const LINE: Record<ConnectorStatus['state'], { text: string; square: string }> = {
@@ -376,7 +376,7 @@ const LINE: Record<ConnectorStatus['state'], { text: string; square: string }> =
   error: { text: 'not working', square: 'blocking' },
 };
 
-// Home's bottom line: "Google connected", each a way to the Connectors page.
+// Projects' bottom line: "Google connected", each a way to the Connectors page.
 export function ConnectorsLine() {
   const { connectors } = useConnectors();
   if (!connectors) return null;

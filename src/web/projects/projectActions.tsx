@@ -9,7 +9,7 @@ import { useMenu } from '../shared/hooks';
 import { OnTop, usePlace } from '../shared/onTop';
 import './projectActions.css';
 
-// Changing a board from Home without opening it: a ⋯ menu on each row to
+// Changing a board from Projects without opening it: a ⋯ menu on each row to
 // rename it, change its goal or archive it, the fields that do it in place,
 // and the toast that offers to undo an archive. The board's own header does
 // the same from the board (heading.tsx).
@@ -161,7 +161,7 @@ export function BoardEditor({ board, name, focus, onDone }: EditorProps) {
 
 type ArchiveToast = { key: number; board: { id: string; title: string } } | { key: number; note: string };
 
-// Archiving from Home: the row leaves at once, and a toast offers it back for
+// Archiving from Projects: the row leaves at once, and a toast offers it back for
 // about 10 seconds, as ⌘Z does. `held` are the rows to leave out until the
 // list catches up; a refused archive puts its row back and says why.
 export function useArchiveUndo(name: string, projects: readonly { id: string }[] | undefined) {

@@ -93,8 +93,19 @@ const board = () => ({
   feed: Boolean($('.activity-toggle')),
   files: Boolean($('.files-door')),
   sketchbook: Boolean($('section[aria-label="Sketchbook"]')),
+  home: Boolean($('.board-timeline')),
   chat: Boolean($('.chat-bar')),
   body: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 400),
+});
+// The board's Home: its conversation, Work beside it, and its own chat bar in place of the dock.
+const timeline = () => ({
+  hash: location.hash,
+  shown: Boolean($('.board-timeline')),
+  conversation: text('.timeline-messages'),
+  work: text('.board-timeline .work'),
+  bar: Boolean($('.timeline-foot .chat-bar')),
+  dock: Boolean($('.chat-float, aside.thread-dock')),
+  yarn: Boolean($('.board-timeline svg.yarn')),
 });
 const results = {};
 const root = createRoot(document.body.appendChild(document.createElement('div')));
@@ -105,10 +116,11 @@ root.render(h(${root.component}));
     for (let i = 0; i < 100 && !$('.project'); i++) await wait(100);
     await wait(800);
     results.home = home();
-    location.hash = '#/b/' + boardId;
+    // The bell first, on the Sketchbook: the board's Home shows what it holds, and what it shows is seen.
+    location.hash = '#/b/' + boardId + '/sketchbook';
     for (let i = 0; i < 100 && !$('.board-page'); i++) await wait(100);
     await wait(1500);
-    results.board = board();
+    results.sketchbook = board();
     const button = $('.inbox.bell button');
     if (button) {
       const rows = () => [...document.querySelectorAll('.inbox.bell .inbox-item')];
@@ -131,6 +143,15 @@ root.render(h(${root.component}));
       await wait(1500);
       results.mention = { hash: location.hash, shown: document.body.innerText.replace(/\\s+/g, ' ').includes('should the address come before the cart') };
     }
+    // The board's own address: where a board lands.
+    location.hash = '#/b/' + boardId;
+    for (let i = 0; i < 50 && !$('.board-timeline'); i++) await wait(100);
+    await wait(800);
+    results.board = board();
+    location.hash = '#/b/' + boardId + '/home';
+    for (let i = 0; i < 50 && !$('.board-timeline .timeline-messages'); i++) await wait(100);
+    await wait(500);
+    results.timeline = timeline();
     location.hash = '#/b/' + boardId + '/overview/status';
     await wait(1000);
     results.fullAddress = board();
@@ -175,6 +196,7 @@ export interface BoardShown {
   feed: boolean;
   files: boolean;
   sketchbook: boolean;
+  home: boolean;
   chat: boolean;
   body: string;
 }
@@ -182,9 +204,11 @@ export interface Results {
   error?: string;
   errors: string[];
   home: HomeShown;
-  board: BoardShown;
+  board: BoardShown; // at the board's own address, where it lands
+  sketchbook: BoardShown; // on the Sketchbook, before anything was opened
   panel?: { open: boolean; headings: string[]; rows: string[]; notify: { label: string; on: boolean } | null };
   opened?: { panelClosed: boolean; docked: boolean; text: boolean };
   mention?: { hash: string; shown: boolean };
+  timeline: { hash: string; shown: boolean; conversation: string; work: string; bar: boolean; dock: boolean; yarn: boolean };
   fullAddress: BoardShown;
 }

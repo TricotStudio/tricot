@@ -33,12 +33,14 @@ export function useRoute(): PageRoute {
 export const openAddress = (hash: string) => (location.hash = hash);
 
 export const go = {
-  home: () => openAddress(linkTo.home()),
+  projects: () => openAddress(linkTo.projects()),
   board: (boardId: string) => openAddress(linkTo.board(boardId)),
   scratch: (boardId: string) => openAddress(linkTo.board(boardId, 'scratch')),
   page: (boardId: string, pageId: string) => openAddress(linkTo.page(boardId, pageId)),
   files: (boardId: string, file?: string, line?: number) => openAddress(linkTo.files(boardId, file, false, line)),
   pin: (boardId: string, pinId: string) => openAddress(linkTo.pin(boardId, pinId)),
+  // The board's Home, its conversation, or a thread open in its main pane.
+  timeline: (boardId: string, threadId?: string) => openAddress(threadId ? linkTo.thread(boardId, threadId) : linkTo.board(boardId, 'timeline')),
 };
 
 // Takes the pin off the address once the page has opened it (core/pages.ts),

@@ -13,7 +13,8 @@ import './peek.css';
 // last wrote its to-do list, with how far along it is; what it and its helpers are doing now, a line each, or its
 // last steps when none is live; and the files it changed this turn.
 //
-// It shows right away in the header's live card, under each agent (AgentWorkNow, liveIndicator.tsx), and opens over
+// It shows right away in the header's live card, under each agent (AgentWorkNow, liveIndicator.tsx), and under the
+// thread open in a board's Home (AgentWorkOn), and opens over
 // what was clicked where an agent's work is one line (Peek: the pill of a thread an agent owns, the line under a
 // message to an agent), closing on a click away or Escape. It changes nothing. With nothing heard yet it says so,
 // and why: an agent's steps come from Tricot's hooks in its harness.
@@ -156,6 +157,18 @@ export function AgentWorkNow({ agent, titleOf }: { agent: string; titleOf?: (thr
         );
       })}
       {all.length > SHOWN_PLACES && <p className="peek-more">{all.length - SHOWN_PLACES} more places</p>}
+    </div>
+  );
+}
+
+// What an agent is doing on one thread, right away, as the live card shows it: under the row of the thread open in a
+// board's Home (threads/timelineWork.tsx). Nothing when the board has heard none of its work there.
+export function AgentWorkOn({ agent, thread }: { agent: string; thread: string }) {
+  const { work, live, now } = useWorkNow(agent, thread);
+  if (!work && !live.length) return null;
+  return (
+    <div className="peek-inline" aria-label={`What ${agent} is doing on it`}>
+      <WorkSections agent={agent} work={work} live={live} now={now} compact />
     </div>
   );
 }

@@ -27,7 +27,7 @@ export interface DockState {
 export const CLOSED: DockState = { open: false, page: 'thread', selected: null, newLens: null, drafts: {} };
 
 // The board whose tabs were last on screen, and whether the panel was open
-// as the person left them (for a card's view, Home or another project).
+// as the person left them (for a card's view, Projects or another project).
 export interface Left {
   board: string;
   open: boolean;

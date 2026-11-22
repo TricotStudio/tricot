@@ -1,7 +1,7 @@
 import type { Board } from '../../core/types';
 import { api } from '../shared/api';
 
-// What a person does to a board itself, from its header or from Home:
+// What a person does to a board itself, from its header or from Projects:
 // renaming it, changing its goal, archiving, restoring or deleting it. Each
 // tells every list of boards in this browser to read again at once: this
 // tab's, and its other tabs', over a BroadcastChannel. Other browsers catch up
@@ -80,7 +80,7 @@ export function boardEdit(
   return Object.keys(patch).length ? { patch } : null;
 }
 
-// The goal's item in a board's ⋯ menu, on Home's rows and in its header:
+// The goal's item in a board's ⋯ menu, on Projects' rows and in its header:
 // there's a goal to edit, or one to add.
 export const goalItem = (hasGoal: boolean): string => (hasGoal ? 'Edit the goal…' : 'Add a goal…');
 

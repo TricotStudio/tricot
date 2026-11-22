@@ -252,10 +252,10 @@ Six soft yarns, each a status hue chalked down, are the brand's accents: for the
 **Character:** The system's own face, used plainly. It reads as a native tool rather than a branded product, which keeps attention on the work. Hierarchy comes from size and weight steps, never from case or tracking tricks.
 
 ### Hierarchy
-- **Display** (600, 28px, 1.2, -0.02em): the home page headline only.
+- **Display** (600, 28px, 1.2, -0.02em): the Projects page's headline only.
 - **Headline** (600, 20px): single-purpose screens such as the name gate.
 - **Title** (600, 16px, 1.35): the board name in the top bar.
-- **Heading** (600, 14px): section headings in panels and thread titles. Home panel headings step up to 15px.
+- **Heading** (600, 14px): section headings in panels and thread titles. Projects panel headings step up to 15px.
 - **Body** (400, 14px, 1.5): default text, buttons (at 500), inputs, and note text on the canvas. Goals and prose cap at about 72ch.
 - **Body small** (400, 13px, 1.45): comments, thread messages, other canvas blocks' content.
 - **Label** (500, 12px): counts, meta lines, small buttons' secondary text, actor names.
@@ -281,7 +281,7 @@ Notes and comments share one reading system (`.md` in `styles.css`), sized in em
 
 The app has three working layouts, all with a 24px side gutter on desktop and 16px below 900px.
 
-- **Home:** a centred column (max 1080px) with the projects list and, at its foot, how to connect an agent; 48px top padding.
+- **Projects:** a centred column (max 1080px) with the projects list and, at its foot, how to connect an agent; 48px top padding.
 - **Board:** a top bar, then the view tabs (the Sketchbook, and the project's Files as a quiet folder before them), and the page's canvas filling the room beneath.
 - **Thread panel:** a thread opens in a panel at the right of the canvas, up to 440px (40% of the window at most), with the chat bar at its foot. Its "← Threads" turns the whole panel into the list of every thread, a page of its own rather than a popover over the thread; a row turns it back.
 

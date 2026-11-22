@@ -16,7 +16,7 @@ import { removeScratch } from './platform';
 // Canvas server describes (the page's own requests are answered with what it answered), with a decision and a task
 // written into what it said by hand, which the core cannot make and the page has no kind of card for. Canvas's Home says
 // nothing of decisions, tasks, questions or what needs you: a headline, and each project as its title, its description,
-// the agents on it and when it changed. Its board is the Sketchbook and the Files, with the notification bell in the header
+// the agents on it and when it changed. Its board is its Home, the Sketchbook and the Files, landing on its Home, with the notification bell in the header
 // where a part has the inbox, counting the threads that wait on the viewer, the comments that mention them and the agents
 // waiting for their OK, with the switch of notifications in its panel, and no Overview, Tasks, Context, Needs strip
 // or Feed. The page with a part, as its root component builds it, is its counterpart's.
@@ -107,16 +107,16 @@ describe("Tricot Canvas's page, built with no registry of a part's", SKIP, () =>
     assert.doesNotMatch(results.home.main, FULL_HOME, results.home.main);
   });
 
-  it('opens a board on the Sketchbook, with the Files door and the chat bar, and no Overview, Tasks, Context, inbox, Needs strip or Feed', () => {
-    assert.match(results.board.hash, /^#\/b\/[^/]+\/sketchbook(\/|$)/, 'the landing: the Sketchbook');
-    assert.deepEqual(results.board.tabs.map((tab) => tab.replace(/ \d+$/, '')), ['Sketchbook']);
-    assert.ok(results.board.sketchbook && results.board.files && results.board.chat);
+  it('opens a board on its Home, with the Files door and its chat bar, and no Overview, Tasks, Context, inbox, Needs strip or Feed', () => {
+    assert.match(results.board.hash, /^#\/b\/[^/]+\/home$/, "the landing, the board's Home, at its own address");
+    assert.deepEqual(results.board.tabs.map((tab) => tab.replace(/ \d+$/, '')), ['Home', 'Sketchbook']);
+    assert.ok(results.board.home && results.board.files && results.board.chat && !results.board.sketchbook);
     assert.ok(!results.board.inbox && !results.board.needs && !results.board.feed, 'what a part puts in the header and beside the tabs is not there');
     assert.doesNotMatch(results.board.body, /Overview|Tasks|Decisions|Context|Needs you|Feed/, results.board.body);
   });
 
   it('shows the bell in the header with the thread that waits on Sam and the comment that mentions him, a click on a row opens it where it is, and the notifications are off until switched on', () => {
-    assert.deepEqual(results.board.bell, { label: 'Notifications: 2 new', count: '2' });
+    assert.deepEqual(results.sketchbook.bell, { label: 'Notifications: 2 new', count: '2' });
     assert.equal(results.panel?.open, true);
     assert.deepEqual(results.panel?.headings, ['Threads waiting on you', 'New mentions and replies']);
     assert.equal(results.panel?.rows.length, 2);
@@ -127,9 +127,19 @@ describe("Tricot Canvas's page, built with no registry of a part's", SKIP, () =>
     assert.equal(results.mention?.shown, true, 'the comment opens where it is said');
   });
 
-  it("answers an address of one of a part's pages with the board's landing, and throws nothing", () => {
-    assert.ok(results.fullAddress.page && results.fullAddress.sketchbook);
-    assert.deepEqual(results.fullAddress.tabs.map((tab) => tab.replace(/ \d+$/, '')), ['Sketchbook']);
+  it("answers an address of one of a part's pages with the board's landing, its Home, and throws nothing", () => {
+    assert.ok(results.fullAddress.page && results.fullAddress.home);
+    assert.match(results.fullAddress.hash, /^#\/b\/[^/]+\/home$/);
+    assert.deepEqual(results.fullAddress.tabs.map((tab) => tab.replace(/ \d+$/, '')), ['Home', 'Sketchbook']);
+  });
+
+  it("opens the board's Home: the conversation with its yarn, its own chat bar in place of the dock, and Work with the threads agents own and nothing of a part's", () => {
+    const { timeline } = results;
+    assert.ok(timeline.shown && timeline.yarn && timeline.bar, JSON.stringify(timeline));
+    assert.equal(timeline.dock, false, 'no floating bar or docked panel over it');
+    assert.match(timeline.conversation, /Can you sketch the address step\?.*Sketched it on the page/);
+    assert.match(timeline.work, /^Work Nothing open Nothing handed out yet/, 'no thread an agent owns, and none of the cards the board carries');
+    assert.doesNotMatch(timeline.work, /T1|Wire up Stripe|review|backlog/i, timeline.work);
   });
 });
 
@@ -155,6 +165,8 @@ describe("Tricot Canvas's page, over replies that carry no decisions, tasks or c
     assert.deepEqual(plain.errors, []);
     assert.deepEqual(plain.home, carried.home);
     assert.deepEqual(plain.board, carried.board);
+    assert.deepEqual(plain.sketchbook, carried.sketchbook);
     assert.deepEqual(plain.panel, carried.panel);
+    assert.deepEqual(plain.timeline, carried.timeline);
   });
 });

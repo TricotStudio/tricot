@@ -174,8 +174,8 @@ export const post =
     request<T>('POST', routeUrl(route, ...(params as unknown as UrlArgs<Path>)), body);
 
 export const api = {
-  // `folder`: where Tricot was started, from ~ (Home's first run). `version`
-  // and `source`, the repository's page: the foot of Home. `parts`: the ids of
+  // `folder`: where Tricot was started, from ~ (Projects' first run). `version`
+  // and `source`, the repository's page: the foot of Projects. `parts`: the ids of
   // the API parts it serves besides the core's (a part's one), none from a board
   // that does not say.
   info: () => get(routes.info)<{ mcpUrl: string; version?: string; source?: string; folder?: StartFolder; parts?: string[] }>(),

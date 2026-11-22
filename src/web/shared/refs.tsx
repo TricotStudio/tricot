@@ -6,7 +6,7 @@ import { RefKinds, type RefCard, type RefRow } from './refKinds';
 // The cards on the board on screen, as the kinds of reference registered
 // (refKinds.ts) know them, so text anywhere in it can link the #12 and T5 it
 // mentions, and say so of those deleted since, and a composer's # can offer
-// them. Missing off a board, e.g. on Home. With no kind registered it finds
+// them. Missing off a board, e.g. on Projects. With no kind registered it finds
 // nothing: the text stays text.
 interface Refs {
   // Whether the board has a card of this kind and number, or had one, deleted.

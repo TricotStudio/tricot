@@ -1,4 +1,4 @@
-// The boards in use at a glance, for Home and the board switcher: one project
+// The boards in use at a glance, for Projects and the board switcher: one project
 // per board, with its work counted and the agents on it, and each agent once,
 // where it is busiest. It is the core's: what a board's work looks like is told
 // by the part that keeps its cards (`ProjectWork` below, which the one that asks

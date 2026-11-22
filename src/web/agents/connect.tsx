@@ -25,7 +25,7 @@ function Words({ parts }: { parts: Rich }) {
   return <>{parts.map((part, at) => (typeof part === 'string' ? part : <code key={at}>{part.code}</code>))}</>;
 }
 
-// On a board, a second step: the board's id, to hand the agent. Home has none.
+// On a board, a second step: the board's id, to hand the agent. Projects has none.
 export function ConnectAgent({ boardId }: { boardId?: string }) {
   const [url, setUrl] = useState<string>();
   const [tool, setTool] = useState<PanelTool>(() => {

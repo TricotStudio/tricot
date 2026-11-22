@@ -6,9 +6,9 @@
 // checks that the page writes no address of its own. An address is the part after
 // # (the server serves the same page at every path).
 //
-// Home, the Connectors page and a board are the core's, and a board's address is
+// Projects, the Connectors page and a board are the core's, and a board's address is
 // its id, `#/b/<id>`, and then a piece the views name: the Sketchbook's pages, the
-// project's Files and a pin are the core's own, and the rest is registered by what
+// project's Files, the board's Home with a thread open in it, and a pin are the core's own, and the rest is registered by what
 // draws it (a part's, each parsed by `pieces` that
 // `pageAt` is given). An address no piece reads is the board's own, which lands on
 // the registry's default view (web/shared/boardViews.ts).
@@ -17,13 +17,14 @@
 
 // What a board's views are called, by the name stored for each (a thread's door,
 // core/doors.ts): 'scratch' is the Sketchbook, at /sketchbook (it was the Scratch
-// pad before), and 'files' the board's project files, behind a
+// pad before), 'files' the board's project files, behind a
 // folder icon before the tabs: not a named tab, but a view of its own all the
-// same. The rest are what registers them.
+// same, and 'timeline' the board's Home, at /home: the conversation with its
+// threads knitted off it, and the work beside it. The rest are what registers them.
 export type BoardViewName = string;
-export type CoreView = 'scratch' | 'files';
+export type CoreView = 'scratch' | 'files' | 'timeline';
 
-const VIEW_PATHS: Record<CoreView, string> = { scratch: 'sketchbook', files: 'files' };
+const VIEW_PATHS: Record<CoreView, string> = { scratch: 'sketchbook', files: 'files', timeline: 'home' };
 
 // What a piece of a board's address says once read: the view it opens, and
 // whatever else the view that registered it needs of the address, by name (a
@@ -37,6 +38,7 @@ export interface BoardPieceRead {
   piece?: BoardPiece;
   pinId?: string;
   pageId?: string;
+  threadId?: string;
   file?: string;
   pair?: true;
 }
@@ -49,11 +51,12 @@ export interface BoardPieceEntry {
 }
 
 export type PageRoute =
-  | { page: 'home' }
+  | { page: 'projects' } // the projects: every board, one row each
   | { page: 'connectors'; from?: string } // from: the board it was opened from
   // view: the view the address opens, none for the board's own address and a pin's, which open the registry's default;
   // piece: what a registered piece read of the address;
   // pinId: a pin on the board context or a Sketchbook page, to open; pageId: the Sketchbook page shown;
+  // threadId: on the board's Home, the thread open in its main pane;
   // landing: the board's own address, which opens the default view, and the page moves there;
   // file: in the project files, the file shown, from the project folder; pair: opened to pair on;
   // line: the line of the file to show, from a search of what is inside the files
@@ -64,6 +67,7 @@ export type PageRoute =
       piece?: BoardPiece;
       pinId?: string;
       pageId?: string;
+      threadId?: string;
       landing?: true;
       file?: string;
       pair?: true;
@@ -83,11 +87,13 @@ interface PageEntry {
 
 // The pieces the core reads itself, before the registered ones: a pin on the
 // board context or a Sketchbook page, a page of the Sketchbook and the
-// Sketchbook, and the project files and the file shown in them.
+// Sketchbook, the board's Home and a thread open in it, and the project files and the file shown in them.
 const CORE_PIECES: readonly BoardPieceEntry[] = [
   { pattern: /^\/overview\/p\/([^/]+)/, read: (match) => ({ pinId: valueOf(match[1]) }) },
   { pattern: /^\/sketchbook\/([^/?]+)/, read: (match) => ({ view: 'scratch', pageId: valueOf(match[1]) }) },
   { pattern: /^\/sketchbook/, read: () => ({ view: 'scratch' }) },
+  { pattern: /^\/home\/([^/?]+)/, read: (match) => ({ view: 'timeline', threadId: valueOf(match[1]) }) },
+  { pattern: /^\/home(?![^/?])/, read: () => ({ view: 'timeline' }) },
   {
     pattern: /^\/files(?![^/?])(?:\?path=([^&]*)(&pair)?(?:&line=(\d+))?)?/,
     read: (match) => {
@@ -132,11 +138,13 @@ export const pages = {
     // A page of its Sketchbook, shown. A pin on one opens there too: the page
     // finds the pin's page, and moves the address to it.
     scratchPage: (boardId: string, pageId: string) => `#/b/${piece(boardId)}/${VIEW_PATHS.scratch}/${piece(pageId)}`,
+    // A thread, open in the board's Home's main pane, where it is read and answered.
+    thread: (boardId: string, threadId: string) => `#/b/${piece(boardId)}/${VIEW_PATHS.timeline}/${piece(threadId)}`,
   },
-  // Home is at #/, and is what any other address opens.
-  home: {
+  // Projects, the list of boards, is at #/, and is what any other address opens.
+  projects: {
     pattern: /^/,
-    read: (): PageRoute => ({ page: 'home' }),
+    read: (): PageRoute => ({ page: 'projects' }),
     link: () => '#/',
   },
 } as const;
@@ -148,12 +156,12 @@ export function pageAt(hash: string, pieces: readonly BoardPieceEntry[] = []): P
     const match = hash.match(page.pattern);
     if (match) return page.read(match, pieces);
   }
-  return { page: 'home' };
+  return { page: 'projects' };
 }
 
-// What an address can ask of the page it opens, once: ?new on Home focuses
+// What an address can ask of the page it opens, once: ?new on Projects focuses
 // the new board field (the board switcher's New board), and ?ask on a board
-// context focuses the chat bar (Home's "Ask an agent for the first
+// context focuses the chat bar (Projects' "Ask an agent for the first
 // questions"). The page takes it off the address once it has read it.
 export const flags = {
   newBoard: /\?new$/,
@@ -162,8 +170,8 @@ export const flags = {
 
 // Every link to a page of the core's, by what it opens.
 export const linkTo = {
-  home: pages.home.link,
-  newBoard: () => `${pages.home.link()}?new`,
+  projects: pages.projects.link,
+  newBoard: () => `${pages.projects.link()}?new`,
   connectors: pages.connectors.link,
   board: pages.board.link,
   // The board context, the canvas of the board itself: it is shown where a part's
@@ -173,6 +181,7 @@ export const linkTo = {
   askAgents: (boardId: string) => `${linkTo.context(boardId)}?ask`,
   pin: pages.board.pin,
   page: pages.board.scratchPage,
+  thread: pages.board.thread,
   files: pages.board.files,
 };
 
