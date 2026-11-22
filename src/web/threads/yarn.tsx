@@ -21,9 +21,10 @@ import { Icon } from '../shared/components';
 // "Conversation" and Esc are: pointing at it lifts it and says so.
 // Time runs down it quietly, in the viewer's own clock, in words of its own
 // drawing at the left of the conversation's strand: the hour, by the stitch of
-// the first row said in it (`hours`), and beside each knot when its thread's
-// work was done; a strand's label says when its work ran. They scroll with it,
-// under the ball.
+// the first row said in it (`hours`), and each thread's own times, when it
+// started beside where it knits off and when its work was done beside its
+// knot; a strand's label says when its work ran. They scroll with it, under
+// the ball.
 // At the top, every strand that runs on past what is in view unwinds from a
 // ball of yarn (`Unwound`, `YarnBall`), pinned over the scroller, which opens
 // the threads list; the threads' icon is that ball drawn small.
@@ -306,6 +307,8 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
   // Where a thread's work is done: it comes back to the conversation's strand and is tied off with a knot, when it was
   // done beside it (`at`, with its day where the rows around it are of another).
   const doneAt: { id: string; y: number; at: number; dayed: boolean; opacity: number }[] = [];
+  // When each thread started, beside where it knits off, in its strand's ink.
+  const startAt: { id: string; y: number; at: number; tone: StrandTone; dayed: boolean; opacity: number }[] = [];
   const tieOff = (id: string, y: number, x: number, opacity: number, at?: number, dayed = false) => {
     if (at !== undefined && !Number.isNaN(at)) doneAt.push({ id, y, at, dayed, opacity });
     const color = TONES.done;
@@ -414,6 +417,10 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       if (knitAt !== undefined) {
         knitOff(s.id, knitAt, x, s.tone, opacity);
         ringed(s.id, `M${TRUNK_X} ${knitAt} C ${TRUNK_X + 16} ${knitAt}, ${x} ${knitAt + 6}, ${x} ${knitAt + KNIT}`);
+        // Its day too, where the row it knits off in, or above, is of another.
+        const from = Date.parse(s.from);
+        const among = branches[s.id] !== undefined ? rows.findLast((r) => r.top <= knitAt) : (rows.find((r) => r.at >= from) ?? rows.at(-1));
+        if (!Number.isNaN(from)) startAt.push({ id: s.id, y: knitAt, at: from, tone: s.tone, dayed: Boolean(among && !sameDay(among.at, from)), opacity });
       }
       if (bottom > top) {
         spans.current.push({ id: s.id, x, knit: knitAt, top, bottom, tone: s.tone });
@@ -437,10 +444,10 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
   }
 
   // Time, in the viewer's clock, in words at the left of the conversation's strand, each clear of the last: when each
-  // thread's work was done, beside its knot (of two knots tied together, the one drawn over), then the hour where it
-  // turns between the rows, by the stitch of the first row said in it, unless a knot just above already says a time in
-  // it. Rows hours apart have one, the later hour; a day's first, under its divider, has its own; rows minutes apart,
-  // none.
+  // thread's work was done, beside its knot (of two knots tied together, the one drawn over), when each started,
+  // beside where it knits off, then the hour where it turns between the rows, by the stitch of the first row said in
+  // it, unless a thread's time at that row or just above it already says a time in that hour. Rows hours apart have
+  // one, the later hour; a day's first, under its divider, has its own; rows minutes apart, none.
   const times: ReactNode[] = [];
   const taken: { y: number; hour: number }[] = [];
   const hourOf = (t: number) => new Date(t).setMinutes(0, 0, 0);
@@ -455,25 +462,37 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       </text>,
     );
   }
+  for (const k of startAt) {
+    if (taken.some((w) => Math.abs(w.y - k.y) < 14)) continue;
+    taken.push({ y: k.y, hour: hourOf(k.at) });
+    times.push(
+      <text key={`s${k.id}`} className={`yarn-start is-${k.tone}`} x={WORDS_X} y={k.y} dy="0.35em" textAnchor="end" opacity={k.opacity}>
+        {k.dayed && `${dayWord(k.at, now)} `}
+        {clockWords(clockFormat, k.at)}
+      </text>,
+    );
+  }
   if (hours) {
     let hour = NaN;
     let last = -Infinity;
     let prev = -Infinity; // the stitch of the row before
-    for (const row of rows) {
+    rows.forEach((row, i) => {
       const at = hourOf(row.at);
       const above = prev;
+      const below = rows[i + 1]?.mark ?? Infinity;
       prev = row.mark;
-      if (Number.isNaN(at) || at === hour) continue;
+      if (Number.isNaN(at) || at === hour) return;
       hour = at;
-      if (taken.some((w) => w.hour === at && w.y > above && w.y < row.mark)) continue;
-      if (row.mark - last < 28 || taken.some((w) => Math.abs(w.y - row.mark) < 14)) continue;
+      // A thread's time in that hour already says it, at this row or just above it.
+      if (taken.some((w) => w.hour === at && w.y > above && w.y < below)) return;
+      if (row.mark - last < 28 || taken.some((w) => Math.abs(w.y - row.mark) < 14)) return;
       last = row.mark;
       times.push(
         <text key={`h${at}`} className="yarn-hour" x={WORDS_X} y={row.mark} dy="0.35em" textAnchor="end">
           {clockWords(hourFormat, at)}
         </text>,
       );
-    }
+    });
   }
 
   // The label: the strand pointed at, beside the pointer; else the one the keyboard is on, where it knits off.

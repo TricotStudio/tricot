@@ -352,13 +352,16 @@
 }
 /* Time along the yarn, in the viewer's clock, at the left of the
    conversation's strand: the hour where it turns, in the faint ink of a
-   message's time, and when a thread's work was done, in the ink of the green
-   its knot is tied in. A caption, a step under the strands. */
+   message's time, and a thread's own times, when it started and when its
+   work was done, in the ink of its strand's colour, as its knot is green. A
+   caption, a step under the strands. */
 .yarn-hour,
-.yarn-done {
+.yarn-done,
+.yarn-start {
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  user-select: none; /* drawing, not the conversation's text: a selection of messages leaves them out */
 }
 .yarn-hour {
   fill: var(--faint);
@@ -366,8 +369,18 @@
 .yarn-period {
   font-size: 9px;
 }
-.yarn-done {
+.yarn-done,
+.yarn-start.is-done {
   fill: var(--status-done-ink);
+}
+.yarn-start.is-working {
+  fill: var(--status-in-progress-ink);
+}
+.yarn-start.is-waiting {
+  fill: var(--status-in-review-ink);
+}
+.yarn-start.is-todo {
+  fill: var(--status-to-do-ink);
 }
 @media (prefers-reduced-motion: no-preference) {
   .yarn g,
@@ -547,6 +560,11 @@
   width: min(var(--column), calc(100% - 48px));
   margin-inline: auto;
   display: flex;
+}
+/* Home's bar has no threads ball or tools before its field: its words start
+   a little further in than the bar's edge alone would put them. */
+.timeline-foot .chat-input {
+  padding-left: 10px;
 }
 /* With a thread open, a quiet line over the bar names the thread it answers
    in, with its strand's square: the bar itself carries no chip. */
