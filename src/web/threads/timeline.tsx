@@ -263,6 +263,12 @@ function MainConversation(props: {
     () => [...(board.threads ?? []).filter(inConversation), ...locals.filter((l) => !board.threads?.some((t) => t.id === l.id))],
     [board.threads, locals],
   );
+  // Once the board has one, it is the board's alone: when it goes from the board, moved into the thread it follows up
+  // (core/store/threads.ts routeToThread) or deleted, it goes from here too, not back to how it was sent.
+  const landed = locals.filter((l) => board.threads?.some((t) => t.id === l.id)).map((l) => l.id).join();
+  useEffect(() => {
+    if (landed) setLocals((was) => was.filter((l) => !landed.split(',').includes(l.id)));
+  }, [landed]);
   const owned = useMemo(() => ownedThreads(board), [board.threads]);
   const shown = useSaid(board, threads, owned, name);
   const relays = useRelays(board, name, agents);
@@ -313,9 +319,11 @@ function MainConversation(props: {
   }, [latest, markSeen, seeItem]); // once per message
   const atFoot = useRef(scrolls.get(board.id)?.foot ?? true);
   const restored = useRef(false);
-  // The relays shown with what was said.
+  // The rows as shown, by what each is: what was said, the threads it was sent on to and what it made, and the relays
+  // shown with it. It changes as one comes, goes or takes another's place (a thread deleted leaves the coordinator's
+  // word where its card was), which a count of them would miss.
   const relayed = relays.map((r) => `${r.key}${r.needsYou ? '!' : ''}`).join();
-  const count = `${shown.reduce((n, s) => n + 1 + s.sentOn.length + (s.drawn.item.refs?.length ?? 0), 0)}:${relayed}`;
+  const rowsKey = `${shown.map((s) => `${s.drawn.key}>${s.sentOn.map((t) => t.id).join('+')}+${s.drawn.item.refs?.length ?? 0}`).join()}:${relayed}`;
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -323,7 +331,7 @@ function MainConversation(props: {
     restored.current = true;
     if (kept && !kept.foot) el.scrollTop = kept.top;
     else if (atFoot.current) el.scrollTop = el.scrollHeight;
-  }, [count, board.id]);
+  }, [rowsKey, board.id]);
 
   // The keyboard on the yarn: ← → between strands, Enter opens one's thread in the main pane, Esc leaves the yarn.
   const order = [...visible].sort((a, b) => (lanes.get(a.id) ?? 0) - (lanes.get(b.id) ?? 0) || a.from.localeCompare(b.from)).map((s) => s.id);
@@ -496,7 +504,7 @@ function MainConversation(props: {
           }}
         >
           <div className="timeline-rows">
-            <Yarn strands={visible} lanes={lanes} version={`${count}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} hours />
+            <Yarn strands={visible} lanes={lanes} version={`${rowsKey}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} hours />
             {order.length > 0 && (
               <div
                 ref={keys}
