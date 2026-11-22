@@ -44,11 +44,9 @@ function Kind({ relay }: { relay: Relay }) {
         ? `${ownName(relay.by ?? 'An agent')} asks you`
         : relay.tone === 'working'
           ? 'Back at work'
-          : relay.tone === 'done'
-            ? 'Done'
-            : relay.tone === 'todo'
-              ? 'Waiting for its agent'
-              : 'Answered';
+          : relay.tone === 'todo'
+            ? 'Waiting for its agent'
+            : 'Answered'; // its thread done says so on its own card, never twice
   return (
     <span className="relay-kind">
       <span className="work-square" aria-hidden />
