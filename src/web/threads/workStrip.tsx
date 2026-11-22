@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { samePerson } from '../../core/format';
 import { STATUS_WORDS } from '../../core/roles';
+import { inConversation } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import type { Board, Thread } from '../../core/types';
 import { planProgress } from '../../core/agentWork';
@@ -49,7 +50,7 @@ export function useRouted(board: Board, name: string): { latest: Routed | undefi
 // The threads an agent owns whose work isn't done, waiting on people first, then the latest.
 export function ownedAtWork(board: Board): Thread[] {
   const rank = (t: Thread) => (t.status === 'needs-you' ? 0 : 1);
-  return (board.threads ?? []).filter((t) => t.owner && t.status && t.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt));
+  return (board.threads ?? []).filter((t) => !inConversation(t) && t.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt));
 }
 
 const SHOWN = 4;

@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { clip, samePerson } from '../../core/format';
 import { withoutLeadingMentions } from '../../core/mentions';
-import { madeInWords, type ThreadEntry, type ThreadGroups } from '../../core/threadList';
+import { madeInWords, type ConversationEntry, type ThreadEntry, type ThreadGroups } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import type { Thread } from '../../core/types';
+import { useAgents } from '../agents';
 import { ActorBadge, Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
 import { useRoster } from '../shared/mentions';
 
-// The threads list (core/threadList.ts): every thread on the board, wherever
-// it was started, rising from the chat bar as wide as it is, or filling the
-// docked panel as a page of its own, under the panel's header, which then says
-// Threads and offers New thread (threads.tsx). Waiting on you first, then
-// Recent, then the finished, quiet ones under Earlier, quieter and a line each.
-// Each row leads with what the conversation is about, then says what it made
-// in plain words (in the panel, with two lines of the latest message); the
-// whole row opens it. New thread is the open-ended door (threads.tsx).
+// The threads list (core/threadList.ts): the board's conversation as one row,
+// then the work handed out, a row each, rising from the chat bar as wide as it
+// is, or filling the docked panel as a page of its own, under the panel's
+// header, which then says Threads and offers New thread (threads.tsx). The
+// conversation's row opens it on the board's Home, where every quick question
+// and its answer is (`onConversation`), with its latest message and a dot
+// while something in it is new to the viewer. Then the work: waiting on you
+// first, the rest under Work, and the finished, quiet ones under Earlier,
+// quieter and a line each. Each row leads with what the work is, then says
+// what it made in plain words (in the panel, with two lines of the latest
+// message); the whole row opens it. New thread is the open-ended door
+// (threads.tsx).
 
 // Earlier shows this many until asked for the rest.
 const EARLIER_SHOWN = 5;
@@ -30,6 +35,7 @@ interface Props {
   // `scroll`, for coming back to it from a thread.
   page?: { scroll: { current: number | null } };
   onOpen: (id: string) => void;
+  onConversation: () => void; // the conversation's row: Home's conversation
   onNew: () => void;
   onDelete: (thread: Thread) => void;
   onClose?: (escape: boolean) => void; // the popover's
@@ -38,7 +44,7 @@ interface Props {
 }
 
 export function ThreadsList(props: Props) {
-  const { groups, name, current, readOnly, page, onOpen, onNew, onDelete, onClose, toggle, mark } = props;
+  const { groups, name, current, readOnly, page, onOpen, onConversation, onNew, onDelete, onClose, toggle, mark } = props;
   const root = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const [allEarlier, setAllEarlier] = useState(false);
@@ -66,8 +72,9 @@ export function ThreadsList(props: Props) {
     next.focus();
   };
 
-  const { waiting, recent, earlier } = groups;
-  const none = waiting.length + recent.length + earlier.length === 0;
+  const { conversation, waiting, recent, earlier } = groups;
+  const work = waiting.length + recent.length + earlier.length;
+  const none = !conversation && work === 0;
   const earlierShown = allEarlier ? earlier : earlier.slice(0, EARLIER_SHOWN);
   const row = (entry: ThreadEntry, compact = false) => (
     <ThreadRow
@@ -95,7 +102,18 @@ export function ThreadsList(props: Props) {
         </header>
       )}
       <div className="tl-body" ref={body} onScroll={page ? (e) => void (page.scroll.current = e.currentTarget.scrollTop) : undefined}>
-        {none && <p className="tl-empty">{readOnly ? 'No threads.' : 'No threads yet. What you send from the bar starts one, wherever you are.'}</p>}
+        {none && <p className="tl-empty">{readOnly ? 'No threads.' : "Nothing asked yet. What you send from the bar goes to the board's conversation, wherever you are."}</p>}
+        {conversation && (
+          <section className="tl-group is-conversation" aria-label="Conversation">
+            <ol className="tl-rows">
+              <ConversationRow entry={conversation} name={name} onOpen={onConversation} />
+            </ol>
+            <p className="tl-note">
+              <Icon name="search" /> Your quick questions are in it, and search finds them
+            </p>
+            {work === 0 && <p className="tl-none">No work sent on yet. What an agent is given to do gets a thread here.</p>}
+          </section>
+        )}
         {waiting.length > 0 && (
           <section className="tl-group is-waiting" aria-label="Waiting on you">
             <h3 className="tl-group-head">Waiting on you</h3>
@@ -103,8 +121,8 @@ export function ThreadsList(props: Props) {
           </section>
         )}
         {recent.length > 0 && (
-          <section className="tl-group" aria-label="Recent">
-            {(waiting.length > 0 || earlier.length > 0) && <h3 className="tl-group-head">Recent</h3>}
+          <section className="tl-group" aria-label="Work">
+            {(conversation || waiting.length > 0 || earlier.length > 0) && <h3 className="tl-group-head">Work</h3>}
             <ol className="tl-rows">{recent.map((e) => row(e))}</ol>
           </section>
         )}
@@ -123,6 +141,35 @@ export function ThreadsList(props: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+// The conversation's row: a swatch of its plied strand (Home's yarn), its
+// name with whom it is with, the latest message said in it, and when; the
+// blue dot while something in it is new to the viewer. It is never theirs to
+// answer as a turn: the conversation marks what is new itself.
+function ConversationRow({ entry, name, onOpen }: { entry: ConversationEntry; name: string; onOpen: () => void }) {
+  const { people, me } = useRoster();
+  const coordinator = useAgents()
+    .filter((a) => a.coordinator && a.state !== 'away')
+    .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
+  const title = coordinator ? `Conversation with ${coordinator.split(' · ')[0]}` : 'Conversation';
+  return (
+    <li className="tl-row is-conversation" data-thread="conversation">
+      <span className="conversation-swatch" aria-hidden />
+      <button type="button" className="tl-open" onClick={onOpen} aria-label={`${title}, on the board's Home${entry.unread ? ', new replies' : ''}`}>
+        <span className="tl-title">{title}</span>
+        <span className="tl-meta">
+          <span className="tl-last">{lastLine(entry.last, name, (n) => !samePerson(n, me) && !people.some((p) => samePerson(p, n)))}</span>
+        </span>
+      </button>
+      <span className="tl-end">
+        {entry.unread && <span className="new-dot" aria-hidden />}
+        <span className="tl-time" title={new Date(entry.last.at).toLocaleString()}>
+          {shortAgo(entry.last.at)}
+        </span>
+      </span>
+    </li>
   );
 }
 

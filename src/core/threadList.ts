@@ -1,8 +1,14 @@
-// The threads list: every thread on a board, wherever it was started, as the
-// chat bar's threads button opens it (web/threadsList.tsx). What waits on the
-// viewer comes first, then the rest by when they were last active, and the
-// finished, quiet ones fold under Earlier. Each says where it was started and
-// what it made. A card's own discussion is the card's, so isn't a thread here.
+// The threads list, as the chat bar's threads button opens it
+// (web/threadsList.tsx): the board's conversation as one row, then the work
+// handed out, each thread a row. What waits on the viewer comes first, then
+// the rest by when they were last active, and the finished, quiet ones fold
+// under Earlier. Each says where it was started and what it made. A card's own
+// discussion is the card's, so isn't a thread here.
+//
+// The conversation is what people ask from a chat bar and what the board's
+// agents answer there (inConversation): each ask is still a thread of its own
+// as stored, read whole on the board's Home, and quick questions get no row of
+// their own here.
 //
 // "Seen" is the viewer's: the last message they saw in each thread, by thread
 // id, as their browser keeps it (web/threadsSeen.ts).
@@ -10,12 +16,21 @@
 import { cardOf, cardsOf } from './cards';
 import { doorName, isTabDoor, opensOn } from './doors';
 import type { BoardViewName } from './pages';
-import { fileTag, threadFile } from './fileThread';
-import { samePerson } from './format';
+import { fileLabel, fileTag, threadFile } from './fileThread';
+import { clip, samePerson } from './format';
 import { peopleIn } from './mentions';
 import { blocksWords } from './threadSelection';
 import { threadWaiting, threadWork } from './threads';
 import type { Board, Thread, ThreadMessage, ThreadRef } from './types';
+
+// Whether a thread is part of the board's conversation rather than work: what
+// a person asked from a chat bar, or an agent asked the board, that no one has
+// taken on as work. Work handed out has a status, and nothing else does: a
+// coordinator's route_to_thread starts it working, and its owner says where it
+// stands (core/roles.ts). A thread of the conversation that gets one leaves it
+// as work, its ask staying there as "Taken on by …". Nothing stored marks a
+// quick question, so every edition and every older Tricot reads the same.
+export const inConversation = (thread: Pick<Thread, 'status'>): boolean => !thread.status;
 
 // The last message seen in each thread, by thread id.
 export type ThreadsSeen = Record<string, string>;
@@ -38,13 +53,15 @@ function unseenMessages(thread: Thread, seen: string | undefined): ThreadMessage
 // (it replied, or asked something) and they haven't seen it, in a thread that
 // is theirs: one they wrote in, or one with no person in it yet (an agent's
 // question to the board). An agent's message that @-mentions people is
-// theirs alone.
+// theirs alone. In work, another agent's that @-mentions no one is for its
+// owner (core/roles.ts), as the coordinator's brief that starts it is.
 export function waitsOnYou(board: Pick<Board, 'activity'>, thread: Thread, me: string, seen: string | undefined): boolean {
   const last = thread.messages.at(-1);
   if (!last || last.author.kind !== 'agent') return false;
   if (!unseenMessages(thread, seen).includes(last)) return false;
   const people = peopleIn(board, last.mentions);
   if (people.length) return people.some((p) => samePerson(p, me));
+  if (!inConversation(thread) && thread.owner && !samePerson(last.author.name, thread.owner)) return false;
   const humans = thread.messages.filter((m) => m.author.kind === 'human');
   return humans.length === 0 || humans.some((m) => mine(m, me));
 }
@@ -120,6 +137,19 @@ export function threadTag(thread: Pick<Thread, 'door' | 'general' | 'pageId' | '
   return thread.door && thread.door !== 'threads' ? doorName(thread.door) : undefined;
 }
 
+// Where an ask of the conversation was asked, as Home's conversation tags it:
+// "Asked on Tidy docs" over a Sketchbook page (with how many blocks were
+// selected there), "Asked on oauth.ts" over a file in Files, else as the list
+// tags a thread.
+export function askedTag(thread: Pick<Thread, 'door' | 'general' | 'pageId' | 'blockIds'>, board: Pick<Board, 'pages'>): string | undefined {
+  if (thread.general) return threadTag(thread, board);
+  const file = threadFile(board, thread);
+  if (file) return file.path ? `Asked on ${fileLabel(file.path, 40)}` : threadTag(thread, board);
+  const page = thread.pageId ? board.pages?.find((p) => p.id === thread.pageId) : undefined;
+  if (page) return `Asked on ${clip(page.title, 40)}${thread.blockIds?.length ? ` · ${blocksWords(thread.blockIds.length)}` : ''}`;
+  return threadTag(thread, board);
+}
+
 // The tab a thread opens on where no conversation is docked (a card's own
 // view, Home, another board): the one it was started from, the General
 // thread's Board Context, else the tab the registered doors open on (Decisions).
@@ -145,19 +175,41 @@ export interface ThreadEntry {
   made: string[]; // #78, T48, 3 blocks
 }
 
+// The conversation's row: its threads together, by the latest message said in
+// any of them.
+export interface ConversationEntry {
+  thread: Thread; // the thread that latest message is in
+  last: ThreadMessage;
+  unread: boolean; // someone else wrote in it since this viewer looked: what is new is marked there, and waits on no one
+}
+
 export interface ThreadGroups {
-  waiting: ThreadEntry[]; // on you, the latest first
+  conversation?: ConversationEntry; // none while nothing has been said in it
+  waiting: ThreadEntry[]; // work on you, the latest first
   recent: ThreadEntry[]; // the latest first
   earlier: ThreadEntry[]; // finished and quiet, the latest first
 }
 
 const latestFirst = (a: ThreadEntry, b: ThreadEntry) => b.thread.updatedAt.localeCompare(a.thread.updatedAt);
 
-// The list, for this viewer. With nothing remembered as seen (`seen` null),
-// nothing waits on them, as on a first visit.
+// The conversation as its row shows it, for this viewer.
+function conversationEntry(threads: Thread[], me: string, seen: ThreadsSeen | null): ConversationEntry | undefined {
+  let latest: { thread: Thread; last: ThreadMessage } | undefined;
+  for (const thread of threads) {
+    const last = thread.messages.at(-1);
+    if (last && (!latest || last.at > latest.last.at)) latest = { thread, last };
+  }
+  return latest && { ...latest, unread: Boolean(seen) && threads.some((t) => threadUnread(t, me, seen![t.id])) };
+}
+
+// The list, for this viewer: the conversation, then the work. With nothing
+// remembered as seen (`seen` null), nothing waits on them, as on a first visit.
 export function threadGroups(board: Board, me: string, seen: ThreadsSeen | null, now: number): ThreadGroups {
-  const groups: ThreadGroups = { waiting: [], recent: [], earlier: [] };
-  for (const thread of board.threads ?? []) {
+  const threads = board.threads ?? [];
+  const conversation = conversationEntry(threads.filter(inConversation), me, seen);
+  const groups: ThreadGroups = { ...(conversation && { conversation }), waiting: [], recent: [], earlier: [] };
+  for (const thread of threads) {
+    if (inConversation(thread)) continue;
     const last = seen?.[thread.id];
     const waiting = Boolean(seen) && waitsOnYou(board, thread, me, last);
     const entry: ThreadEntry = {
@@ -177,8 +229,22 @@ export function threadGroups(board: Board, me: string, seen: ThreadsSeen | null,
   return groups;
 }
 
-// The threads waiting on this viewer, the latest first: the threads button's count.
+// The work threads waiting on this viewer, the latest first: the threads
+// button's count. An answer in the conversation they have yet to see is not
+// counted: the conversation marks what is new itself.
 export function threadsWaitingOn(board: Board, me: string, seen: ThreadsSeen | null): Thread[] {
+  return waitingOn(board, me, seen).filter((t) => !inConversation(t));
+}
+
+// The threads of the conversation waiting on this viewer, the latest first:
+// an answer to what they asked, or an agent's question to the board, that
+// they have yet to see. The bell says them as one row (core/bell.ts).
+export function conversationWaitingOn(board: Board, me: string, seen: ThreadsSeen | null): Thread[] {
+  return waitingOn(board, me, seen).filter(inConversation);
+}
+
+// Every thread waiting on this viewer, the latest first.
+export function waitingOn(board: Board, me: string, seen: ThreadsSeen | null): Thread[] {
   if (!seen) return [];
   return (board.threads ?? []).filter((t) => waitsOnYou(board, t, me, seen[t.id])).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }

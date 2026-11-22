@@ -4,7 +4,7 @@
 export { doorOfView } from './chatDoor';
 export { useJustMade, useSeenOnBoard, type JustMade } from './justMade';
 export { FromThreadLink } from './threadWork';
-export { openThread, ThreadDock, threadTab } from './threads';
+export { openConversation, openThread, ThreadDock, threadTab } from './threads';
 export { TimelineView } from './timeline';
 export { threadsChanged } from './timelineWork';
 export { useThreadsSeen } from './threadsSeen';

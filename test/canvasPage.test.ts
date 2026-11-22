@@ -17,14 +17,14 @@ import { removeScratch } from './platform';
 // written into what it said by hand, which the core cannot make and the page has no kind of card for. Canvas's Home says
 // nothing of decisions, tasks, questions or what needs you: a headline, and each project as its title, its description,
 // the agents on it and when it changed. Its board is its Home, the Sketchbook and the Files, landing on its Home, with the notification bell in the header
-// where a part has the inbox, counting the threads that wait on the viewer, the comments that mention them and the agents
-// waiting for their OK, with the switch of notifications in its panel, and no Overview, Tasks, Context, Needs strip
+// where a part has the inbox, counting the work threads that wait on the viewer, what agents answered them in the board's
+// conversation, the comments that mention them and the agents waiting for their OK, with the switch of notifications in its panel, and no Overview, Tasks, Context, Needs strip
 // or Feed. The page with a part, as its root component builds it, is its counterpart's.
 
 const sam: Actor = { kind: 'human', name: 'Sam' };
 const claude: Actor = { kind: 'agent', name: 'Claude' };
 
-// What a Canvas server answers the page about one board with a page and a thread that waits on Sam, and what a server
+// What a Canvas server answers the page about one board with a page and an answer to Sam in its conversation, and what a server
 // that kept decisions and tasks would add to it, written by hand: the cards on the board, their counts in the boards
 // listed, and the work and what needs Sam in Home's projects.
 async function fixture(): Promise<{ canvas: Said; plain: Said; boardId: string; thread: string }> {
@@ -115,15 +115,15 @@ describe("Tricot Canvas's page, built with no registry of a part's", SKIP, () =>
     assert.doesNotMatch(results.board.body, /Overview|Tasks|Decisions|Context|Needs you|Feed/, results.board.body);
   });
 
-  it('shows the bell in the header with the thread that waits on Sam and the comment that mentions him, a click on a row opens it where it is, and the notifications are off until switched on', () => {
+  it("shows the bell in the header with what Claude answered Sam in the conversation and the comment that mentions him, a click on a row opens it where it is, and the notifications are off until switched on", () => {
     assert.deepEqual(results.sketchbook.bell, { label: 'Notifications: 2 new', count: '2' });
     assert.equal(results.panel?.open, true);
-    assert.deepEqual(results.panel?.headings, ['Threads waiting on you', 'New mentions and replies']);
+    assert.deepEqual(results.panel?.headings, ['In the conversation', 'New mentions and replies']);
     assert.equal(results.panel?.rows.length, 2);
-    assert.match(results.panel?.rows[0] ?? '', /Can you sketch the address step\? Claude Sketched it on the page/);
+    assert.match(results.panel?.rows[0] ?? '', /Claude answered you Sketched it on the page.* on Home/);
     assert.match(results.panel?.rows[1] ?? '', /Claude @Sam should the address come before the cart\? Mentioned you/);
     assert.deepEqual(results.panel?.notify, { label: 'Sound and desktop notifications', on: false });
-    assert.deepEqual(results.opened, { panelClosed: true, docked: true, text: true });
+    assert.deepEqual(results.opened, { panelClosed: true, home: true, docked: false, text: true }, "the answer opens in the board's conversation, on its Home, not in the dock");
     assert.equal(results.mention?.shown, true, 'the comment opens where it is said');
   });
 

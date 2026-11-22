@@ -4,13 +4,10 @@
    as the bar's. Waiting on people, a pill takes the open status's tint and
    says so; at work, a dot that pulses while its owner has a step there. The
    chip that offers to follow a message sent on sits first, in the
-   exploring tint, with its own ×. The row takes no pointer itself, so the
-   canvas under its gaps stays reachable. */
+   exploring tint, with its own ×. It sits just over the bar, under the
+   answer peeking over it (chatBar.css .chat-over). The row takes no pointer
+   itself, so the canvas under its gaps stays reachable. */
 .work-strip {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
   display: flex;
   flex-wrap: wrap-reverse;
   justify-content: center;
@@ -19,10 +16,6 @@
 }
 .work-strip > * {
   pointer-events: auto;
-}
-/* Over the drawing tools' tray while it is open (canvas/tools/DrawOptions.tsx), so neither hides the other. */
-.chat-float:has(.draw-options.is-shown) > .work-strip {
-  bottom: calc(100% + 62px);
 }
 .work-pill,
 .work-sent {
@@ -245,11 +238,5 @@
   .work-pill,
   .work-sent {
     flex: none;
-  }
-  .chat-float:has(.chat-tools.is-shown) > .work-strip {
-    bottom: calc(100% + 64px);
-  }
-  .chat-float:has(.draw-options.is-shown) > .work-strip {
-    bottom: calc(100% + 150px);
   }
 }

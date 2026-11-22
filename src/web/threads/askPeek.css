@@ -1,0 +1,163 @@
+/* ---- the answer peeking over the floating chat bar (askPeek.tsx) -------------
+   A compact card over the bar, as wide as it is, on the same sheet as the
+   threads list that rises from it: an edge, the bar's corners and lift. Its
+   head says where the exchange lives, the conversation, with a swatch of its
+   strand, and offers Home and ✕; under it the exchange, drawn as a
+   conversation is, a size smaller, scrolling within the card once it is
+   taller than a few lines. Taken on as work, a quiet line at its foot says
+   so. It rises from the bar as it comes, unless motion is reduced. */
+
+.ask-peek {
+  display: flex;
+  flex-direction: column;
+  max-height: min(420px, calc(100vh - 260px));
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  overflow: hidden;
+  transform-origin: 50% 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ask-peek {
+    animation: ask-peek-in 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+}
+@keyframes ask-peek-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+.ask-peek-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.ask-peek-head .conversation-swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+.ask-peek-where {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.ask-peek-where strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.ask-peek-home,
+.ask-peek-open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ask-peek-home:hover,
+.ask-peek-open:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.ask-peek-home .icon,
+.ask-peek-open .icon {
+  width: 13px;
+  height: 13px;
+}
+.ask-peek-close {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.ask-peek-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.ask-peek-close .icon {
+  width: 13px;
+  height: 13px;
+}
+.ask-peek :is(.ask-peek-home, .ask-peek-open, .ask-peek-close):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* The exchange, a size under the docked panel's: the viewer's ask on the
+   right, the answer as prose on the left. */
+.ask-peek .threads-conversation {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px 14px 14px;
+  gap: 10px;
+}
+.ask-peek .thread-messages > * + * {
+  margin-top: 14px;
+}
+.ask-peek .thread-messages > .thread-message.is-cont {
+  margin-top: 4px;
+}
+.ask-peek .thread-prose,
+.ask-peek .thread-bubble {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ask-peek .thread-bubble {
+  padding: 7px 12px;
+}
+
+/* Taken on, or moved into work: where it went, and the way there. */
+.ask-peek-work {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 8px 6px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.ask-peek-work > .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.ask-peek-work-what {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.ask-peek-work .ask-peek-open:hover {
+  background: var(--surface);
+}

@@ -33,15 +33,18 @@
 //                  thread (as a lens chosen with Ctrl+L for one does); a thread
 //                  started from it is picked, as if from the panel.
 //   the panel      /threads (or t in the tab's status view) opens the threads
-//                  beside the stream, or over it in a narrow window, and takes
-//                  the keys: ↑ ↓ or k j move the highlight, wrapping round;
-//                  Home End the first or last row; Enter picks the thread
-//                  highlighted (or shows the rest of Earlier); n starts a new
-//                  thread as /new does; l (or Ctrl+L) sets the lens of the
-//                  thread highlighted; x asks to delete it (No by default), u
-//                  undoes the latest deletion; / opens the local commands; Esc
-//                  closes it, and goes back to the status view when it was
-//                  opened from there.
+//                  beside the stream, or over it in a narrow window: the
+//                  board's conversation as one row, then the work
+//                  (core/threadList.ts). It takes the keys: ↑ ↓ or k j move
+//                  the highlight, wrapping round; Home End the first or last
+//                  row; Enter picks the thread highlighted (or on the
+//                  conversation's row, closes the panel on the whole stream,
+//                  where its quick questions are; or shows the rest of
+//                  Earlier); n starts a new thread as /new does; l (or
+//                  Ctrl+L) sets the lens of the thread highlighted; x asks
+//                  to delete it (No by default), u undoes the latest
+//                  deletion; / opens the local commands; Esc closes it, and
+//                  goes back to the status view when it was opened from there.
 //   a thread picked  the stream shows that thread alone, at its latest, and its
 //                  line answers it (an @ at its start is a mention, not a new
 //                  thread; > still sends elsewhere); the panel stays beside it,
@@ -126,7 +129,7 @@ import { OWN_STEPS, lensPicked, lensRows } from './threadsLens';
 import { Line, editLine } from './threadsLine';
 import type { ThreadsRead } from './threadsRead';
 import type { ChatCard, CommentSent, ThreadSent, ThreadsSend } from './threadsSend';
-import { choiceRows, composeFoot, cursorAcross, inputRows, inputWidth, itemId, listItems, panelGeometry, safe, type Compose, type LensRow, type LensView, type ListItem, type PanelView } from './threadsView';
+import { choiceRows, composeFoot, CONVERSATION, cursorAcross, inputRows, inputWidth, itemId, listItems, panelGeometry, safe, type Compose, type LensRow, type LensView, type ListItem, type PanelView } from './threadsView';
 import { hearsIt, heardBy } from './threadsWho';
 import { TAB_COMMAND_LIST, tabCommand, tabCommandWords, type TabCommand } from './tabCommands';
 
@@ -419,6 +422,15 @@ export class ThreadsTab {
     this.held = draft.line.empty ? undefined : { place: threadPlace(thread), chosen: false }; // what is typed already goes there too
   }
 
+  // The conversation's row: the whole stream, which holds every quick question
+  // and its answer, at its latest, the panel closed so the line has the keys.
+  private toConversation(): void {
+    this.unpick();
+    this.at = CONVERSATION;
+    this.panel = false;
+    this.panelFromStatus = false;
+  }
+
   // Back from the thread picked to the whole stream, its row still highlighted in the panel.
   private unpick(): void {
     if (this.picked !== undefined) this.at = this.picked;
@@ -500,7 +512,8 @@ export class ThreadsTab {
     const heads = drawn.times.map((at) => ago(at, now)).join('\u0000');
     if (!drawn.panel || !this.board || !this.host.access) return heads;
     const threads = listItems(threadGroups(this.board, this.host.access.me, this.seen, now), this.allEarlier);
-    return `${heads}\u0001${threads.map((item) => (item.kind === 'thread' ? `${item.entry.thread.id} ${ago(item.entry.thread.updatedAt, now)}` : `+${item.count}`)).join('\u0000')}`;
+    const time = (item: ListItem) => (item.kind === 'thread' ? `${item.entry.thread.id} ${ago(item.entry.thread.updatedAt, now)}` : item.kind === 'conversation' ? `= ${ago(item.entry.last.at, now)}` : `+${item.count}`);
+    return `${heads}\u0001${threads.map(time).join('\u0000')}`;
   }
 
   // Every conversation on the board as one (core/chatStream.ts), gathered again when the board is read again.
@@ -980,6 +993,7 @@ export class ThreadsTab {
 
   private pickRow(item: ListItem, row: number): void {
     if (item.kind === 'thread') return this.pick(item.entry.thread);
+    if (item.kind === 'conversation') return this.toConversation();
     // The rest of Earlier: the highlight goes to the first of them.
     this.allEarlier = true;
     const all = listItems(this.groups(), true);

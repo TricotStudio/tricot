@@ -265,7 +265,7 @@ export const api = {
   postToThread: (id: string, actor: string, body: string, messageLens?: MessageLens) => post(routes.postToThread)<Thread>({ actor, body, messageLens }, { threadId: id }),
   // A preset's name, or one's own with a brief; null for General.
   setThreadLens: (id: string, actor: string, lens: ThreadLens | null) => post(routes.setThreadLens)<Thread>({ actor, lens }, { threadId: id }),
-  // A board's decisions, tasks, comments, findings and canvas blocks; no board, or all, searches every board.
+  // A board's decisions, tasks, comments, findings, canvas blocks and threads' messages; no board, or all, searches every board.
   search: (boardId: string | undefined, q: string, options: { kinds?: SearchKind[]; all?: boolean; open?: boolean }) => {
     const params = new URLSearchParams({ q });
     if (options.kinds?.length) params.set('kinds', options.kinds.join(','));

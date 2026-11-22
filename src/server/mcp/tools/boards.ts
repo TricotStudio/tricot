@@ -101,6 +101,7 @@ export function boardTools({ store, getActor, options, session, words }: ToolCon
           limit: args.limit ?? 20,
           cards: words.offers('cards'),
           context: words.offers('board-context'),
+          threads: false, // an agent reads a thread with get_thread
         };
         const found = searchStore({ listBoards: () => store.listBoards(), getBoard: (id) => agentBoard(store.getBoard(id), getActor().name) }, args.query, options);
         const boardTitle = args.board_id ? store.getBoard(args.board_id).title : undefined;

@@ -519,10 +519,10 @@ export function createApiRouter(
     res.json(store.liveState(param(req, 'boardId')));
   });
 
-  // Search over decisions, tasks, comments, findings and canvas blocks, closed
-  // ones included: a board's, or every board's with all=1. kinds is a comma-
-  // separated list, open=1 leaves closed cards out. A query under two
-  // characters finds nothing.
+  // Search over decisions, tasks, comments, findings, canvas blocks and the
+  // threads' messages, closed ones included: a board's, or every board's with
+  // all=1. kinds is a comma-separated list, open=1 leaves closed cards out. A
+  // query under two characters finds nothing.
   const search = (req: Request, boardId?: string) => {
     const params = searchParams.parse(req.query);
     const allBoards = params.all === '1' || params.all === 'true';

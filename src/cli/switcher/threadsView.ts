@@ -4,23 +4,26 @@
 // threads button opens, in the rows above the line to type on.
 //
 //    Sam · in Pick up Codex's work · 22 min ago  │ Threads · 1 waiting on you
-//      Codex left T17 half done. Can someone ta… │ Waiting on you · 1
-//    Codex  agent · in Design · Picker spacing … │ ❯ ● Remember the thread pic…  just now
-//      Tighter: 8 px between rows. The picture … │ Recent
-//    Claude  agent · on T19 Stopped agents lea…  │     Design · Picker spaci…  15 min ago
-//      ↓ 3 newer below                           │     Pick up Codex's work    22 min ago
+//      Codex left T17 half done. Can someone ta… │   • Conversation             2 min ago
+//    Codex  agent · in Design · Picker spacing … │ Waiting on you · 1
+//      Tighter: 8 px between rows. The picture … │ ❯ ● Remember the thread pic…  just now
+//    Claude  agent · on T19 Stopped agents lea…  │ Work
+//      ↓ 3 newer below                           │     Design · Picker spaci…  15 min ago
 //    ↑↓ pick · Enter read · n new · x delete · Esc close · l lens
 //
 // (the stream cut short here: it has two thirds of the window)
 //
 // A window of about a hundred columns or more has the panel at the stream's
 // right, about a third of its width, a thin │ between them; a narrower one
-// has it over the stream. The list is the page's (core/threadList.ts): what
-// waits on the person first, then the rest by when they were last active,
-// and the finished, quiet ones under Earlier, which show five until asked for
-// the rest. A row is the title, with the lens before it unless it is General,
-// and when it was last active; ● marks a thread waiting on the person, • one
-// with replies they haven't seen. The ❯ before the highlighted row is bold
+// has it over the stream. The list is the page's (core/threadList.ts): the
+// board's conversation as one row, Conversation, where Enter goes back to the
+// whole stream, which holds its quick questions and their answers; then
+// the work, what waits on the person first, then the rest by when they were
+// last active, and the finished, quiet ones under Earlier, which show five
+// until asked for the rest. A row is the title, with the lens before it
+// unless it is General, and when it was last active; ● marks a thread
+// waiting on the person, • one (or the conversation) with replies they
+// haven't seen. The ❯ before the highlighted row is bold
 // while the panel has the keys, and dim while the line under the stream has
 // them (a thread picked from it, which the stream then shows alone).
 //
@@ -59,7 +62,7 @@
 import type { NumberedPlace } from '../../core/chatStream';
 import { samePerson } from '../../core/format';
 import { reactionGroups } from '../../core/reactions';
-import type { ThreadEntry, ThreadGroups } from '../../core/threadList';
+import type { ConversationEntry, ThreadEntry, ThreadGroups } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import { findRefs } from '../../core/refKinds';
 import type { Reaction } from '../../core/types';
@@ -68,21 +71,23 @@ import { BOLD, DIM, webAddresses, ago, type FrameLink, alertOf, asSent, cutParts
 
 // ---- what is in the list -----------------------------------------------------------
 
-export type ListItem = { kind: 'thread'; entry: ThreadEntry } | { kind: 'more'; count: number };
+export type ListItem = { kind: 'conversation'; entry: ConversationEntry } | { kind: 'thread'; entry: ThreadEntry } | { kind: 'more'; count: number };
 
-// The id of the "show more" row, which no thread has.
+// The ids of the conversation's row and the "show more" row, which no thread has.
+export const CONVERSATION = '\u0000conversation';
 export const MORE = '\u0000more';
-export const itemId = (item: ListItem): string => (item.kind === 'thread' ? item.entry.thread.id : MORE);
+export const itemId = (item: ListItem): string => (item.kind === 'thread' ? item.entry.thread.id : item.kind === 'conversation' ? CONVERSATION : MORE);
 
 // Earlier shows this many until asked for the rest, as the page's list does.
 export const EARLIER_SHOWN = 5;
 
-// The rows a key can pick, in the order they are drawn.
+// The rows a key can pick, in the order they are drawn: the conversation's, then the work's.
 export function listItems(groups: ThreadGroups, allEarlier: boolean): ListItem[] {
   const threads = (entries: ThreadEntry[]): ListItem[] => entries.map((entry) => ({ kind: 'thread', entry }));
   const earlier = allEarlier ? groups.earlier : groups.earlier.slice(0, EARLIER_SHOWN);
   const hidden = groups.earlier.length - earlier.length;
-  return [...threads(groups.waiting), ...threads(groups.recent), ...threads(earlier), ...(hidden ? [{ kind: 'more' as const, count: hidden }] : [])];
+  const conversation: ListItem[] = groups.conversation ? [{ kind: 'conversation', entry: groups.conversation }] : [];
+  return [...conversation, ...threads(groups.waiting), ...threads(groups.recent), ...threads(earlier), ...(hidden ? [{ kind: 'more' as const, count: hidden }] : [])];
 }
 
 // ---- the window's shape --------------------------------------------------------------
@@ -438,13 +443,24 @@ function listLines(view: PanelView, width: number, light: boolean): { lines: Par
     const gap = keepTime ? width - 5 - columns(lens) - columns(title) - columns(when) - 1 : 0;
     lines.push([[` ${here ? '❯' : ' '} `, marker], [waiting ? '● ' : unread ? '• ' : '  ', alert], ...(lens ? ([[lens, DIM]] as Part[]) : []), [title, waiting || here ? BOLD : undefined], ...(keepTime ? ([[' '.repeat(gap)], [when, DIM], [' ']] as Part[]) : [])]);
   };
-  const some = groups.waiting.length + groups.recent.length + groups.earlier.length > 0;
+  // The conversation's row: every quick question and its answer, in the stream, with when it was last said in.
+  const conversation = ({ entry }: Extract<ListItem, { kind: 'conversation' }>) => {
+    const here = view.at === CONVERSATION;
+    if (here) on = lines.length;
+    const when = ago(entry.last.at, view.now);
+    const title = 'Conversation';
+    const gap = Math.max(1, width - 5 - columns(title) - columns(when) - 1);
+    lines.push([[` ${here ? '❯' : ' '} `, marker], [entry.unread ? '• ' : '  ', alert], [title, BOLD], [' '.repeat(gap)], [when, DIM], [' ']]);
+  };
+  const work = groups.waiting.length + groups.recent.length + groups.earlier.length;
+  const some = work > 0 || Boolean(groups.conversation);
   const items = listItems(groups, view.allEarlier);
   let next = 0;
   const rows = (count: number) => items.slice(next, (next += count));
   const drawn = (list: ListItem[]) => {
     for (const item of list) {
       if (item.kind === 'thread') thread(item);
+      else if (item.kind === 'conversation') conversation(item);
       else {
         const here = view.at === MORE;
         if (here) on = lines.length;
@@ -452,12 +468,16 @@ function listLines(view: PanelView, width: number, light: boolean): { lines: Par
       }
     }
   };
+  if (groups.conversation) {
+    drawn(rows(1));
+    if (!work) lines.push([['    No work sent on yet.', DIM]]);
+  }
   if (groups.waiting.length) {
     heading('Waiting on you', groups.waiting.length, `${BOLD};${alert}`);
     drawn(rows(groups.waiting.length));
   }
   if (groups.recent.length) {
-    if (groups.waiting.length || groups.earlier.length) heading('Recent', 0);
+    if (groups.conversation || groups.waiting.length || groups.earlier.length) heading('Work', 0);
     drawn(rows(groups.recent.length));
   }
   if (groups.earlier.length) {
@@ -524,7 +544,7 @@ export function panelRows(view: PanelView, width: number, height: number, light 
 export function panelKeys(view: PanelView): (more: boolean, compact: boolean) => Part[] {
   const key = (k: string, words: string): Part[] => [[k, BOLD], ...(words ? [[` ${words}`] as Part] : [])];
   const sep: Part = [' · '];
-  const thread = view.at !== undefined && view.at !== MORE;
+  const thread = view.at !== undefined && view.at !== MORE && view.at !== CONVERSATION;
   return (more, compact) => {
     if (view.deletion) return [[' '], ...(view.deletion.busy ? [['Deleting the thread…'] as Part] : [...yesNo(view.deletion.yes), sep, ...key('←→', compact ? '' : 'choose'), sep, ...key('Enter', compact ? '' : 'confirm'), sep, ...key('Esc', compact ? '' : 'cancel')])];
     if (view.lens?.form) return [[' '], ...key('Enter', view.lens.form.enter), sep, ...key('Esc', 'back to the lenses')];

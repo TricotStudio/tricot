@@ -5,7 +5,8 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { useBoardCards } from '../src/core/cards';
 import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
-import { commentsForYou } from '../src/core/bell';
+import { answersForYou, commentsForYou } from '../src/core/bell';
+import { conversationWaitingOn, inConversation, threadGroups, threadsWaitingOn, waitsOnYou } from '../src/core/threadList';
 import { concernsAgent } from '../src/core/concerns';
 import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn } from '../src/core/roles';
 import { Presence } from '../src/server/presence';
@@ -139,6 +140,36 @@ describe('Threads over MCP and REST', () => {
 
     await said(owner, 'set_thread_status', { status: 'needs-you', summary: 'Which tablets?' });
     assert.equal(store.getThread(work.id).thread.status, 'needs-you');
+
+    // What a person asked from a chat bar stays in the board's conversation, and only work has a thread of its own in the
+    // list: the status tells them apart, as stored. The list is the conversation as one row, then the work; the threads
+    // button counts the work waiting on Sam alone, and the bell says what agents answered him there as one row, at its
+    // latest. Nothing an agent reads changes: get_board still lists every thread.
+    await said(coordinator, 'reply_in_thread', { thread_id: toLast.id, body: 'Renamed it Shop front.' });
+    const now = store.getBoard(boardId);
+    const [askedNow, workNow, toLastNow] = [asked, work, toLast].map((t) => now.threads!.find((x) => x.id === t.id)!);
+    assert.deepEqual([askedNow, toLastNow, workNow].map(inConversation), [true, true, false]);
+    const groups = threadGroups(now, 'Sam', {}, Date.now());
+    assert.equal(groups.conversation?.last.body, 'Renamed it Shop front.');
+    assert.equal(groups.conversation?.unread, true);
+    assert.deepEqual([...groups.waiting, ...groups.recent, ...groups.earlier].map((e) => e.thread.id), [work.id], 'no quick question has a row of its own');
+    assert.deepEqual(threadsWaitingOn(now, 'Sam', {}).map((t) => t.id), [work.id], 'an answer in the conversation is not counted');
+    assert.equal(waitsOnYou(now, { ...workNow, messages: workNow.messages.slice(0, 1) }, 'Sam', undefined), false, "the coordinator's brief that starts work is for its owner");
+    assert.deepEqual(conversationWaitingOn(now, 'Sam', {}).map((t) => t.id), [toLast.id, asked.id]);
+    const answer = answersForYou(now, 'Sam', {});
+    assert.deepEqual([answer?.thread.id, answer?.said.body, answer?.answered, answer?.count], [toLast.id, 'Renamed it Shop front.', true, 2]);
+    assert.equal(answersForYou(now, 'Sam', { [toLast.id]: toLastNow.messages.at(-1)!.id, [asked.id]: askedNow.messages.at(-1)!.id }), undefined, 'seen, it is not new');
+    assert.match(await said(coordinator, 'get_board', { board_id: boardId }), /Rename the board/, 'an agent still reads every thread');
+
+    // A person's search finds the threads' messages, each opening where it is: one in the conversation there, one in work
+    // in its thread. An agent's search tool finds none: it reads a thread with get_thread.
+    const found = async (q: string) => (await request('GET', `/boards/${boardId}/search?q=${q}`)).json.results as { kind: string; ref: string; target: Record<string, unknown> }[];
+    const [renamed] = await found('renamed');
+    assert.deepEqual([renamed.kind, renamed.ref, renamed.target], ['message', 'Conversation', { threadId: toLast.id, messageId: toLastNow.messages.at(-1)!.id, conversation: true }]);
+    const [tablets] = await found('tablets%20too');
+    assert.deepEqual([tablets.kind, tablets.ref, tablets.target], ['message', 'Thread', { threadId: work.id, messageId: workNow.messages.find((m) => m.body === 'Tablets too.')!.id }]);
+    assert.deepEqual(await found('Sent'), [], "a coordinator's word that it sent an ask on is the card under the ask, not a message");
+    assert.match(await said(coordinator, 'search', { board_id: boardId, query: 'tablets' }), /^Nothing found for "tablets"/);
     await request('POST', `/threads/${work.id}/messages`, { actor: 'Sam', body: 'iPads.' });
     assert.equal(store.getThread(work.id).thread.status, 'working', "a person's reply sets it back to work");
     await said(owner, 'set_thread_status', { status: 'done', summary: 'Fixed on phones and iPads.' });

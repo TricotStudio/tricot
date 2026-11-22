@@ -1,5 +1,6 @@
 import { blockLabel } from '../../core/canvas';
 import { clip } from '../../core/format';
+import { inConversation } from '../../core/threadList';
 import { goneName, threadWork } from '../../core/threads';
 import type { Board, FromThread, ThreadRef } from '../../core/types';
 import { CardAnchor, useCardKinds } from '../shared/cardKindsContext';
@@ -9,7 +10,7 @@ import { showComments } from '../conversation';
 import { useBoardViews, useViewLink } from '../shared/boardViewsContext';
 import { linkTo, type BoardViewName } from '../shared/pages';
 import { focusBlock } from '../canvas';
-import { openThread, threadTab } from './threads';
+import { openConversation, openThread, threadTab } from './threads';
 
 // What a thread led to, under the reply that made it: a decision with its
 // status and options, a task with its status, a block and where it is, a
@@ -90,19 +91,22 @@ const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 // "From thread "Can we bundle Pi…"" under the byline of a decision or task
 // made answering a thread: it opens the thread, docked beside the tab it was
-// started from (else the card's own, `view`), or names it in plain text once
-// the thread is deleted (until it's restored).
+// started from (else the card's own, `view`), or for a quick question, the
+// board's conversation at it on Home ("From the conversation"); or names it
+// in plain text once the thread is deleted (until it's restored).
 export function FromThreadLink({ board, from, view }: { board: Board; from: FromThread | undefined; view: BoardViewName }) {
   const viewLink = useViewLink();
   if (!from) return null;
   const title = `"${clip(from.title, 60)}"`;
-  const live = board.threads?.some((t) => t.id === from.id);
+  const thread = board.threads?.find((t) => t.id === from.id);
+  const asked = thread && inConversation(thread);
+  const open = () => (asked ? openConversation(board.id, thread.messages[0]?.id) : openThread(from.id, undefined, { boardId: board.id, href: viewLink(board.id, threadTab(board, from.id, view)) }));
   return (
     <p className="from-thread">
       <Icon name="thread" />
-      <span className="from-thread-label">{live ? 'From thread' : 'From deleted thread'}</span>
-      {live ? (
-        <button type="button" onClick={() => openThread(from.id, undefined, { boardId: board.id, href: viewLink(board.id, threadTab(board, from.id, view)) })} title="Open the thread it came from">
+      <span className="from-thread-label">{!thread ? 'From deleted thread' : asked ? 'From the conversation' : 'From thread'}</span>
+      {thread ? (
+        <button type="button" onClick={open} title={asked ? "Open it in the board's conversation" : 'Open the thread it came from'}>
           {title}
         </button>
       ) : (

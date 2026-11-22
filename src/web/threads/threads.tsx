@@ -6,7 +6,7 @@ import { listNames, samePerson } from '../../core/format';
 import { splitLensCommand } from '../../core/lensCommand';
 import { boardAgents, splitQuestion } from '../../core/mentions';
 import { STARTERS } from '../../core/requests';
-import { threadGroups, threadMade, threadTag } from '../../core/threadList';
+import { askedTag, inConversation, threadGroups, threadMade, threadTag } from '../../core/threadList';
 import { shownTitle, threadWaiting } from '../../core/threads';
 import type { Actor, Board, MessageLens, ScratchPage, Thread, ThreadDoor, ThreadLens, ThreadMessage, ThreadRef } from '../../core/types';
 import { api } from '../shared/api';
@@ -18,18 +18,19 @@ import { ChatBar } from './chatBar';
 import { moveDock } from './dockMotion';
 import { lookAtBoard } from './justMade';
 import { fileBar, pageBar, replyPlaceholder, viewOfDoor } from './chatDoor';
-import { agentLineAt, commentAnchor, LoopLine, MessageFoot, onItsWay, outbox, Reactions, SaidTo, settledKeys, useMentionable, useOutgoing, withOutgoing, type Drawn } from '../conversation';
+import { agentLineAt, commentAnchor, LoopLine, MessageFoot, onItsWay, outbox, Reactions, SaidTo, settledKeys, showComments, useMentionable, useOutgoing, withOutgoing, type Drawn } from '../conversation';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
 import { PanelHandle } from '../shared/PanelHandle';
 import { usePanelWidth } from '../shared/panelWidth';
 import { CLOSED, dockOnArrival, type DockState, type Left } from './dockStays';
 import { escapeCloses, followPress, useBeside, useDismiss, useReadOnly } from '../shared/hooks';
 import { askDockToOpen, OPEN_THREAD } from '../shared/openThread';
-import { dropFlag, flagged, flags, type BoardViewName } from '../shared/pages';
+import { dropFlag, flagged, flags, go, type BoardViewName } from '../shared/pages';
 import { lensChoices, messageLensOf } from './lensChoices';
 import { LensChip, LensLine, LensPicker } from './lenses';
 import { useAgents } from '../agents';
 import { CommentText, ViaSkill } from '../shared/mentions';
+import { AskPeek } from './askPeek';
 import { ThreadsList } from './threadsList';
 import { useThreadsSeen } from './threadsSeen';
 import { WorkCards } from './threadWork';
@@ -39,11 +40,15 @@ import { draftMessage, isLocal, replyInThread, startThread as sendNewThread } fr
 
 // The board's threads: conversations with agents, each through a lens. The
 // chat bar floats at the foot of every tab (chatBar.tsx); what's sent from it
-// starts a thread through that tab's door (core/doors.ts), which opens in a
+// starts a thread through that tab's door (core/doors.ts), as a quick question
+// of the board's conversation (core/threadList.ts inConversation), read whole
+// on the board's Home: its answer peeks over the bar as it comes
+// (askPeek.tsx), and the dock opens no thread for it. A thread opens in a
 // panel docked on the right, the board still there beside it, and the bar
 // becomes the panel's reply box. The panel shows one thread, under "← Threads"
 // and its title, with where it was started and what it made; or New thread,
-// the open-ended door; or the list of every thread, which fills it. It stays open while the person uses the board: opening
+// the open-ended door; or the threads list, the conversation and then the
+// work, which fills it. It stays open while the person uses the board: opening
 // a card, following a link or a T6 chip, changing tabs, pressing a button,
 // selecting text, dragging or panning the canvas all leave it be, and it is
 // open again, on the same thread, when they come back from a card's own view.
@@ -51,8 +56,8 @@ import { draftMessage, isLocal, replyInThread, startThread as sendNewThread } fr
 // thread it had open there). It closes on its close button, on Escape, or on
 // a dismiss click, a plain click on empty space that does nothing else
 // (shared/dismissClick.ts), which puts the bar back at the bottom. The
-// bar's threads button opens the list of every thread (threadsList.tsx),
-// waiting on you first, over the bar; the panel's "← Threads" turns the panel
+// bar's threads button opens the threads list (threadsList.tsx), over the
+// bar, its conversation's row going to Home; the panel's "← Threads" turns the panel
 // into that list, a page of its own, where a row turns it back into its thread
 // and the reply box starts a new one. A person deletes a thread from its row;
 // a toast offers to undo it, as on a canvas (canvas/undo.tsx).
@@ -94,6 +99,14 @@ export function openThread(threadId: string, thread?: Thread, from?: { boardId: 
   }
   asked = { id: threadId, thread };
   location.hash = from.href;
+}
+
+// The board's conversation on its Home, at one of its messages (`at`) when
+// given, scrolled to and flashed: where a quick question and its answer are
+// read, from the threads list, the bell, the peek over the bar and search.
+export function openConversation(boardId: string, at?: string): void {
+  go.timeline(boardId);
+  if (at) showComments([at]);
 }
 
 // The tab a thread opens on from a card's view: where it was started, else
@@ -157,6 +170,10 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   }, []);
   const { open, page, selected, newLens, drafts } = state;
   const [started, setStarted] = useState<Thread | null>(null); // one just started, until the board has it
+  // The ask sent last from the floating bar, whose answer peeks over it (askPeek.tsx): its thread's id, and the
+  // thread as last known (the stand-in, then the server's) until the board has it.
+  const [peek, setPeek] = useState<{ id: string; shown: Thread } | null>(null);
+  const landed = useRef(new Set<string>()); // the asks the board has had, so one it no longer has has moved or gone
   const [busy, setBusy] = useState(false); // a question card on its way
   const [error, setError] = useState<string | null>(null);
   const report = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
@@ -264,6 +281,28 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     if (follow && open && page === 'thread' && selected === follow.from) followTo(follow);
   }, [follow, open, page, selected, followTo]);
   const backTo = back && thread?.id === back.to ? threads.find((t) => t.id === back.from) : undefined;
+
+  // The ask whose answer peeks over the floating bar: as the board has it, else as last known until it lands. Once
+  // landed, one the board no longer has has moved into the thread it follows up (core/store/threads.ts
+  // routeToThread), or is gone. Moved into a thread of the conversation, the peek follows it there; into work, it says
+  // so; gone, it goes. It goes too as the dock opens, which then holds the bar.
+  const peekOnBoard = peek ? threads.find((t) => t.id === peek.id) : undefined;
+  if (peekOnBoard) landed.current.add(peekOnBoard.id);
+  const peekGone = Boolean(peek && !peekOnBoard && landed.current.has(peek.id));
+  const peekThread = peekOnBoard ?? (peekGone ? undefined : peek?.shown);
+  const movedTo = peek && peekGone ? threads.find((t) => t.messages.some((m) => m.movedFrom === peek.id)) : undefined;
+  useEffect(() => {
+    if (!peek || !peekGone) return;
+    if (movedTo && inConversation(movedTo)) setPeek({ id: movedTo.id, shown: movedTo });
+    else if (!movedTo) setPeek(null);
+  }, [peek, peekGone, movedTo]);
+  useEffect(() => {
+    if (docked) setPeek(null);
+  }, [docked]);
+  // Sent on, the peek says where it went and opens it: the chip that offers to follow it is not needed.
+  useEffect(() => {
+    if (follow && peek && (follow.from === peek.id || follow.to === peek.id)) routed.done(follow.id);
+  }, [follow, peek, routed]);
   // Closed, the board has the eye again: what was made meanwhile in view is seen.
   useEffect(() => {
     if (!docked) lookAtBoard();
@@ -323,13 +362,20 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
     [board.id],
   );
 
-  // What's on screen is seen, replies arriving while it's open included.
+  // What's on screen is seen, replies arriving while it's open included: the
+  // thread docked, or the exchange peeking over the floating bar.
   const lastId = thread?.messages.at(-1)?.id;
   useEffect(() => {
     if (!docked || !thread || isLocal(thread)) return;
     markSeen(thread);
     onSeeItem?.(thread.id);
   }, [docked, thread?.id, lastId, markSeen, onSeeItem]); // once per message seen
+  const peekLast = peekOnBoard?.messages.at(-1)?.id;
+  useEffect(() => {
+    if (docked || listOpen || !peekOnBoard) return;
+    markSeen(peekOnBoard);
+    onSeeItem?.(peekOnBoard.id);
+  }, [docked, listOpen, peekOnBoard?.id, peekLast, markSeen, onSeeItem]); // once per message seen
 
   const toggleList = () => {
     setError(null);
@@ -399,17 +445,26 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   // opens through the dock's motion, which runs its change a frame or more
   // later (dockMotion.ts): the server may answer first, and then the panel
   // opens on the server's thread rather than an empty stand-in.
+  // From the floating bar, it is a quick question of the conversation: the bar
+  // stays where it is, and its answer peeks over it.
   const startThread = (text: string, from: ThreadDoor, lens: ThreadLens | null, own?: MessageLens, onPage?: ScratchPage, blockIds?: string[], onFile?: string) => {
+    const floating = !docked;
     const sending = sendNewThread(
       { boardId: board.id, name, names, text, door: from, lens, own, page: onPage, blockIds, file: onFile ? { path: onFile, agent: fileAgent } : undefined },
       (made) => {
         markSeen(made);
         setStarted((current) => (current?.id === sending.local.id ? made : current));
         set((current) => (current.selected === sending.local.id ? { selected: made.id } : {}));
+        setPeek((current) => (current?.id === sending.local.id ? { id: made.id, shown: made } : current));
       },
     );
-    // What was sent leaves the bar as the panel takes it.
+    // What was sent leaves the bar as the panel, or the peek, takes it.
     carets.current.delete(from === 'threads' ? 'new' : 'bar');
+    if (floating) {
+      setPeek({ id: sending.local.id, shown: sending.local });
+      set((current) => ({ drafts: { ...current.drafts, [from === 'threads' ? 'new' : 'bar']: '' }, ...(from === 'threads' && { newLens: null }) }));
+      return;
+    }
     dock(true, () => {
       const shown = sending.made() ?? sending.local;
       setStarted(shown);
@@ -542,9 +597,51 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
       error={docked ? null : error}
     />
   );
-  // Over the floating bar, the list rises from its threads button.
+  // Over the floating bar, the list rises from its threads button. Its
+  // conversation's row goes to Home, the dock closed behind it.
+  const toConversation = () => {
+    setListOpen(false);
+    set({ open: false });
+    openConversation(board.id);
+  };
   const threadsList = listOpen && !docked && (
-    <ThreadsList groups={groups} name={name} readOnly={readOnly} onOpen={openFromList} onNew={startNew} onDelete={deleteThread} onClose={closeList} toggle={listButton} />
+    <ThreadsList groups={groups} name={name} readOnly={readOnly} onOpen={openFromList} onConversation={toConversation} onNew={startNew} onDelete={deleteThread} onClose={closeList} toggle={listButton} />
+  );
+
+  // The answer to the ask just sent, peeking over the floating bar (askPeek.tsx).
+  // One not sent goes back into the bar to be changed, its ^Lens with it.
+  const closePeek = () => {
+    setPeek(null);
+    focusBar();
+  };
+  const peekWork = peekThread && !inConversation(peekThread) ? { thread: peekThread, how: 'taken' as const } : movedTo && !inConversation(movedTo) ? { thread: movedTo, how: 'moved' as const } : undefined;
+  const peekAt = (movedTo?.messages.find((m) => m.movedFrom === peek?.id) ?? peekThread?.messages.at(-1))?.id;
+  const peeking = !docked && !listOpen && peek && (peekThread || peekWork) && (
+    <AskPeek
+      asked={peekThread && askedTag(peekThread, board)?.replace(/^Asked/, 'asked')}
+      work={peekWork}
+      onHome={() => {
+        setPeek(null);
+        openConversation(board.id, peekAt);
+      }}
+      onWork={(id) => showThread(id)}
+      onClose={closePeek}
+    >
+      {peekThread && (
+        <Conversation
+          board={board}
+          thread={peekThread}
+          name={name}
+          onOpen={noop}
+          onEdit={(said, lens) => {
+            setPeek(null);
+            setDraft(draftKey, lens ? `^${lens.name} ${said}` : said);
+            focusBar();
+          }}
+          onThread={(id) => showThread(id)}
+        />
+      )}
+    </AskPeek>
   );
 
   // The docked conversation's width (shared/panelWidth.ts), as its edge was last
@@ -574,7 +671,12 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
       <>
         <div className="chat-float">
           {threadsList}
-          {!listOpen && <WorkStrip board={board} routed={follow} onOpen={(id) => showThread(id)} onFollow={followTo} onDismiss={routed.done} />}
+          {!listOpen && (
+            <div className="chat-over">
+              {peeking}
+              <WorkStrip board={board} routed={follow} onOpen={(id) => showThread(id)} onFollow={followTo} onDismiss={routed.done} />
+            </div>
+          )}
           {/* Over a canvas that can be drawn on, the bar has its drawing tools beside it, as every floating bar does (chatBar.tsx). */}
           {bar ?? (
             <button type="button" className="chat-threads-only" ref={listButton} onClick={toggleList} aria-expanded={listOpen} aria-haspopup="dialog">
@@ -630,6 +732,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
           readOnly={readOnly}
           page={{ scroll: listScroll }}
           onOpen={openFromList}
+          onConversation={toConversation}
           onNew={startNew}
           onDelete={deleteThread}
         />

@@ -1,6 +1,7 @@
 // Where an event leads, the one rule for everything that shows one: the
 // views of what is new and a board's notifications (the page opens it), so a click on any of them lands on the same place. The task it
-// is about, else its decision, else its thread, on the tab it belongs to, else
+// is about, else its decision, else its thread, on the tab it belongs to (a
+// quick question, in the board's conversation on its Home), else
 // the pin on the Board Context or a Sketchbook page it is about (a comment
 // on a part of it: its thread opens, or a website's full view at the
 // element), else the Sketchbook page it changed (or a request was asked on),
@@ -12,7 +13,7 @@ import { cardOf, eventCardsLeading } from './cards';
 import type { BoardViewName } from './pages';
 import { threadPin, type CardKindName } from './pins';
 import { pageWith } from './scratchPad';
-import { threadView } from './threadList';
+import { inConversation, threadView } from './threadList';
 import { isThreadEvent } from './threads';
 import type { Board, BoardEvent } from './types';
 
@@ -21,6 +22,7 @@ import type { Board, BoardEvent } from './types';
 export type NeedTarget =
   | { [K in CardKindName]: { kind: K; id: string } }[CardKindName]
   | { kind: 'thread'; id: string; view: BoardViewName } // the tab it opens on
+  | { kind: 'conversation'; at?: string } // the board's conversation on its Home, at a message of it (threadList.ts inConversation)
   | { kind: 'pin'; id: string } // on the board context or a Sketchbook page
   | { kind: 'page'; id: string } // a Sketchbook page
   | { kind: 'board'; view?: BoardViewName };
@@ -33,6 +35,7 @@ export function eventPlace(board: Board, event: BoardEvent): NeedTarget | undefi
   if (named.length) return undefined;
   if (isThreadEvent(event)) {
     const thread = board.threads?.find((t) => t.id === event.itemId);
+    if (thread && inConversation(thread)) return { kind: 'conversation', ...(event.commentId && { at: event.commentId }) };
     return thread && { kind: 'thread', id: thread.id, view: threadView(thread) };
   }
   if (threadPin(board, event.itemId)) return { kind: 'pin', id: event.itemId! };

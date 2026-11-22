@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { planProgress } from '../../core/agentWork';
 import { clip, samePerson } from '../../core/format';
+import { inConversation } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import type { Board, BoardEvent, Thread } from '../../core/types';
 import { AgentWorkOn, phaseOf, StepText, stepWords, useAgents, useSteps, useWork } from '../agents';
@@ -66,8 +67,9 @@ export function threadTone(thread: Thread, onBoard: readonly { name: string; sta
 const THREAD_CHANGES = new Set<BoardEvent['type']>(['thread_started', 'thread_replied', 'thread_routed', 'thread_status_changed']);
 export const threadsChanged = (events: readonly BoardEvent[]): boolean => events.some((e) => THREAD_CHANGES.has(e.type));
 
-// The threads agents own (core/roles.ts), the work a coordinator handed out.
-export const ownedThreads = (board: Board): Thread[] => (board.threads ?? []).filter((t) => t.owner && t.status);
+// The threads agents own (core/roles.ts), the work a coordinator handed out: every thread out of the conversation
+// (core/threadList.ts inConversation).
+export const ownedThreads = (board: Board): Thread[] => (board.threads ?? []).filter((t) => !inConversation(t));
 
 // When something last moved, briefly: the time today, the day this week, else the date.
 export function brief(iso: string, now = Date.now()): string {

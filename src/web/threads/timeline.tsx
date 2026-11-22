@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
 import { samePerson } from '../../core/format';
-import { threadGroups, threadTag } from '../../core/threadList';
+import { askedTag, inConversation, threadGroups } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import type { Board, Thread, ThreadLens, ThreadMessage } from '../../core/types';
 import { phaseOf, useAgents, useSteps, useWork } from '../agents';
@@ -29,8 +29,9 @@ import './timeline.css';
 // A board's Home (the core's view 'timeline', at /home: board/coreViews.tsx).
 // Its main pane is the board's conversation: what people ask from the chat bar
 // and what the coordinator answers (core/roles.ts), gathered from the threads
-// that are not handed-out work and drawn as a thread draws its messages, oldest
-// first, with the day and where the viewer was last here between them. Where
+// of the conversation (core/threadList.ts inConversation) and drawn as a
+// thread draws its messages, oldest first, with the day and where the viewer
+// was last here between them. Where
 // the coordinator sent an ask on, a card under it names the thread it went to
 // and where its work stands. Its yarn (yarn.tsx) runs beside it: the
 // conversation one plied strand, each thread an agent owns knitting off it
@@ -162,7 +163,7 @@ export function TimelineView({ board, name, route, away }: Props) {
     <section className="board-timeline" aria-label="Home">
       <div className="timeline-main">
         {thread ? (
-          <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={thread.owner && thread.status ? strandOf(thread) : undefined} onSeeItem={away.markSeen} />
+          <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={inConversation(thread) ? undefined : strandOf(thread)} onSeeItem={away.markSeen} />
         ) : (
           <MainConversation key={board.id} board={board} name={name} away={away} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
         )}
@@ -173,13 +174,6 @@ export function TimelineView({ board, name, route, away }: Props) {
 }
 
 // ---- the conversation ------------------------------------------------------------
-
-type Filter = 'all' | 'yours' | 'sent';
-const FILTERS: { id: Filter; label: string; title: string }[] = [
-  { id: 'all', label: 'Everything', title: 'Every message of the conversation' },
-  { id: 'yours', label: 'Your asks', title: 'What you asked, and the answers' },
-  { id: 'sent', label: 'Sent on', title: 'The asks sent on to an agent of their own' },
-];
 
 // A row of the conversation: something said, a relay, or the relays that came while the viewer was away.
 interface Entry {
@@ -262,27 +256,19 @@ function MainConversation(props: {
   const names = useMentionable(name);
   const { seen, markSeen } = useThreadsSeen(board);
   const [locals, setLocals] = useState<Thread[]>(() => unsentStarts(board.id)); // started here, until the board has them, those a reload brought back not sent included
-  const [filter, setFilter] = useState<Filter>('all');
   const threads = useMemo(
-    () => [...(board.threads ?? []).filter((t) => !t.status), ...locals.filter((l) => !board.threads?.some((t) => t.id === l.id))],
+    () => [...(board.threads ?? []).filter(inConversation), ...locals.filter((l) => !board.threads?.some((t) => t.id === l.id))],
     [board.threads, locals],
   );
   const owned = useMemo(() => ownedThreads(board), [board.threads]);
-  const said = useSaid(board, threads, owned, name);
+  const shown = useSaid(board, threads, owned, name);
   const relays = useRelays(board, name, agents);
   const [arrived] = useState(() => cameIn.get(board.id) ?? cameIn.set(board.id, Date.now()).get(board.id)!);
-  const settled = said.flatMap((s) => settledKeys([s.drawn])).join();
+  const settled = shown.flatMap((s) => settledKeys([s.drawn])).join();
   useEffect(() => {
     for (const key of settled ? settled.split(',') : []) outbox.remove(key);
   }, [settled]);
 
-  const shown = said.filter((s) =>
-    filter === 'sent'
-      ? s.sentOn.length > 0
-      : filter === 'yours'
-        ? s.thread.startedBy.kind === 'human' && samePerson(s.thread.startedBy.name, name)
-        : true,
-  );
   // The strands shown: those not done before the first message shown.
   const firstAt = shown[0]?.drawn.item.at;
   const visible = strands.filter((s) => !s.to || !firstAt || s.to >= firstAt);
@@ -321,12 +307,11 @@ function MainConversation(props: {
     );
     for (const row of root.querySelectorAll<HTMLElement>('li[data-message]')) if (seenBy.has(row.dataset.message ?? '')) observer.observe(row);
     return () => observer.disconnect();
-  }, [latest, filter, markSeen, seeItem]); // once per message, and as the filter shows others
+  }, [latest, markSeen, seeItem]); // once per message
   const atFoot = useRef(scrolls.get(board.id)?.foot ?? true);
   const restored = useRef(false);
-  // The relays shown with what was said: all but under Your asks.
-  const relaying = filter !== 'yours';
-  const relayed = relaying ? relays.map((r) => `${r.key}${r.needsYou ? '!' : ''}`).join() : '';
+  // The relays shown with what was said.
+  const relayed = relays.map((r) => `${r.key}${r.needsYou ? '!' : ''}`).join();
   const count = `${shown.reduce((n, s) => n + 1 + s.sentOn.length + (s.drawn.item.refs?.length ?? 0), 0)}:${relayed}`;
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -335,7 +320,7 @@ function MainConversation(props: {
     restored.current = true;
     if (kept && !kept.foot) el.scrollTop = kept.top;
     else if (atFoot.current) el.scrollTop = el.scrollHeight;
-  }, [count, filter, board.id]);
+  }, [count, board.id]);
 
   // The keyboard on the yarn: ← → between strands, Enter opens one's thread in the main pane, Esc leaves the yarn.
   const order = [...visible].sort((a, b) => (lanes.get(a.id) ?? 0) - (lanes.get(b.id) ?? 0) || a.from.localeCompare(b.from)).map((s) => s.id);
@@ -400,7 +385,6 @@ function MainConversation(props: {
     setLocals((was) => [...was, sending.local]);
     setDraft('');
     atFoot.current = true;
-    if (filter === 'sent') setFilter('all');
   };
   // One not sent goes back into the bar to be changed, its ^Lens with it.
   const editUnsent = (body: string, lens?: { name: string }) => {
@@ -419,11 +403,11 @@ function MainConversation(props: {
   const coordinator = agents.filter((a) => a.coordinator && a.state !== 'away').sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
   const since = away.visit.sinceAt;
   // What was said, with the relays at when they came: those that came while the viewer was away, as one card.
-  const whileAway = relaying && since ? relays.filter((r) => r.at > since && Date.parse(r.at) <= arrived) : [];
+  const whileAway = since ? relays.filter((r) => r.at > since && Date.parse(r.at) <= arrived) : [];
   const stacked = new Set(whileAway.length > 1 ? whileAway.map((r) => r.key) : []);
   const entries: Entry[] = [
     ...shown.map((s) => ({ at: s.drawn.item.at, said: s })),
-    ...(relaying ? relays.filter((r) => !stacked.has(r.key)).map((relay) => ({ at: relay.at, relay })) : []),
+    ...relays.filter((r) => !stacked.has(r.key)).map((relay) => ({ at: relay.at, relay })),
     ...(stacked.size ? [{ at: whileAway[0].at, stack: whileAway }] : []),
   ].sort((a, b) => a.at.localeCompare(b.at));
   const mineAt = (e: Entry) => Boolean(e.said && e.said.drawn.item.author.kind === 'human' && samePerson(e.said.drawn.item.author.name, name));
@@ -443,7 +427,7 @@ function MainConversation(props: {
       return;
     }
     const s = e.said!;
-    const tag = s.first ? threadTag(s.thread, board) : undefined;
+    const tag = s.first ? askedTag(s.thread, board) : undefined;
     rows.push(
       <MessageRow
         key={s.drawn.key}
@@ -483,13 +467,6 @@ function MainConversation(props: {
       <header className="timeline-head">
         <h2>Conversation</h2>
         <span className="timeline-with">{coordinator ? `with ${ownName(coordinator)}, the board's coordinator` : "with the board's agents"}</span>
-        <div className="timeline-filters" role="group" aria-label="Show">
-          {FILTERS.map((f) => (
-            <button key={f.id} type="button" aria-pressed={filter === f.id} title={f.title} onClick={() => setFilter(f.id)}>
-              {f.label}
-            </button>
-          ))}
-        </div>
       </header>
       <div className="timeline-scroll-wrap">
         <div
@@ -503,7 +480,7 @@ function MainConversation(props: {
           }}
         >
           <div className="timeline-rows">
-            <Yarn strands={visible} lanes={lanes} version={`${count}:${filter}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} />
+            <Yarn strands={visible} lanes={lanes} version={`${count}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} />
             {order.length > 0 && (
               <div
                 ref={keys}
@@ -526,13 +503,7 @@ function MainConversation(props: {
             {rows.length ? (
               <ol className="thread-messages timeline-messages">{rows}</ol>
             ) : (
-              <p className="timeline-empty">
-                {filter === 'all'
-                  ? 'Nothing asked yet. Ask below: the coordinator answers here, and sends work on to agents of its own, whose threads knit off this one.'
-                  : filter === 'yours'
-                    ? 'You have asked nothing here yet.'
-                    : 'Nothing has been sent on yet.'}
-              </p>
+              <p className="timeline-empty">Nothing asked yet. Ask below: the coordinator answers here, and sends work on to agents of its own, whose threads knit off this one.</p>
             )}
           </div>
         </div>
@@ -546,7 +517,7 @@ function MainConversation(props: {
             aria-expanded={listOpen}
             aria-haspopup="dialog"
             aria-label={groups.waiting.length ? `Threads: ${groups.waiting.length} waiting on you` : 'Threads'}
-            title={groups.waiting.length ? `Threads, ${groups.waiting.length} waiting on you` : 'Every thread'}
+            title={groups.waiting.length ? `Threads, ${groups.waiting.length} waiting on you` : 'Threads'}
             onClick={() => setListOpen((was) => !was)}
           >
             <YarnBall />
@@ -561,10 +532,16 @@ function MainConversation(props: {
               groups={groups}
               name={name}
               readOnly={readOnly}
-              mark={(t) => (t.owner && t.status ? <span className={`work-square is-${threadTone(t, agents)}`} aria-hidden /> : null)}
+              mark={(t) => (inConversation(t) ? null : <span className={`work-square is-${threadTone(t, agents)}`} aria-hidden />)}
               onOpen={(id) => {
                 setListOpen(false);
                 onOpen(id);
+              }}
+              onConversation={() => {
+                setListOpen(false);
+                atFoot.current = true;
+                const el = scroller.current;
+                el?.scrollTo({ top: el.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
               }}
               onNew={() => {
                 setListOpen(false);
@@ -718,6 +695,7 @@ function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; 
     return () => window.removeEventListener('keydown', onKey);
   }, [back]);
   const count = thread.messages.length + (thread.pending?.length ?? 0);
+  const tone = strand?.tone; // its strand's, for the square of the line over the bar
 
   return (
     <div className="timeline-thread" style={{ '--yarn-gutter': `${gutterOf(1)}px` } as CSSProperties}>
@@ -742,7 +720,11 @@ function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; 
       </Conversation>
       {!readOnly && (
         <div className="timeline-foot">
-          {/* The one bar, aimed at the thread open: its chip's ✕ goes back to the conversation. */}
+          {/* The one bar, aimed at the thread open, which the line over it names: Conversation, its strand or Esc goes back. */}
+          <p className="timeline-replying">
+            {tone && <span className={`work-square is-${tone}`} aria-hidden />}
+            Replying in <b>{shownTitle(thread)}</b>
+          </p>
           <ChatBar
             docked={false}
             value={draft}
@@ -753,13 +735,6 @@ function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; 
             sendLabel="Send"
             field={field}
             lenses={lenses}
-            context={{
-              label: shownTitle(thread),
-              title: `The bar talks to “${shownTitle(thread)}”: what you send goes to this thread.`,
-              icon: 'thread',
-              remove: { label: 'Back to the conversation', title: 'Back to the conversation (Esc)' },
-              onRemove: back,
-            }}
             error={error}
           />
         </div>

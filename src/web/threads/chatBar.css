@@ -18,6 +18,28 @@
   justify-content: center;
 }
 
+/* Over it, what follows from it, stacked up from the bar: the work under way
+   (workStrip.tsx) just over it, and over that the answer to what was just
+   asked (askPeek.tsx). The stack takes no pointer itself, so the canvas under
+   its gaps stays reachable. Over the drawing tools' tray while it is open
+   (canvas/tools/DrawOptions.tsx), so neither hides the other. */
+.chat-over {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.chat-over > .ask-peek {
+  pointer-events: auto;
+}
+.chat-float:has(.draw-options.is-shown) > .chat-over {
+  bottom: calc(100% + 62px);
+}
+
 /* Over a canvas that can be drawn on, the canvas's drawing tools (canvas/tools)
    float in a capsule of their own on the bar's left: its height, sheet,
    corners and lift, a small gap between, so drawing and talking read as two
@@ -934,6 +956,13 @@
     left: auto;
     right: 0;
     transform-origin: bottom right;
+  }
+  /* What follows from the bar goes over the capsule there, and over its tray while that is open. */
+  .chat-float:has(.chat-tools.is-shown) > .chat-over {
+    bottom: calc(100% + 64px);
+  }
+  .chat-float:has(.draw-options.is-shown) > .chat-over {
+    bottom: calc(100% + 150px);
   }
 }
 /* There, going, the tools fold away as above, then the capsule drops in

@@ -1,19 +1,20 @@
-// What the bell in a board's header lists besides the threads that wait on the
-// viewer (core/threadList.ts) and the agents waiting for their OK
-// (core/approvals.ts): the comments and thread messages that @-mention them,
-// or reply to one of theirs, among what others changed since they last looked
-// (web/live/away.ts). Each is found from the event that said it
-// (answering.ts discussionAt), so it is read as an agent reads it: a message
-// held by the loop guard is nobody's, and one the viewer has already reacted
-// to is answered.
+// What the bell in a board's header lists besides the work threads that wait
+// on the viewer (core/threadList.ts) and the agents waiting for their OK
+// (core/approvals.ts): what agents answered them in the board's conversation,
+// as one row (answersForYou), and the comments and thread messages that
+// @-mention them, or reply to one of theirs, among what others changed since
+// they last looked (web/live/away.ts). Each is found from the event that said
+// it (answering.ts discussionAt), so it is read as an agent reads it: a
+// message held by the loop guard is nobody's, and one the viewer has already
+// reacted to is answered.
 
 import { discussionAt, type Said } from './answering';
 import { samePerson } from './format';
 import { peopleIn } from './mentions';
 import { threadPin } from './pins';
 import { reactedBy } from './reactions';
-import { threadsWaitingOn, type ThreadsSeen } from './threadList';
-import type { Board, BoardEvent, ScratchPage, Thread } from './types';
+import { conversationWaitingOn, waitingOn, type ThreadsSeen } from './threadList';
+import type { Board, BoardEvent, ScratchPage, Thread, ThreadMessage } from './types';
 
 const SAID: readonly string[] = ['comment_added', 'thread_started', 'thread_replied'];
 
@@ -36,9 +37,10 @@ export interface BellComment {
 // since the viewer last looked, not what stays waiting: when they look away and
 // come back, they are seen. A message in a thread is theirs to see until
 // they have seen the thread (`seen`, as threadList.ts has it), and one in a
-// thread already waiting on them would only repeat that row.
+// thread already waiting on them would only repeat that row, or the
+// conversation's.
 export function commentsForYou(board: Board, events: BoardEvent[], me: string, seen: ThreadsSeen | null): BellComment[] {
-  const waiting = new Set(threadsWaitingOn(board, me, seen).map((t) => t.id));
+  const waiting = new Set(waitingOn(board, me, seen).map((t) => t.id));
   const found = new Map<string, BellComment>();
   for (const event of events) {
     if (!SAID.includes(event.type) || event.held) continue;
@@ -75,4 +77,25 @@ function placeOf(board: Board, event: BoardEvent): BellPlace | undefined {
   }
   const at = threadPin(board, event.itemId);
   return at?.page && { kind: 'pin', pinId: at.pin.id, page: at.page };
+}
+
+// What agents said to this viewer in the board's conversation that they have
+// yet to see, as the bell's one row for it: the latest, which opens Home's
+// conversation there, with how many of the conversation's threads wait on
+// them. `answered`: it answers what they asked there, rather than an agent's
+// question to the board.
+export interface BellAnswer {
+  thread: Thread;
+  said: ThreadMessage;
+  answered: boolean;
+  count: number;
+}
+
+export function answersForYou(board: Board, me: string, seen: ThreadsSeen | null): BellAnswer | undefined {
+  const waiting = conversationWaitingOn(board, me, seen);
+  const thread = waiting[0];
+  const said = thread?.messages.at(-1);
+  if (!thread || !said) return undefined;
+  const answered = thread.messages.some((m) => m.author.kind === 'human' && samePerson(m.author.name, me));
+  return { thread, said, answered, count: waiting.length };
 }

@@ -10,6 +10,7 @@ import { useBoardViews } from '../shared/boardViewsContext';
 import { useCardKinds } from '../shared/cardKindsContext';
 import { useDismiss } from '../shared/hooks';
 import { linkTo } from '../shared/pages';
+import { openConversation } from '../threads';
 
 // ---- the palette ----------------------------------------------------------------
 
@@ -19,19 +20,20 @@ interface Filter {
   kinds: SearchKind[];
 }
 
-// The canvas's own: comments and canvases. The page's registered search (shared/boardViews.ts
+// The canvas's own: comments, the threads' messages and canvases. The page's registered search (shared/boardViews.ts
 // SearchSlot, a part's) adds its chips between All and Comments, the kinds it heads
 // results with, and its wording; with none, All asks for the canvas's kinds alone.
-const CANVAS_KINDS: SearchKind[] = ['comment', 'block'];
+const CANVAS_KINDS: SearchKind[] = ['comment', 'message', 'block'];
 
 const GROUP_LABEL: Partial<Record<SearchKind, string>> = {
   comment: 'Comments',
+  message: 'Threads',
   block: 'Canvas',
 };
 
 const PLAIN_WORDS = {
-  placeholder: 'Search comments and canvases',
-  hint: 'Find past comments and canvas notes.',
+  placeholder: 'Search threads, comments and canvases',
+  hint: 'Find what was asked and answered, past comments and canvas notes.',
 };
 
 // The last search, offered again the next time the palette opens.
@@ -51,9 +53,12 @@ function cardIn(target: SearchResult['target'], kinds: CardKinds): { kind: strin
 }
 
 // Where a result opens: its card, where the page's kinds of card say where it
-// is (the same addresses the #12 and T5 links in text use), or the board context.
+// is (the same addresses the #12 and T5 links in text use), a message's place
+// (the board's conversation on its Home, or its thread of work there), or the
+// board context.
 function hrefOf(result: SearchResult, kinds: CardKinds): string {
   const { boardId, target } = result;
+  if (target.threadId) return target.conversation ? linkTo.board(boardId, 'timeline') : linkTo.thread(boardId, target.threadId);
   const card = cardIn(target, kinds);
   if (card) return kinds.byId(card.kind, boardId, card.id)?.href ?? linkTo.board(boardId);
   if (target.pageId) return linkTo.page(boardId, target.pageId);
@@ -62,10 +67,13 @@ function hrefOf(result: SearchResult, kinds: CardKinds): string {
 
 function open(result: SearchResult, kinds: CardKinds): void {
   const { target } = result;
+  // A message is scrolled to and flashed where it is.
+  if (target.conversation) return openConversation(result.boardId, target.messageId);
   if (target.blockId) focusBlock(target.blockId);
   location.hash = hrefOf(result, kinds);
-  // A comment in a card's discussion is scrolled to and flashed there.
+  // A comment in a card's discussion is scrolled to and flashed there, and so is a message in its thread.
   if (target.commentId && !target.pinId) showComments([target.commentId]);
+  if (target.messageId) showComments([target.messageId]);
 }
 
 // Text with its matches marked.
@@ -93,7 +101,13 @@ function Palette({ boardId, onClose }: PaletteProps) {
   const slot = views.search();
   const contextName = views.boardContext()?.name;
   const filters: Filter[] = useMemo(
-    () => [{ key: 'all', label: 'All', kinds: slot ? [] : CANVAS_KINDS }, ...(slot?.filters ?? []), { key: 'comments', label: 'Comments', kinds: ['comment'] }, { key: 'canvas', label: 'Canvas', kinds: ['block'] }],
+    () => [
+      { key: 'all', label: 'All', kinds: slot ? [] : CANVAS_KINDS },
+      ...(slot?.filters ?? []),
+      { key: 'threads', label: 'Threads', kinds: ['message'] },
+      { key: 'comments', label: 'Comments', kinds: ['comment'] },
+      { key: 'canvas', label: 'Canvas', kinds: ['block'] },
+    ],
     [slot],
   );
   const words = slot ?? PLAIN_WORDS;
@@ -268,11 +282,12 @@ function Palette({ boardId, onClose }: PaletteProps) {
                   index += 1;
                   const i = index;
                   const onContext = result.target.canvas === 'board' || result.target.canvas === 'page';
+                  const said = Boolean(result.target.threadId); // a thread's message: where, the conversation or its thread
                   const look = slot?.result(result);
-                  const where = [onContext && (result.target.pageId ? result.ref : contextName), result.snippet?.where].filter(Boolean).join(' · ');
+                  const where = [onContext && (result.target.pageId ? result.ref : contextName), said && result.ref, result.snippet?.where].filter(Boolean).join(' · ');
                   return (
                     <a
-                      key={`${result.kind}:${result.target.commentId ?? result.target.blockId ?? cardIn(result.target, kinds)?.id}:${i}`}
+                      key={`${result.kind}:${result.target.messageId ?? result.target.commentId ?? result.target.blockId ?? cardIn(result.target, kinds)?.id}:${i}`}
                       id={`search-row-${i}`}
                       role="option"
                       aria-selected={i === active}
@@ -283,7 +298,7 @@ function Palette({ boardId, onClose }: PaletteProps) {
                       title={look?.status ? `${result.ref} · ${look.status}` : result.ref}
                     >
                       <span className={`search-ref ${look?.marker ?? ''}`}>
-                        {onContext ? <Icon name="canvas" /> : result.ref}
+                        {onContext ? <Icon name="canvas" /> : said ? <Icon name="thread" /> : result.ref}
                       </span>
                       <span className="search-text">
                         <span className="search-title">

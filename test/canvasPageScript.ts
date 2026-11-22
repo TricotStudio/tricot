@@ -135,15 +135,20 @@ root.render(h(${root.component}));
         rows: rows().map((row) => row.innerText.replace(/\\s+/g, ' ').trim()),
         notify: notify ? { label: notify.innerText.trim(), on: notify.querySelector('input').checked } : null,
       };
-      rows()[0]?.click();
-      for (let i = 0; i < 60 && !$('.thread-dock .dock-heading'); i++) await wait(100);
+      // The mention opens where it is said; the answer in the conversation, on the board's Home, at the answer, which
+      // it then has seen.
+      rows().find((row) => row.innerText.includes('Mentioned you'))?.click();
       await wait(300);
-      results.opened = { panelClosed: !$('.inbox.bell .inbox-panel'), docked: Boolean($('aside.thread-dock')), text: document.body.innerText.replace(/\\s+/g, ' ').includes('Sketched it on the page') };
-      button.click();
+      for (let i = 0; i < 40 && !document.body.innerText.includes('should the address come before the cart'); i++) await wait(100);
       await wait(300);
-      rows()[1]?.click();
-      await wait(1500);
       results.mention = { hash: location.hash, shown: document.body.innerText.replace(/\\s+/g, ' ').includes('should the address come before the cart') };
+      $('.inbox.bell button').click();
+      await wait(300);
+      rows().find((row) => row.innerText.includes('answered you'))?.click();
+      for (let i = 0; i < 60 && !$('.board-timeline .timeline-messages'); i++) await wait(100);
+      await wait(300);
+      results.opened = { panelClosed: !$('.inbox.bell .inbox-panel'), home: location.hash.endsWith('/home'), docked: Boolean($('aside.thread-dock')), text: document.body.innerText.replace(/\\s+/g, ' ').includes('Sketched it on the page') };
+      for (let i = 0; i < 80 && $('.inbox.bell .inbox-count'); i++) await wait(100); // what it shows is seen
     }
     // The board's own address: where a board lands.
     location.hash = '#/b/' + boardId;
@@ -209,7 +214,7 @@ export interface Results {
   board: BoardShown; // at the board's own address, where it lands
   sketchbook: BoardShown; // on the Sketchbook, before anything was opened
   panel?: { open: boolean; headings: string[]; rows: string[]; notify: { label: string; on: boolean } | null };
-  opened?: { panelClosed: boolean; docked: boolean; text: boolean };
+  opened?: { panelClosed: boolean; home: boolean; docked: boolean; text: boolean };
   mention?: { hash: string; shown: boolean };
   timeline: { hash: string; shown: boolean; conversation: string; work: string; bar: boolean; dock: boolean; yarn: boolean; skein: boolean; threadsInBar: boolean };
   fullAddress: BoardShown;

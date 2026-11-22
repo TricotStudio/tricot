@@ -1,6 +1,7 @@
 // Search over what a board holds: its cards (a part's cards, as the part that keeps them says, searchCards.ts),
-// comments, findings and canvas blocks, closed ones included, since finding past work is the point.
-// People reach it from the search palette, agents from the search tool. It
+// comments, findings, canvas blocks and the messages of its threads, closed ones included, since finding past work is
+// the point. People reach it from the search palette, agents from the search tool, which leaves the threads' messages
+// out: an agent reads a thread with get_thread. It
 // scans the boards in memory; an index (SQLite FTS5, say) can take its place
 // behind searchBoards without changing what callers get back.
 
@@ -13,22 +14,28 @@ import { pageName } from './scratchPad';
 import type { CardKindName } from './pins';
 import { refLabel } from './refKinds';
 import { searchCardNamed, searchCardOf, searchOwners, standingOf, type CardStanding, type SearchField } from './searchCards';
+import { inConversation } from './threadList';
+import { shownTitle } from './threads';
 import type { Block, Board, Canvas, Comment, ScratchPage } from './types';
 
-// What a result is: a comment, a finding or a block, and a card of each kind a part registered (searchCards.ts), which the
-// part adds by name (a part's kinds of card).
+// What a result is: a comment, a finding, a block or a thread's message, and a card of each kind a part registered
+// (searchCards.ts), which the part adds by name (a part's kinds of card).
 export interface SearchKinds {
   comment: true;
   finding: true;
   block: true;
+  message: true;
 }
 export type SearchKind = keyof SearchKinds;
 
-// The kinds the core itself finds, whatever cards a board holds.
+// The kinds the core itself finds for an agent, whatever cards a board holds: its search tool offers these.
 export const CORE_SEARCH_KINDS = ['comment', 'finding', 'block'] as const satisfies readonly SearchKind[];
 
-// Every kind a search can look for here: the registered kinds of card, then the core's.
-export const searchKinds = (): string[] => [...searchOwners(), ...CORE_SEARCH_KINDS];
+// What a person's search finds besides: a thread's messages.
+export const PEOPLE_SEARCH_KINDS = [...CORE_SEARCH_KINDS, 'message'] as const satisfies readonly SearchKind[];
+
+// Every kind a person's search can look for here: the registered kinds of card, then the core's.
+export const searchKinds = (): string[] => [...searchOwners(), ...PEOPLE_SEARCH_KINDS];
 
 // The kinds a search looks for, which a part's kinds of card ask about by name (searchCards.ts).
 export type KindsSearched = Pick<ReadonlySet<string>, 'has'>;
@@ -43,6 +50,9 @@ export interface SearchOptions {
   // context's blocks. All of it unless said (the page's search); an agent's server says what its tool groups offer (core/words.ts).
   cards?: boolean;
   context?: boolean;
+  // The threads' messages: found unless said, as the page's search finds them. An agent's search says false, as an
+  // agent reads a thread with get_thread.
+  threads?: boolean;
 }
 
 // A stretch of a text that matched, as offsets: [start, end).
@@ -54,13 +64,16 @@ export interface SearchSnippet {
   ranges: Range[];
 }
 
-// What to open: the card, and for a block the canvas it is on.
+// What to open: the card, and for a block the canvas it is on, or for a message its thread.
 export interface SearchTarget {
   canvas?: 'board' | 'page' | CardKindName; // for a block, or a comment in a thread on one: the card's kind
   pageId?: string; // a Sketchbook page the block is on
   blockId?: string;
   commentId?: string;
   pinId?: string; // the thread of a comment on the board context or a Sketchbook page
+  threadId?: string; // the thread a message is in
+  messageId?: string;
+  conversation?: true; // that thread is the board's conversation's (threadList.ts inConversation), which opens there
 }
 
 export interface SearchResult {
@@ -275,6 +288,29 @@ function* itemsOf(board: Board, kinds: KindsSearched): Generator<Item> {
   for (const page of board.pages ?? []) yield* canvasItems(board, page.canvas, undefined, kinds, page);
 }
 
+// What the threads say: each message, found by what it says. One in the board's conversation is called that, which it
+// opens in; one in work is called by its thread. A coordinator's word that it sent an ask on is drawn as the card under
+// the ask, not as a message, so it is left out.
+function* threadItems(board: Board, kinds: KindsSearched): Generator<Item> {
+  if (!kinds.has('message')) return;
+  for (const thread of board.threads ?? []) {
+    const conversation = inConversation(thread);
+    const title = shownTitle(thread);
+    for (const message of thread.messages) {
+      if (message.sent) continue;
+      yield {
+        kind: 'message',
+        board,
+        ref: conversation ? 'Conversation' : 'Thread',
+        title,
+        fields: field(plainMarkdown(message.body), 'body', message.author.name),
+        target: { threadId: thread.id, messageId: message.id, ...(conversation && { conversation: true as const }) },
+        at: message.at,
+      };
+    }
+  }
+}
+
 // ---- scoring ----------------------------------------------------------------
 
 export interface Match {
@@ -391,7 +427,7 @@ function snippetOf(item: Item, matched: Match, query: Query): SearchSnippet | un
 export function searchBoards(boards: Iterable<Board>, query: string, options: SearchOptions = {}): SearchResponse {
   const parsed = readQuery(query);
   if (!parsed) return { results: [], total: 0 };
-  // None asked for: every kind, those the registered kinds of card add to the five included.
+  // None asked for: every kind, those the registered kinds of card add to the core's included.
   const asked = options.kinds?.length ? new Set<string>(options.kinds) : undefined;
   const kinds: KindsSearched = { has: (kind) => !asked || asked.has(kind) };
   const limit = Math.min(Math.max(1, Math.floor(options.limit ?? DEFAULT_LIMIT)), MAX_LIMIT);
@@ -407,7 +443,7 @@ export function searchBoards(boards: Iterable<Board>, query: string, options: Se
       if (!standings.has(card.id)) standings.set(card.id, standingOf(board, { [card.kind.kind]: card.card }));
       return standings.get(card.id)!;
     };
-    for (const item of itemsOf(board, kinds)) {
+    for (const item of [...itemsOf(board, kinds), ...(options.threads === false ? [] : threadItems(board, kinds))]) {
       if ((item.card && options.cards === false) || (item.target.canvas === 'board' && options.context === false)) continue;
       const matched = match(item, parsed);
       if (!matched) continue;

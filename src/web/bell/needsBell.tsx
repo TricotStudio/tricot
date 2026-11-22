@@ -1,25 +1,28 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { approvalAction, approvalsOn, waitingWords, type Approval } from '../../core/approvals';
-import { commentsForYou, type BellComment } from '../../core/bell';
+import { answersForYou, commentsForYou, type BellAnswer, type BellComment } from '../../core/bell';
 import { clip } from '../../core/format';
 import { pageName } from '../../core/scratchPad';
-import { threadsWaitingOn } from '../../core/threadList';
+import { inConversation, threadsWaitingOn } from '../../core/threadList';
 import { boardKey, type Actor, type Thread } from '../../core/types';
 import { showApproval, useApprovals } from '../access';
 import type { BoardHost } from '../shared/boardViews';
 import { ActorBadge, Icon, timeAgo } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
 import { go } from '../shared/pages';
-import { openThread, useThreadsSeen } from '../threads';
+import { openConversation, openThread, useThreadsSeen } from '../threads';
 import { useAlerts, type Alert } from './attention';
 import { NotifySwitch } from './notifySwitch';
 
 // The bell in Canvas's header, beside search: a count of what is new for the
-// viewer on this board, and the list of it. Three things (a part's inbox
+// viewer on this board, and the list of it. Four things (a part's inbox
 // lists more, as it has decisions and tasks):
-// - threads waiting on them, as the chat bar's Threads button counts them
-//   (core/threadList.ts threadsWaitingOn, over what this browser has seen,
-//   threads/threadsSeen.ts), each opening in the dock;
+// - work threads waiting on them, as the chat bar's Threads button counts
+//   them (core/threadList.ts threadsWaitingOn, over what this browser has
+//   seen, threads/threadsSeen.ts), each opening in the dock;
+// - what agents answered them in the board's conversation, as one row,
+//   "Claude answered you" (core/bell.ts answersForYou), which opens Home's
+//   conversation at the answer;
 // - comments and thread messages that @-mention them or reply to one of
 //   theirs, among what others changed since they last looked (core/bell.ts),
 //   each opening where it is said. These are what is new: once the viewer has
@@ -35,19 +38,31 @@ export function NeedsBell({ board, name, away }: BoardHost) {
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, root);
-  const { seen } = useThreadsSeen(board);
+  const { seen, markSeen } = useThreadsSeen(board);
   const waiting = useMemo(() => threadsWaitingOn(board, name, seen), [board, name, seen]);
+  const answer = useMemo(() => answersForYou(board, name, seen), [board, name, seen]);
   const comments = useMemo(() => commentsForYou(board, away.events, name, seen), [board, away.events, name, seen]);
   const key = boardKey(board);
   const everywhere = useApprovals();
   const approvals = useMemo(() => approvalsOn(everywhere, key), [everywhere, key]);
-  const count = waiting.length + comments.length + approvals.length;
+  const count = waiting.length + (answer ? 1 : 0) + comments.length + approvals.length;
+  // Opening what agents answered is reading it, as opening a thread in the dock is.
+  const openAnswer = useCallback(
+    ({ thread, said }: BellAnswer) => {
+      markSeen(thread);
+      openConversation(board.id, said.id);
+    },
+    [markSeen, board.id],
+  );
 
   const openComment = useCallback(
-    ({ event, place }: BellComment) => {
+    (item: BellComment) => {
+      const { event, place } = item;
       if (event.itemId) away.markSeen(event.itemId);
-      if (place.kind === 'thread') openThread(place.thread.id, place.thread);
-      else go.pin(board.id, place.pinId);
+      // One in the board's conversation is read there, on Home; one in work, in its thread.
+      if (place.kind === 'pin') go.pin(board.id, place.pinId);
+      else if (inConversation(place.thread)) openConversation(board.id, item.said.id);
+      else openThread(place.thread.id, place.thread);
     },
     [away, board.id],
   );
@@ -57,6 +72,7 @@ export function NeedsBell({ board, name, away }: BoardHost) {
         const last = thread.messages.at(-1)!;
         return { key: `thread:${thread.id}:${last.id}`, at: last.at, title: `${last.author.name} replied in ${clip(thread.title, 60)}`, body: clip(last.body, 140), open: () => openThread(thread.id, thread) };
       }),
+      ...(answer ? [{ key: `answer:${answer.said.id}`, at: answer.said.at, title: answerWords(answer), body: clip(answer.said.body, 140), open: () => openAnswer(answer) }] : []),
       ...comments.map((item) => ({
         key: `comment:${item.said.id}`,
         at: item.event.at,
@@ -65,7 +81,7 @@ export function NeedsBell({ board, name, away }: BoardHost) {
         open: () => openComment(item),
       })),
     ],
-    [waiting, comments, openComment],
+    [waiting, answer, comments, openComment, openAnswer],
   );
   useAlerts(alerts);
 
@@ -89,6 +105,11 @@ export function NeedsBell({ board, name, away }: BoardHost) {
                 {approvals.map((approval) => (
                   <ApprovalRow key={approval.id} approval={approval} onOpen={then(() => showApproval(approval.id))} />
                 ))}
+              </Section>
+            )}
+            {answer && (
+              <Section title="In the conversation">
+                <AnswerRow answer={answer} onOpen={then(() => openAnswer(answer))} />
               </Section>
             )}
             {waiting.length > 0 && (
@@ -154,6 +175,19 @@ function ThreadRow({ thread, onOpen }: { thread: Thread; onOpen: () => void }) {
   return (
     <Row actor={last.author} subject={thread.title} meta={timeAgo(last.at)} onOpen={onOpen}>
       <strong>{last.author.name}</strong> {clip(last.body, 140)}
+    </Row>
+  );
+}
+
+// What an agent said to them in the conversation, at its latest: "Claude answered you", or for an agent's question
+// to the board, "Claude asked you".
+const answerWords = ({ said, answered }: BellAnswer): string => `${said.author.name} ${answered ? 'answered you' : 'asked you'}`;
+
+function AnswerRow({ answer, onOpen }: { answer: BellAnswer; onOpen: () => void }) {
+  const { said, count } = answer;
+  return (
+    <Row actor={said.author} subject={answerWords(answer)} meta={`${timeAgo(said.at)}${count > 1 ? ` · ${count} answers waiting` : ''} · on Home`} onOpen={onOpen}>
+      {clip(said.body, 140)}
     </Row>
   );
 }
