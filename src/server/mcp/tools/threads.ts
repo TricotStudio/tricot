@@ -57,7 +57,7 @@ export function threadTools({ store, getActor, words, session: { told } }: ToolC
       name: 'reply_in_thread',
       title: 'Reply in thread',
       description: [
-        ['answer', "Answer in a thread, through its lens, and keep it short. Leave a message that's for another agent to it. Make what it needs first ("],
+        ['answer', "Answer in a thread, through its lens: lead with the answer, in about three sentences. Leave a message that's for another agent to it. Make what it needs first ("],
         ['blocks', 'blocks), passing this thread_id so it shows under your reply; refs adds other cards. '],
         ['mention', '@-mention to ask a person or hand another agent work.'],
         ['then-wait', ' then_wait posts, then listens in the same call.'],

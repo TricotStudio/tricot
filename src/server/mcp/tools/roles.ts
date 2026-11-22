@@ -129,7 +129,7 @@ function orchestratorTools({ store, getActor }: ToolContext, thread: string): To
       },
       schema: {
         status: z.enum(STATUSES).describe('working, needs-you or done'),
-        summary: fields.message.optional().describe('What to say in the thread first, in Markdown: for done, what changed and how to see it'),
+        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and about three sentences: for done, what changed and how to see it'),
       },
       handler: async ({ status, summary }) => {
         const owned = store.setThreadStatus(thread, status, getActor(), summary);
@@ -184,7 +184,7 @@ export function leadTools({ store, getActor }: ToolContext, leads: (boardKey: st
       schema: {
         thread_id: z.string().describe('A thread you own'),
         status: z.enum(STATUSES).describe('working, needs-you or done'),
-        summary: fields.message.optional().describe('What to say in the thread first, in Markdown: for done, what changed and how to see it'),
+        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and about three sentences: for done, what changed and how to see it'),
       },
       handler: async ({ thread_id, status, summary }) => {
         lead(thread_id);

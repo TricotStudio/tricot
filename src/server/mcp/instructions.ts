@@ -73,16 +73,14 @@ const CORE: CoreLine[] = [
   },
   { name: 'updates', section: 'board', text: "- You can't be notified: check get_updates between steps." },
   { name: 'guide', section: 'board', text: '- read_guide says how to use the tools well, by topic: read one before that kind of work.' },
+  // How to write to people is a budget an agent can keep (the answer first, about three sentences, one question, detail
+  // in a block), not only a manner: replies grew long while the lines said only "short".
+  { name: 'readers', section: 'people', text: '- People read about 20x slower than you write. Write as a thoughtful colleague would, in full sentences, never clipped.' },
+  { name: 'budget', section: 'people', text: '- Lead with the answer or outcome, keep to about three sentences unless they ask for more, and ask one plain question at most.' },
   {
-    name: 'readers',
+    name: 'detail',
     section: 'people',
-    text: '- People read about 20x slower than you write. Write as a thoughtful colleague would: full sentences with a subject, short but never clipped. Say what it means for them first, then what you did.',
-  },
-  { name: 'ask-plainly', section: 'people', text: '- If you need something, ask in one plain line ("Sam, which option do you prefer?").' },
-  {
-    name: 'openers',
-    section: 'people',
-    text: '- Skip "Done:"/"Built:" openers, stacked fragments, noun-phrase bullet lists, headers in a comment, "Great point!", and restating what they said.',
+    text: '- Put detail (files, steps, comparisons) in a block, not the message. Skip "Done:" openers, fragments, bullet lists, headers, praise, and recaps of what they said or all you did.',
   },
   { name: 'jargon', section: 'people', text: '- Keep ids, hashes, test counts and jargon out unless asked ("the tests pass").' },
   { name: 'writing-skill', section: 'people', text: '- Have a writing skill like avoid-ai-writing? Run it on long messages.' },
