@@ -1,0 +1,28 @@
+/* ---- cloth --------------------------------------------------------------
+   The board's knitted cloth: the theme's paper (--bg) knitted over in a
+   breath of its ink (--knit-ink, each theme's), a small stockinette stitch
+   you see when you look for it, never behind text. A
+   board's Home lies on it (threads/timeline.css): the conversation's sheet
+   and Work cover it, and the times along the yarn, outside the sheet, clear
+   it with a halo of its colour (--cloth). The stitches are masks, so a token
+   colours them: --knit for the cloth, and --knit-band, a finer one, for a
+   band of stitches in the yarn's colours (Home's day between messages). */
+
+:root {
+  /* A stitch: a V of two legs, each a slanted loop, in columns. */
+  --knit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='8' viewBox='0 0 10 8'%3E%3Cellipse cx='2.9' cy='4' rx='1.35' ry='3.5' transform='rotate(-30 2.9 4)'/%3E%3Cellipse cx='7.1' cy='4' rx='1.35' ry='3.5' transform='rotate(30 7.1 4)'/%3E%3C/svg%3E");
+  --knit-band: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='5'%3E%3Cpath d='M0.5 0.35 C1.4 0.35 2.85 2.7 2.92 4.75 C1.7 4.55 0.35 1.95 0.5 0.35Z M5.5 0.35 C4.6 0.35 3.15 2.7 3.08 4.75 C4.3 4.55 5.65 1.95 5.5 0.35Z'/%3E%3C/svg%3E");
+}
+
+.board-timeline {
+  --cloth: var(--bg);
+  background: var(--cloth);
+}
+.board-timeline::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--knit-ink);
+  mask: var(--knit) 0 0 / 10px 8px repeat;
+  pointer-events: none;
+}

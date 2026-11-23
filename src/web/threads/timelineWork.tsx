@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { planProgress } from '../../core/agentWork';
 import { clip } from '../../core/format';
 import { ownedThreads, threadTone } from '../../core/homeConversation';
@@ -9,7 +9,6 @@ import { AgentWorkOn, phaseOf, StepText, stepWords, useAgents, useSteps, useWork
 import { workGroups, type WorkRow, type WorkSquare } from '../shared/boardViews';
 import { useBoardViews } from '../shared/boardViewsContext';
 import { ActorBadge, Icon } from '../shared/components';
-import { followPress, useDismiss } from '../shared/hooks';
 import { go } from '../shared/pages';
 
 // Work, beside the conversation on a board's Home (timeline.tsx): the work on
@@ -24,11 +23,10 @@ import { go } from '../shared/pages';
 // strand. The thread open has its row lit, with its agent's plan under it.
 // It folds to a slim rail (its button at the top right, where the panel's own
 // is), which keeps what waits on the viewer in sight as a count. Whether it is
-// folded is the viewer's, kept in this browser, from its button. Over the
-// content, it also goes as the other panels of the board do (shared/hooks.ts
-// useDismiss, followPress, dismissClick.ts): a plain click on what does
-// nothing else outside it, or Esc inside it, folds it for now, leaving the
-// choice kept as it was.
+// folded is the viewer's, kept in this browser, from its button. Docked beside
+// the conversation (timeline.css), it covers nothing, so a click away leaves
+// it as it is (folding it would move the conversation under the pointer); Esc
+// inside it folds it for now, leaving the choice kept as it was.
 
 const QUIET_SHOWN = 3;
 
@@ -111,7 +109,7 @@ interface Props {
   onLight: (thread: string | null) => void;
   shown: boolean; // unfolded: the panel; folded, the rail
   onShow: (shown: boolean) => void; // from its buttons: the viewer's choice, kept
-  onDismiss: () => void; // a click away or Esc: folded for now
+  onDismiss: () => void; // Esc inside it: folded for now
 }
 
 const WORK_ID = 'board-home-work';
@@ -128,38 +126,26 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow, o
   const groups = workGroups(slot);
   const open = rows.filter((r) => r.group !== 'done').length;
   const waiting = rows.filter((r) => r.square === 'waiting' || r.square === 'blocked').length; // on a person: needs you, in review, blocked
+  // A row lights its strand when the pointer comes onto it, not when Work unfolds under a pointer that has not moved
+  // (docked the whole height of Home, its rail is pressed anywhere along it): lighting a strand draws the conversation
+  // again, which would stall the unfold. So pointing counts from the first move over the panel once it is open.
+  const pointed = useRef(false);
+  const point = (thread: string | null) => {
+    if (pointed.current) onLight(thread);
+  };
   // Folding or unfolding from its button, the focus goes to the button in its place.
   const toggle = useRef<HTMLButtonElement>(null);
   const moved = useRef(false);
   useLayoutEffect(() => {
     if (moved.current) toggle.current?.focus();
     moved.current = false;
+    if (shown) pointed.current = false;
   }, [shown]);
   const show = (next: boolean) => {
     moved.current = true;
     onLight(null); // a row pointed at goes with the panel
     onShow(next);
   };
-  // A click away: a press outside it that does nothing else, once it is over, as for the docked conversation
-  // and the changes feed. The focus stays where the click put it. Below 900px Work is in the page's flow, not over it.
-  const panel = useRef<HTMLElement>(null);
-  const press = useRef<(() => void) | null>(null); // a click away under way: calls it off
-  const away = useCallback(
-    (escape: boolean, event: MouseEvent | KeyboardEvent) => {
-      if (escape || window.matchMedia('(max-width: 900px)').matches) return; // Esc is its own, from inside it (below)
-      const follow = followPress(event as MouseEvent, (dismissed) => {
-        press.current = null;
-        if (!dismissed) return;
-        onLight(null);
-        onDismiss();
-      });
-      if (!follow) return;
-      press.current?.();
-      press.current = follow;
-    },
-    [onDismiss, onLight],
-  );
-  useDismiss(shown, away, panel, undefined, true);
   const counts = [waiting ? `${waiting} waiting on you` : '', open ? `${open} open` : 'nothing open'].filter(Boolean).join(', ');
 
   if (!shown) {
@@ -191,10 +177,12 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow, o
 
   return (
     <aside
-      ref={panel}
       className="work"
       id={WORK_ID}
       aria-label="Work"
+      onPointerMove={() => {
+        pointed.current = true;
+      }}
       onKeyDown={(e) => {
         // Esc, from anywhere in it, folds it for now, and the focus goes to the rail.
         if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -238,8 +226,13 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow, o
                         type="button"
                         className="work-row-open"
                         onClick={row.open}
-                        onPointerEnter={() => onLight(row.thread ?? null)}
-                        onPointerLeave={() => onLight(null)}
+                        onPointerEnter={() => point(row.thread ?? null)}
+                        onPointerMove={() => {
+                          if (pointed.current) return;
+                          pointed.current = true;
+                          onLight(row.thread ?? null);
+                        }}
+                        onPointerLeave={() => point(null)}
                         onFocus={() => onLight(row.thread ?? null)}
                         onBlur={() => onLight(null)}
                         aria-current={here ? 'true' : undefined}

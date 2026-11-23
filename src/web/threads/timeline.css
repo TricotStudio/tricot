@@ -1,14 +1,31 @@
 /* A board's Home (timeline.tsx): the conversation in the main pane with its
-   yarn in the gutter beside it (yarn.tsx), and Work over it on the right
+   yarn in the gutter beside it (yarn.tsx), and Work docked at the right
    (timelineWork.tsx). A thread picked takes the main pane.
 
-   The bar at the foot sits where the chat bar floats on every other view
-   (chatBar.css .chat-float): centred in the tab's column, as wide as it
-   (--column), 20px off the foot, so moving between views leaves it where it
-   is. The messages are a column of that width under it, the yarn to its
-   left (--column-left, --yarn-left: where the yarn starts, from what the
-   pane holds), and Work comes over the content from the right rather than
-   pushing it aside. */
+   Three surfaces, one knitted piece: Home's ground is the board's cloth
+   (styles/cloth.css); the conversation lies on a sheet of paper over it, its
+   head, its messages and the bar at its foot, with the yarn's own strand down
+   the sheet's left edge as its selvedge and the times just outside it on the
+   cloth; Work is docked at the right, the whole height of Home, on a tint of
+   its own. The main pane is the room Work leaves (--work-room), its scrollbar
+   beside Work, and the sheet is centred in it: Work never covers the
+   conversation, and when Work folds or unfolds the conversation moves over
+   with it. The messages are a column of --column under the head, the bar at
+   its foot as wide, the yarn to its left (--column-left, --yarn-left: where
+   the yarn starts, from what the pane holds, and --yarn-trunk and the rest
+   of where the yarn is drawn, set from yarn.tsx). Inside the sheet, the
+   paper behind what Home paints over (the strands' second ply, the ring
+   round the ball's count, the line over the bar) is the sheet's: --bg is the
+   sheet there. */
+
+/* Registered so it can move, and kept from inheriting: only the main pane
+   reads it (.timeline-main), so a frame of the move restyles that alone, not
+   all of Home under it. */
+@property --work-room {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
 
 .board-timeline {
   grid-column: 1;
@@ -19,25 +36,89 @@
   display: flex;
   flex-direction: column;
   --column: 720px;
+  --sheet: var(--surface);
+  --sheet-in: color-mix(in srgb, var(--surface-2) 22%, var(--sheet)); /* a card on the sheet: a step in */
+  --sheet-top: 8px; /* the cloth over the sheet, under the tabs */
+  --sheet-pad: 36px; /* the sheet past the column, at its right */
+  --work-width: 340px; /* Work, and folded, its rail (below) */
+  --work-rail: 44px;
+  --work-room: 0px; /* what Work takes at the right: none where it is in the page's flow (below) */
+}
+@media (min-width: 901px) {
+  .board-timeline {
+    --work-room: var(--work-rail);
+  }
+  .board-timeline:has(> .work:not(.is-folded)) {
+    --work-room: var(--work-width);
+  }
+}
+/* The conversation moves over as Work unfolds or folds, at the pace and on
+   the curve of Work's own move (workMotion.ts): only the main pane's margin
+   changes on a frame, and where the pane has room for it the column keeps
+   its width, so no line in it is broken anew. */
+@media (prefers-reduced-motion: no-preference) {
+  .board-timeline {
+    transition: --work-room var(--work-sheet) var(--dock-ease);
+  }
+  :root[data-work-move='close'] .board-timeline {
+    transition-duration: var(--work-fold);
+    transition-timing-function: var(--work-fold-ease);
+  }
 }
 .timeline-main {
   position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
+  --work-room: inherit;
+  margin-right: var(--work-room);
   display: flex;
   flex-direction: column;
 }
+/* The sheet runs from the conversation's strand (the yarn's left and
+   --yarn-trunk) to --sheet-pad past the column, centred in the pane as it is
+   with the yarn's side of it three lanes wide (--yarn-side): the column
+   stands in the same place whatever the yarn holds, on the conversation and
+   with a thread open alike, and the sheet reaches further left for more
+   lanes. The column's left is never nearer the edge than the yarn's gutter
+   and its times need; where the pane is too narrow for the whole column,
+   the column narrows. */
 .timeline-conversation,
 .timeline-thread {
-  --column-left: max(calc(var(--yarn-gutter) + var(--yarn-room, 8px)), calc((100% - var(--column)) / 2));
-  --column-right: max(24px, calc((100% - var(--column)) / 2));
+  --column-left: max(
+    calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
+    calc((100% - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
+  );
+  --column-right: max(24px, calc(100% - var(--column-left) - var(--column)));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
+  --bg: var(--sheet);
+}
+/* The sheet, under all the pane holds: drawn first of what is placed in it,
+   so the heads, placed too, come over it. From just under the tabs to the
+   window's foot, where it runs on; its edge a hairline and the theme's soft
+   lift, and at the left the conversation's strand. */
+.timeline-conversation::before,
+.timeline-thread::before {
+  content: '';
+  position: absolute;
+  top: var(--sheet-top);
+  bottom: 0;
+  left: calc(var(--yarn-left) + var(--yarn-trunk));
+  right: calc(var(--column-right) - var(--sheet-pad));
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  background: var(--sheet);
+  box-shadow:
+    inset 0 1px 0 var(--highlight),
+    var(--shadow);
+  pointer-events: none;
 }
 /* The conversation's yarn draws times at its left (yarn.tsx): on a window too
-   narrow to centre the column, it keeps room for them (--yarn-room). */
+   narrow to centre the sheet, it keeps room for them (--yarn-room). */
 .timeline-conversation {
   --yarn-room: 28px;
+  --head-h: var(--yarn-ball-foot); /* the sheet's top band, where the head is: down to the ball's foot */
   position: relative;
   flex: 1;
   min-height: 0;
@@ -45,30 +126,43 @@
   flex-direction: column;
 }
 
-/* ---- its head: what it is, and who it is with ---------------------------- */
+/* ---- its head: what it is, and who it is with ----------------------------
+   On the sheet's top band, level with the ball: the scroller runs up under
+   it, and hides what scrolls there (below), so the ball, --yarn-ball down the
+   scroller, sits on the sheet's corner where the selvedge starts. */
 
 .timeline-head {
-  flex: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px 12px;
-  padding: 14px var(--column-right) 10px var(--column-left);
+  padding: calc(var(--yarn-ball) - 11px) var(--column-right) 0 var(--column-left);
+  pointer-events: none;
+}
+.timeline-head > * {
+  min-width: 0;
+  white-space: nowrap;
 }
 .timeline-head h2 {
+  flex: none; /* "with …" gives way first */
   margin: 0;
   font-size: 15px;
   font-weight: 600;
 }
 .timeline-with {
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 13px;
   color: var(--muted);
 }
 
 /* ---- the conversation, the yarn in its gutter ---------------------------
    The latest at the foot, over the bar, which floats there; what scrolls up
-   fades under the head. The gutter is as wide as the yarn needs
-   (--yarn-gutter, from timeline.tsx). */
+   goes under the head's band and fades in under it. The gutter is as wide as
+   the yarn needs (--yarn-gutter, from timeline.tsx). */
 
 /* The scroller, with the skein at the top of its yarn (and the keys' hint
    beside it) over it, not in it: they stay as the conversation scrolls. */
@@ -79,20 +173,40 @@
   display: flex;
   flex-direction: column;
 }
+/* Its mask hides what scrolls under the head's band, fades it in under the
+   band, and leaves out the box the strands unwound from the ball are drawn
+   over (yarn.tsx Unwound: from where the times reach left of the yarn to the
+   gutter's end, --yarn-unwound tall), so the sheet and the cloth show under
+   them: the fade meets (intersect) what is left once that box is taken out,
+   the columns either side of it joined (add) with all below its foot. Its
+   stops are lengths along the scroller's padding box, the 100% the column's
+   edges are worked out from, so the box stands where the yarn is with a
+   scrollbar too. */
 .timeline-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  mask-image: linear-gradient(to bottom, transparent, #000 40px);
+  scroll-padding-top: calc(var(--yarn-unwound) + 8px); /* what is brought into view lands under the band, not in it */
+  --cover-from: calc(var(--yarn-left) - var(--yarn-words));
+  --cover-to: calc(var(--yarn-left) + var(--yarn-gutter));
+  mask-image:
+    linear-gradient(to bottom, transparent var(--head-h), #000 var(--yarn-unwound)),
+    linear-gradient(to right, #000 var(--cover-from), transparent var(--cover-from), transparent var(--cover-to), #000 var(--cover-to)),
+    linear-gradient(to bottom, transparent var(--yarn-unwound), #000 var(--yarn-unwound));
+  mask-composite: intersect, add, add;
+  mask-origin: padding-box;
 }
 /* In it, 100% is its width without its scrollbar, which takes room where the
    system draws one (--scrollbar, measured in timeline.tsx; 0 where they float
    over the page). Added back, the rows and the yarn stand where the head,
    the bar and the skein over the scroller do, from the pane's whole width:
-   the strands meet the ball, and the bar stays where it is on every view. */
+   the strands meet the ball, and the sheet is the same with a scrollbar. */
 .timeline-scroll {
-  --column-left: max(calc(var(--yarn-gutter) + var(--yarn-room, 8px)), calc((100% + var(--scrollbar, 0px) - var(--column)) / 2));
-  --column-right: calc(max(24px, calc((100% + var(--scrollbar, 0px) - var(--column)) / 2)) - var(--scrollbar, 0px));
+  --column-left: max(
+    calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
+    calc((100% + var(--scrollbar, 0px) - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
+  );
+  --column-right: calc(max(24px, calc(100% + var(--scrollbar, 0px) - var(--column-left) - var(--column))) - var(--scrollbar, 0px));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
 }
 
@@ -100,8 +214,8 @@
    A ball of yarn pinned at the top of the yarn, centred on the
    conversation's strand (yarn.tsx YarnBall), with its count of threads
    waiting on you knotted on it. Every strand that runs on past the top
-   unwinds from it (yarn.tsx Unwound), drawn on a cover of the paper over the
-   yarn's top, so they stay as the conversation scrolls. */
+   unwinds from it (yarn.tsx Unwound), over the box the scroller leaves out
+   (above), so they stay as the conversation scrolls. */
 .yarn-unwound {
   position: absolute;
   top: 0;
@@ -110,17 +224,15 @@
   overflow: visible;
   pointer-events: none;
 }
-.yarn-cover {
-  fill: var(--bg);
-}
 .yarn-unwound .yarn-hit {
   pointer-events: stroke;
   cursor: pointer;
 }
+/* Its button, 40px across, centred on the ball as yarn.tsx draws it. */
 .timeline-skein {
   position: absolute;
-  top: 10px;
-  left: calc(var(--yarn-left) + 14px);
+  top: calc(var(--yarn-ball) - 20px);
+  left: calc(var(--yarn-left) + var(--yarn-trunk) - 20px);
   z-index: 3;
 }
 .timeline-skein-button {
@@ -146,7 +258,7 @@
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
-/* The count, a knot on the ball's shoulder, ringed in the paper. */
+/* The count, a knot on the ball's shoulder, ringed in the sheet. */
 .timeline-skein-button .chat-count {
   position: absolute;
   top: -3px;
@@ -281,7 +393,7 @@
 }
 .yarn-hint {
   position: absolute;
-  top: 4px;
+  top: calc(var(--head-h) + 4px); /* under the head's band */
   left: calc(var(--column-left) - 8px);
   z-index: 3;
   display: flex;
@@ -327,7 +439,7 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 36px var(--column-right) 128px var(--column-left);
+  padding: calc(var(--head-h) + 36px) var(--column-right) 128px var(--column-left);
 }
 .timeline-messages {
   max-width: var(--column);
@@ -354,13 +466,18 @@
    conversation's strand: the hour where it turns, in the faint ink of a
    message's time, and a thread's own times, when it started and when its
    work was done, in the ink of its strand's colour, as its knot is green. A
-   caption, a step under the strands. */
+   caption, a step under the strands, on the cloth outside the sheet: each
+   clears the stitches under it with a halo of the cloth's own colour. */
 .yarn-hour,
 .yarn-done,
 .yarn-start {
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  stroke: var(--cloth);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
   user-select: none; /* drawing, not the conversation's text: a selection of messages leaves them out */
 }
 .yarn-hour {
@@ -391,7 +508,11 @@
   }
 }
 
-/* The day between messages, and where the viewer was last here. */
+/* The day between messages, and where the viewer was last here: a knitted
+   band, two rows of stitches either side of its name in columns of the
+   conversation's violet and coral (where the viewer was last here, in the
+   blue that marks it), fading out at the column's edges. As tall as the
+   line it is, so nothing below it moves. */
 .timeline-messages > .timeline-divider {
   margin: 28px 0 2px;
 }
@@ -401,24 +522,37 @@
 .timeline-divider {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--faint);
+  font-weight: 600;
+  color: var(--muted);
 }
 .timeline-divider::before,
 .timeline-divider::after {
   content: '';
   flex: 1;
-  height: 1px;
-  background: var(--border);
+  height: 10px;
+  background: repeating-linear-gradient(
+    to right,
+    color-mix(in srgb, var(--brand-warp) 62%, var(--bg)) 0 6px,
+    color-mix(in srgb, var(--brand-weft) 62%, var(--bg)) 6px 12px
+  );
+  mask-image: var(--knit-band), linear-gradient(to right, transparent, #000 72px);
+  mask-size: 6px 5px, 100% 100%;
+  mask-repeat: repeat, no-repeat;
+  mask-composite: intersect;
+}
+.timeline-divider::after {
+  background-position: right 0 top 0;
+  mask-image: var(--knit-band), linear-gradient(to left, transparent, #000 72px);
+  mask-position: right 0 top 0, 0 0;
 }
 .timeline-divider.is-fresh {
   color: var(--focus);
 }
 .timeline-divider.is-fresh::before,
 .timeline-divider.is-fresh::after {
-  background: color-mix(in srgb, var(--focus) 55%, transparent);
+  background: color-mix(in srgb, var(--focus) 62%, var(--bg));
 }
 
 /* A message's reactions, while it has none: the button that adds one waits
@@ -476,7 +610,8 @@
   color: var(--text);
 }
 
-/* Where an ask was sent on: the thread, its agent, where its work stands. */
+/* Where an ask was sent on: the thread, its agent, where its work stands.
+   A piece of the sheet, a step in (--sheet-in), outlined. */
 .timeline-sent {
   justify-self: start;
   width: 100%;
@@ -490,7 +625,7 @@
   padding: 7px 10px 7px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--sheet-in);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -554,17 +689,20 @@
   font-weight: 500;
 }
 
-/* The bar at the foot: floating over the conversation, where it floats on
-   every view (chatBar.css .chat-float). */
+/* The bar at the foot of the sheet, on the column and as wide, 20px off the
+   foot. */
 .timeline-foot {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--column-left);
   bottom: 20px;
   z-index: 2;
-  width: min(var(--column), calc(100% - 48px));
-  margin-inline: auto;
+  width: min(var(--column), calc(100% - var(--column-left) - 24px));
   display: flex;
+}
+/* On the sheet its lift is the sheet's own (Float), softer than over a
+   canvas. */
+.timeline-foot .chat-bar {
+  box-shadow: var(--shadow);
 }
 /* Home's bar has no threads ball or tools before its field: its words start
    a little further in than the bar's edge alone would put them. */
@@ -617,7 +755,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   max-width: 620px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--sheet-in);
   font-size: 14px;
 }
 .relay-card {
@@ -906,7 +1044,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 /* Its thread is where the bar answers, until it is sent or let go. */
 .relay-card.is-aimed,
 .relay-row.is-aimed {
-  scroll-margin: 16px 0 120px;
+  scroll-margin: 24px 0 120px;
 }
 .relay-card.is-aimed {
   border-color: var(--tone);
@@ -1012,20 +1150,25 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   display: flex;
   flex-direction: column;
 }
-/* Its title over the column, the way back before it. */
+/* Its head is the sheet's top band, ruled off across the sheet: the way back
+   over its title, both on the column's left edge, as the conversation's head
+   is. */
 .timeline-thread-head {
+  position: relative;
   flex: none;
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 14px;
-  padding: 12px var(--column-right) 12px max(24px, calc(var(--column-left) - 152px));
+  gap: 6px;
+  margin: var(--sheet-top) calc(var(--column-right) - var(--sheet-pad)) 0 calc(var(--yarn-left) + var(--yarn-trunk));
+  padding: 12px var(--sheet-pad) 14px calc(var(--yarn-gutter) - var(--yarn-trunk));
   border-bottom: 1px solid var(--border);
 }
 .timeline-thread-head .dock-title {
-  flex: 1;
+  align-self: stretch;
   min-width: 0;
   gap: 4px;
-  padding: 3px 0 0;
+  padding: 0;
   border: none;
 }
 .timeline-thread-head .dock-heading {
@@ -1033,28 +1176,37 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   font-weight: 650;
   line-height: 1.25;
 }
+/* The way back, a quiet line over the title, its arrow on the column's edge. */
 .timeline-back {
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 26px;
+  margin-left: -8px;
   padding: 0 10px 0 8px;
-  border: 1px solid var(--border-strong);
+  border: none;
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: none;
   color: var(--muted);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  transition:
+    color 0.12s,
+    background-color 0.12s;
 }
 .timeline-back .icon {
   font-size: 15px;
 }
 .timeline-back:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
   color: var(--text);
-  border-color: var(--text);
+}
+.timeline-back:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 .timeline-thread .threads-conversation {
   position: relative;
@@ -1139,39 +1291,40 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 
 
 /* ---- Work ----------------------------------------------------------------
-   Over the content from the right, a floating sheet that stops above the
-   bar's row, so it never covers the bar: on a window wide enough for both,
-   it sits beside the column. */
+   Docked at the right, the whole height of Home, flush to the window's edge
+   and to the tabs' rule, on a tint of its own (--work-ground), its edge a
+   hairline: no float, no lift. The main pane is the room it leaves
+   (--work-room, above), so it never covers the conversation: on a window
+   too narrow for both, the column narrows. Its head is level with the
+   conversation's. */
 
 .work {
   position: absolute;
-  top: 10px;
-  right: 12px;
-  bottom: 92px;
+  top: 0;
+  right: 0;
+  bottom: 0;
   z-index: 5;
-  width: 340px;
+  width: var(--work-width);
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
+  border-left: 1px solid var(--border);
+  background: var(--work-ground);
 }
 .work-head {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 14px 10px 20px;
+  padding: calc(var(--yarn-ball) - 14px) 14px 12px 20px;
   border-bottom: 1px solid var(--border);
 }
 /* Its button folds it into the rail, where the rail's own button is: a panel
    shown, its side filled (as Files' panel buttons); folded, an outline. The
-   two are drawn at the same place, 22px in from Work's right edge and 29px
-   down from its top, so the button stays put, under the pointer that pressed
-   it, as Work folds and unfolds. */
+   two are drawn at the same place, 22px in from Work's right edge and level
+   with the ball (--yarn-ball down from its top), so the button stays put,
+   under the pointer that pressed it, as Work folds and unfolds. */
 .work-toggle {
   width: 28px;
   height: 28px;
@@ -1185,11 +1338,10 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   opacity: 0.35;
 }
 
-/* Folded: a slim rail at the top right, the whole of it the button that
+/* Folded: a slim rail docked the same, the whole of it the button that
    unfolds it, with what waits on the viewer kept in sight as an amber count. */
 .work.is-folded {
-  bottom: auto;
-  width: 44px;
+  width: var(--work-rail);
 }
 .work-rail {
   flex: 1;
@@ -1198,7 +1350,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 19px 0 16px;
+  padding: calc(var(--yarn-ball) - 9px) 0 16px; /* its icon on the pixel of the panel's button */
   border: none;
   background: none;
   color: var(--muted);
@@ -1209,7 +1361,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
     background-color 0.12s;
 }
 .work-rail:hover {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   color: var(--text);
 }
 .work-rail > .icon {
@@ -1305,10 +1457,11 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 .work-row-open {
   transition: background-color 0.12s;
 }
+/* On Work's tint, a row lit is a touch of ink. */
 .work-row-open:hover,
 .work-row.is-lit > .work-row-open,
 .work-row.is-current > .work-row-open {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 /* The thread open in the main pane: its row held, a firm hairline round it and its plan, as one piece. */
 .work-row.is-current {
@@ -1384,7 +1537,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   height: 3px;
   overflow: hidden;
   border-radius: 2px;
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .work-row-open:hover .work-meter,
 .work-row.is-lit .work-meter,
@@ -1413,7 +1566,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   margin: 0;
   padding: 0 10px 10px 34px;
   border-top: none;
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
 }
 .work-more {
@@ -1489,9 +1642,6 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   .timeline-scroll {
     --column-right: calc(16px - var(--scrollbar, 0px));
   }
-  .timeline-thread-head {
-    padding-left: 16px;
-  }
   /* Work under the conversation, in the page's flow; folded, a line: Work, and what waits on you. */
   .work,
   .work.is-folded {
@@ -1522,21 +1672,24 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
    the two are retimed together), its contents' rise and fold
    (dock-content-in, dock-content-out). One view transition carries it, as
    it carries the bar docking. Unfolding, Work grows out of its rail: the
-   rail's sheet widens to the left and drops to its foot, from the top right
-   corner the two share, on the dock's curve, the rail's words fading as it
-   sets off; then the panel's head, and its groups one after another, rise
-   in as it lands, as the tools rise in their capsule. Folding, the other way
-   round: the groups fold away first, from the foot up, the head last, as
-   the tools fold away; then the sheet closes back into the rail, slow to
-   start and quickening, and lands just past its place and back, as the bar
-   closes over the tools; the rail's count and word rise in as it lands.
-   The button stays where it is throughout, at the top right.
-   The transition draws the sheet itself while it changes size, as the dock's
-   draws the bar's box, so its corners, edge and lift keep their size; the
-   pictures inside it keep theirs too, held at its top right, so the panel
-   is uncovered rather than stretched. Only pictures move, by transform and
-   opacity, and the page is not pictured: the conversation under Work stays
-   live and is never laid out again on a frame.
+   rail's sheet widens to the left, docked at the window's edge, on the
+   dock's curve, the rail's words fading as it sets off; then the panel's
+   head, and its groups one after another, rise in as it lands, as the tools
+   rise in their capsule. Folding, the other way round: the groups fold away
+   first, from the foot up, the head last, as the tools fold away; then the
+   sheet closes back into the rail, slow to start and quickening, and lands
+   just past its place and back, as the bar closes over the tools; the
+   rail's count and word rise in as it lands. The button stays where it is
+   throughout, at the top right.
+   The transition draws Work's tint itself while it changes width, as the
+   dock's draws the bar's box, so its edge keeps its size; the pictures
+   inside it keep theirs too, held at its top right, so the panel is
+   uncovered rather than stretched. Inside Work only pictures move, by
+   transform and opacity, and the page is not pictured: the conversation
+   stays live, and moves over with Work as the room it leaves changes
+   (--work-room, above): on a frame only the main pane's margin changes, and
+   where it has room the column keeps its width, so no line in it is broken
+   anew.
    Below 900px, where Work is in the page's flow, and in a browser without
    view transitions, the panel uncovers itself from the rail by its own
    clip, its head and groups rising in the same; folding, they fold away
@@ -1544,6 +1697,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
    folded at once (workMotion.ts sets none of this). */
 
 :root {
+  --work-ground: color-mix(in srgb, var(--surface-2) 80%, var(--bg)); /* Work's own tint (.work), which the transition draws too */
   --work-sheet: calc(340ms * var(--dock-pace)); /* unfolding, as the dock's panel slides in */
   --work-fold: calc(360ms * var(--dock-pace)); /* folding, as the bar closes over the tools */
   --work-fold-ease: cubic-bezier(0.5, 0, 0.2, 1.15); /* slow to start, quickening, just past and back */
@@ -1573,16 +1727,14 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
     animation-duration: var(--work-fold);
     animation-timing-function: var(--work-fold-ease);
   }
-  /* The sheet, as Work draws it (.work). Its edge is a border, so the
-     pictures are held to its outer edge, where Work's own edge is. Its own
-     animation does nothing to it: it only ends a beat before the move does,
-     when Work's own sheet comes back (workMotion.ts). */
+  /* Work's tint, as Work draws it (.work), its edge a border at its left
+     alone: the pictures are held flush to its top right corner, where Work's
+     own is. Its own animation does nothing to it: it only ends a beat before
+     the move does, when Work's own tint comes back (workMotion.ts). */
   ::view-transition-image-pair(home-work) {
     box-sizing: border-box;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    box-shadow: var(--shadow-lg);
+    border-left: 1px solid var(--border);
+    background: var(--work-ground);
     overflow: hidden;
     animation: work-sheet calc(var(--work-sheet) - var(--work-box-lag)) both;
   }
@@ -1591,17 +1743,17 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   }
   ::view-transition-old(home-work),
   ::view-transition-new(home-work) {
-    inset: -1px -1px auto auto;
+    inset: 0 0 auto auto;
     width: auto;
     height: auto;
     mix-blend-mode: normal;
   }
   /* What Work showed goes as it sets off: the rail's words, or the panel's
-     button, its groups gone already. Taken with its own sheet, which the
-     drawn one shows instead: clipped off, its edge and the pixel the
-     picture blurs it into. */
+     button, its groups gone already. Taken with its own tint, which the
+     drawn one shows instead: clipped off at its left, its edge and the
+     pixel the picture blurs it into. */
   ::view-transition-old(home-work) {
-    clip-path: inset(2px round calc(var(--radius) - 2px));
+    clip-path: inset(0 0 0 2px);
     animation: dock-fade-out calc(90ms * var(--dock-pace)) linear both;
   }
   /* What it shows is there at once, and moves on its own (below). */
@@ -1684,8 +1836,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
     animation-delay: calc(30ms * var(--dock-pace));
   }
 
-  /* Without the transition: the panel uncovers itself from the rail. Its
-     lift shows once it is open. */
+  /* Without the transition: the panel uncovers itself from the rail. */
   :root[data-work-plain][data-work-move='open'] .work {
     animation: work-unfold var(--work-sheet) var(--dock-ease) backwards;
   }
@@ -1693,7 +1844,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 
 @keyframes work-sheet {
   to {
-    border-radius: var(--radius);
+    border-left-width: 1px;
   }
 }
 @keyframes work-rule-in {
@@ -1708,10 +1859,10 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 }
 @keyframes work-unfold {
   from {
-    clip-path: inset(0 0 calc(100% - 128px) calc(100% - 44px) round var(--radius));
+    clip-path: inset(0 0 0 calc(100% - var(--work-rail)));
   }
   to {
-    clip-path: inset(0 round var(--radius));
+    clip-path: inset(0);
   }
 }
 /* In the page's flow, a line folded: the panel drops open from it. */

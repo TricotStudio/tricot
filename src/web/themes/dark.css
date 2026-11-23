@@ -46,6 +46,7 @@
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
   --shadow-ambient: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px -6px rgb(0 0 0 / 0.45), 0 24px 56px -16px rgb(0 0 0 / 0.4);
   --highlight: rgb(255 255 255 / 0.06);
+  --knit-ink: color-mix(in srgb, var(--text) 2.2%, transparent); /* light ink shows more on the dark: less of it */
   --float-shell: var(--surface); /* the plate is the lighter here, as raised surfaces are */
   --float-core: var(--surface-2);
 

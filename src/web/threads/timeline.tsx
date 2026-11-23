@@ -26,7 +26,7 @@ import { ThreadsList } from './threadsList';
 import { useThreadsSeen } from './threadsSeen';
 import { WorkPanel } from './timelineWork';
 import { moveWork } from './workMotion';
-import { gutterOf, Unwound, whenOf, Yarn, YarnBall, type Span, type Strand } from './yarn';
+import { gutterOf, Unwound, whenOf, Yarn, YarnBall, yarnPlace, type Span, type Strand } from './yarn';
 import './timeline.css';
 
 // A board's Home (the core's view 'timeline', at /home: board/coreViews.tsx).
@@ -107,14 +107,16 @@ interface Props {
   away: Away;
 }
 
-// Work comes over the content from the right: it starts shown where the window has room for it beside the
-// conversation's column (timeline.css), and folded where it would cover some of it.
-const ROOM_FOR_WORK = 1424;
+// Work docks at the right, and the conversation's sheet is centred in the room it leaves (timeline.css): it starts
+// shown where the window has room for the sheet beside it with the cloth either side (Work's 340px, the 720px column
+// and its sheet's 36px past it, the yarn's side of the sheet with three lanes and the times' room at its left), and
+// folded where the column would have to narrow beside it.
+const ROOM_FOR_WORK = 1360;
 
 export function TimelineView({ board, name, route, away }: Props) {
   const [lit, setLit] = useState<string | null>(null);
   const [workShown, showWork] = useStoredFlag('tricot:home-work', () => window.innerWidth >= ROOM_FOR_WORK);
-  // Folded for now by a click away or Esc, the kept choice left as it is: the next visit opens it again.
+  // Folded for now by Esc inside it, the kept choice left as it is: the next visit opens it again.
   // Each way it folds or unfolds moves it (workMotion.ts); a visit lands on it as it is.
   const [workAway, setWorkAway] = useState(false);
   const showWorkNow = useCallback(
@@ -159,7 +161,7 @@ export function TimelineView({ board, name, route, away }: Props) {
   // Beside it, the others still running, in the lanes Home gives them.
   const beside = useMemo(() => (openStrand ? strandsBeside(strands, openStrand) : undefined), [strands, openStrand]);
   return (
-    <section className="board-timeline" aria-label="Home">
+    <section className="board-timeline" aria-label="Home" style={yarnPlace}>
       <div className="timeline-main">
         {thread ? (
           <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={openStrand} beside={beside} lit={lit} onLight={setLit} onSeeItem={away.markSeen} />

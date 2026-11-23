@@ -5,15 +5,17 @@ import { pace, reducedMotion } from './dockMotion';
 // folding back into it, in the dock's family (dockMotion.ts), at its pace; the
 // choreography is in timeline.css. One view transition carries it, as it
 // carries the bar docking: Work keeps its name across the change, so the
-// rail's sheet grows into the panel's, or the panel's closes into the rail,
-// from the top right corner the two share, the transition drawing the sheet
-// while it changes size. Unfolding sets off at once, and the panel's head and
-// groups rise in as it lands. Folding, the groups fold away first; then the
-// sheet closes. Only pictures move, so the conversation under Work is not laid
-// out again on any frame. Below 900px, where Work is in the page's flow, and
-// in a browser without view transitions, the panel uncovers itself from the
-// rail instead, and folds at once when its groups have gone. Reduced motion:
-// at once.
+// rail grows into the panel, or the panel closes into the rail, docked at the
+// window's right edge, the transition drawing Work's tint while it changes
+// width. Unfolding sets off at once, and the panel's head and groups rise in
+// as it lands. Folding, the groups fold away first; then the panel closes.
+// Inside Work only pictures move. The conversation, whose sheet is centred in
+// the room Work leaves, moves over with it at its pace and on its curve
+// (timeline.css --work-room): on a frame only the main pane's margin changes,
+// and where it has room the column keeps its width, so no line in it is broken
+// anew. Below 900px, where Work is in the page's flow, and in a browser
+// without view transitions, the panel uncovers itself from the rail instead,
+// and folds at once when its groups have gone. Reduced motion: at once.
 //
 // The change runs inside, flushed at once, so the transition pictures Work as
 // it lands, and the focus is where the change puts it before it is drawn.

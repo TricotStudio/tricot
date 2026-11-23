@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import type { Strand, StrandTone } from '../../core/homeConversation';
 import { Icon } from '../shared/components';
 
@@ -53,7 +53,7 @@ const cleanId = (id: string) => id.replace(/[^\w-]/g, '');
 // ---- time along the yarn ----------------------------------------------------
 
 const WORDS_X = TRUNK_X - 11; // where the words at the left of the conversation's strand end: clear of its stitches and knots
-const WORDS_REACH = 56; // how far left of the yarn they may reach ("Sat 12:59 PM"), which the ball's cover hides too
+const WORDS_REACH = 56; // how far left of the yarn they may reach ("Sat 12:59 PM"), which the scroller hides under the ball too
 
 // Times in the viewer's own clock, as the rows' heads say them: "9:01 PM" where the clock runs to twelve, "21:01"
 // elsewhere; and the hour a row was said in, "9 PM" or "21:00".
@@ -546,13 +546,32 @@ function Ply({ id, a, b, pitch, angle }: { id: string; a: string; b: string; pit
 const BALL = { x: TRUNK_X, y: 30, r: 17 };
 const UNWOUND = 78;
 
+// Where the yarn is drawn, for the page's rules laid out around it
+// (timeline.css): where the conversation's strand runs in the gutter (the
+// sheet's edge), the sheet's yarn side with three lanes (what the column is
+// centred for), how far the times reach left of the strand, how far down the
+// scroller the ball sits (the heads are level with it) and where its foot is
+// (the head's band ends there), and how tall the band is that the unwound
+// strands are drawn over (what the scroller hides under them). Set on Home, so
+// its rules read these numbers rather than copy them; the gutter, which is
+// each pane's, is set on the pane (--yarn-gutter, gutterOf).
+export const yarnPlace = {
+  '--yarn-trunk': `${TRUNK_X}px`,
+  '--yarn-side': `${gutterOf(3) - TRUNK_X}px`,
+  '--yarn-words': `${WORDS_REACH}px`,
+  '--yarn-ball': `${BALL.y}px`,
+  '--yarn-ball-foot': `${BALL.y + BALL.r}px`,
+  '--yarn-unwound': `${UNWOUND}px`,
+} as CSSProperties;
+
 // Every strand that runs on past the top of what is in view, and the
 // conversation's own, unwound from the ball around its lower right to where
 // it goes on: its lane, or what shows of its knit-off while that is half
-// under. Drawn over the scroller, not in it, on a cover of the paper that
-// hides the yarn under it, so it stays as the conversation scrolls; where the
-// strands run past is read as it scrolls. A click on one opens its thread,
-// and pointing at one lights it, as on the yarn.
+// under. Drawn over the scroller, not in it, whose mask hides the yarn under
+// them (timeline.css: as tall as UNWOUND, from where the times reach to the
+// gutter's end), so they stay as the conversation scrolls; where the strands
+// run past is read as it scrolls. A click on one opens its thread, and
+// pointing at one lights it, as on the yarn.
 export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
   spans: readonly Span[];
   scroller: RefObject<HTMLElement | null>;
@@ -587,8 +606,6 @@ export function Unwound({ spans, scroller, width, lit, onPick, onLight }: {
           <rect x={-8} y={-8} width={width + 16} height={UNWOUND + 9} />
         </clipPath>
       </defs>
-      {/* The paper over the yarn's top, the times at its left included. */}
-      <rect className="yarn-cover" x={-WORDS_REACH} y={0} width={width + WORDS_REACH} height={UNWOUND + 0.5} />
       <g clipPath={`url(#${uid}-cut)`}>
         {shown.map((s, i) => {
           const a = ((12 + i * (70 / Math.max(1, shown.length - 1))) * Math.PI) / 180;
