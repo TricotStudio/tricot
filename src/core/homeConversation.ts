@@ -28,6 +28,8 @@
 //   runs in a lane of its own beside it (`lanesOf`), in the colour of where
 //   its work stands (`threadTone`: at work, waiting on a person, sent on but
 //   not started, done), from where it was sent on to where it is tied off.
+//   With a thread open, those still running stay beside it in their lanes
+//   (`strandsBeside`).
 //
 // Nothing here is a part's: threads are the core's, and a part's cards come
 // in as relays it made.
@@ -120,6 +122,20 @@ export function lanesOf(strands: readonly Pick<Strand, 'id' | 'from' | 'to'>[]):
 
 // The strands beside the conversation: those not done before the first message said in it (`firstAt`).
 export const strandsShown = <S extends Pick<Strand, 'to'>>(strands: readonly S[], firstAt: string | undefined): S[] => strands.filter((s) => !s.to || !firstAt || s.to >= firstAt);
+
+// The strands beside a thread open on Home (`open`): every other one still
+// running, and the open one, each in the lane Home gives it (`lanesOf` over
+// all of `strands`), so the eye finds them where they were. The open one done,
+// when one still running has taken its lane since, runs in the lane after theirs.
+export function strandsBeside<S extends Pick<Strand, 'id' | 'from' | 'to' | 'tone'>>(strands: readonly S[], open: S): { others: S[]; lanes: Map<string, number> } {
+  const home = lanesOf(strands);
+  const others = strands.filter((s) => s.id !== open.id && s.tone !== 'done');
+  const lanes = new Map(others.map((s) => [s.id, home.get(s.id) ?? 0]));
+  const taken = new Set(lanes.values());
+  const own = home.get(open.id);
+  lanes.set(open.id, own !== undefined && !taken.has(own) ? own : Math.max(-1, ...taken) + 1);
+  return { others, lanes };
+}
 
 // ---- what was said ----------------------------------------------------------------------
 

@@ -7,9 +7,12 @@ import { Icon } from '../shared/components';
 // message; each thread an agent owns knits off it where it was sent on, wrapping
 // it once over and under, runs down beside it in the colour of where its work
 // stands (the same as its square in Work), and is tied off with a knot when it
-// is done. With a thread open, its own strand runs beside its messages and the
-// conversation's rests behind it. Drawn over the gutter of what holds it, from
-// where the rows in it are once laid out: the messages (`li[data-at]`, by when
+// is done. With a thread open, its own strand runs in its lane beside its
+// messages, wider and on a halo of its colour, and the conversation's rests
+// behind it; each other thread still at work, waiting or not started runs
+// faded down its own lane, where Home has it (core/homeConversation.ts
+// strandsBeside), a way to its thread. Drawn over the gutter of what holds it,
+// from where the rows in it are once laid out: the messages (`li[data-at]`, by when
 // each was said), the cards that say where a thread was sent on
 // (`[data-yarn-branch]`) and the relays of a thread's moments that need the
 // viewer (`[data-yarn-relay]`, relayCard.tsx), which its strand stitches into.
@@ -194,7 +197,7 @@ interface Props {
   version: string; // changes when what the rows show does
   lit?: string | null; // the strand pointed at, in Work or here, or the keyboard is on: the others fade
   ring?: string | null; // the strand the keyboard is on
-  focus?: Strand | 'trunk'; // a thread open: its strand alone beside its messages, or the conversation's for one of its own
+  focus?: Strand | 'trunk'; // a thread open: its strand beside its messages, `strands` the others still running beside it; or the conversation's for one of its own
   onPick?: (id: string) => void;
   onLight?: (id: string | null) => void;
   onBack?: () => void; // a thread open: a click on the conversation's strand goes back to it
@@ -275,9 +278,9 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     );
   };
   // Where a thread knits off the conversation's strand: it wraps it once, over and under, and curves out to its lane.
-  const knitOff = (id: string, y: number, x: number, tone: StrandTone, opacity: number) => {
+  const knitOff = (id: string, y: number, x: number, tone: StrandTone, opacity: number, w = LANE_W) => {
     const color = TONES[tone];
-    lines.push(<g key={`k${id}`} opacity={opacity}>{strand('s', `M${TRUNK_X} ${y} C ${TRUNK_X + 16} ${y}, ${x} ${y + 6}, ${x} ${y + KNIT}`, tone, LANE_W, tone === 'todo')}</g>);
+    lines.push(<g key={`k${id}`} opacity={opacity}>{strand('s', `M${TRUNK_X} ${y} C ${TRUNK_X + 16} ${y}, ${x} ${y + 6}, ${x} ${y + KNIT}`, tone, w, tone === 'todo')}</g>);
     if (tone === 'todo') return;
     under.push(<path key={`u${id}`} d={`M${TRUNK_X + 8} ${y - 3} A 9 5 0 0 0 ${TRUNK_X - 8} ${y - 3}`} fill="none" style={{ stroke: mix(color, 70, 'var(--text)') }} strokeWidth={4} opacity={opacity} />);
     over.push(<path key={`o${id}`} d={`M${TRUNK_X - 8} ${y - 3} A 9 5 0 0 0 ${TRUNK_X + 8} ${y + 1}`} fill="none" style={{ stroke: color }} strokeWidth={4} strokeLinecap="round" opacity={opacity} />);
@@ -369,15 +372,27 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
     back();
     rows.forEach((row, i) => over.push(stitch(`m${i}`, TRUNK_X, row.mark, 'trunk')));
   } else if (focus) {
-    // A thread open: the conversation's strand rests behind, and the thread's runs beside its messages.
-    width = gutterOf(1);
-    const x = LANE_X;
+    // A thread open: the conversation's strand rests behind, the thread's runs in its lane beside its messages, wider
+    // and on a halo of its colour, and each other still running runs faded down its own, a way to its thread.
+    const laneX = (id: string) => LANE_X + (lanes.get(id) ?? 0) * LANE_GAP;
+    width = gutterOf(Math.max(...[focus, ...strands].map((s) => (lanes.get(s.id) ?? 0) + 1)));
+    const x = laneX(focus.id);
+    const own = `M${x} ${KNIT - 30} L ${x} ${height}`;
     back();
     under.push(<g key="trunk" opacity={backAt === null ? DIM : 1}>{strand('t', trunkD, 'trunk', TRUNK_W)}</g>);
-    knitOff(focus.id, -30, x, focus.tone, 1);
-    lines.push(<g key="own">{strand('s', `M${x} ${KNIT - 30} L ${x} ${height}`, focus.tone, LANE_W, focus.tone === 'todo')}</g>);
+    under.push(<path key="glow" d={own} fill="none" style={{ stroke: mix(TONES[focus.tone], 30, 'transparent') }} strokeWidth={LANE_W + 13} strokeLinecap="round" />);
+    knitOff(focus.id, -30, x, focus.tone, 1, LANE_W + 3);
+    lines.push(<g key="own">{strand('s', own, focus.tone, LANE_W + 3, focus.tone === 'todo')}</g>);
     rows.forEach((row, i) => over.push(stitch(`m${i}`, x, row.mark, focus.tone)));
     if (focus.live) over.push(liveDot('live', x, end));
+    for (const s of strands) {
+      if (s.id === focus.id || s.tone === 'done') continue;
+      const sx = laneX(s.id);
+      const d = `M${sx} -80 L ${sx} ${height}`;
+      placed.set(s.id, { x: sx, y: 0 });
+      lines.push(<g key={`l${s.id}`} opacity={pointed?.id === s.id || lit === s.id ? 1 : DIM}>{strand('s', d, s.tone, LANE_W, s.tone === 'todo')}</g>);
+      hits.push(hit(s, d));
+    }
   } else {
     width = gutterOf(Math.max(0, ...strands.map((s) => (lanes.get(s.id) ?? 0) + 1)));
     for (const s of strands) {

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
-import { homeRows, homeSaid, lanesOf, ownedThreads, ownName, seenBy, sentStateWords, strandOf, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
+import { homeRows, homeSaid, lanesOf, ownedThreads, ownName, seenBy, sentStateWords, strandOf, strandsBeside, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
 import { askedTag, inConversation, threadGroups } from '../../core/threadList';
 import { agentsOf, coordinatorOf, whoAnswers } from '../../core/whoAnswers';
 import { shownTitle } from '../../core/threads';
@@ -155,11 +155,13 @@ export function TimelineView({ board, name, route, away }: Props) {
   const drawnOpen = thread && !inConversation(thread) ? strandFor(thread) : undefined;
   const openSaid = JSON.stringify(drawnOpen ?? null);
   const openStrand = useMemo(() => drawnOpen, [openSaid]);
+  // Beside it, the others still running, in the lanes Home gives them.
+  const beside = useMemo(() => (openStrand ? strandsBeside(strands, openStrand) : undefined), [strands, openStrand]);
   return (
     <section className="board-timeline" aria-label="Home">
       <div className="timeline-main">
         {thread ? (
-          <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={openStrand} onSeeItem={away.markSeen} />
+          <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={openStrand} beside={beside} lit={lit} onLight={setLit} onSeeItem={away.markSeen} />
         ) : (
           <MainConversation key={board.id} board={board} name={name} today={new Date(now).toDateString()} since={away.visit.sinceAt} seeItem={away.markSeen} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
         )}
@@ -647,7 +649,16 @@ function SentCard({ to, taken, lit, onOpen, onLight }: { to: Thread; taken?: boo
 
 // ---- a thread, open in the main pane --------------------------------------------
 
-function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; name: string; thread: Thread; strand?: Strand; onSeeItem: (id: string) => void }) {
+function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeItem }: {
+  board: Board;
+  name: string;
+  thread: Thread;
+  strand?: Strand;
+  beside?: { others: Strand[]; lanes: Map<string, number> }; // the strands still running beside its own, and their lanes and its own
+  lit: string | null;
+  onLight: (id: string | null) => void;
+  onSeeItem: (id: string) => void;
+}) {
   const readOnly = useReadOnly();
   const agents = useAgents();
   const listening = agents.filter((a) => a.state !== 'away').map((a) => a.name);
@@ -696,10 +707,15 @@ function ThreadPane({ board, name, thread, strand, onSeeItem }: { board: Board; 
     [setDraft],
   );
   const openThread = useCallback((id: string) => go.timeline(board.id, id), [board.id]);
-  const yarn = useMemo(() => <Yarn strands={[]} lanes={EMPTY} version={`${thread.id}:${count}`} focus={strand ?? 'trunk'} onBack={back} />, [thread.id, count, strand, back]);
+  const lanes = beside?.lanes ?? EMPTY;
+  const gutter = gutterOf(Math.max(1, ...[...lanes.values()].map((lane) => lane + 1)));
+  const yarn = useMemo(
+    () => <Yarn strands={beside?.others ?? []} lanes={lanes} version={`${thread.id}:${count}:${gutter}`} lit={lit} focus={strand ?? 'trunk'} onPick={openThread} onLight={onLight} onBack={back} />,
+    [thread.id, count, gutter, beside, lanes, lit, strand, openThread, onLight, back],
+  );
 
   return (
-    <div className="timeline-thread" style={{ '--yarn-gutter': `${gutterOf(1)}px` } as CSSProperties}>
+    <div className="timeline-thread" style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
       <header className="timeline-thread-head">
         <button type="button" className="timeline-back" onClick={back} title="Back to the conversation (Esc)">
           <Icon name="arrow-left" /> Conversation
