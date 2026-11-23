@@ -16,6 +16,16 @@
   font-size: 13px;
   color: var(--text);
 }
+/* The @ lists keep to their width, and that to the window's: a row is never
+   wider than its panel, so what is long in it is cut instead (a grid's own
+   column would grow to the widest row). */
+.mention-menu {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: calc(100vw - 16px);
+}
+.mention-option {
+  min-width: 0;
+}
 .mention-menu-head,
 .assignee-menu-head {
   padding: 5px 8px 3px;
@@ -68,12 +78,29 @@
 /* ---- an agent's model and thinking for one message (T23, T29) ----------------- */
 
 /* On an agent's row, what it does is said beside its state, and the cells
-   (or "its own model") take the row's end. */
+   (or "its own model") take the row's end. When the row is short of room,
+   the name is cut first, down to its mark and an ellipsis, then the state;
+   the cells and the note keep their size, and on the narrowest window are
+   cut at the panel's edge rather than run past it. */
+.mention-option.has-tag {
+  overflow: hidden;
+}
+/* The name takes what the state and the cells leave, up to its own width:
+   so it gives way first, and the state only once the name is at its floor. */
+.mention-option.has-tag .actor {
+  flex: 1 1 0;
+  min-width: 38px;
+  max-width: max-content;
+}
 .mention-option.has-tag .mention-state {
+  min-width: 0;
   margin-left: 0;
   padding-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mention-tag-cells {
+  flex: none;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -166,6 +193,7 @@
   height: 14px;
 }
 .mention-tag-note {
+  flex: none;
   margin-left: auto;
   font-size: 11.5px;
   color: var(--faint);

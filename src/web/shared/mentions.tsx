@@ -362,10 +362,12 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
     if (!open || !typing || !field.current) return setPlace(null);
     // Under the field, starting at the @ as far as the field leaves room, so
     // it keeps clear of what's beside the field (a Comment button).
+    // Never wider than the window leaves room for (mentions.css caps it the same).
     const box = field.current.getBoundingClientRect();
     const caret = caretAt(field.current, typing.at);
-    const within = Math.max(box.left, Math.min(caret.left - 6, box.right - menuWidth));
-    const left = Math.max(8, Math.min(within, window.innerWidth - menuWidth - 8));
+    const width = Math.min(menuWidth, window.innerWidth - 16);
+    const within = Math.max(box.left, Math.min(caret.left - 6, box.right - width));
+    const left = Math.max(8, Math.min(within, window.innerWidth - width - 8));
     const below = box.bottom + 4;
     const height = slashing ? SKILL_MENU_HEIGHT : hashing ? Math.min(CARD_MENU_HEIGHT, 64 + options.length * 32) : hatting ? 40 + options.length * 34 + LENS_FOOT_HEIGHT : 40 + options.length * 34 + (listsTaggable ? TAG_FOOT_HEIGHT : 0);
     // Above the field when there's no room under it, as on the chat bar.
@@ -529,7 +531,11 @@ function useMentionMenu(value: string, onValue: (value: string) => void, skills:
       onClick={() => choose(option)}
     >
       <ActorBadge actor={{ kind: option.kind === 'agent' ? 'agent' : 'human', name: option.name }} title={option.name} />
-      {option.state && <span className="mention-state">{option.state}</span>}
+      {option.state && (
+        <span className="mention-state" title={option.state}>
+          {option.state}
+        </span>
+      )}
       {option.kind === 'agent' && (takesTag(option.agent) ? tagCells(option, index) : <span className="mention-tag-note">its own model</span>)}
     </div>
   );
