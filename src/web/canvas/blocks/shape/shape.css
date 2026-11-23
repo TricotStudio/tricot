@@ -173,3 +173,12 @@
 .react-flow__node:has(.shape.is-arrow):not(.selected) {
   pointer-events: none !important; /* over React Flow's own, on the node */
 }
+
+/* Its full view (shapeView.tsx): laid out at its size on the canvas and
+   zoomed whole (CSS zoom, not a transform), so its words wrap as they do
+   there and are drawn afresh at the size they are shown. A label's words,
+   from the left of a box sized by guess, are centred in it there, where no
+   box shows. */
+.shape-full .shape.is-text {
+  place-items: center;
+}

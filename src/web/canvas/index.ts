@@ -4,8 +4,11 @@
 export { CanvasView } from './CanvasView';
 export { useWebBlockKinds } from './blocks/registry';
 export { BlockPreview, hasPreview } from './blocks/preview';
-export type { WebBlockKind } from './blocks/kind';
+export type { OverlayProps, ToolsProps, WebBlockKind } from './blocks/kind';
 export { useCanvas } from './context';
+// The full view's frame, and the pins under it, for a kind of block another feature adds with a full view of its own.
+export { BlockPins } from './pairing/blockPins';
+export { PairingShell } from './pairing/shell';
 export { focusBlock, openPin } from './focus';
 export { coloursOf, highlightLine, type Token } from './highlight';
 export { Mermaid } from './blocks/diagram/Mermaid';

@@ -85,7 +85,7 @@ function ChartEdit({ block, save }: { block: ChartBlock; save(patch: BlockPatch)
   );
 }
 
-export function ChartView({ block, name, version, pinId, onClose }: OverlayProps<ChartBlock>) {
+export function ChartView({ block, name, version, pinId, pinAsked, onClose }: OverlayProps<ChartBlock>) {
   const series = block.columns.length - 1;
   const from = [`${CHART_KIND_LABEL[block.kind]} chart`, `${plural(block.rows.length, 'category', 'categories')}${series > 1 ? `, ${plural(series, 'series', 'series')}` : ''}`, block.unit && `in ${block.unit}`]
     .filter(Boolean)
@@ -96,6 +96,7 @@ export function ChartView({ block, name, version, pinId, onClose }: OverlayProps
       name={name}
       version={version}
       pinId={pinId}
+      pinAsked={pinAsked}
       part="chart"
       className="chart-full-view"
       label={`Chart ${block.title ?? ''}`.trim()}

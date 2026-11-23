@@ -24,13 +24,14 @@ export function Code({ tokens, note }: { tokens: Token[]; note?: boolean }) {
 // Clicking a line pins it: the prompt opens under it, as for any part. The
 // line is the element with data-line that was clicked, and `pinFor` says
 // what pinning it means. A drag (selecting code to copy), a double-click or a
-// click with a key held isn't a pick.
-export function useLinePick(pinFor: (cell: HTMLElement) => PinDraft | null) {
+// click with a key held isn't a pick. `to`: a prompt of its own in place of
+// the canvas's (a diff's full view), and whether lines are picked there.
+export function useLinePick(pinFor: (cell: HTMLElement) => PinDraft | null, to?: { pinnable: boolean; start(draft: PinDraft): void }) {
   const canvas = useCanvas();
   const pick = useClickPick();
   const titles = usePinTitles();
   const pressedAt = useRef({ x: 0, y: 0 });
-  const pinnable = !canvas.readOnly;
+  const pinnable = to ? to.pinnable : !canvas.readOnly;
   return {
     pinnable,
     handlers: {
@@ -42,7 +43,7 @@ export function useLinePick(pinFor: (cell: HTMLElement) => PinDraft | null) {
         const moved = Math.abs(event.clientX - pressedAt.current.x) + Math.abs(event.clientY - pressedAt.current.y) > 4;
         if (event.detail !== 1 || moved) return; // selecting code to copy
         const draft = pinFor(cell);
-        if (draft) pick.later(() => canvas.startPin(draft));
+        if (draft) pick.later(() => (to ? to.start(draft) : canvas.startPin(draft)));
       },
       onDoubleClickCapture: pick.cancel,
       title: pinnable ? titles.line : undefined,

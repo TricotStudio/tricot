@@ -11,16 +11,22 @@
 // Enter, Esc or a click away keeps what was typed (Shift+Enter is a new
 // line), and a label left with no words goes. Its toolbar recolours it,
 // weighs a shape's line, and sizes a label's words and makes them bold, as
-// the tools' options do before it is drawn (DrawOptions.tsx). The drawing
-// tools make it (drawTools.ts), so it has no entry on the Add menu.
+// the tools' options do before it is drawn (DrawOptions.tsx). How it is
+// drawn is face.tsx. Open, or Enter, shows a shape or a label full screen,
+// large (shapeView.tsx); a double-click still edits its words. A free arrow
+// has no full view: it says what it points between, which a view of it
+// alone leaves out. The drawing tools make it (drawTools.ts), so it has no
+// entry on the Add menu.
 
-import { useEffect, useId, useState, type ReactNode } from 'react';
-import { arrowEnds, LINE_WEIGHTS, SHAPE_COLORS, TEXT_SIZES, labelSize } from '../../../../core/blocks/shape/shapes';
+import { useEffect, useState } from 'react';
+import { LINE_WEIGHTS, SHAPE_COLORS, TEXT_SIZES, labelSize } from '../../../../core/blocks/shape/shapes';
 import type { Block } from '../../../../core/types';
 import { useCanvas } from '../../context';
-import { ARROW_HEAD, colourName, LINE_NAMES, LINE_PIXELS, LineMark, SIZE_NAMES } from '../../tools/DrawOptions';
+import { colourName, LINE_NAMES, LINE_PIXELS, LineMark, SIZE_NAMES } from '../../tools/DrawOptions';
 import { outlineScale } from '../../tools/geometry';
 import type { BodyProps, ToolsProps, WebBlockKind } from '../kind';
+import { ShapeFace, shapeWords } from './face';
+import { ShapeView } from './shapeView';
 import './palette.css';
 import './shape.css';
 
@@ -50,15 +56,6 @@ function ShapeBody({ block }: BodyProps<ShapeBlock>) {
     canvas.updateBlock(block, { text });
     if (block.shape === 'text') canvas.setSize(block.id, labelSize(text, block.size, block.bold)); // a label takes its words' size
   };
-  const classes = [
-    'shape',
-    `is-${block.shape}`,
-    `shape-${block.color ?? 'gray'}`,
-    block.shape === 'text' && `is-size-${block.size ?? 'm'}`,
-    block.line && `is-line-${block.line}`,
-    block.bold && 'is-bold',
-    words.editing && 'is-editing',
-  ];
   const field = words.editing ? (
     <textarea
       className="shape-field nodrag nopan nowheel"
@@ -81,52 +78,9 @@ function ShapeBody({ block }: BodyProps<ShapeBlock>) {
       }}
     />
   ) : (
-    block.text && <span className="shape-words">{block.text}</span>
+    shapeWords(block)
   );
-  if (block.shape === 'arrow') {
-    return (
-      <Arrow block={block} className={classes.filter(Boolean).join(' ')} onDoubleClick={words.start}>
-        {field}
-      </Arrow>
-    );
-  }
-  return (
-    <div className={classes.filter(Boolean).join(' ')} onDoubleClick={words.start}>
-      {block.shape === 'diamond' && (
-        <svg className="shape-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          <polygon points="50,1 99,50 50,99 1,50" />
-        </svg>
-      )}
-      {field}
-    </div>
-  );
-}
-
-// A free arrow: its line from one end to the other, as fractions of its block so it stretches with it, a wider
-// clear line under it to take hold of it by, a link's head at its end, and its words, if any, on a chip halfway.
-function Arrow({ block, className, onDoubleClick, children }: { block: ShapeBlock; className: string; onDoubleClick: () => void; children: ReactNode }) {
-  const head = `shape-head-${useId().replace(/:/g, '')}`;
-  const [a, b, c, d] = arrowEnds(block);
-  const ends = { x1: `${a * 100}%`, y1: `${b * 100}%`, x2: `${c * 100}%`, y2: `${d * 100}%` };
-  const size = ARROW_HEAD[block.line ?? 'thin'];
-  return (
-    <div className={className} onDoubleClick={onDoubleClick}>
-      <svg className="shape-arrow" role="img" aria-label={block.text ? `An arrow: ${block.text}` : 'An arrow'}>
-        <defs>
-          <marker id={head} viewBox="-10 -10 20 20" markerUnits="strokeWidth" markerWidth={size} markerHeight={size} orient="auto" refX="0" refY="0">
-            <polyline className="shape-arrow-head" points="-5,-4 0,0 -5,4 -5,-4" />
-          </marker>
-        </defs>
-        <line className="shape-arrow-hold" {...ends} />
-        <line className="shape-arrow-line" {...ends} style={{ strokeWidth: LINE_PIXELS[block.line ?? 'thin'] }} markerEnd={`url(#${head})`} />
-      </svg>
-      {children && (
-        <span className="shape-arrow-words" style={{ left: `${(a + c) * 50}%`, top: `${(b + d) * 50}%` }}>
-          {children}
-        </span>
-      )}
-    </div>
-  );
+  return <ShapeFace block={block} words={field} editing={words.editing} onDoubleClick={words.start} />;
 }
 
 // A label's field widens with what is typed, past its box, as a label takes its words' size once they are kept.
@@ -136,8 +90,8 @@ function fit(field: HTMLTextAreaElement) {
   field.style.width = `${field.scrollWidth + 2}px`;
 }
 
-// In its toolbar: its colour, then a shape's line, or a label's size and bold.
-function ShapeTools({ block }: ToolsProps<ShapeBlock>) {
+// In its toolbar: its colour, then a shape's line, or a label's size and bold, and Open: its full view.
+function ShapeTools({ block, viewing }: ToolsProps<ShapeBlock>) {
   const canvas = useCanvas();
   const color = block.color ?? 'gray';
   const size = block.size ?? 'm';
@@ -210,6 +164,14 @@ function ShapeTools({ block }: ToolsProps<ShapeBlock>) {
           </button>
         </>
       )}
+      {block.shape !== 'arrow' && (
+        <>
+          <span className="shape-rule" aria-hidden />
+          <button onClick={() => canvas.openOverlay(block.id, { version: viewing ?? undefined })} title="Open it full screen, to see it large (Enter)">
+            Open
+          </button>
+        </>
+      )}
     </span>
   );
 }
@@ -225,6 +187,11 @@ export const shape: WebBlockKind<ShapeBlock> = {
   edgeScale: (block, w, h, dx, dy) => outlineScale(block.shape, w, h, dx, dy),
   linkable: (block) => block.shape !== 'arrow',
   copyText: (block) => block.text,
+  overlay: { Component: ShapeView, refocus: true }, // its full view, large, in the pairing shell's frame
+  // Enter opens it (its words are edited with a double-click); a free arrow has no full view.
+  activate: (block, canvas) => block.shape !== 'arrow' && canvas.openOverlay(block.id),
+  // A comment on it opens there: the canvas draws no chip on a shape to open it by.
+  opensOnPin: (block, pin) => block.shape !== 'arrow' && Boolean(pin.discussion),
   // Drawn, its words open for typing; a free arrow's open on a double-click, as most arrows have none.
   added: (block, canvas) => block.shape !== 'arrow' && canvas.edit(block.id),
 };

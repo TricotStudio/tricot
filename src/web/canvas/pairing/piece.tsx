@@ -15,6 +15,16 @@
 // in the bar, or a double-click while reading, opens its editor in place of
 // the piece, until they go back to Read or Pair, press Esc or close it.
 //
+// A kind whose parts take comments but no requests (a diff's lines,
+// core/parts.ts) says `asks={false}`: it has no Pair, its parts are pointed
+// at while reading, and the prompt is the canvas's (a comment, or what the
+// page's kinds of card make of it). The work made so is drawn on its part
+// too, as the canvas draws it.
+//
+// The pins on the whole block are chips under the piece (blockPins.tsx), as
+// are those whose part it can't find any more: a comment's opens its thread
+// there, a card's opens the card.
+//
 // The piece draws the body: its parts, marked where they are pinned, and
 // how pointing at one works. It marks each pinned part's element with
 // data-pair-anchor="<pin ids>", and the part being asked about with
@@ -22,18 +32,19 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { atVersion } from '../../../core/canvas';
-import { partQuote, pinLost, pinPart, placePin } from '../../../core/pins';
+import { partQuote, pinPart, placePin } from '../../../core/pins';
 import type { Block, BlockVersion, Pin } from '../../../core/types';
 import { api } from '../../shared/api';
 import { typing } from '../../shared/hooks';
 import { useCanvas, type PinDraft } from '../context';
-import { PinThread, type PlacedPin } from '../pins';
-import { PairAskPrompt, PairPinChip } from './ask';
+import { PinPrompt, PinThread, type PlacedPin } from '../pins';
+import { PairAskPrompt } from './ask';
+import { PinChips } from './blockPins';
 import { useHandEdit, type HandEdit, type PieceEdit } from './edit';
 import { PinLine } from './pinLine';
 import { placeBy, unionRect, type Rect } from './pointing';
 import { usePairing } from './session';
-import { PairingShell, panelOpen, reachWords } from './shell';
+import { PairingShell, reachWords, useEscapeSteps } from './shell';
 import './piece.css';
 
 const THREAD_WIDTH = 340;
@@ -46,7 +57,7 @@ export const DRAFT_ANCHOR = 'draft';
 // What the piece's body is given to draw.
 export interface PieceBodyProps<B extends Block = Block> {
   block: B; // as shown: an earlier version, when one is being looked at
-  placed: PlacedPin[]; // its pins people talk about, where each is now (null: lost); none on an earlier version
+  placed: PlacedPin[]; // its parts' pins people talk about (with `asks={false}`, the work pinned to them too), where each is now (null: lost); none on an earlier version
   pointing: boolean; // pairing: pointing at a part picks it
   chosen: PinDraft | null; // the part being asked about, until it is
   open: string | null; // the pin whose thread is open
@@ -96,8 +107,10 @@ export function PieceView<B extends Block>(props: {
   name: string;
   version?: BlockVersion; // an earlier version: shown, not paired on
   pinId?: string; // a thread to open at
+  pinAsked?: number; // counts the asks to open at pinId: asked again for the same pin, it opens it again
   paired?: boolean; // it opens already paired
   part: string; // its part's name (core/parts.ts): 'code', 'note', 'diagram', 'image'
+  asks?: false; // its parts take no requests: no Pair, and pointing works while reading
   label: string;
   icon: ReactNode;
   title: string;
@@ -114,13 +127,14 @@ export function PieceView<B extends Block>(props: {
   edit?: PieceEdit<B>; // how a person edits it by hand, for a kind they can
   onClose(): void;
 }) {
-  const { block, name, version, pinId, part, label, icon, title, from, fromTitle, browse, it, point, does, example, controls, className, body, edit, onClose } = props;
+  const { block, name, version, pinId, pinAsked, part, label, icon, title, from, fromTitle, browse, it, point, does, example, controls, className, body, edit, onClose } = props;
   const canvas = useCanvas();
   const { seeItem } = canvas;
   const shown = useMemo(() => (version ? (atVersion(block, version) as B) : block), [block, version]);
-  const pairing = usePairing(block, name, part, { readOnly: Boolean(version), start: props.paired ? 'pair' : undefined });
-  const pointing = pairing.mode === 'pair';
+  const asks = props.asks !== false;
+  const pairing = usePairing(block, name, part, { readOnly: Boolean(version), start: props.paired && asks ? 'pair' : undefined });
   const stage = useRef<HTMLDivElement>(null);
+  const foot = useRef<HTMLElement>(null);
   const [chosen, setChosen] = useState<PinDraft | null>(null);
   const [askText, setAskText] = useState('');
   const [askBusy, setAskBusy] = useState(false);
@@ -129,6 +143,7 @@ export function PieceView<B extends Block>(props: {
   const [justPinned, setJustPinned] = useState<Pin | null>(null);
   const [threadHeight, setThreadHeight] = useState(THREAD_HEIGHT); // as the open thread is drawn, to place it
   const hand = useHandEdit(block, name, edit, Boolean(edit) && !pairing.readOnly);
+  const pointing = asks ? pairing.mode === 'pair' : !pairing.readOnly && !hand.on;
   const editingRef = useRef(hand.on);
   editingRef.current = hand.on;
   const startEdit = useCallback(() => {
@@ -142,13 +157,20 @@ export function PieceView<B extends Block>(props: {
     void hand.stop().then((closed) => closed && onClose());
   }, [hand, onClose]);
 
-  // The pins people talk about on its parts, with one just made until the board has it.
+  // The pins people talk about on its parts, with one just made until the
+  // board has it, and, where the prompt is the canvas's, the work it pinned
+  // there. The pins on the whole block are apart, under it: open unless
+  // resolved (or it is the one open).
   const boardPins = canvas.pins.get(block.id);
   const pins = useMemo(() => {
     if (version) return [];
-    const talked = (boardPins ?? []).filter((p) => p.discussion && p.anchor.kind !== 'block');
+    const talked = (boardPins ?? []).filter((p) => p.anchor.kind !== 'block' && (p.discussion || !asks));
     return justPinned && !talked.some((p) => p.id === justPinned.id) ? [...talked, justPinned] : talked;
-  }, [boardPins, justPinned, version]);
+  }, [boardPins, justPinned, version, asks]);
+  const whole = useMemo(
+    () => (version ? [] : (boardPins ?? []).filter((p) => p.anchor.kind === 'block' && (!p.discussion?.resolved || p.id === thread))),
+    [boardPins, version, thread],
+  );
   useEffect(() => {
     if (justPinned && boardPins?.some((p) => p.id === justPinned.id)) setJustPinned(null);
   }, [boardPins, justPinned]);
@@ -203,18 +225,20 @@ export function PieceView<B extends Block>(props: {
     [seeItem],
   );
 
-  // A pin opened from elsewhere, or from the session's list: its part in view.
+  // A pin opened from elsewhere, or from the session's list: its part in view,
+  // or its chip under the piece. Asked again for the same pin, it opens again.
   const reveal = useCallback((id: string) => {
     requestAnimationFrame(() => {
       const element = stage.current?.querySelector(`[data-pair-anchor~="${CSS.escape(id)}"]`) ?? stage.current?.querySelector(`[data-chip-pin="${CSS.escape(id)}"]`);
-      element?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      if (element) element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      else foot.current?.querySelector(`[data-chip-pin="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
     });
   }, []);
   useEffect(() => {
     if (!pinId) return;
     setThread(pinId);
     reveal(pinId);
-  }, [pinId, reveal]);
+  }, [pinId, pinAsked, reveal]);
   const openRequest = (pin: Pin) => {
     setThread(pin.id);
     setChosen(null);
@@ -222,21 +246,26 @@ export function PieceView<B extends Block>(props: {
     reveal(pin.id);
   };
 
+  // The thread open: on its part, among those apart, or on the whole block (a card's pin has none).
+  const open = [...pins, ...whole].find((p) => p.id === thread && p.discussion);
+  const openDrawn = open && drawn.some(({ pin }) => pin.id === open.id) ? open : undefined;
+  const openApart = open && (lost.includes(open) || whole.includes(open)) ? open : undefined;
+
   // Escape ends editing (saving it), or closes the prompt, then a thread, then
   // the view (once the agent picker is closed). In a cell being edited, it
   // leaves the cell first.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || panelOpen()) return;
+  useEscapeSteps(
+    Boolean(chosen || open),
+    (e) => {
       if (hand.on) {
         if (!(hand.live && typing(e.target))) void hand.stop();
       } else if (chosen) closeAsk();
-      else if (thread) setThread(null);
-      else onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [chosen, thread, onClose, closeAsk, hand]);
+      else if (open) setThread(null);
+      else return false;
+      return true;
+    },
+    onClose,
+  );
 
   // A request to the agent paired with, or a note on the part.
   const submit = async (ask: boolean) => {
@@ -257,9 +286,6 @@ export function PieceView<B extends Block>(props: {
     }
   };
 
-  const open = pins.find((p) => p.id === thread);
-  const openDrawn = open && drawn.some(({ pin }) => pin.id === open.id) ? open : undefined;
-  const openLost = open && lost.includes(open) ? open : undefined;
   const promptAnchor = useAnchor(stage, chosen ? DRAFT_ANCHOR : null);
   const threadAnchor = useAnchor(stage, openDrawn ? openDrawn.id : null);
   const promptAt = chosen && promptAnchor.rect && placeBy(promptAnchor.rect, promptAnchor.size, { width: THREAD_WIDTH, height: PROMPT_HEIGHT });
@@ -277,9 +303,24 @@ export function PieceView<B extends Block>(props: {
     window.getSelection()?.removeAllRanges(); // the word the double-click selected
     startEdit();
   };
+  // Pair, for parts that take requests: what it does, and how to point at one while pairing.
+  const pairs = asks
+    ? {
+        pairing,
+        pairHint: `Point at any part to ask the agent to change it, or to leave a note on it.`,
+        pairBand: (
+          <>
+            {who ? `Pairing with ${who}: ${point} to ask ${who} to change it, or to leave a note.` : `${point[0].toUpperCase()}${point.slice(1)} to leave a note on it or ask an agent to change it.`}
+            {who ? ` ${reachWords(choice, who)}` : ''}
+          </>
+        ),
+        open: thread,
+        onOpenRequest: openRequest,
+      }
+    : { pairs: false as const };
   return (
     <PairingShell
-      pairing={pairing}
+      {...pairs}
       edit={canEdit && edit ? { on: hand.on, hint: edit.hint, start: startEdit, stop: hand.stop } : undefined}
       className={`piece-view${className ? ` ${className}` : ''}`}
       label={label}
@@ -288,13 +329,6 @@ export function PieceView<B extends Block>(props: {
       from={from}
       fromTitle={fromTitle}
       browse={browse}
-      pairHint={`Point at any part to ask the agent to change it, or to leave a note on it.`}
-      pairBand={
-        <>
-          {who ? `Pairing with ${who}: ${point} to ask ${who} to change it, or to leave a note.` : `${point[0].toUpperCase()}${point.slice(1)} to leave a note on it or ask an agent to change it.`}
-          {who ? ` ${reachWords(choice, who)}` : ''}
-        </>
-      }
       band={
         hand.on ? (
           <EditBands hand={hand} it={it} back={browse.label} />
@@ -307,8 +341,6 @@ export function PieceView<B extends Block>(props: {
         )
       }
       controls={hand.on ? undefined : controls}
-      open={thread}
-      onOpenRequest={openRequest}
       onClose={close}
     >
       <div className={`piece-stage${pointing ? ' is-pointing' : ''}${hand.on ? ' is-editing' : ''}`} ref={stage} onDoubleClick={onDoubleClick}>
@@ -328,7 +360,22 @@ export function PieceView<B extends Block>(props: {
               address={pairing.address}
             />
           )}
-          {chosen && promptAt && (
+          {chosen && promptAt && !asks && (
+            <PinPrompt
+              draft={chosen}
+              block={shown}
+              name={name}
+              style={{ left: promptAt.left, top: promptAt.top, width: THREAD_WIDTH }}
+              above={promptAt.above}
+              onChange={setChosen}
+              onClose={closeAsk}
+              onCommented={(pin) => {
+                setJustPinned(pin);
+                setThread(pin.id);
+              }}
+            />
+          )}
+          {chosen && promptAt && asks && (
             <PairAskPrompt
               key={JSON.stringify(chosen.part)}
               quote={partQuote({ anchor: chosen.part, quote: chosen.quote }, shown)}
@@ -350,16 +397,12 @@ export function PieceView<B extends Block>(props: {
           )}
         </div>
       </div>
-      {lost.length > 0 && !hand.on && (
-        <footer className="piece-apart">
-          <div className="piece-apart-chips">
-            <span className="faint small">No longer where they were</span>
-            {lost.map((pin) => (
-              <PairPinChip key={pin.id} pin={pin} open={pin.id === thread} part={pinPart(pin, shown)} lost={pinLost(pin, shown)} onToggle={() => openPin(pin.id)} />
-            ))}
-          </div>
-          {openLost && (
-            <PinThread key={openLost.id} inline pin={openLost} block={shown} name={name} onClose={() => setThread(null)} live={live(openLost)} address={pairing.address} />
+      {(whole.length > 0 || lost.length > 0) && !hand.on && (
+        <footer className="piece-apart" ref={foot}>
+          {whole.length > 0 && <PinChips block={shown} pins={whole} open={thread} label={`On ${pinPart(whole[0], shown)}`} onToggle={openPin} />}
+          {lost.length > 0 && <PinChips block={shown} pins={lost} open={thread} label="No longer where they were" onToggle={openPin} />}
+          {openApart && (
+            <PinThread key={openApart.id} inline pin={openApart} block={shown} name={name} onClose={() => setThread(null)} live={live(openApart)} address={pairing.address} />
           )}
         </footer>
       )}

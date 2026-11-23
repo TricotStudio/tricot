@@ -23,6 +23,7 @@
 }
 .piece-layer .pin-thread {
   max-height: min(420px, calc(100% - 24px));
+  overflow-y: auto; /* a long thread scrolls within it, its reply with it */
 }
 /* A part's marker, by its part. */
 .pair-pin-chip.is-ask:not(.is-done):not(.is-lost) .pin-chip-status {

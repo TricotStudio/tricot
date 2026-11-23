@@ -13,6 +13,7 @@
   flex-direction: column;
   background: var(--bg);
   cursor: default;
+  outline: none; /* it holds the keys as it opens (shell.tsx), the view itself */
   animation: pair-shell-in 0.14s ease-out;
 }
 @keyframes pair-shell-in {

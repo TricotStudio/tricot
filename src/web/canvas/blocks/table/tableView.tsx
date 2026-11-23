@@ -140,7 +140,7 @@ function TableCells({ block, placed, pointing, chosen, open, pick, openPin }: Pi
   );
 }
 
-export function TableView({ block, name, version, pinId, onClose }: OverlayProps<TableBlock>) {
+export function TableView({ block, name, version, pinId, pinAsked, onClose }: OverlayProps<TableBlock>) {
   const from = `Table · ${plural(block.rows.length, 'row')}, ${plural(block.columns.length, 'column')}`;
   return (
     <PieceView
@@ -148,6 +148,7 @@ export function TableView({ block, name, version, pinId, onClose }: OverlayProps
       name={name}
       version={version}
       pinId={pinId}
+      pinAsked={pinAsked}
       part="table"
       className="table-full-view"
       label={`Table ${block.title ?? ''}`.trim()}

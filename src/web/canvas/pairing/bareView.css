@@ -1,0 +1,14 @@
+/* ---- a drawn block's full view (bareView.tsx) ---------------------------------
+   A shape or a pen's drawing on the canvas's own ground, zoomed and panned on
+   its stage (zoom.css), drawn at its size on screen so it stays sharp. The
+   chips of what was said about it are under it (blockPins.tsx, piece.css). */
+
+.bare-full-stage {
+  background: var(--bg);
+}
+
+/* Someone else's change landing: blue, as anything new since you looked. */
+.bare-full-view .pair-band.is-changed {
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
