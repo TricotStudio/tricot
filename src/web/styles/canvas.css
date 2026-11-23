@@ -7,7 +7,6 @@
 .canvas .react-flow,
 .canvas .react-flow.dark {
   --xy-background-color: var(--bg);
-  --xy-background-pattern-color: var(--border-strong);
   --xy-edge-stroke: var(--muted);
   --xy-edge-stroke-selected: var(--text);
   --xy-edge-stroke-width: 1.5;
@@ -20,6 +19,23 @@
   --xy-controls-button-border-color: var(--border);
   --xy-controls-box-shadow: var(--shadow);
   font-family: var(--font);
+}
+
+/* The board's cloth under the canvas (canvas/cloth.tsx): --knit in --knit-ink
+   on the paper, two layers of it, whose size, place and share the canvas's
+   zoom and pan set as it moves. Under the blocks and over the paper. */
+.canvas-cloth,
+.canvas-cloth > * {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.canvas-cloth {
+  z-index: 0;
+}
+.canvas-cloth > * {
+  background: var(--knit-ink);
+  mask: var(--knit) 0 0 / 10px 8px repeat;
 }
 
 .canvas-toolbar {

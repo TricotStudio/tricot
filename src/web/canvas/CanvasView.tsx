@@ -11,8 +11,6 @@ import {
   type RefObject,
 } from 'react';
 import {
-  Background,
-  BackgroundVariant,
   Controls,
   MarkerType,
   Panel,
@@ -36,6 +34,7 @@ import { canvasesOf } from '../../core/pins';
 import type { Block, Board, BlockVersion, Canvas, Pin, ScratchPage } from '../../core/types';
 import { api, type BlockContent, type BlockPatch, type CanvasRef, type Move, type RequestError } from '../shared/api';
 import { AddMenu, type AddForm } from './addMenu';
+import { Cloth } from './cloth';
 import { PendingRequests } from './askAgents';
 import { FOCUS_PIN, showComments } from '../conversation';
 import { useFocusBlock } from './focus';
@@ -945,7 +944,7 @@ function CanvasSurface(props: Props) {
           deleteKeyCode={readOnly || covered ? null : ['Backspace', 'Delete']}
           proOptions={proOptions}
         >
-          <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
+          <Cloth />
           <Controls showInteractive={false} fitViewOptions={underBar ? FIT_UNDER_BAR : FIT} />
           <PanHint />
           {(lead !== undefined || addsHere) && (
