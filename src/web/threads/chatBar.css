@@ -3,10 +3,13 @@
    tab, over its foot; docked, it is the reply box at the panel's foot. */
 
 /* Floating: placed in the board layout's first column (the tab), whatever
-   else the layout holds beside it, and centred at its foot. */
+   else the layout holds beside it, and centred at its foot. Both its lines
+   are named: out of the flow, a column's end left to itself is the layout's
+   edge, past what is beside the tab. Home's column is centred on the same
+   tab (timeline.css), so the bar is in one place on every view. */
 .chat-float {
   position: absolute;
-  grid-column: 1;
+  grid-column: 1 / 2;
   grid-row: 1;
   left: 0;
   right: 0;

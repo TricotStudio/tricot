@@ -107,10 +107,10 @@ interface Props {
   away: Away;
 }
 
-// Work docks at the right, and the conversation's sheet is centred in the room it leaves (timeline.css): it starts
-// shown where the window has room for the sheet beside it with the cloth either side (Work's 340px, the 720px column
-// and its sheet's 36px past it, the yarn's side of the sheet with three lanes and the times' room at its left), and
-// folded where the column would have to narrow beside it.
+// Work docks at the right, and the conversation's column is centred on the tab, narrowing beside Work where the tab
+// lacks room for it (timeline.css): it starts shown where the window has room for the column to stay centred beside it
+// (Work's 340px, the sheet's 36px past the column and the cloth beside Work, either side of a column of 580px or so),
+// and folded where the column would have to move over beside it.
 const ROOM_FOR_WORK = 1360;
 
 export function TimelineView({ board, name, route, away }: Props) {

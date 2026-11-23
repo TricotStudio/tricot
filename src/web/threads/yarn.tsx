@@ -549,12 +549,13 @@ const UNWOUND = 78;
 // Where the yarn is drawn, for the page's rules laid out around it
 // (timeline.css): where the conversation's strand runs in the gutter (the
 // sheet's edge), the sheet's yarn side with three lanes (what the column is
-// centred for), how far the times reach left of the strand, how far down the
-// scroller the ball sits (the heads are level with it) and where its foot is
-// (the head's band ends there), and how tall the band is that the unwound
-// strands are drawn over (what the scroller hides under them). Set on Home, so
-// its rules read these numbers rather than copy them; the gutter, which is
-// each pane's, is set on the pane (--yarn-gutter, gutterOf).
+// centred for on a narrow window), how far the times reach left of the
+// strand, how far down the scroller the ball sits (the heads are level with
+// it) and where its foot is (the head's band ends there), and how tall the
+// band is that the unwound strands are drawn over (what the scroller hides
+// under them). Set on Home, so its rules read these numbers rather than copy
+// them; the gutter, which is each pane's, is set on the pane (--yarn-gutter,
+// gutterOf).
 export const yarnPlace = {
   '--yarn-trunk': `${TRUNK_X}px`,
   '--yarn-side': `${gutterOf(3) - TRUNK_X}px`,

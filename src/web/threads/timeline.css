@@ -8,24 +8,15 @@
    the sheet's left edge as its selvedge and the times just outside it on the
    cloth; Work is docked at the right, the whole height of Home, on a tint of
    its own. The main pane is the room Work leaves (--work-room), its scrollbar
-   beside Work, and the sheet is centred in it: Work never covers the
-   conversation, and when Work folds or unfolds the conversation moves over
-   with it. The messages are a column of --column under the head, the bar at
-   its foot as wide, the yarn to its left (--column-left, --yarn-left: where
-   the yarn starts, from what the pane holds, and --yarn-trunk and the rest
-   of where the yarn is drawn, set from yarn.tsx). Inside the sheet, the
-   paper behind what Home paints over (the strands' second ply, the ring
-   round the ball's count, the line over the bar) is the sheet's: --bg is the
-   sheet there. */
-
-/* Registered so it can move, and kept from inheriting: only the main pane
-   reads it (.timeline-main), so a frame of the move restyles that alone, not
-   all of Home under it. */
-@property --work-room {
-  syntax: '<length>';
-  inherits: false;
-  initial-value: 0px;
-}
+   beside Work: Work never covers the conversation. The messages are a column
+   under the head, the bar at its foot as wide, centred on the tab where the
+   floating bar is on every other view (chatBar.css), so the bar stays where
+   it is between views and as Work folds or unfolds; the yarn is to its left
+   (--column-left, --yarn-left: where the yarn starts, from what the pane
+   holds, and --yarn-trunk and the rest of where the yarn is drawn, set from
+   yarn.tsx). Inside the sheet, the paper behind what Home paints over (the
+   strands' second ply, the ring round the ball's count, the line over the
+   bar) is the sheet's: --bg is the sheet there. */
 
 .board-timeline {
   grid-column: 1;
@@ -35,34 +26,30 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  --column: 720px;
+  --column: 720px; /* the column where it has room: as the floating bar (chatBar.css) */
+  --column-least: 560px; /* as narrow as it gets beside Work before it moves over (below) */
   --sheet: var(--surface);
   --sheet-in: color-mix(in srgb, var(--surface-2) 22%, var(--sheet)); /* a card on the sheet: a step in */
   --sheet-top: 8px; /* the cloth over the sheet, under the tabs */
   --sheet-pad: 36px; /* the sheet past the column, at its right */
   --work-width: 340px; /* Work, and folded, its rail (below) */
   --work-rail: 44px;
+  --work-gap: 12px; /* the least cloth between the sheet and Work */
   --work-room: 0px; /* what Work takes at the right: none where it is in the page's flow (below) */
+  --work-span: var(--work-room); /* the room the column's width is set for (below) */
 }
 @media (min-width: 901px) {
   .board-timeline {
+    container-type: inline-size; /* the tab's width (100cqw), which the column is centred on */
     --work-room: var(--work-rail);
   }
   .board-timeline:has(> .work:not(.is-folded)) {
     --work-room: var(--work-width);
   }
-}
-/* The conversation moves over as Work unfolds or folds, at the pace and on
-   the curve of Work's own move (workMotion.ts): only the main pane's margin
-   changes on a frame, and where the pane has room for it the column keeps
-   its width, so no line in it is broken anew. */
-@media (prefers-reduced-motion: no-preference) {
-  .board-timeline {
-    transition: --work-room var(--work-sheet) var(--dock-ease);
-  }
-  :root[data-work-move='close'] .board-timeline {
-    transition-duration: var(--work-fold);
-    transition-timing-function: var(--work-fold-ease);
+  /* Folding, the column keeps the width it has beside the panel until the
+     panel has closed (workMotion.ts sets data-work-landed then). */
+  :root[data-work-move='close']:not([data-work-plain], [data-work-landed]) .board-timeline {
+    --work-span: var(--work-width);
   }
 }
 .timeline-main {
@@ -70,26 +57,66 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  --work-room: inherit;
   margin-right: var(--work-room);
   display: flex;
   flex-direction: column;
 }
-/* The sheet runs from the conversation's strand (the yarn's left and
-   --yarn-trunk) to --sheet-pad past the column, centred in the pane as it is
-   with the yarn's side of it three lanes wide (--yarn-side): the column
-   stands in the same place whatever the yarn holds, on the conversation and
-   with a thread open alike, and the sheet reaches further left for more
-   lanes. The column's left is never nearer the edge than the yarn's gutter
-   and its times need; where the pane is too narrow for the whole column,
-   the column narrows. */
+/* As Work unfolds or folds, the main pane's edge moves with Work's on every
+   frame: a transition of the pane's own margin, set off by the same change as
+   the view transition that moves Work (workMotion.ts), so it starts on the
+   same frame and runs at Work's pace and on its curve. The pane moves its own
+   margin rather than read a moving value from Home: Safari does not pass a
+   value that is moving down to a child that inherits it, and drew the pane's
+   move only once Work had landed. Folding without the view transition, Work
+   goes at once, and the pane with it. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-work-move] .timeline-main {
+    transition: margin-right var(--work-sheet) var(--dock-ease);
+  }
+  :root[data-work-move='close'] .timeline-main {
+    transition-duration: var(--work-fold);
+    transition-timing-function: var(--work-fold-ease);
+  }
+  :root[data-work-plain][data-work-move='close'] .timeline-main {
+    transition: none;
+  }
+}
+/* The column (--column-left, --column-width) is where the floating bar is on
+   every other view: as wide, and centred on the tab (100cqw), Work folded or
+   not. It needs room for itself, the sheet past it (--sheet-pad) and a
+   little cloth (--work-gap) before Work, and the yarn's gutter and its times
+   (--yarn-room) at its left: where the tab is too narrow for that either
+   side of its centre, the column narrows around its centre, down to
+   --column-least, then moves left, and once at the yarn's gutter narrows
+   again.
+   The sheet runs from the conversation's strand (the yarn's left and
+   --yarn-trunk) to --sheet-pad past the column, so it reaches further left
+   for more lanes, on the conversation and with a thread open alike.
+   Its width is set for the room Work takes once it has moved (--work-span):
+   at once as Work unfolds, and only when it has folded as it folds, so its
+   lines are broken anew once, never on a frame. Its left is kept clear of
+   the pane's edge (100%), which is Work's on every frame of the move
+   (.timeline-main): where Work's edge comes within the sheet and the gap of
+   it, the column goes with Work's edge, frame for frame; where the tab has
+   room, nothing in the conversation moves. */
 .timeline-conversation,
 .timeline-thread {
+  --column-width: min(
+    var(--column),
+    max(
+      var(--column-least),
+      min(
+        calc(100cqw - 2 * (var(--work-span) + var(--sheet-pad) + var(--work-gap))),
+        calc(100cqw - 2 * (var(--yarn-gutter) + var(--yarn-room, 8px)))
+      )
+    ),
+    calc(100cqw - var(--work-span) - var(--sheet-pad) - var(--work-gap) - var(--yarn-gutter) - var(--yarn-room, 8px))
+  );
   --column-left: max(
     calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
-    calc((100% - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
+    min(calc((100cqw - var(--column-width)) / 2), calc(100% - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
   );
-  --column-right: max(24px, calc(100% - var(--column-left) - var(--column)));
+  --column-right: calc(100% - var(--column-left) - var(--column-width));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
   --bg: var(--sheet);
 }
@@ -204,9 +231,9 @@
 .timeline-scroll {
   --column-left: max(
     calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
-    calc((100% + var(--scrollbar, 0px) - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
+    min(calc((100cqw - var(--column-width)) / 2), calc(100% + var(--scrollbar, 0px) - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
   );
-  --column-right: calc(max(24px, calc(100% + var(--scrollbar, 0px) - var(--column-left) - var(--column))) - var(--scrollbar, 0px));
+  --column-right: calc(100% - var(--column-left) - var(--column-width));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
 }
 
@@ -696,7 +723,7 @@
   left: var(--column-left);
   bottom: 20px;
   z-index: 2;
-  width: min(var(--column), calc(100% - var(--column-left) - 24px));
+  width: var(--column-width);
   display: flex;
 }
 /* On the sheet its lift is the sheet's own (Float), softer than over a
@@ -1295,8 +1322,8 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
    and to the tabs' rule, on a tint of its own (--work-ground), its edge a
    hairline: no float, no lift. The main pane is the room it leaves
    (--work-room, above), so it never covers the conversation: on a window
-   too narrow for both, the column narrows. Its head is level with the
-   conversation's. */
+   too narrow for both, the column narrows, then moves over (above). Its
+   head is level with the conversation's. */
 
 .work {
   position: absolute;
@@ -1635,11 +1662,24 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   .timeline-main {
     height: 72vh;
   }
+  /* The column runs to 16px off the window's right, the sheet past it, and
+     its left is where the sheet is centred with the yarn's side of it three
+     lanes wide (--yarn-side), so it stands in the same place whatever the
+     yarn holds, and never nearer the edge than the yarn's gutter and its
+     times need. */
   .timeline-conversation,
   .timeline-thread {
+    --column-left: max(
+      calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
+      calc((100% - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
+    );
     --column-right: 16px;
   }
   .timeline-scroll {
+    --column-left: max(
+      calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
+      calc((100% + var(--scrollbar, 0px) - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
+    );
     --column-right: calc(16px - var(--scrollbar, 0px));
   }
   /* Work under the conversation, in the page's flow; folded, a line: Work, and what waits on you. */
@@ -1686,10 +1726,11 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
    inside it keep theirs too, held at its top right, so the panel is
    uncovered rather than stretched. Inside Work only pictures move, by
    transform and opacity, and the page is not pictured: the conversation
-   stays live, and moves over with Work as the room it leaves changes
-   (--work-room, above): on a frame only the main pane's margin changes, and
-   where it has room the column keeps its width, so no line in it is broken
-   anew.
+   stays live. The main pane's edge moves with Work's, on the same frames
+   and curve (.timeline-main, above); the column stays centred on the tab
+   where it has room, and where Work's edge comes to the sheet it goes with
+   it. On a frame only the pane's margin changes, and the column keeps its
+   width, so no line in it is broken anew.
    Below 900px, where Work is in the page's flow, and in a browser without
    view transitions, the panel uncovers itself from the rail by its own
    clip, its head and groups rising in the same; folding, they fold away

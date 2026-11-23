@@ -9,13 +9,18 @@ import { pace, reducedMotion } from './dockMotion';
 // window's right edge, the transition drawing Work's tint while it changes
 // width. Unfolding sets off at once, and the panel's head and groups rise in
 // as it lands. Folding, the groups fold away first; then the panel closes.
-// Inside Work only pictures move. The conversation, whose sheet is centred in
-// the room Work leaves, moves over with it at its pace and on its curve
-// (timeline.css --work-room): on a frame only the main pane's margin changes,
-// and where it has room the column keeps its width, so no line in it is broken
-// anew. Below 900px, where Work is in the page's flow, and in a browser
-// without view transitions, the panel uncovers itself from the rail instead,
-// and folds at once when its groups have gone. Reduced motion: at once.
+// Inside Work only pictures move. The conversation is centred on the tab, as
+// the floating bar is on every other view, and where the tab has room nothing
+// in it moves. The main pane's edge moves with Work's: its margin's
+// transition (timeline.css .timeline-main) is set off by the same change, so
+// it starts on the transition's first frame and runs at its pace and on its
+// curve, and where Work's edge comes to the sheet the column goes with it.
+// The column's width is set for where Work ends up: at once unfolding, and
+// folding only once the transition has landed (data-work-landed), so its lines
+// are broken anew once, never on a frame. Below 900px, where Work is in the
+// page's flow, and in a browser without view transitions, the panel uncovers
+// itself from the rail instead, and folds at once when its groups have gone.
+// Reduced motion: at once.
 //
 // The change runs inside, flushed at once, so the transition pictures Work as
 // it lands, and the focus is where the change puts it before it is drawn.
@@ -47,6 +52,7 @@ export function moveWork(direction: WorkMove, change: () => void): void {
     delete root.dataset.workLeaving;
     delete root.dataset.workPlain;
     delete root.dataset.workBox;
+    delete root.dataset.workLanded;
   };
   if (reducedMotion()) {
     end();
@@ -57,6 +63,7 @@ export function moveWork(direction: WorkMove, change: () => void): void {
   const run = () => {
     if (!mine()) return;
     delete root.dataset.workLeaving;
+    delete root.dataset.workLanded;
     root.dataset.workMove = direction;
     const risen = new Promise((done) => setTimeout(done, MOVE_MS * pace()));
     if (plain) {
@@ -76,8 +83,14 @@ export function moveWork(direction: WorkMove, change: () => void): void {
       if (sheet) sheet.finished.then(sheetBack, sheetBack);
       else sheetBack();
     }, sheetBack);
-    // The change threw: the transition was skipped, the page as it is.
-    const landed = transition.finished.finally(sheetBack).catch(() => {});
+    // The change threw: the transition was skipped, the page as it is. Landed,
+    // the column takes the width it has where Work is now.
+    const landed = transition.finished
+      .finally(sheetBack)
+      .catch(() => {})
+      .then(() => {
+        if (mine()) root.dataset.workLanded = '';
+      });
     void Promise.all([risen, landed]).then(end);
   };
   if (direction === 'close') {
