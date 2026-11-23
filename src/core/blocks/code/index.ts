@@ -20,6 +20,7 @@ export interface CodeTypes {
 export const code: BlockKind<CodeTypes> = {
   type: 'code',
   label: 'Code',
+  noun: 'code block',
   defaultSize: { w: 640, h: 420 }, // new ones are sized to their lines (codeBlockSize)
   titled: false,
   named: (block) => (block.path ? `code "${shortPath(block.path)}"` : 'untitled code'),

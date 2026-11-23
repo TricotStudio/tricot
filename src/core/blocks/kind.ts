@@ -273,6 +273,7 @@ export interface BlockKind<T extends KindTypes = any> {
   readonly types?: T; // type-level only: what the board's types are made from
   readonly type: T['type'];
   readonly label: string; // "Note": what people and search call it
+  readonly noun?: string; // what a count calls it ("2 code blocks", core/canvasBatches.ts), where its label lowercased isn't a noun
   readonly defaultSize: Size;
   // The smallest it may be made: a drawn shape or a label is smaller than a block of content (160×90, when none).
   readonly minSize?: Size;

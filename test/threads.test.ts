@@ -6,6 +6,8 @@ import { after, before, describe, it } from 'node:test';
 import { useBoardCards } from '../src/core/cards';
 import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
 import { answersForYou, commentsForYou } from '../src/core/bell';
+import { batchWords, canvasBatches, canvasHoldings } from '../src/core/canvasBatches';
+import { GAP_MS } from '../src/core/agentActivity';
 import { conversationWaitingOn, inConversation, threadGroups, threadsWaitingOn, waitsOnYou } from '../src/core/threadList';
 import { concernsAgent } from '../src/core/concerns';
 import { doorNote } from '../src/core/doors';
@@ -21,7 +23,7 @@ import { askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayS
 import { homeStream } from '../src/cli/switcher/homeStream';
 import { homeLines, REVIEW_HINT, type Colours } from '../src/cli/switcher/homeView';
 import { ThreadsTab } from '../src/cli/switcher/threadsTab';
-import { boardKey, type Actor, type Thread } from '../src/core/types';
+import { boardKey, type Actor, type BoardEvent, type Thread } from '../src/core/types';
 import { askableCards } from './madeUpAsked';
 import { removeScratch, WINDOWS } from './platform';
 import { threadsServer, type ThreadsServer, type ToolResult } from './threadsServer';
@@ -491,6 +493,70 @@ describe("The bell's comments", () => {
       assert.deepEqual(listed('@Pat can you answer this?'), []);
       assert.deepEqual(listed('The billing one.'), ['reply: The billing one.']);
       assert.deepEqual(listed('@Sam and @Pat, the billing one.'), ['mention: @Sam and @Pat, the billing one.']);
+    } finally {
+      removeScratch(dir);
+    }
+  });
+});
+
+// Which piece of work a change to a canvas belongs to (core/canvasBatches.ts), so what is new says an agent's run of
+// blocks once: Studio's inbox shows each piece as one row.
+describe('The pieces of work on the canvases', () => {
+  it("folds what was made for a thread into it, what is on a card's canvas into the card, and a run on a page or the board context by who made it until a pause", () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const claude: Actor = { kind: 'agent', name: 'Claude' };
+    const codex: Actor = { kind: 'agent', name: 'Codex' };
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-batches-'));
+    const store = new Store(dir);
+    try {
+      store.load();
+      const board = store.createBoard({ title: 'Site', goal: 'A landing page' }, sam);
+      const page = store.addPage(board.id, 'Mood board', sam);
+      const thread = store.startThread(board.id, 'Find references for the hero', sam, null, { pageId: page.id });
+      const since = store.getBoard(board.id).seq;
+      const note = (title: string) => ({ title, content: { type: 'note' as const, text: title } });
+      // Claude answers the thread with a group and two notes, one in the group, passing the thread's id (add_block's thread_id).
+      const group = store.addGroup({ pageId: page.id }, { title: 'References' }, claude);
+      const made = [store.addBlock({ pageId: page.id }, { ...note('Warm'), groupId: group.id }, claude), store.addBlock({ pageId: page.id }, note('Cool'), claude)];
+      for (const block of made) store.addThreadWork(thread.id, { kind: 'block', id: block.id }, claude);
+      store.postToThread(thread.id, 'Two references, warm and cool.', claude);
+      // Codex on the same page for no thread, then on the board context; Sam adds a note and takes it away, and comments on
+      // Codex's summary and resolves it.
+      const loose = [store.addBlock({ pageId: page.id }, note('Grid'), codex), store.addBlock({ pageId: page.id }, note('Type'), codex)];
+      const summary = store.addBlock({ boardId: board.id }, note('Summary'), codex);
+      const gone = store.addBlock({ pageId: page.id }, note('Draft'), sam);
+      store.removeItem(gone.id, sam);
+      const { pin } = store.pinComment(summary.id, { kind: 'text', quote: 'Summary' }, 'Is this current?', sam);
+      store.resolvePin(pin.id, true, sam);
+
+      const now = canvasHoldings(store.getBoard(board.id));
+      const events = store.events(board.id, { since }).reverse();
+      const batches = canvasBatches(now, events);
+      const keysOf = (id: string, from = batches) => [...new Set(events.filter((e) => e.itemId === id).map((e) => from.get(e.seq)?.key))];
+      const changes = (key: string) => events.filter((e) => batches.get(e.seq)?.key === key);
+      // Made for the thread, the group by the block in it: one piece, keyed as the thread's own reply is.
+      assert.deepEqual([...keysOf(group.id), ...keysOf(made[0].id), ...keysOf(made[1].id)], [thread.id, thread.id, thread.id]);
+      assert.equal(batches.get(events.find((e) => e.type === 'thread_replied')!.seq), undefined);
+      assert.equal(batchWords(now, changes(thread.id), { where: true }), 'added 2 notes and a group on Sketchbook page "Mood board"');
+      // A run on the page by one agent is one piece; the board context's is another, and a block gone since is its own.
+      const [run] = keysOf(loose[0].id);
+      assert.deepEqual(keysOf(loose[1].id), [run]);
+      assert.equal(batches.get(changes(run!)[0].seq)?.page?.id, page.id);
+      assert.equal(batchWords(now, changes(run!)), 'added 2 notes');
+      const [context] = keysOf(summary.id);
+      assert.notEqual(context, run);
+      assert.equal(batches.get(changes(context!)[0].seq)?.context, true);
+      assert.deepEqual(keysOf(gone.id), [gone.id]);
+      // Resolving a comment thread is no piece of work: it goes with the thread's comments, by the pin.
+      assert.deepEqual(keysOf(pin.id), [undefined]);
+      // A pause longer than a stretch of work starts another run.
+      const later = (e: BoardEvent) => ({ ...e, at: new Date(Date.parse(e.at) + GAP_MS + 60_000).toISOString() });
+      const paused = canvasBatches(now, events.map((e) => (e.itemId === loose[1].id ? later(e) : e)));
+      assert.notEqual(keysOf(loose[1].id, paused)[0], keysOf(loose[0].id, paused)[0]);
+      // A block made before the change says it changed; a change on a card's canvas is the card's.
+      assert.equal(batchWords(now, changes(run!).slice(0, 1).map(later)), 'changed a note');
+      const onCard = { ...events[0], seq: 10_000, itemId: 'elsewhere', decisionId: 'd7' } as BoardEvent;
+      assert.equal(canvasBatches(now, [onCard]).get(10_000)?.key, 'd7');
     } finally {
       removeScratch(dir);
     }
