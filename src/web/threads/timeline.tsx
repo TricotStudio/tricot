@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
-import { homeRows, homeSaid, lanesOf, ownedThreads, ownName, seenBy, sentStateWords, strandOf, strandsBeside, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
+import { conversationStart, homeRows, homeSaid, lanesOf, ownedThreads, ownName, seenBy, sentStateWords, strandOf, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
 import { askedTag, inConversation, threadGroups } from '../../core/threadList';
 import { agentsOf, coordinatorOf, whoAnswers } from '../../core/whoAnswers';
 import { shownTitle } from '../../core/threads';
@@ -12,7 +12,7 @@ import { planProgress } from '../../core/agentWork';
 import { api } from '../shared/api';
 import type { Away } from '../shared/boardHost';
 import { Icon } from '../shared/components';
-import { useReadOnly, useStoredFlag } from '../shared/hooks';
+import { overBoard, useReadOnly, useStoredFlag } from '../shared/hooks';
 import { go, linkTo, replaceAddress, type BoardRoute } from '../shared/pages';
 import { ChatBar, threadsButtonOnScreen } from './chatBar';
 import { replyingTo } from './chatDoor';
@@ -98,6 +98,19 @@ function useScrollbar(scroller: RefObject<HTMLElement | null>): number {
   return width;
 }
 
+// When the conversation starts (core/homeConversation.ts conversationStart), with what is on its way to it: a start
+// not sent yet (send.ts unsentStarts) and a message going out, as MainConversation draws them. The conversation and a
+// thread open both read it here, so they have the same strands in the same lanes.
+function useConversationStart(board: Board): string | undefined {
+  const all = useSyncExternalStore(outbox.subscribe, outbox.get);
+  return useMemo(() => {
+    const locals = unsentStarts(board.id).filter((l) => !board.threads?.some((t) => t.id === l.id));
+    const conversation = [...(board.threads ?? []).filter(inConversation), ...locals];
+    const places = new Set(conversation.map((t) => `thread:${t.id}`));
+    return conversationStart(board, conversation, ownedThreads(board), all.filter((o) => places.has(o.place)).map((o) => o.at));
+  }, [board, all]);
+}
+
 const clock = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 interface Props {
@@ -158,18 +171,38 @@ export function TimelineView({ board, name, route, away }: Props) {
   const drawnOpen = thread && !inConversation(thread) ? strandFor(thread) : undefined;
   const openSaid = JSON.stringify(drawnOpen ?? null);
   const openStrand = useMemo(() => drawnOpen, [openSaid]);
-  // Beside it, the others still running, in the lanes Home gives them.
-  const beside = useMemo(() => (openStrand ? strandsBeside(strands, openStrand) : undefined), [strands, openStrand]);
+  // Beside it, the strands the conversation shows, in its lanes (as MainConversation has them: those not done before
+  // its first message), so each is where the eye left it, and the gutter, and so the sheet, is the conversation's.
+  const firstAt = useConversationStart(board);
+  // Deleting a thread from the ball's list, on the conversation or with a thread open (the open one included, which
+  // takes the pane with it): its Undo, ⌘Z and what went wrong live here, above both panes, so they outlive either.
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const reportRemove = useCallback((e: unknown) => setRemoveError(e instanceof Error ? e.message : String(e)), []);
+  const { remove, toast } = useUndoDelete(name, reportRemove);
+  const removeThread = useCallback(
+    (gone: Thread) => {
+      setRemoveError(null);
+      remove([gone.id]);
+    },
+    [remove],
+  );
+  const beside = useMemo(() => {
+    if (!thread) return undefined;
+    const shown = strandsShown(strands, firstAt);
+    const all = openStrand && !shown.some((s) => s.id === openStrand.id) ? [...shown, openStrand] : shown;
+    return { strands: all, lanes: lanesOf(all) };
+  }, [thread, strands, openStrand, firstAt]);
   return (
     <section className="board-timeline" aria-label="Home" style={yarnPlace}>
       <div className="timeline-main">
         {thread ? (
-          <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={openStrand} beside={beside} lit={lit} onLight={setLit} onSeeItem={away.markSeen} />
+          <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={openStrand} beside={beside} lit={lit} onLight={setLit} onSeeItem={away.markSeen} onDelete={removeThread} removeError={removeError} />
         ) : (
-          <MainConversation key={board.id} board={board} name={name} today={new Date(now).toDateString()} since={away.visit.sinceAt} seeItem={away.markSeen} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
+          <MainConversation key={board.id} board={board} name={name} today={new Date(now).toDateString()} since={away.visit.sinceAt} seeItem={away.markSeen} strands={strands} lit={lit} onLight={setLit} onOpen={open} onDelete={removeThread} removeError={removeError} />
         )}
       </div>
       <WorkPanel board={board} name={name} current={thread?.id} lit={lit} onLight={setLit} shown={workShown && !workAway} onShow={showWorkNow} onDismiss={dismissWork} />
+      {toast && <div className="threads-toast">{toast}</div>}
     </section>
   );
 }
@@ -227,12 +260,14 @@ const MainConversation = memo(function MainConversation(props: {
   lit: string | null;
   onLight: (id: string | null) => void;
   onOpen: (id: string) => void;
+  onDelete: (thread: Thread) => void; // from the ball's list, with its Undo in TimelineView
+  removeError: string | null;
 }) {
-  const { board, name, today, since, seeItem, strands, lit, onLight, onOpen } = props;
+  const { board, name, today, since, seeItem, strands, lit, onLight, onOpen, onDelete, removeError } = props;
   const readOnly = useReadOnly();
   const agents = useAgents();
   const names = useMentionable(name);
-  const { seen, markSeen } = useThreadsSeen(board);
+  const { markSeen } = useThreadsSeen(board);
   const [locals, setLocals] = useState<Thread[]>(() => unsentStarts(board.id)); // started here, until the board has them, those a reload brought back not sent included
   const threads = useMemo(
     () => [...(board.threads ?? []).filter(inConversation), ...locals.filter((l) => !board.threads?.some((t) => t.id === l.id))],
@@ -253,8 +288,8 @@ const MainConversation = memo(function MainConversation(props: {
     for (const key of settled ? settled.split(',') : []) outbox.remove(key);
   }, [settled]);
 
-  // The strands shown: those not done before the first message shown.
-  const firstAt = shown[0]?.drawn.item.at;
+  // The strands shown: those not done before the conversation starts, as with a thread open.
+  const firstAt = useConversationStart(board);
   const visible = useMemo(() => strandsShown(strands, firstAt), [strands, firstAt]);
   const lanes = useMemo(() => lanesOf(visible), [visible.map((s) => `${s.id}:${s.from}:${s.to ?? ''}`).join()]);
   const gutter = gutterOf(Math.max(0, ...visible.map((s) => (lanes.get(s.id) ?? 0) + 1)));
@@ -384,14 +419,15 @@ const MainConversation = memo(function MainConversation(props: {
     },
     [setDraft],
   );
-  // The skein at the top of the yarn: the threads list, dropping open under it, each row with its strand's square.
-  const groups = useMemo(() => threadGroups(board, name, seen, Date.now()), [board, name, seen]);
-  const [listOpen, setListOpen] = useState(false);
-  const listButton = useRef<HTMLButtonElement>(null);
   // Made as a view switch takes away a floating bar that showed its threads button, whose ball folds into the bar below
   // as this one fades in at the top of the yarn and the whole yarn draws down from it: the same yarn arriving
   // (timeline.css), once. It draws down through the scroller's window as the scroller is placed (above).
   const [ballArrives, ballLanded] = useState(threadsButtonOnScreen);
+  const [listOpen, setListOpen] = useState(false); // the threads list from the ball, or the yarn's "+N"
+  // Arriving from a thread's New thread (ThreadPane), the bar takes the focus, to ask here.
+  useLayoutEffect(() => {
+    if (barOnArrival.delete(board.id)) field.current?.focus();
+  }, [board.id]);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!ballArrives || !el?.parentElement) return;
@@ -400,8 +436,6 @@ const MainConversation = memo(function MainConversation(props: {
     const done = setTimeout(() => ballLanded(false), 1000);
     return () => clearTimeout(done);
   }, []);
-  const [error, setError] = useState<string | null>(null);
-  const { remove, toast } = useUndoDelete(name, (e) => setError(e instanceof Error ? e.message : String(e)));
 
   const coordinator = coordinatorOf(agents);
   // Who the bar asks, by the one rule (core/whoAnswers.ts): the coordinator, else the one agent here; none, "agents".
@@ -474,7 +508,7 @@ const MainConversation = memo(function MainConversation(props: {
           }}
         >
           <div className="timeline-rows">
-            <Yarn strands={visible} lanes={lanes} version={`${rowsKey}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onSpans={setSpans} hours />
+            <Yarn strands={visible} lanes={lanes} version={`${rowsKey}:${gutter}`} lit={lit ?? ring} ring={ring} onPick={onOpen} onLight={onLight} onMore={() => setListOpen(true)} onSpans={setSpans} hours />
             {order.length > 0 && (
               <div
                 ref={keys}
@@ -504,53 +538,20 @@ const MainConversation = memo(function MainConversation(props: {
         </div>
         {/* The skein: the ball of yarn the strands running on past the top unwind from, and the threads list. */}
         <Unwound spans={spans} scroller={scroller} width={gutter} lit={lit ?? ring} onPick={onOpen} onLight={onLight} />
-        <div className="timeline-skein">
-          <button
-            type="button"
-            ref={listButton}
-            className="timeline-skein-button"
-            aria-expanded={listOpen}
-            aria-haspopup="dialog"
-            aria-label={groups.waiting.length ? `Threads: ${groups.waiting.length} waiting on you` : 'Threads'}
-            title={groups.waiting.length ? `Threads, ${groups.waiting.length} waiting on you` : 'Threads'}
-            onClick={() => setListOpen((was) => !was)}
-          >
-            <YarnBall />
-            {groups.waiting.length > 0 && (
-              <span className="chat-count" aria-hidden>
-                {groups.waiting.length}
-              </span>
-            )}
-          </button>
-          {listOpen && (
-            <ThreadsList
-              groups={groups}
-              name={name}
-              readOnly={readOnly}
-              mark={(t) => (inConversation(t) ? null : <span className={`work-square is-${threadTone(t, agents)}`} aria-hidden />)}
-              onOpen={(id) => {
-                setListOpen(false);
-                onOpen(id);
-              }}
-              onConversation={() => {
-                setListOpen(false);
-                atFoot.current = true;
-                const el = scroller.current;
-                el?.scrollTo({ top: el.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-              }}
-              onNew={() => {
-                setListOpen(false);
-                field.current?.focus();
-              }}
-              onDelete={(gone) => remove([gone.id])}
-              onClose={(escape) => {
-                setListOpen(false);
-                if (escape) listButton.current?.focus();
-              }}
-              toggle={listButton}
-            />
-          )}
-        </div>
+        <Skein
+          board={board}
+          name={name}
+          onOpen={onOpen}
+          onConversation={() => {
+            atFoot.current = true;
+            const el = scroller.current;
+            el?.scrollTo({ top: el.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+          }}
+          onNew={() => field.current?.focus()}
+          onDelete={onDelete}
+          listOpen={listOpen}
+          onListOpen={setListOpen}
+        />
         {ring && (
           <p className="yarn-hint" aria-hidden>
             <kbd>←</kbd>
@@ -587,11 +588,10 @@ const MainConversation = memo(function MainConversation(props: {
                 onRemove: () => setAim(null),
               }
             }
-            error={error}
+            error={removeError}
           />
         </div>
       )}
-      {toast && <div className="threads-toast">{toast}</div>}
     </div>
   );
 });
@@ -653,15 +653,17 @@ function SentCard({ to, taken, lit, onOpen, onLight }: { to: Thread; taken?: boo
 
 // ---- a thread, open in the main pane --------------------------------------------
 
-function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeItem }: {
+function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeItem, onDelete, removeError }: {
   board: Board;
   name: string;
   thread: Thread;
   strand?: Strand;
-  beside?: { others: Strand[]; lanes: Map<string, number> }; // the strands still running beside its own, and their lanes and its own
+  beside?: { strands: Strand[]; lanes: Map<string, number> }; // the conversation's strands, its own among them, in the conversation's lanes
   lit: string | null;
   onLight: (id: string | null) => void;
   onSeeItem: (id: string) => void;
+  onDelete: (thread: Thread) => void; // from the ball's list, with its Undo in TimelineView
+  removeError: string | null;
 }) {
   const readOnly = useReadOnly();
   const agents = useAgents();
@@ -688,11 +690,12 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
     setError(null);
     api.setThreadLens(thread.id, name, lens).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
-  // Back to the conversation; Escape too, unless something over the pane takes it first.
+  // Back to the conversation; Escape too, unless something over the pane takes it first (the threads list from the
+  // ball closes on it, and goes as it does: overBoard still has it).
   const back = useCallback(() => go.timeline(board.id), [board.id]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('[role="dialog"], .popover[open], .threads-pop')) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || overBoard(e) || document.querySelector('[role="dialog"], .popover[open], .threads-pop')) return;
       if (e.target instanceof HTMLElement && e.target.closest('input, textarea, [contenteditable="true"]') && (e.target as HTMLInputElement).value) return;
       back();
     };
@@ -712,24 +715,52 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
     [setDraft],
   );
   const openThread = useCallback((id: string) => go.timeline(board.id, id), [board.id]);
+  // The yarn: the conversation's, drawn against the thread's messages, its own strand leading (yarn.tsx), in the
+  // conversation's lanes and gutter, so the sheet and the strands stand where they did on the conversation. Those
+  // running on past the top unwind from the ball at the sheet's corner, over the thread's head, where it is on the
+  // conversation, level with the way back.
+  const strands = beside?.strands ?? NONE;
   const lanes = beside?.lanes ?? EMPTY;
-  const gutter = gutterOf(Math.max(1, ...[...lanes.values()].map((lane) => lane + 1)));
+  const gutter = gutterOf(Math.max(0, ...strands.map((s) => (lanes.get(s.id) ?? 0) + 1)));
+  const scroller = useRef<HTMLDivElement>(null);
+  const [spans, setSpans] = useState<Span[]>([]);
+  const head = useRef<HTMLElement>(null);
+  const headFoot = useHeadFoot(head);
+  useThreadScrollbar(scroller);
+  const [listOpen, setListOpen] = useState(false); // the threads list from the ball, or the yarn's "+N"
+  const more = useCallback(() => setListOpen(true), []);
   const yarn = useMemo(
-    () => <Yarn strands={beside?.others ?? []} lanes={lanes} version={`${thread.id}:${count}:${gutter}`} lit={lit} focus={strand ?? 'trunk'} onPick={openThread} onLight={onLight} onBack={back} />,
-    [thread.id, count, gutter, beside, lanes, lit, strand, openThread, onLight, back],
+    () => <Yarn strands={strands} lanes={lanes} version={`${thread.id}:${count}:${gutter}`} lit={lit} focus={strand ?? 'trunk'} onPick={openThread} onLight={onLight} onBack={back} onMore={more} onSpans={setSpans} hours />,
+    [thread.id, count, gutter, strands, lanes, lit, strand, openThread, onLight, back, more],
   );
 
   return (
     <div className="timeline-thread" style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
-      <header className="timeline-thread-head">
+      <header className="timeline-thread-head" ref={head}>
         <button type="button" className="timeline-back" onClick={back} title="Back to the conversation (Esc)">
           <Icon name="arrow-left" /> Conversation
         </button>
         <ThreadTitle board={board} thread={thread} readOnly={readOnly} onPick={setLens} />
       </header>
-      <Conversation board={board} thread={thread} name={name} onOpen={noop} onEdit={edit} onThread={openThread}>
+      <Conversation board={board} thread={thread} name={name} onOpen={noop} onEdit={edit} onThread={openThread} scroller={scroller}>
         {yarn}
       </Conversation>
+      {headFoot > 0 && <Unwound spans={spans} scroller={scroller} width={gutter} height={headFoot} over={0} lit={lit} onPick={openThread} onLight={onLight} />}
+      {/* New thread, from the list, asks in the conversation, as it does there: back to it, its bar's field taking the focus. */}
+      <Skein
+        board={board}
+        name={name}
+        current={thread.id}
+        onOpen={openThread}
+        onConversation={back}
+        onNew={() => {
+          barOnArrival.add(board.id);
+          back();
+        }}
+        onDelete={onDelete}
+        listOpen={listOpen}
+        onListOpen={setListOpen}
+      />
       {!readOnly && (
         <div className="timeline-foot">
           {/* Work waiting for the viewer's review: the review over the bar, whose plain reply leaves it waiting. */}
@@ -751,7 +782,7 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
             sendLabel="Send"
             field={field}
             lenses={lenses}
-            error={error}
+            error={error ?? removeError}
           />
         </div>
       )}
@@ -760,3 +791,102 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
 }
 
 const EMPTY = new Map<string, number>();
+const NONE: Strand[] = [];
+// The boards whose conversation's bar takes the focus as it is drawn: New thread from a thread open there.
+const barOnArrival = new Set<string>();
+
+// Where a thread's head ends, from the top of the pane: the foot of the band the strands unwind over, from the ball
+// to where the scroller starts, to the fraction of a pixel, so the two meet without a seam. It changes as its title
+// wraps.
+function useHeadFoot(head: RefObject<HTMLElement | null>): number {
+  const [foot, setFoot] = useState(0);
+  useLayoutEffect(() => {
+    const el = head.current;
+    const pane = el?.parentElement;
+    if (!el || !pane) return;
+    const again = () => setFoot(el.getBoundingClientRect().bottom - pane.getBoundingClientRect().top);
+    again();
+    const watch = new ResizeObserver(again);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [head]);
+  return foot;
+}
+
+// The thread's scroller's own scrollbar, where the system draws one that takes room (useScrollbar), set on it as
+// --scrollbar: its yarn and its column stand where the head, the bar and the ball do (timeline.css).
+function useThreadScrollbar(scroller: RefObject<HTMLElement | null>): void {
+  const width = useScrollbar(scroller);
+  useLayoutEffect(() => {
+    scroller.current?.style.setProperty('--scrollbar', `${width}px`);
+  }, [scroller, width]);
+}
+
+// The skein: the ball of yarn at the top of the yarn, at the sheet's corner, which the strands running on past the
+// top unwind from (Unwound), and the threads list it opens, dropping open under it, each row with its strand's
+// square. On the conversation and with a thread open alike, in the same place.
+function Skein({ board, name, current, onOpen, onConversation, onNew, onDelete, listOpen, onListOpen: setListOpen }: {
+  board: Board;
+  name: string;
+  current?: string; // the thread open
+  onOpen: (id: string) => void;
+  onConversation: () => void;
+  onNew: () => void;
+  onDelete: (thread: Thread) => void;
+  listOpen: boolean; // its pane's, which the yarn's "+N" opens too
+  onListOpen: (open: boolean) => void;
+}) {
+  const readOnly = useReadOnly();
+  const agents = useAgents();
+  const { seen } = useThreadsSeen(board);
+  const groups = useMemo(() => threadGroups(board, name, seen, Date.now()), [board, name, seen]);
+  const listButton = useRef<HTMLButtonElement>(null);
+  return (
+    <div className="timeline-skein">
+      <button
+        type="button"
+        ref={listButton}
+        className="timeline-skein-button"
+        aria-expanded={listOpen}
+        aria-haspopup="dialog"
+        aria-label={groups.waiting.length ? `Threads: ${groups.waiting.length} waiting on you` : 'Threads'}
+        title={groups.waiting.length ? `Threads, ${groups.waiting.length} waiting on you` : 'Threads'}
+        onClick={() => setListOpen(!listOpen)}
+      >
+        <YarnBall />
+        {groups.waiting.length > 0 && (
+          <span className="chat-count" aria-hidden>
+            {groups.waiting.length}
+          </span>
+        )}
+      </button>
+      {listOpen && (
+        <ThreadsList
+          groups={groups}
+          name={name}
+          current={current}
+          readOnly={readOnly}
+          mark={(t) => (inConversation(t) ? null : <span className={`work-square is-${threadTone(t, agents)}`} aria-hidden />)}
+          onOpen={(id) => {
+            setListOpen(false);
+            onOpen(id);
+          }}
+          onConversation={() => {
+            setListOpen(false);
+            onConversation();
+          }}
+          onNew={() => {
+            setListOpen(false);
+            onNew();
+          }}
+          onDelete={onDelete}
+          onClose={(escape) => {
+            setListOpen(false);
+            if (escape) listButton.current?.focus();
+          }}
+          toggle={listButton}
+        />
+      )}
+    </div>
+  );
+}

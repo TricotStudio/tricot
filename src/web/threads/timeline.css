@@ -510,6 +510,26 @@
 .yarn-hour {
   fill: var(--faint);
 }
+/* The strands started since the latest row that do not fit under it, as one
+   count in the hour's ink (yarn.tsx), which opens the threads list. */
+.yarn-more {
+  pointer-events: all;
+  cursor: pointer;
+}
+.yarn-more text {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  fill: var(--faint);
+  stroke: var(--cloth);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+  user-select: none;
+}
+.yarn-more:hover text {
+  fill: var(--text);
+}
 .yarn-period {
   font-size: 9px;
 }
@@ -1170,16 +1190,22 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 
 /* ---- a thread, open in the main pane ------------------------------------- */
 
+/* Its yarn is the conversation's, in the same gutter and lanes, with its
+   times at the left of the conversation's strand as there (--yarn-room). */
 .timeline-thread {
+  --yarn-room: 28px;
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-/* Its head is the sheet's top band, ruled off across the sheet: the way back
-   over its title, both on the column's left edge, as the conversation's head
-   is. */
+/* Its head is the sheet's top band: the way back over its title, both on the
+   column's left edge, as the conversation's head is, level with the ball at
+   the sheet's corner (timeline.tsx Skein), and ruled off from the column's
+   edge to the sheet's: the yarn's gutter beside it is the yarn's, whose
+   strands unwind from the ball over it (Unwound) and run on, unbroken, into
+   the scroller under it. */
 .timeline-thread-head {
   position: relative;
   flex: none;
@@ -1189,7 +1215,14 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   gap: 6px;
   margin: var(--sheet-top) calc(var(--column-right) - var(--sheet-pad)) 0 calc(var(--yarn-left) + var(--yarn-trunk));
   padding: 12px var(--sheet-pad) 14px calc(var(--yarn-gutter) - var(--yarn-trunk));
-  border-bottom: 1px solid var(--border);
+}
+.timeline-thread-head::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--yarn-gutter) - var(--yarn-trunk));
+  right: 0;
+  bottom: 0;
+  border-top: 1px solid var(--border);
 }
 .timeline-thread-head .dock-title {
   align-self: stretch;
@@ -1235,12 +1268,27 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+/* Its messages, with room over the first for the thread's strand to knit off
+   the conversation's, and its time. */
 .timeline-thread .threads-conversation {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 24px var(--column-right) calc(110px + var(--review-room, 0px)) var(--column-left);
+  padding: 44px calc(var(--column-right) - var(--scrollbar, 0px)) calc(110px + var(--review-room, 0px)) var(--column-left);
   gap: 14px;
+}
+/* In the scroller, what is placed in it (the yarn, and the label of a strand
+   pointed at) has 100% as its width without its scrollbar, which takes room
+   where the system draws one (--scrollbar, timeline.tsx): added back, the
+   yarn stands where the head, the ball and the bar do, as on the
+   conversation (.timeline-scroll), and its column (its padding, above) is as
+   wide as the bar. */
+.timeline-thread .threads-conversation > .yarn-part {
+  --column-left: max(
+    calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
+    min(calc((100cqw - var(--column-width)) / 2), calc(100% + var(--scrollbar, 0px) - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
+  );
+  --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
 }
 
 /* Work waiting for your review (review.tsx ReviewBar): a bar over the line
@@ -1675,11 +1723,14 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
     );
     --column-right: 16px;
   }
-  .timeline-scroll {
+  .timeline-scroll,
+  .timeline-thread .threads-conversation > .yarn-part {
     --column-left: max(
       calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
       calc((100% + var(--scrollbar, 0px) - var(--column) - var(--sheet-pad) + var(--yarn-side)) / 2)
     );
+  }
+  .timeline-scroll {
     --column-right: calc(16px - var(--scrollbar, 0px));
   }
   /* Work under the conversation, in the page's flow; folded, a line: Work, and what waits on you. */

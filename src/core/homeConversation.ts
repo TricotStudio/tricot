@@ -33,8 +33,10 @@
 //   runs in a lane of its own beside it (`lanesOf`), in the colour of where
 //   its work stands (`threadTone`: at work, waiting on a person, waiting for
 //   their review, sent on but not started, done), from where it was sent on to
-//   where it is tied off. With a thread open, those still running stay beside
-//   it in their lanes (`strandsBeside`).
+//   where it is tied off. With a thread open, the same strands in the same
+//   lanes are drawn against its messages: those not done before the
+//   conversation starts (`strandsShown`, `conversationStart`), on the
+//   conversation and with a thread open alike.
 //
 // Nothing here is a part's: threads are the core's, and a part's cards come
 // in as relays it made.
@@ -130,18 +132,13 @@ export function lanesOf(strands: readonly Pick<Strand, 'id' | 'from' | 'to'>[]):
 // The strands beside the conversation: those not done before the first message said in it (`firstAt`).
 export const strandsShown = <S extends Pick<Strand, 'to'>>(strands: readonly S[], firstAt: string | undefined): S[] => strands.filter((s) => !s.to || !firstAt || s.to >= firstAt);
 
-// The strands beside a thread open on Home (`open`): every other one still
-// running, and the open one, each in the lane Home gives it (`lanesOf` over
-// all of `strands`), so the eye finds them where they were. The open one done,
-// when one still running has taken its lane since, runs in the lane after theirs.
-export function strandsBeside<S extends Pick<Strand, 'id' | 'from' | 'to' | 'tone'>>(strands: readonly S[], open: S): { others: S[]; lanes: Map<string, number> } {
-  const home = lanesOf(strands);
-  const others = strands.filter((s) => s.id !== open.id && s.tone !== 'done');
-  const lanes = new Map(others.map((s) => [s.id, home.get(s.id) ?? 0]));
-  const taken = new Set(lanes.values());
-  const own = home.get(open.id);
-  lanes.set(open.id, own !== undefined && !taken.has(own) ? own : Math.max(-1, ...taken) + 1);
-  return { others, lanes };
+// When the conversation starts, for `strandsShown`: the first thing said in it as Home draws it (`homeSaid`), the
+// asks of the threads agents own and the follow-ups moved into them included, or what is on its way to it (`also`:
+// when each was sent, which the board does not have yet), whichever is first. On the conversation and with a thread
+// open alike, so the two have the same strands in the same lanes.
+export function conversationStart(board: Pick<Board, 'threads'>, conversation: readonly Thread[], owned: readonly Thread[], also: readonly string[] = []): string | undefined {
+  const said = homeSaid(board, conversation, owned, (thread) => thread.messages, (message) => message, (message) => message);
+  return [said[0]?.message.at, ...also].filter((at): at is string => Boolean(at)).sort()[0];
 }
 
 // ---- what was said ----------------------------------------------------------------------

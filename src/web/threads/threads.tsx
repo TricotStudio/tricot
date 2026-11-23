@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { inWindow } from '../../core/delivery';
 import { barPlaceholder, barSends, doorName } from '../../core/doors';
 import { agentOnFile, type OpenFile } from '../../core/fileThread';
@@ -839,11 +839,13 @@ export const Conversation = memo(function Conversation(props: {
   onEdit: (body: string, lens?: MessageLens) => void;
   onThread?: (id: string) => void;
   children?: ReactNode; // drawn in the scroller after the messages (Home's yarn beside them)
+  scroller?: RefObject<HTMLDivElement | null>; // the scroller, for what is drawn over it as it scrolls (Home's ball of yarn)
 }) {
   const { board, thread, name, onOpen, onEdit, onThread, children } = props;
   useTick(30_000);
   const readOnly = useReadOnly();
-  const scroller = useRef<HTMLDivElement>(null);
+  const own = useRef<HTMLDivElement>(null);
+  const scroller = props.scroller ?? own;
   const names = useMentionable(name);
   const drawn = withOutgoing(thread?.messages ?? [], useOutgoing(`thread:${thread?.id ?? ''}`), name, (o) => draftMessage(o, name, names));
   const settled = settledKeys(drawn).join();
