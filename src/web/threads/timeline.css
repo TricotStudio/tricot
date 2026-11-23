@@ -26,7 +26,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  --column: 720px; /* the column where it has room: as the floating bar (chatBar.css) */
+  --column: 800px; /* the column where it has room: as the floating bar (chatBar.css) */
   --column-least: 560px; /* as narrow as it gets beside Work before it moves over (below) */
   --sheet: var(--surface);
   --sheet-in: color-mix(in srgb, var(--surface-2) 22%, var(--sheet)); /* a card on the sheet: a step in */
@@ -36,7 +36,6 @@
   --work-rail: 44px;
   --work-gap: 12px; /* the least cloth between the sheet and Work */
   --work-room: 0px; /* what Work takes at the right: none where it is in the page's flow (below) */
-  --work-span: var(--work-room); /* the room the column's width is set for (below) */
 }
 @media (min-width: 901px) {
   .board-timeline {
@@ -45,11 +44,6 @@
   }
   .board-timeline:has(> .work:not(.is-folded)) {
     --work-room: var(--work-width);
-  }
-  /* Folding, the column keeps the width it has beside the panel until the
-     panel has closed (workMotion.ts sets data-work-landed then). */
-  :root[data-work-move='close']:not([data-work-plain], [data-work-landed]) .board-timeline {
-    --work-span: var(--work-width);
   }
 }
 .timeline-main {
@@ -92,33 +86,41 @@
    The sheet runs from the conversation's strand (the yarn's left and
    --yarn-trunk) to --sheet-pad past the column, so it reaches further left
    for more lanes, on the conversation and with a thread open alike.
-   Its width is set for the room Work takes once it has moved (--work-span):
-   at once as Work unfolds, and only when it has folded as it folds, so its
-   lines are broken anew once, never on a frame. Its left is kept clear of
-   the pane's edge (100%), which is Work's on every frame of the move
-   (.timeline-main): where Work's edge comes within the sheet and the gap of
-   it, the column goes with Work's edge, frame for frame; where the tab has
+   Both its width and its left come from the pane's width (--pane: its 100%),
+   whose edge is Work's on every frame of the move (.timeline-main), and the
+   tab's, which stays: so as Work unfolds or folds the column narrows or
+   widens around its centre in step with Work's edge, the sheet keeping the
+   gap from it, and goes with it where it moves over. Nothing in it reads a
+   value that moves, which Safari would not pass down: only the layout moves.
+   Its prose keeps its own measure (threads.css .thread-prose, 41em), so its
+   lines break anew only where the column goes under that; where the tab has
    room, nothing in the conversation moves. */
 .timeline-conversation,
 .timeline-thread {
+  --pane: 100%;
+  --bg: var(--sheet);
+}
+.timeline-conversation,
+.timeline-thread,
+.timeline-scroll,
+.timeline-thread .threads-conversation > .yarn-part {
   --column-width: min(
     var(--column),
     max(
       var(--column-least),
       min(
-        calc(100cqw - 2 * (var(--work-span) + var(--sheet-pad) + var(--work-gap))),
+        calc(2 * (var(--pane) - var(--sheet-pad) - var(--work-gap)) - 100cqw),
         calc(100cqw - 2 * (var(--yarn-gutter) + var(--yarn-room, 8px)))
       )
     ),
-    calc(100cqw - var(--work-span) - var(--sheet-pad) - var(--work-gap) - var(--yarn-gutter) - var(--yarn-room, 8px))
+    calc(var(--pane) - var(--sheet-pad) - var(--work-gap) - var(--yarn-gutter) - var(--yarn-room, 8px))
   );
   --column-left: max(
     calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
-    min(calc((100cqw - var(--column-width)) / 2), calc(100% - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
+    min(calc((100cqw - var(--column-width)) / 2), calc(var(--pane) - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
   );
   --column-right: calc(100% - var(--column-left) - var(--column-width));
   --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
-  --bg: var(--sheet);
 }
 /* The sheet, under all the pane holds: drawn first of what is placed in it,
    so the heads, placed too, come over it. From just under the tabs to the
@@ -229,12 +231,7 @@
    the bar and the skein over the scroller do, from the pane's whole width:
    the strands meet the ball, and the sheet is the same with a scrollbar. */
 .timeline-scroll {
-  --column-left: max(
-    calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
-    min(calc((100cqw - var(--column-width)) / 2), calc(100% + var(--scrollbar, 0px) - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
-  );
-  --column-right: calc(100% - var(--column-left) - var(--column-width));
-  --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
+  --pane: calc(100% + var(--scrollbar, 0px));
 }
 
 /* ---- the skein: the threads list, at the top of the yarn ----------------
@@ -1284,11 +1281,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
    conversation (.timeline-scroll), and its column (its padding, above) is as
    wide as the bar. */
 .timeline-thread .threads-conversation > .yarn-part {
-  --column-left: max(
-    calc(var(--yarn-gutter) + var(--yarn-room, 8px)),
-    min(calc((100cqw - var(--column-width)) / 2), calc(100% + var(--scrollbar, 0px) - var(--column-width) - var(--sheet-pad) - var(--work-gap)))
-  );
-  --yarn-left: calc(var(--column-left) - var(--yarn-gutter));
+  --pane: calc(100% + var(--scrollbar, 0px));
 }
 
 /* Work waiting for your review (review.tsx ReviewBar): a bar over the line
@@ -1778,10 +1771,10 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
    uncovered rather than stretched. Inside Work only pictures move, by
    transform and opacity, and the page is not pictured: the conversation
    stays live. The main pane's edge moves with Work's, on the same frames
-   and curve (.timeline-main, above); the column stays centred on the tab
-   where it has room, and where Work's edge comes to the sheet it goes with
-   it. On a frame only the pane's margin changes, and the column keeps its
-   width, so no line in it is broken anew.
+   and curve (.timeline-main, above); the column stays centred on the tab,
+   and where the tab is short of room beside Work it narrows or widens
+   around its centre with Work's edge, frame for frame, its prose keeping
+   its measure (above).
    Below 900px, where Work is in the page's flow, and in a browser without
    view transitions, the panel uncovers itself from the rail by its own
    clip, its head and groups rising in the same; folding, they fold away

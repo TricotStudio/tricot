@@ -233,7 +233,19 @@ export function Yarn({ strands, lanes, version, lit, ring, focus, onPick, onLigh
       setLaid((was) => (was && JSON.stringify(was) === JSON.stringify(next) ? was : next));
     };
     again();
-    const observer = new ResizeObserver(again);
+    // Laid out again only when a height changed: the rows' tops are what the yarn is drawn from, and a width that
+    // changes alone (the column gliding with Work's edge, timeline.css) leaves each where it was, its relays' edges
+    // with it, so it reads nothing on those frames.
+    const heights = new WeakMap<Element, number>();
+    const observer = new ResizeObserver((entries) => {
+      let moved = false;
+      for (const entry of entries) {
+        if (heights.get(entry.target) === entry.contentRect.height) continue;
+        heights.set(entry.target, entry.contentRect.height);
+        moved = true;
+      }
+      if (moved) again();
+    });
     observer.observe(el);
     for (const child of el.children) observer.observe(child);
     return () => observer.disconnect();
