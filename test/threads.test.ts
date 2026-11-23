@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -18,7 +18,7 @@ import { Steps, type StepInput } from '../src/server/steps';
 import { Store } from '../src/core/store';
 import { boardKey, type Actor, type Thread } from '../src/core/types';
 import { askableCards } from './madeUpAsked';
-import { removeScratch } from './platform';
+import { removeScratch, WINDOWS } from './platform';
 import { threadsServer, type ThreadsServer, type ToolResult } from './threadsServer';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -306,6 +306,7 @@ describe('Threads over MCP and REST', () => {
       const stopping = new Leads({ dataDir, now: () => now });
       stopping.take('board-a', 'Lead', 'session-1');
       stopping.carryOut();
+      if (!WINDOWS) assert.equal(statSync(leadsFile(dataDir)).mode & 0o777, 0o600, 'private to the person, as the rest of the data folder is');
       now += 30_000;
       const started = new Leads({ dataDir, now: () => now });
       assert.equal(existsSync(leadsFile(dataDir)), false, 'read once');

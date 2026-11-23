@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
 import { samePerson } from '../../core/format';
 import { askedTag, inConversation, threadGroups } from '../../core/threadList';
@@ -161,14 +161,18 @@ export function TimelineView({ board, name, route, away }: Props) {
     live: steps.some((s) => s.thread === t.id && !s.done && phaseOf(s, now) === 'live'),
     };
   };
-  const strands = ownedThreads(board).map(strandOf);
+  // The same strands while what they say is: an agent's step, or the clock's tick, that changes none of them leaves
+  // the conversation as it was drawn, rather than drawing every message again.
+  const drawnStrands = ownedThreads(board).map(strandOf);
+  const strandsSaid = JSON.stringify(drawnStrands);
+  const strands = useMemo(() => drawnStrands, [strandsSaid]);
   return (
     <section className="board-timeline" aria-label="Home">
       <div className="timeline-main">
         {thread ? (
           <ThreadPane key={thread.id} board={board} name={name} thread={thread} strand={inConversation(thread) ? undefined : strandOf(thread)} onSeeItem={away.markSeen} />
         ) : (
-          <MainConversation key={board.id} board={board} name={name} away={away} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
+          <MainConversation key={board.id} board={board} name={name} since={away.visit.sinceAt} seeItem={away.markSeen} strands={strands} lit={lit} onLight={setLit} onOpen={open} />
         )}
       </div>
       <WorkPanel board={board} name={name} current={thread?.id} lit={lit} onLight={setLit} shown={workShown && !workAway} onShow={showWorkNow} onDismiss={dismissWork} />
@@ -201,9 +205,16 @@ interface Said {
 // (handed-out work, core/roles.ts) is its own, but for what was asked in the conversation and is there now: the ask
 // of a thread a person started that an agent took on as its work, and a follow-up the coordinator moved into it
 // (ThreadMessage.movedFrom). Each is drawn in the conversation too, with the thread as its card.
+// Worked out again only when what it reads changes, not as the bar is typed in: the rows drawn from it are kept the same
+// while it is (MainConversation).
 function useSaid(board: Board, threads: Thread[], owned: Thread[], name: string): Said[] {
   const all = useSyncExternalStore(outbox.subscribe, outbox.get);
   const names = useMentionable(name);
+  const namesSaid = names.join('\n');
+  return useMemo(() => saidIn(board, threads, owned, name, all, names), [board, threads, owned, name, all, namesSaid]);
+}
+
+function saidIn(board: Board, threads: Thread[], owned: Thread[], name: string, all: ReturnType<typeof outbox.get>, names: string[]): Said[] {
   const said: Said[] = [];
   for (const thread of owned) {
     thread.messages.forEach((message, i) => {
@@ -244,16 +255,19 @@ function useSaid(board: Board, threads: Thread[], owned: Thread[], name: string)
   return said.sort((a, b) => a.drawn.item.at.localeCompare(b.drawn.item.at));
 }
 
-function MainConversation(props: {
+// Drawn again only when what it is given changes (memo), not each time the board's page is: a long conversation
+// takes a while to draw.
+const MainConversation = memo(function MainConversation(props: {
   board: Board;
   name: string;
-  away: Away;
+  since: string | null; // when the viewer was last here, for the visit (Away.visit)
+  seeItem: (id: string) => void; // Away.markSeen
   strands: Strand[];
   lit: string | null;
   onLight: (id: string | null) => void;
   onOpen: (id: string) => void;
 }) {
-  const { board, name, away, strands, lit, onLight, onOpen } = props;
+  const { board, name, since, seeItem, strands, lit, onLight, onOpen } = props;
   const readOnly = useReadOnly();
   const agents = useAgents();
   const names = useMentionable(name);
@@ -280,7 +294,7 @@ function MainConversation(props: {
 
   // The strands shown: those not done before the first message shown.
   const firstAt = shown[0]?.drawn.item.at;
-  const visible = strands.filter((s) => !s.to || !firstAt || s.to >= firstAt);
+  const visible = useMemo(() => strands.filter((s) => !s.to || !firstAt || s.to >= firstAt), [strands, firstAt]);
   const lanes = useMemo(() => lanesOf(visible), [visible.map((s) => `${s.id}:${s.from}:${s.to ?? ''}`).join()]);
   const gutter = gutterOf(Math.max(0, ...visible.map((s) => (lanes.get(s.id) ?? 0) + 1)));
 
@@ -293,7 +307,6 @@ function MainConversation(props: {
   // message is in view (or the ask its coordinator's word is drawn under, as
   // the card), as its replies come. One scrolled out of sight still waits.
   const latest = threads.map((t) => `${t.id}:${t.messages.at(-1)?.id ?? ''}`).join();
-  const seeItem = away.markSeen;
   useEffect(() => {
     const root = scroller.current;
     if (!root) return;
@@ -370,10 +383,13 @@ function MainConversation(props: {
   useEffect(() => {
     if (aim && !aimed) setAim(null);
   }, [aim, aimed]);
-  const reply = (relay: Relay) => {
-    setAim(aim === relay.key ? null : relay.key);
-    field.current?.focus();
-  };
+  const reply = useCallback(
+    (relay: Relay) => {
+      setAim(aim === relay.key ? null : relay.key);
+      field.current?.focus();
+    },
+    [aim],
+  );
   // What it answers stays in sight over the bar, opened in place in the card of what came while the viewer was away.
   useLayoutEffect(() => {
     if (aim) scroller.current?.querySelector('.relay-card.is-aimed, .relay-row.is-aimed')?.scrollIntoView({ block: 'nearest' });
@@ -398,12 +414,15 @@ function MainConversation(props: {
     atFoot.current = true;
   };
   // One not sent goes back into the bar to be changed, its ^Lens with it.
-  const editUnsent = (body: string, lens?: { name: string }) => {
-    const sending = new Set(outbox.get().map((o) => o.place));
-    setLocals((was) => was.filter((t) => !isLocal(t) || sending.has(`thread:${t.id}`)));
-    setDraft(lens ? `^${lens.name} ${body}` : body);
-    field.current?.focus();
-  };
+  const editUnsent = useCallback(
+    (body: string, lens?: { name: string }) => {
+      const sending = new Set(outbox.get().map((o) => o.place));
+      setLocals((was) => was.filter((t) => !isLocal(t) || sending.has(`thread:${t.id}`)));
+      setDraft(lens ? `^${lens.name} ${body}` : body);
+      field.current?.focus();
+    },
+    [setDraft],
+  );
   // The skein at the top of the yarn: the threads list, dropping open under it, each row with its strand's square.
   const groups = useMemo(() => threadGroups(board, name, seen, Date.now()), [board, name, seen]);
   const [listOpen, setListOpen] = useState(false);
@@ -424,67 +443,74 @@ function MainConversation(props: {
   const { remove, toast } = useUndoDelete(name, (e) => setError(e instanceof Error ? e.message : String(e)));
 
   const coordinator = agents.filter((a) => a.coordinator && a.state !== 'away').sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
-  const since = away.visit.sinceAt;
-  // What was said, with the relays at when they came: those that came while the viewer was away, as one card.
-  const whileAway = since ? relays.filter((r) => r.at > since && Date.parse(r.at) <= arrived) : [];
-  const stacked = new Set(whileAway.length > 1 ? whileAway.map((r) => r.key) : []);
-  const entries: Entry[] = [
-    ...shown.map((s) => ({ at: s.drawn.item.at, said: s })),
-    ...relays.filter((r) => !stacked.has(r.key)).map((relay) => ({ at: relay.at, relay })),
-    ...(stacked.size ? [{ at: whileAway[0].at, stack: whileAway }] : []),
-  ].sort((a, b) => a.at.localeCompare(b.at));
-  const mineAt = (e: Entry) => Boolean(e.said && e.said.drawn.item.author.kind === 'human' && samePerson(e.said.drawn.item.author.name, name));
-  const sinceAt = since ? entries.findIndex((e) => e.at > since && !mineAt(e)) : -1;
+  // The rows, made again only when what they show changes: typing in the bar, an agent's step or the page's own
+  // clock leaves every message as it was drawn. The day they are drawn on counts, for Today and Yesterday, and so do
+  // the strands: a card under an ask says where its thread's work stands, live or not, as its strand does.
+  const today = new Date().toDateString();
+  const rows = useMemo(() => {
+    // What was said, with the relays at when they came: those that came while the viewer was away, as one card.
+    const whileAway = since ? relays.filter((r) => r.at > since && Date.parse(r.at) <= arrived) : [];
+    const stacked = new Set(whileAway.length > 1 ? whileAway.map((r) => r.key) : []);
+    const entries: Entry[] = [
+      ...shown.map((s) => ({ at: s.drawn.item.at, said: s })),
+      ...relays.filter((r) => !stacked.has(r.key)).map((relay) => ({ at: relay.at, relay })),
+      ...(stacked.size ? [{ at: whileAway[0].at, stack: whileAway }] : []),
+    ].sort((a, b) => a.at.localeCompare(b.at));
+    const mineAt = (e: Entry) => Boolean(e.said && e.said.drawn.item.author.kind === 'human' && samePerson(e.said.drawn.item.author.name, name));
+    const sinceAt = since ? entries.findIndex((e) => e.at > since && !mineAt(e)) : -1;
+    const now = Date.now();
+    const rows: ReactNode[] = [];
+    entries.forEach((e, i) => {
+      const day = dayOf(e.at, now);
+      if (i === 0 || dayOf(entries[i - 1].at, now) !== day) rows.push(<Divider key={`day:${e.at}`} label={day} />);
+      if (i === sinceAt && i > 0) rows.push(<Divider key="since" label="Since you were last here" fresh />);
+      if (e.relay) {
+        rows.push(<RelayCard key={`relay:${e.relay.key}`} relay={e.relay} name={name} clock={clock} aimed={aim === e.relay.key} onReply={reply} onLight={onLight} />);
+        return;
+      }
+      if (e.stack) {
+        rows.push(<RelayStack key="relays:away" relays={e.stack} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />);
+        return;
+      }
+      const s = e.said!;
+      const tag = s.first ? askedTag(s.thread, board) : undefined;
+      rows.push(
+        <MessageRow
+          key={s.drawn.key}
+          board={board}
+          thread={s.thread}
+          drawn={s.drawn}
+          after={s.after}
+          name={name}
+          foot={s.foot}
+          arriving={false}
+          onOpen={noop}
+          onEdit={editUnsent}
+          onThread={onOpen}
+          when={clock}
+          prev={entries[i - 1]?.said?.drawn.item}
+          next={entries[i + 1]?.said?.drawn.item}
+          tag={
+            <>
+              {tag && <span className="dock-door timeline-tag">{tag}</span>}
+              {/* Only a message with a thread of its own, work, opens it: a quick question lives here. */}
+              {!isLocal(s.thread) && !inConversation(s.thread) && (
+                <button type="button" className="timeline-open" onClick={() => onOpen(s.thread.id)} title={`Open “${shownTitle(s.thread)}” here, to read it on its own and reply in it`}>
+                  Open thread <Icon name="arrow-right" />
+                </button>
+              )}
+            </>
+          }
+        >
+          {s.sentOn.map((to) => (
+            <SentCard key={to.id} to={to} taken={s.taken} lit={lit === to.id} onOpen={onOpen} onLight={onLight} />
+          ))}
+        </MessageRow>,
+      );
+    });
+    return rows;
+  }, [shown, relays, since, arrived, name, board, aim, lit, onLight, onOpen, reply, editUnsent, today, strands]);
   const now = Date.now();
-  const rows: ReactNode[] = [];
-  entries.forEach((e, i) => {
-    const day = dayOf(e.at, now);
-    if (i === 0 || dayOf(entries[i - 1].at, now) !== day) rows.push(<Divider key={`day:${e.at}`} label={day} />);
-    if (i === sinceAt && i > 0) rows.push(<Divider key="since" label="Since you were last here" fresh />);
-    if (e.relay) {
-      rows.push(<RelayCard key={`relay:${e.relay.key}`} relay={e.relay} name={name} clock={clock} aimed={aim === e.relay.key} onReply={reply} onLight={onLight} />);
-      return;
-    }
-    if (e.stack) {
-      rows.push(<RelayStack key="relays:away" relays={e.stack} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />);
-      return;
-    }
-    const s = e.said!;
-    const tag = s.first ? askedTag(s.thread, board) : undefined;
-    rows.push(
-      <MessageRow
-        key={s.drawn.key}
-        board={board}
-        thread={s.thread}
-        drawn={s.drawn}
-        after={s.after}
-        name={name}
-        foot={s.foot}
-        arriving={false}
-        onOpen={noop}
-        onEdit={editUnsent}
-        onThread={onOpen}
-        when={clock}
-        prev={entries[i - 1]?.said?.drawn.item}
-        next={entries[i + 1]?.said?.drawn.item}
-        tag={
-          <>
-            {tag && <span className="dock-door timeline-tag">{tag}</span>}
-            {/* Only a message with a thread of its own, work, opens it: a quick question lives here. */}
-            {!isLocal(s.thread) && !inConversation(s.thread) && (
-              <button type="button" className="timeline-open" onClick={() => onOpen(s.thread.id)} title={`Open “${shownTitle(s.thread)}” here, to read it on its own and reply in it`}>
-                Open thread <Icon name="arrow-right" />
-              </button>
-            )}
-          </>
-        }
-      >
-        {s.sentOn.map((to) => (
-          <SentCard key={to.id} to={to} taken={s.taken} lit={lit === to.id} onOpen={onOpen} onLight={onLight} />
-        ))}
-      </MessageRow>,
-    );
-  });
 
   return (
     <div className={`timeline-conversation${ballArrives ? ' is-ball-arriving' : ''}`} style={{ '--yarn-gutter': `${gutter}px` } as CSSProperties}>
@@ -623,7 +649,7 @@ function MainConversation(props: {
       {toast && <div className="threads-toast">{toast}</div>}
     </div>
   );
-}
+});
 
 const noop = () => {};
 
