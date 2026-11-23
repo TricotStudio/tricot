@@ -12,10 +12,13 @@ import { doorNote } from '../src/core/doors';
 import type { Told } from '../src/core/words';
 import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn } from '../src/core/roles';
 import { Leads, leadsFile, RESUME_MS } from '../src/server/leads';
-import { Presence } from '../src/server/presence';
+import { Presence, type AgentPresence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
 import { Store } from '../src/core/store';
+import { askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayWords, threadTone } from '../src/core/homeConversation';
+import type { Colours } from '../src/cli/switcher/homeView';
+import { ThreadsTab } from '../src/cli/switcher/threadsTab';
 import { boardKey, type Actor, type Thread } from '../src/core/types';
 import { askableCards } from './madeUpAsked';
 import { removeScratch, WINDOWS } from './platform';
@@ -452,6 +455,87 @@ describe("The bell's comments", () => {
       assert.deepEqual(listed('@Pat can you answer this?'), []);
       assert.deepEqual(listed('The billing one.'), ['reply: The billing one.']);
       assert.deepEqual(listed('@Sam and @Pat, the billing one.'), ['mention: @Sam and @Pat, the billing one.']);
+    } finally {
+      removeScratch(dir);
+    }
+  });
+});
+
+// Home's conversation (core/homeConversation.ts), which the page's Home and the terminal's chat both show: a quick question
+// and its answer, an ask sent on with the card that leads to its thread, and what of that work needs the person; and the
+// Tricot tab's chat drawing it (cli/switcher/homeStream.ts, homeView.ts), with the yarn at its left.
+describe("Home's conversation", () => {
+  it('holds the quick questions and their answers, a card for each ask sent on and the relays of the work, in the page and the terminal alike', async () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const router: Actor = { kind: 'agent', name: 'Router' };
+    const owner: Actor = { kind: 'agent', name: 'Claude · Sign-in on mobile' };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 3));
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-home-'));
+    const store = new Store(dir);
+    try {
+      store.load();
+      const board = store.createBoard({ title: 'Shop' }, sam);
+      const quick = store.startThread(board.id, "What's left before the release?", sam, null, { door: 'threads' });
+      await tick();
+      store.postToThread(quick.id, 'The sign-in fix, then the changelog.', router);
+      await tick();
+      const ask = store.startThread(board.id, 'Fix sign-in on mobile.', sam, null, { door: 'threads' });
+      await tick();
+      store.postToThread(ask.id, 'Sending it to Claude.', router);
+      await tick();
+      const { to: work } = store.routeToThread(ask.id, ask.messages[0].id, router, { title: 'Sign-in on mobile', owner: owner.name, launch: 'claude' });
+      await tick();
+      const question = store.postToThread(work.id, 'Which tablets: iPads alone, or Android too?', owner).messages.at(-1)!;
+      store.setThreadStatus(work.id, 'needs-you', owner);
+      const now = store.getBoard(board.id);
+      const onBoard = [{ name: 'Router', state: 'listening' }, { name: owner.name, state: 'working' }];
+
+      // What was said, but the coordinator's word that it sent the ask on, which is the card under the ask; and the relay.
+      const said = homeSaid(now, now.threads!.filter(inConversation), ownedThreads(now), (t) => t.messages, (m) => m, (m) => m);
+      assert.deepEqual(
+        said.map((s) => [s.message.body, s.sentOn.map((t) => t.title)]),
+        [["What's left before the release?", []], ['The sign-in fix, then the changelog.', []], ['Fix sign-in on mobile.', ['Sign-in on mobile']], ['Sending it to Claude.', []]],
+      );
+      const relays = homeRelays(now, 'Sam', onBoard, new Set(), () => []);
+      assert.deepEqual(relays.map((r) => [r.kind, r.key, r.needsYou, r.tone, relayWords(r)]), [['question', question.id, true, 'waiting', 'Claude asks you']]);
+      assert.deepEqual(askedWhileWaiting(relays), [question.id], 'remembered, as it says nothing of it once its thread moves on');
+      const later = { ...now, threads: now.threads!.map((t) => (t.id === work.id ? { ...t, status: 'working' as const } : t)) };
+      assert.deepEqual(homeRelays(later, 'Sam', onBoard, new Set(), () => []), [], 'moved on, the thread no longer asks');
+      assert.equal(homeRelays(later, 'Sam', onBoard, new Set([question.id]), () => []).length, 1, 'but one remembered stays');
+      const rows = homeRows(said, relays, 'Sam', { since: said[1].message.at, arrived: Date.now() }, Date.now());
+      assert.deepEqual(rows.map((row) => row.kind), ['day', 'said', 'said', 'said', 'since', 'said', 'relay'], "since then, from the first that isn't Sam's own");
+      const atWork = later.threads.find((t) => t.id === work.id)!;
+      assert.deepEqual([threadTone(atWork, onBoard), threadTone(atWork, [])], ['working', 'todo'], 'at work while its agent is on the board, not started before');
+
+      // The terminal draws it: the card knits the work's strand off the conversation's, and the question stitches into it.
+      const tab = new ThreadsTab({
+        access: { me: 'Sam', read: async () => ({ ok: true, board: store.getBoard(board.id) }), skills: async () => [], send: {} as never },
+        live: () => ({ board: board.id, steps: [], approvals: [], presence: onBoard.map((p) => ({ ...p, lastSeen: new Date().toISOString() }) as AgentPresence), chatVer: 1 }),
+        now: () => Date.now(),
+        changed: () => {},
+        agents: () => [],
+        askSeat: () => {},
+        seatWords: () => undefined,
+      });
+      tab.start();
+      tab.render(100, 24, false);
+      await tick();
+      const drawn = (cols: number, colours?: Colours) => tab.render(cols, 24, false, undefined, colours).plain.map((row) => row.trimEnd());
+      const wide = drawn(100);
+      const card = wide.find((row) => row.includes('↳ Sign-in on mobile · sent on to Claude  ■ Needs you'));
+      assert.match(card ?? '', /^ ├─╮ /, 'the work knits off where the ask was sent on');
+      assert.match(wide.find((row) => row.includes('Claude asks you')) ?? '', /^ │ • {3}■ Sign-in on mobile · Claude asks you · /);
+      assert.ok(wide.some((row) => row.endsWith('Which tablets: iPads alone, or Android too?')));
+      assert.ok(!wide.some((row) => row.includes('Sent to "')), "the coordinator's word is the card, not a message");
+      assert.ok(wide.some((row) => row.includes('to Sign-in on mobile, the latest')), 'what is typed answers the question, in its thread');
+      assert.match(drawn(50).find((row) => row.includes('↳')) ?? '', /^ ├╴ /, 'a narrow window keeps a column of marks');
+      assert.match(drawn(100, 'none').find((row) => row.includes('-> Sign-in on mobile')) ?? '', /^ \+-\. /, 'and no colour, plain characters');
+      // Tab chooses the latest (the question), then each one before (the coordinator's answer, the card under the ask);
+      // Enter opens the card's thread, as the panel picks one.
+      for (let n = 0; n < 3; n++) tab.key({ kind: 'tab' });
+      assert.match(drawn(100).find((row) => row.includes('↳')) ?? '', /❯ {3}↳ Sign-in on mobile/);
+      tab.key({ kind: 'enter' });
+      assert.equal(drawn(100)[0], '  Only Sign-in on mobile · Esc for everything');
     } finally {
       removeScratch(dir);
     }

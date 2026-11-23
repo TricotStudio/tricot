@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { samePerson } from '../../core/format';
+import { answeredWords, firstLine, relayStack, relayWords } from '../../core/homeConversation';
 import { Icon } from '../shared/components';
 import { CommentText } from '../shared/mentions';
 import type { Relay } from './relays';
@@ -14,7 +14,9 @@ import type { Relay } from './relays';
 // card blocked in two lines; something done in one. Answered, a question folds
 // to a line of who answered and what they said.
 // What came in while the viewer was away comes as one card (`RelayStack`),
-// what needs them first, each row as a relay is.
+// what needs them first, each row as a relay is. What each says, and how
+// the stack groups them, are Home's conversation's (core/homeConversation.ts),
+// which the terminal's chat says too.
 
 const TONES: Record<Relay['tone'], [string, string]> = {
   working: ['var(--status-in-progress)', 'var(--status-in-progress-ink)'],
@@ -25,9 +27,6 @@ const TONES: Record<Relay['tone'], [string, string]> = {
 };
 export const toneOf = (tone: Relay['tone']): CSSProperties => ({ '--tone': TONES[tone][0], '--ink': TONES[tone][1] }) as CSSProperties;
 
-const ownName = (agent: string): string => agent.split(' · ')[0];
-const firstLine = (text: string): string => text.split('\n').find((line) => line.trim())?.replace(/^[#>*\-\s]+/, '') ?? '';
-
 // What it says of where it stands, after its name.
 function Kind({ relay }: { relay: Relay }) {
   if (relay.kind === 'blocked')
@@ -37,33 +36,20 @@ function Kind({ relay }: { relay: Relay }) {
         Blocked
       </span>
     );
-  const words =
-    relay.kind === 'done'
-      ? 'Done'
-      : relay.needsYou
-        ? `${ownName(relay.by ?? 'An agent')} asks you`
-        : relay.tone === 'working'
-          ? 'Back at work'
-          : relay.tone === 'todo'
-            ? 'Waiting for its agent'
-            : 'Answered'; // its thread done says so on its own card, never twice
   return (
     <span className="relay-kind">
       <span className="work-square" aria-hidden />
-      {words}
+      {relayWords(relay)}
     </span>
   );
 }
 
 // "You answered: …", or who did.
 function Answered({ relay, name }: { relay: Relay; name: string }) {
-  const who = relay.answer && samePerson(relay.answer.by, name) ? 'You' : relay.answer?.by;
   return (
     <span className="relay-answer">
       <Icon name="check" />
-      <span>
-        {who} answered: “{firstLine(relay.answer?.body ?? '')}”
-      </span>
+      <span>{answeredWords(relay, name)}</span>
     </span>
   );
 }
@@ -142,12 +128,7 @@ function ReplyButton({ relay, aimed, onReply }: { relay: Relay; aimed: boolean; 
 // Several that came in while the viewer was away, as one card: what needs them
 // first (the latest first), then what was answered, then what was done.
 export function RelayStack({ relays, name, clock, aimed, onReply, onLight }: Omit<Props, 'relay' | 'aimed'> & { relays: Relay[]; aimed: string | null }) {
-  const latest = (a: Relay, b: Relay) => b.at.localeCompare(a.at);
-  const needs = relays.filter((r) => r.needsYou).sort(latest);
-  const answered = relays.filter((r) => r.kind === 'question' && !r.needsYou).sort(latest);
-  const done = relays.filter((r) => r.kind === 'done').sort(latest);
-  const sources = new Set(relays.map((r) => r.thread?.id ?? r.key));
-  const allThreads = relays.every((r) => r.thread);
+  const { head, needs, answered, done } = relayStack(relays);
   const first = relays[0].at;
   const last = relays.at(-1)!.at;
   const group = (label: string, rows: Relay[], needsYou = false): ReactNode =>
@@ -165,9 +146,7 @@ export function RelayStack({ relays, name, clock, aimed, onReply, onLight }: Omi
     <li className="relay" data-at={first}>
       <div className="relay-stack">
         <div className="relay-stack-head">
-          <strong>
-            {sources.size} {allThreads ? (sources.size === 1 ? 'thread' : 'threads') : sources.size === 1 ? 'piece of work' : 'pieces of work'} moved while you were away
-          </strong>
+          <strong>{head}</strong>
           <span className="relay-time">{first === last ? clock(first) : `${clock(first)} – ${clock(last)}`}</span>
         </div>
         {group('Needs you', needs, true)}

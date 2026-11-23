@@ -128,10 +128,11 @@ export interface ThreadsAccessOptions {
   me: string; // the person, as the board names them
   answers: Answers;
   cards?: readonly ChatCard[]; // the kinds of card it can comment on and link to: none given, none
+  relays?: ThreadsAccess['relays']; // what a part relays of its cards into Home's conversation: none given, none
 }
 
 // Everything the Tricot tab's threads need of the board: reading it, who is
 // asking, what can be asked of each agent, and sending as the person.
-export function threadsAccess({ url, board, headers, me, answers, cards = [] }: ThreadsAccessOptions): ThreadsAccess {
-  return { me, read: threadsReader({ url, board, headers }), skills: skillsReader({ url, board, headers }), send: threadsSender(board, answers, cards), cards };
+export function threadsAccess({ url, board, headers, me, answers, cards = [], relays }: ThreadsAccessOptions): ThreadsAccess {
+  return { me, read: threadsReader({ url, board, headers }), skills: skillsReader({ url, board, headers }), send: threadsSender(board, answers, cards), cards, ...(relays && { relays }) };
 }

@@ -193,7 +193,7 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     title: board.title,
     actor,
     wordmark: ctx.env.TRICOT_NO_ANIMATION === '1' ? 'whole' : 'knit',
-    trueColour: /^(truecolor|24bit)$/i.test(ctx.env.COLORTERM ?? ''),
+    colours: ctx.env.NO_COLOR ? 'none' : /^(truecolor|24bit)$/i.test(ctx.env.COLORTERM ?? '') ? 'true' : '256',
     open: (page) => a.openBoard(lock, board.id, { always: true, ...(page && { page }) }),
     openLink: (url) => ctx.open(url),
     // Every agent Tricot knows but those running. One that isn't installed

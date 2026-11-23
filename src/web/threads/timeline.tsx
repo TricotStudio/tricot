@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
-import { samePerson } from '../../core/format';
+import { homeRows, homeSaid, lanesOf, ownedThreads, ownName, seenBy, sentStateWords, strandOf, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
 import { askedTag, inConversation, threadGroups } from '../../core/threadList';
+import { agentsOf, coordinatorOf, whoAnswers } from '../../core/whoAnswers';
 import { shownTitle } from '../../core/threads';
 import type { Board, Thread, ThreadLens, ThreadMessage } from '../../core/types';
 import { phaseOf, useAgents, useSteps, useWork } from '../agents';
@@ -22,9 +23,9 @@ import { draftMessage, isLocal, replyInThread, startThread, unsentStarts } from 
 import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } from './threads';
 import { ThreadsList } from './threadsList';
 import { useThreadsSeen } from './threadsSeen';
-import { ownedThreads, threadTone, WorkPanel } from './timelineWork';
+import { WorkPanel } from './timelineWork';
 import { moveWork } from './workMotion';
-import { gutterOf, lanesOf, Unwound, whenOf, Yarn, YarnBall, type Span, type Strand } from './yarn';
+import { gutterOf, Unwound, whenOf, Yarn, YarnBall, type Span, type Strand } from './yarn';
 import './timeline.css';
 
 // A board's Home (the core's view 'timeline', at /home: board/coreViews.tsx).
@@ -47,6 +48,11 @@ import './timeline.css';
 // the right. The view holds its own conversation, so the board's page draws no
 // chat bar or docked panel over it (shared/boardViews.ts holdsChat), and it
 // answers what asks the dock to open a thread.
+//
+// What the conversation holds (its messages, the cards under the asks, the
+// relays, the rows with the days between them, the strands' tones and lanes)
+// is core/homeConversation.ts's, which the terminal's chat shows too: here it
+// is drawn.
 
 // What is typed in each bar, per board, for as long as the page is open: the
 // conversation's ('bar') and each thread's, by its id.
@@ -91,20 +97,7 @@ function useScrollbar(scroller: RefObject<HTMLElement | null>): number {
   return width;
 }
 
-// Its agent's name, without the work an orchestrator is named after ("Claude · Sign-in flow").
-const ownName = (agent: string): string => agent.split(' · ')[0];
-
 const clock = (iso: string): string => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-
-// A day between messages: Today, Yesterday, the day this week, else the date.
-function dayOf(iso: string, now: number): string {
-  const at = new Date(iso);
-  const today = new Date(now);
-  if (at.toDateString() === today.toDateString()) return 'Today';
-  if (at.toDateString() === new Date(now - 86_400_000).toDateString()) return 'Yesterday';
-  if (now - at.getTime() < 6 * 86_400_000) return at.toLocaleDateString([], { weekday: 'long' });
-  return at.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-}
 
 interface Props {
   board: Board;
@@ -148,25 +141,18 @@ export function TimelineView({ board, name, route, away }: Props) {
   }, []);
   const thread = route.threadId ? board.threads?.find((t) => t.id === route.threadId) : undefined;
   const work = useWork();
-  const strandOf = (t: Thread): Strand => {
+  // A thread's strand (core/homeConversation.ts), with how far its agent's plan is and whether it has a step there now.
+  const strandFor = (t: Thread): Strand => {
     const tone = threadTone(t, agents);
     const progress = tone === 'working' ? planProgress(work.find((w) => w.thread === t.id && w.plan)?.plan) : undefined;
-    return {
-    id: t.id,
-    title: shownTitle(t),
-    status: tone === 'waiting' ? 'needs you' : tone === 'done' ? 'done' : tone === 'todo' ? 'not started' : `at work${progress ? ` · ${progress.done}/${progress.total}` : ''}`,
-    tone,
-    from: t.startedAt,
-    ...(t.status === 'done' && { to: t.updatedAt }),
-    live: steps.some((s) => s.thread === t.id && !s.done && phaseOf(s, now) === 'live'),
-    };
+    return strandOf(t, tone, progress, steps.some((s) => s.thread === t.id && !s.done && phaseOf(s, now) === 'live'));
   };
   // The same strands while what they say is: an agent's step, or the clock's tick, that changes none of them leaves
   // the conversation as it was drawn, rather than drawing every message again.
-  const drawnStrands = ownedThreads(board).map(strandOf);
+  const drawnStrands = ownedThreads(board).map(strandFor);
   const strandsSaid = JSON.stringify(drawnStrands);
   const strands = useMemo(() => drawnStrands, [strandsSaid]);
-  const drawnOpen = thread && !inConversation(thread) ? strandOf(thread) : undefined;
+  const drawnOpen = thread && !inConversation(thread) ? strandFor(thread) : undefined;
   const openSaid = JSON.stringify(drawnOpen ?? null);
   const openStrand = useMemo(() => drawnOpen, [openSaid]);
   return (
@@ -185,29 +171,16 @@ export function TimelineView({ board, name, route, away }: Props) {
 
 // ---- the conversation ------------------------------------------------------------
 
-// A row of the conversation: something said, a relay, or the relays that came while the viewer was away.
-interface Entry {
-  at: string;
-  said?: Said;
-  relay?: Relay;
-  stack?: Relay[];
-}
-
-interface Said {
-  thread: Thread;
+// Something said in the conversation (core/homeConversation.ts Said), as it is drawn, with what is on its way, and
+// whether it shows the line that says what became of it (`foot`).
+interface Said extends HomeSaid<Drawn<ThreadMessage>> {
   drawn: Drawn<ThreadMessage>;
-  after: ThreadMessage[];
   foot: boolean;
-  first: boolean; // its thread's first, which says where it was asked
-  sentOn: Thread[]; // the threads it was sent on to
-  taken?: true; // an ask whose own thread an agent took on as its work: its card is that thread
 }
 
-// The conversation's messages, oldest first: every thread's that is not handed-out work, with what is on its way.
-// A coordinator's word that it sent an ask on is drawn as the card under the ask. The rest of a thread an agent owns
-// (handed-out work, core/roles.ts) is its own, but for what was asked in the conversation and is there now: the ask
-// of a thread a person started that an agent took on as its work, and a follow-up the coordinator moved into it
-// (ThreadMessage.movedFrom). Each is drawn in the conversation too, with the thread as its card.
+// The conversation's messages, oldest first (core/homeConversation.ts homeSaid): every thread's that is not
+// handed-out work, with what is on its way, a coordinator's word that it sent an ask on drawn as the card under the
+// ask, and what was asked in the conversation of a thread an agent owns, with the thread as its card.
 // Worked out again only when what it reads changes, not as the bar is typed in: the rows drawn from it are kept the same
 // while it is (MainConversation).
 function useSaid(board: Board, threads: Thread[], owned: Thread[], name: string): Said[] {
@@ -218,15 +191,9 @@ function useSaid(board: Board, threads: Thread[], owned: Thread[], name: string)
 }
 
 function saidIn(board: Board, threads: Thread[], owned: Thread[], name: string, all: ReturnType<typeof outbox.get>, names: string[]): Said[] {
-  const said: Said[] = [];
-  for (const thread of owned) {
-    thread.messages.forEach((message, i) => {
-      if (message.author.kind !== 'human') return;
-      const asked = i === 0 && thread.startedBy.kind === 'human';
-      if (!asked && !message.movedFrom) return;
-      said.push({ thread, drawn: { item: message, key: message.id }, after: thread.messages.slice(i + 1), foot: false, first: asked, sentOn: [thread], ...(asked && { taken: true as const }) });
-    });
-  }
+  // Each thread of the conversation as drawn, with what is on its way, and the line under it that says what became of it.
+  const drawnOf = new Map<string, Drawn<ThreadMessage>[]>();
+  const feet = new Map<string, ReturnType<typeof footsOf>>();
   for (const thread of threads) {
     const drawn = withOutgoing(
       thread.messages,
@@ -234,28 +201,13 @@ function saidIn(board: Board, threads: Thread[], owned: Thread[], name: string, 
       name,
       (o) => draftMessage(o, name, names),
     );
-    const { lineAt, agentLine } = footsOf(board, thread, drawn, name);
-    const sentFrom = new Map<string, Thread[]>(); // the ask's id -> where it went
-    const words = new Set<string>(); // the coordinator's words that say so, drawn as the card
-    for (const message of thread.messages) {
-      const to = message.sent && board.threads?.find((t) => t.id === message.sent!.threadId);
-      if (!to || !thread.messages.some((m) => m.id === message.sent!.messageId)) continue;
-      sentFrom.set(message.sent!.messageId, [...(sentFrom.get(message.sent!.messageId) ?? []), to]);
-      words.add(message.id);
-    }
-    drawn.forEach((d, i) => {
-      if (words.has(d.item.id)) return;
-      said.push({
-        thread,
-        drawn: d,
-        after: drawn.slice(i + 1).map((x) => x.item),
-        foot: Boolean(onItsWay(d)) || i === lineAt || d.item.id === agentLine,
-        first: i === 0,
-        sentOn: sentFrom.get(d.item.id) ?? [],
-      });
-    });
+    drawnOf.set(thread.id, drawn);
+    feet.set(thread.id, footsOf(board, thread, drawn, name));
   }
-  return said.sort((a, b) => a.drawn.item.at.localeCompare(b.drawn.item.at));
+  return homeSaid(board, threads, owned, (thread) => drawnOf.get(thread.id) ?? [], (d) => d.item, (message) => ({ item: message, key: message.id })).map((s) => {
+    const foot = s.inWork ? undefined : feet.get(s.thread.id);
+    return { ...s, drawn: s.item, foot: Boolean(foot && (onItsWay(s.item) || s.index === foot.lineAt || s.item.item.id === foot.agentLine)) };
+  });
 }
 
 // Drawn again only when what it is given changes (memo), not each time the board's page is: a long conversation
@@ -298,7 +250,7 @@ const MainConversation = memo(function MainConversation(props: {
 
   // The strands shown: those not done before the first message shown.
   const firstAt = shown[0]?.drawn.item.at;
-  const visible = useMemo(() => strands.filter((s) => !s.to || !firstAt || s.to >= firstAt), [strands, firstAt]);
+  const visible = useMemo(() => strandsShown(strands, firstAt), [strands, firstAt]);
   const lanes = useMemo(() => lanesOf(visible), [visible.map((s) => `${s.id}:${s.from}:${s.to ?? ''}`).join()]);
   const gutter = gutterOf(Math.max(0, ...visible.map((s) => (lanes.get(s.id) ?? 0) + 1)));
 
@@ -314,16 +266,16 @@ const MainConversation = memo(function MainConversation(props: {
   useEffect(() => {
     const root = scroller.current;
     if (!root) return;
-    const seenBy = new Map<string, Thread>(); // a row's message -> the thread its showing sees
+    const seers = new Map<string, Thread>(); // a row's message -> the thread its showing sees (core/homeConversation.ts seenBy)
     for (const thread of threads) {
-      const last = thread.messages.at(-1);
-      if (!last || isLocal(thread)) continue;
-      seenBy.set(last.sent ? last.sent.messageId : last.id, thread);
+      const by = seenBy(thread);
+      if (!by || isLocal(thread)) continue;
+      seers.set(by, thread);
     }
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          const thread = entry.isIntersecting ? seenBy.get((entry.target as HTMLElement).dataset.message ?? '') : undefined;
+          const thread = entry.isIntersecting ? seers.get((entry.target as HTMLElement).dataset.message ?? '') : undefined;
           if (!thread) continue;
           markSeen(thread);
           seeItem(thread.id);
@@ -331,7 +283,7 @@ const MainConversation = memo(function MainConversation(props: {
       },
       { root, threshold: 0.5 },
     );
-    for (const row of root.querySelectorAll<HTMLElement>('li[data-message]')) if (seenBy.has(row.dataset.message ?? '')) observer.observe(row);
+    for (const row of root.querySelectorAll<HTMLElement>('li[data-message]')) if (seers.has(row.dataset.message ?? '')) observer.observe(row);
     return () => observer.disconnect();
   }, [latest, markSeen, seeItem]); // once per message
   const atFoot = useRef(scrolls.get(board.id)?.foot ?? true);
@@ -446,38 +398,23 @@ const MainConversation = memo(function MainConversation(props: {
   const [error, setError] = useState<string | null>(null);
   const { remove, toast } = useUndoDelete(name, (e) => setError(e instanceof Error ? e.message : String(e)));
 
-  const coordinator = agents.filter((a) => a.coordinator && a.state !== 'away').sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
+  const coordinator = coordinatorOf(agents);
+  // Who the bar asks, by the one rule (core/whoAnswers.ts): the coordinator, else the one agent here; none, "agents".
+  const asks = useMemo(() => whoAnswers({ agents: agentsOf(board, agents), coordinator }), [board, agents, coordinator]);
   // The rows, made again only when what they show changes: typing in the bar, an agent's step or the page's own
   // clock leaves every message as it was drawn. The day they are drawn on counts, for Today and Yesterday, and so do
   // the strands: a card under an ask says where its thread's work stands, live or not, as its strand does.
   const rows = useMemo(() => {
-    // What was said, with the relays at when they came: those that came while the viewer was away, as one card.
-    const whileAway = since ? relays.filter((r) => r.at > since && Date.parse(r.at) <= arrived) : [];
-    const stacked = new Set(whileAway.length > 1 ? whileAway.map((r) => r.key) : []);
-    const entries: Entry[] = [
-      ...shown.map((s) => ({ at: s.drawn.item.at, said: s })),
-      ...relays.filter((r) => !stacked.has(r.key)).map((relay) => ({ at: relay.at, relay })),
-      ...(stacked.size ? [{ at: whileAway[0].at, stack: whileAway }] : []),
-    ].sort((a, b) => a.at.localeCompare(b.at));
-    const mineAt = (e: Entry) => Boolean(e.said && e.said.drawn.item.author.kind === 'human' && samePerson(e.said.drawn.item.author.name, name));
-    const sinceAt = since ? entries.findIndex((e) => e.at > since && !mineAt(e)) : -1;
-    const now = Date.now();
-    const rows: ReactNode[] = [];
-    entries.forEach((e, i) => {
-      const day = dayOf(e.at, now);
-      if (i === 0 || dayOf(entries[i - 1].at, now) !== day) rows.push(<Divider key={`day:${e.at}`} label={day} />);
-      if (i === sinceAt && i > 0) rows.push(<Divider key="since" label="Since you were last here" fresh />);
-      if (e.relay) {
-        rows.push(<RelayCard key={`relay:${e.relay.key}`} relay={e.relay} name={name} clock={clock} aimed={aim === e.relay.key} onReply={reply} onLight={onLight} />);
-        return;
-      }
-      if (e.stack) {
-        rows.push(<RelayStack key="relays:away" relays={e.stack} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />);
-        return;
-      }
-      const s = e.said!;
+    // What was said, with the relays at when they came, those that came while the viewer was away as one card, and the
+    // day and where they were last here between them (core/homeConversation.ts homeRows).
+    return homeRows(shown, relays, name, { since, arrived }, Date.now()).map((row): ReactNode => {
+      if (row.kind === 'day') return <Divider key={`day:${row.at}`} label={row.label} />;
+      if (row.kind === 'since') return <Divider key="since" label="Since you were last here" fresh />;
+      if (row.kind === 'relay') return <RelayCard key={`relay:${row.relay.key}`} relay={row.relay} name={name} clock={clock} aimed={aim === row.relay.key} onReply={reply} onLight={onLight} />;
+      if (row.kind === 'stack') return <RelayStack key="relays:away" relays={row.relays} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />;
+      const s = row.said;
       const tag = s.first ? askedTag(s.thread, board) : undefined;
-      rows.push(
+      return (
         <MessageRow
           key={s.drawn.key}
           board={board}
@@ -491,8 +428,8 @@ const MainConversation = memo(function MainConversation(props: {
           onEdit={editUnsent}
           onThread={onOpen}
           when={clock}
-          prev={entries[i - 1]?.said?.drawn.item}
-          next={entries[i + 1]?.said?.drawn.item}
+          prev={row.prev}
+          next={row.next}
           tag={
             <>
               {tag && <span className="dock-door timeline-tag">{tag}</span>}
@@ -508,10 +445,9 @@ const MainConversation = memo(function MainConversation(props: {
           {s.sentOn.map((to) => (
             <SentCard key={to.id} to={to} taken={s.taken} lit={lit === to.id} onOpen={onOpen} onLight={onLight} />
           ))}
-        </MessageRow>,
+        </MessageRow>
       );
     });
-    return rows;
   }, [shown, relays, since, arrived, name, board, aim, lit, onLight, onOpen, reply, editUnsent, today, strands]);
   const now = Date.now();
 
@@ -631,7 +567,7 @@ const MainConversation = memo(function MainConversation(props: {
             value={draft}
             onValue={setDraft}
             onSend={send}
-            placeholder={aimed ? `Answer ${ownName(aimed.by ?? 'the agent')} in this thread…` : coordinator ? `Ask ${ownName(coordinator)}, or give it work…` : 'What do you want to work through?'}
+            placeholder={aimed ? `Answer ${ownName(aimed.by ?? 'the agent')} in this thread…` : asks ? `Ask ${ownName(asks)}, or give it work…` : 'What do you want to work through?'}
             label={aimed ? `Answer in ${aimed.title}` : "Ask in the board's conversation"}
             sendLabel="Send"
             field={field}
@@ -701,7 +637,7 @@ function SentCard({ to, taken, lit, onOpen, onLight }: { to: Thread; taken?: boo
       </span>
       <span className={`timeline-sent-state${tone === 'waiting' ? ' is-waiting' : ''}`}>
         {live ? <span className="work-dot is-live" aria-hidden /> : <span className={`work-square is-${tone}`} aria-hidden />}
-        {tone === 'waiting' ? 'Needs you' : tone === 'done' ? 'Done' : tone === 'todo' ? 'Starting' : 'At work'}
+        {sentStateWords(tone)}
         {progress && ` · ${progress.done}/${progress.total}`}
       </span>
       <Icon name="arrow-right" />

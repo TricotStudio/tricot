@@ -3,21 +3,28 @@
 // its side and the foot they share). The tab (tricotTab.ts) opens on the
 // stream; it hands this every key while it shows, and asks it to draw.
 //
-//   the stream     the chat's main view (T21): every conversation on the board
-//                  as one, oldest first (core/chatStream.ts), with a line under
-//                  it that answers the latest message from someone else: in
-//                  its thread, its task's or decision's discussion, or about
-//                  its pinned part. With no message from anyone else it starts
-//                  a thread, and so does a line that begins with @ (an @Claude
+//   the stream     the chat's main view (T21): the board's Home conversation,
+//                  as the page's Home shows it (homeStream.ts): what people
+//                  asked and the coordinator answered, a card under each ask
+//                  sent on, and the relays of the work that need the person,
+//                  oldest first, the yarn at its left. The line under it
+//                  answers the latest message from someone else in its
+//                  thread, or a question relayed that needs the person, in
+//                  the thread it was asked in. With none it starts a thread,
+//                  and so does a line that begins with @ (an @Claude
 //                  first aims it at Claude); > and a place sends elsewhere
 //                  (chatAim.ts: >T19, >#7, > and part of a thread's title),
 //                  which Tab completes. Where it goes is fixed from the first
 //                  character typed, so a message arriving meanwhile doesn't
 //                  move it; an empty line follows the latest again.
-//                  Tab on an empty line chooses a message to answer: the latest
-//                  of someone else's, then each Tab (or ↑) one further back,
-//                  Shift+Tab (or ↓) one later, marked with ❯; 1 2 3 react to
-//                  it, and what is typed then answers it.
+//                  Tab on an empty line chooses something: the latest of what
+//                  others said, the cards and the relays, then each Tab (or ↑)
+//                  one further back, Shift+Tab (or ↓) one later, marked with
+//                  ❯; what is typed then answers it, in its place (a card's,
+//                  the thread it leads to), Enter on the empty line opens it
+//                  (a card's or a relay's thread, picked as from the panel; a
+//                  part's card's page, in the browser), and 1 2 3 react to a
+//                  message.
 //                  ↑ ↓ scroll a line otherwise, Page Up Page Down a page, Home
 //                  the oldest, End the latest (Home and End move the cursor
 //                  while something is typed); the mouse's wheel scrolls it
@@ -76,9 +83,20 @@
 //
 // The board is read (threadsRead.ts) when the tab first shows the chat, and
 // again each time the board's stream says its conversations changed (live.ts
-// chatVer: a thread, a comment on a card or a pinned part, the title of the
-// card one is on; and when the stream connects again), so a new thread,
-// message or comment shows as it comes, in the stream and the panel. The
+// chatVer: a thread, a comment on a card or a pinned part, what a part's card
+// relays; and when the stream connects again), so a new thread, message or
+// relay shows as it comes, in the stream and the panel. Home's conversation
+// is gathered again too when who is on the board changes (which says whether
+// a thread's work has started) and as a visit begins.
+//
+// A visit: the chat out of sight (another tab shown, or the status view) for
+// VISIT_GAP_MS or more begins a new one as it shows again, from when it went:
+// what came meanwhile is under "Since you were last here", and the relays
+// among it come as one stack. The first visit is from when the tab started,
+// with nothing before it. A question relayed while its thread waited on a
+// person is remembered for as long as this terminal runs (the page keeps it
+// in its browser), so it stays, answered, once the thread moves on; one this
+// terminal never saw waiting is not relayed. The
 // stream at its latest stays there as more come; one scrolled up stays where
 // it is, kept by the item its first row is in. A thread picked that is
 // deleted meanwhile gives way to the whole stream. The keys that scroll lay
@@ -90,8 +108,10 @@
 // have seen of each thread. That is kept here, in this process, and starts as
 // the page's does on a first visit: every thread seen as it stands when they
 // are first read. A thread whose latest message the stream shows to its end
-// is seen (a thread picked is shown at its latest), and not one scrolled out
-// of it; the panel beside it says so in the same frame.
+// is seen (in Home's conversation, a thread of the conversation, by its
+// latest message or the ask its coordinator's word is the card under; a
+// thread picked is shown at its latest), and not one scrolled out of it; the
+// panel beside it says so in the same frame.
 //
 // A message goes to the board as the person (threadsSend.ts) and shows at
 // once in the stream, marked as sending, until the board has it; if the
@@ -108,10 +128,11 @@
 // where the person is looking (in the picker or the panel, or under the line)
 // with the choice kept. A reaction to a comment goes by where the comment is.
 import { cardOf } from '../../core/cards';
-import { chatStream, isNumbered, type ChatItem, type ChatPlace } from '../../core/chatStream';
+import { isNumbered, threadChat, type ChatItem, type ChatPlace } from '../../core/chatStream';
 import { cardsLastKindFirst } from '../../core/conversationCards';
 import { replyPlaceholder, type Where } from '../../core/delivery';
 import { samePerson } from '../../core/format';
+import { ownName, seenBy, type CardRelay, type Visit } from '../../core/homeConversation';
 import { agentStateWords, boardAgents, boardPeople, findMentions, readTagTyping, readTyping } from '../../core/mentions';
 import { EMOJIS, hasReaction, type Emoji } from '../../core/reactions';
 import { refLabel } from '../../core/refKinds';
@@ -119,10 +140,13 @@ import type { AgentSkills } from '../../core/skills';
 import { threadGroups, type ThreadGroups, type ThreadsSeen } from '../../core/threadList';
 import { lensChoice, presetLens, shownTitle } from '../../core/threads';
 import type { Board, Thread, ThreadLens, ThreadMessage } from '../../core/types';
+import { agentsOf, coordinatorOf, whoAnswers } from '../../core/whoAnswers';
 import { ago, type TabFrame } from './tabView';
 import { aimRow, answerable, latestFrom, named, placeChoices, reactOn, replyOn, threadPlace, withComment, type CardPlace } from './chatAim';
+import { homeStream, opens, reactable, type HomeStream, type StreamItem } from './homeStream';
+import { homeYarn, yarnWidth, type Colours, type HomeYarn, type Look } from './homeView';
 import { ChatLayout, chatGeometry, compareAt, conversationOf, renderChat, type CardLinks, type ChatFrame, type ChatLines, type ChatTop } from './chatView';
-import type { BoardLive, Rgb, Tone, Working } from './strip';
+import type { BoardLive, Tone, Working } from './strip';
 import type { TabKey } from './tabKeys';
 import { agentOf, choiceLabel, choiceNote, colonAfterName, completionAt, tabbed, type Choice, type Cycle, type Places, type Roster } from './threadsComplete';
 import { OWN_STEPS, lensPicked, lensRows } from './threadsLens';
@@ -141,6 +165,7 @@ export interface ThreadsAccess {
   skills(): Promise<AgentSkills[]>; // for "/"; none when it can't be read
   send: ThreadsSend;
   cards?: readonly ChatCard[]; // the kinds of card a message can name and link to; none: no card is linked
+  relays?(board: Board, me: string): CardRelay[]; // what a part relays of its cards into Home's conversation (a card blocked); none: nothing
 }
 
 export interface ThreadsHost {
@@ -153,6 +178,7 @@ export interface ThreadsHost {
   seatWords(): string | undefined; // what that asking waits on, while it does
   navigate?(command: TabCommand): void;
   working?(): Working[]; // the agents working now, for the row above the line (T38)
+  open?(page: string): void; // a page on the board in the browser (an address after #, core/pages.ts): a card a relay names
 }
 
 const NO_THREADS = { waiting: [], recent: [], earlier: [] } satisfies ThreadGroups;
@@ -186,8 +212,14 @@ interface Outgoing {
   id: string;
   place: ChatPlace;
   text: string;
-  known: Set<string>; // the conversation's messages before it, to tell it from what arrives
+  known: Set<string>; // its thread's messages before it, to tell it from what arrives
 }
+
+// A look away from the chat this long or longer, and coming back to it begins a new visit: what came meanwhile is
+// "Since you were last here", and the relays among it come as one stack.
+export const VISIT_GAP_MS = 2 * 60_000;
+// The questions remembered as relayed while their thread waited on a person, at most.
+const ASKED_KEPT = 200;
 
 // Where the stream's line sends what is typed: a new thread; a place, with
 // the message to send there and how it was aimed there (at the latest from
@@ -252,9 +284,17 @@ export class ThreadsTab {
   private picked: string | undefined; // the thread picked from the panel, by id: the stream shows it alone
   private size = { cols: 80, rows: 24 }; // as last drawn: what keys scroll by
   private streamTop: ChatTop = 'end'; // the stream's first line shown, or its latest
-  private streamOf: { board: Board; items: ChatItem[] } | undefined; // the stream as last gathered, from the board as read then
+  private streamOf: { board: Board; key: string; home: HomeStream } | undefined; // Home's conversation as last gathered, from the board as read then
   private cardsOf: { board: Board; cards: CardLinks } | undefined; // the cards linked, from the board as read then
-  private shownOf: { all: ChatItem[]; picked: string; items: ChatItem[] } | undefined; // the thread picked's items, as last gathered
+  private shownOf: { thread: Thread; items: StreamItem[] } | undefined; // the thread picked's items, as last gathered
+  private yarnOf: { items: StreamItem[]; home: HomeStream; yarn: HomeYarn } | undefined; // where the strands run among the items drawn
+  private look: Look = { colours: '256', light: false }; // as last drawn
+  // The questions relayed while their thread waited on a person, by message id: a thread that moves on says nothing of
+  // them, so they stay in the conversation as answered. The page keeps them in its browser; this terminal, for as long as
+  // it runs, from what it has read.
+  private readonly asked = new Set<string>();
+  private visit: Visit; // when the person was last here, as this visit to the chat began
+  private leftAt: number | undefined; // when the chat went out of sight
   private readonly layout = new ChatLayout(); // the stream's items laid out, kept from frame to frame
   private drawn: { now: number; times: string[]; panel: boolean; working: string } | undefined; // the frame last drawn, for what the time alone changes in it
   private chosen: string | undefined; // the message in the stream chosen with Tab, by key: the line answers it
@@ -277,7 +317,9 @@ export class ThreadsTab {
   private skillsAt: number | undefined;
   private loadingSkills = false;
 
-  constructor(private readonly host: ThreadsHost) {}
+  constructor(private readonly host: ThreadsHost) {
+    this.visit = { since: null, arrived: host.now() };
+  }
 
   // Whether what is typed goes to a line, so a letter is not a command of the tab's.
   get typing(): boolean {
@@ -286,6 +328,7 @@ export class ThreadsTab {
 
   show(): void {
     this.showing = true;
+    this.back();
     if (this.failed) {
       this.failed = undefined;
       this.readFor = undefined; // asked for again
@@ -341,7 +384,22 @@ export class ThreadsTab {
 
   hide(): void {
     this.navigating = undefined;
+    this.left();
     this.showing = false;
+  }
+
+  // The chat out of sight while it shows: another tab is shown, or the status view. A look away of VISIT_GAP_MS or
+  // more, once it is back (`back`), begins a new visit from when it went.
+  left(): void {
+    if (this.showing && this.leftAt === undefined) this.leftAt = this.host.now();
+  }
+
+  back(): void {
+    if (!this.showing) return;
+    const left = this.leftAt;
+    this.leftAt = undefined;
+    const now = this.host.now();
+    if (left !== undefined && now - left >= VISIT_GAP_MS) this.visit = { since: new Date(left).toISOString(), arrived: now };
   }
 
   // ---- reading them -----------------------------------------------------------------------
@@ -441,13 +499,16 @@ export class ThreadsTab {
 
   // ---- what it shows --------------------------------------------------------------------------
 
-  // `tintFrom`: the terminal's background, where it draws 24-bit colour, for the stream's tints (chatView.ts chatTints).
-  render(cols: number, rows: number, light: boolean, notice?: string, tintFrom?: Rgb): TabFrame {
+  // `colours`: how much colour the terminal draws, for the yarn (homeView.ts).
+  render(cols: number, rows: number, light: boolean, notice?: string, colours: Colours = '256'): TabFrame {
     this.size = { cols, rows };
+    this.look = { colours, light };
     this.sync();
     const { items, sending } = this.shownStream();
     const draft = this.draftOf(NEW);
     if (this.chosen && !this.chosenItem()) this.chosen = undefined; // gone meanwhile
+    const chosen = this.chosenItem();
+    const yarn = this.yarn(items);
     const compose = this.composeView();
     const aim = this.target() === NEW && this.board && this.host.access ? this.aim(draft) : undefined;
     const picked = this.pickedThread();
@@ -467,7 +528,8 @@ export class ThreadsTab {
           ...(sending.size && { sending: [...sending] }),
           ...(this.chosen && { selected: this.chosen }),
           ...(aim && aim.kind !== 'new' && { replying: true }),
-          ...(draft.line.empty && this.chosen && { choosing: true }),
+          ...(draft.line.empty && chosen && { choosing: true, ...(opens(chosen) && { opens: true }), ...(reactable(chosen) && { reacts: true }) }),
+          ...(yarn && { yarn }),
           ...(draft.line.empty && this.backToLatest() && { chosen: true }),
           ...(this.enterLatest(compose, draft) && { enterLatest: true }),
           ...(picked && { only: shownTitle(picked) }),
@@ -480,7 +542,7 @@ export class ThreadsTab {
         cols,
         rows,
         light,
-        tintFrom,
+        colours,
       );
     };
     let frame = draw();
@@ -516,44 +578,77 @@ export class ThreadsTab {
     return `${heads}\u0001${threads.map(time).join('\u0000')}`;
   }
 
-  // Every conversation on the board as one (core/chatStream.ts), gathered again when the board is read again.
-  private stream(): ChatItem[] {
-    if (!this.board) return [];
-    if (this.streamOf?.board !== this.board) this.streamOf = { board: this.board, items: chatStream(this.board) };
-    return this.streamOf.items;
+  // Home's conversation (homeStream.ts), gathered again when the board is read again, when who is on it changes (which
+  // says whether a thread's work has started), as a visit begins and as the day turns.
+  private home(): HomeStream | undefined {
+    const board = this.board;
+    const access = this.host.access;
+    if (!board || !access) return undefined;
+    const presence = this.host.live()?.presence ?? [];
+    const now = this.host.now();
+    const key = () => [presence.map((p) => `${p.name}\u0001${p.state}`).join('\u0002'), this.visit.since, this.visit.arrived, this.asked.size, new Date(now).toDateString()].join('\u0000');
+    if (this.streamOf?.board === board && this.streamOf.key === key()) return this.streamOf.home;
+    const home = homeStream({ board, me: access.me, onBoard: presence, asked: this.asked, visit: this.visit, now, cards: access.relays?.(board, access.me) ?? [], link: (card) => this.cardPage(board, card) });
+    // A question relayed while its thread waits on a person is remembered, so it stays once the thread moves on.
+    for (const id of home.waiting) this.asked.add(id);
+    for (const id of this.asked) if (this.asked.size > ASKED_KEPT) this.asked.delete(id);
+    this.streamOf = { board, key: key(), home };
+    return home;
   }
 
-  // The stream as it shows: the thread picked alone, else all of it.
-  private shown(): ChatItem[] {
-    const all = this.stream();
+  private stream(): StreamItem[] {
+    return this.home()?.items ?? [];
+  }
+
+  // A part's card's page on the board, for a relay of it: by the kinds of card this terminal was given.
+  private cardPage(board: Board, card: { kind: string; id: string }): string | undefined {
+    return this.host.access?.cards?.find((kind) => kind.kind === card.kind)?.link(board.id, card.id);
+  }
+
+  // The stream as it shows: the thread picked alone, else Home's conversation.
+  private shown(): StreamItem[] {
     const picked = this.pickedThread();
-    if (!picked) return all;
-    if (this.shownOf?.all !== all || this.shownOf.picked !== picked.id) this.shownOf = { all, picked: picked.id, items: all.filter((item) => item.place.kind === 'thread' && item.place.id === picked.id) };
+    if (!picked) return this.stream();
+    if (this.shownOf?.thread !== picked) this.shownOf = { thread: picked, items: threadChat(picked) };
     return this.shownOf.items;
+  }
+
+  // Where the strands run among the items drawn: none for a thread picked.
+  private yarn(items: StreamItem[]): HomeYarn | undefined {
+    const home = this.pickedThread() ? undefined : this.home();
+    if (!home) return undefined;
+    if (this.yarnOf?.items !== items || this.yarnOf.home !== home) this.yarnOf = { items, home, yarn: homeYarn(items, home.strands, home.lanes) };
+    return this.yarnOf.yarn;
   }
 
   // The stream as drawn: what shows of the board's, then the messages on
   // their way that the board doesn't have yet, and the keys of those.
-  private shownStream(): { items: ChatItem[]; sending: Set<string> } {
+  private shownStream(): { items: StreamItem[]; sending: Set<string> } {
     const items = this.shown();
     const me = this.host.access?.me ?? '';
     const at = new Date(this.host.now()).toISOString();
     const picked = this.pickedThread();
     const here = picked && conversationOf(threadPlace(picked));
-    const going = this.outgoing.filter((o) => (!here || conversationOf(o.place) === here) && !this.landed(o, this.stream(), me)).map((o): ChatItem => ({ key: `sending:${o.id}`, id: o.id, author: { kind: 'human', name: me }, body: o.text, at, place: o.place }));
+    const going = this.outgoing
+      .filter((o) => (!here || conversationOf(o.place) === here) && !this.landed(o, me))
+      .map((o): StreamItem => ({ key: `sending:${o.id}`, id: o.id, author: { kind: 'human', name: me }, body: o.text, at, place: o.place, ...(!picked && { home: { kind: 'said', inWork: false } }) }));
     return { items: going.length ? [...items, ...going] : items, sending: new Set(going.map((item) => item.key)) };
   }
 
-  // Whether the board has the message sent: new in its conversation since, the person's, and what was typed.
-  private landed(sent: Outgoing, items: ChatItem[], me: string): boolean {
-    const here = conversationOf(sent.place);
-    return items.some((item) => conversationOf(item.place) === here && !sent.known.has(item.id) && mine(item.author, me) && item.body.trim() === sent.text);
+  // Whether the board has the message sent: new in its thread since, the person's, and what was typed. A comment on a
+  // card shows as sending until the board has answered.
+  private landed(sent: Outgoing, me: string): boolean {
+    const { place } = sent;
+    if (place.kind !== 'thread') return false;
+    const thread = this.board?.threads?.find((t) => t.id === place.id);
+    return Boolean(thread?.messages.some((m) => !sent.known.has(m.id) && mine(m.author, me) && m.body.trim() === sent.text));
   }
 
   // The stream's lines as drawn, at `width`: laid out as the keys ask for
   // them, from the layout the frames draw from, which keeps them for the next.
-  private laid(items: ChatItem[], width: number, sending: ReadonlySet<string>): ChatLines {
-    return this.layout.lines(items, width, this.host.access?.me ?? '', this.host.now(), sending, this.chosen, this.pickedThread() === undefined, this.cards());
+  private laid(items: StreamItem[], width: number, sending: ReadonlySet<string>): ChatLines {
+    const beside = yarnWidth(this.yarn(items), width).width; // the yarn's columns, at the stream's left
+    return this.layout.lines(items, width - beside, this.host.access?.me ?? '', this.host.now(), sending, this.chosen, this.cards(), this.look);
   }
 
   // The cards a message can name, each to its page on the board (T36), as the board was read.
@@ -582,16 +677,20 @@ export class ThreadsTab {
     return chatGeometry(cols, rows, this.footRows(), { beside: side.wide && this.panelShows() ? side.width : 0, only: this.pickedThread() !== undefined });
   }
 
-  // A thread whose latest message the stream shows to its end is seen. Whether one was, that wasn't before.
-  private seenIn(items: ChatItem[], shown: string[]): boolean {
+  // A thread whose latest message the stream shows to its end is seen: in Home's conversation, a thread of the
+  // conversation whose latest message shows, or the ask its coordinator's word that it sent it on is drawn under (the
+  // card); a thread picked, by its latest. Whether one was, that wasn't before.
+  private seenIn(items: StreamItem[], shown: string[]): boolean {
     if (!this.board || !shown.length) return false;
     const keys = new Set(shown);
     let more = false;
     for (const item of items) {
-      if (item.place.kind !== 'thread' || !keys.has(item.key)) continue;
+      if (item.place.kind !== 'thread' || !keys.has(item.key) || (item.home && (item.home.kind !== 'said' || item.home.inWork))) continue;
       const id = item.place.id;
       const thread = this.board.threads?.find((t) => t.id === id);
-      if (thread && thread.messages.at(-1)?.id === item.id && this.seen?.[thread.id] !== item.id) {
+      const last = thread?.messages.at(-1)?.id;
+      const by = thread && (item.home ? seenBy(thread) : last);
+      if (thread && last && by === item.id && this.seen?.[thread.id] !== last) {
         this.markSeen(thread);
         more = true;
       }
@@ -601,7 +700,8 @@ export class ThreadsTab {
 
   // What the stream says in its place when it has nothing to show.
   private streamStatus(count: number): { text: string; hint?: string; tone?: 'alert' } | undefined {
-    if (this.board) return count ? undefined : { text: 'No conversations on the board yet.', hint: 'What you type below starts a thread; its replies, and comments on cards, show here as they come.' };
+    if (this.board)
+      return count ? undefined : { text: 'Nothing asked yet.', hint: 'What you type below asks the coordinator: it answers here, and sends work on to agents of its own, whose threads knit off this one.' };
     if (!this.host.access) return { text: 'The chat needs the board, which this terminal is not connected to.', tone: 'alert' };
     if (this.failed) return { text: `The board could not be read: ${this.failed}`, hint: 'It is read again when the board next changes.', tone: 'alert' };
     return { text: this.host.live() ? 'Reading the board…' : 'Connecting to the board…' };
@@ -727,7 +827,7 @@ export class ThreadsTab {
             : aim
               ? this.aimWords(aim, draft, names, Boolean(listed?.choices.some((c) => c.kind === 'place')))
               : { text: 'Navigate in Tricot; no message is sent.', tone: 'normal' as const };
-    const placeholder = key === NAVIGATION ? `Choose ${TAB_COMMAND_LIST}` : aim?.kind === 'place' ? this.replyTo(aim) : 'What do you want to work through?';
+    const placeholder = key === NAVIGATION ? `Choose ${TAB_COMMAND_LIST}` : aim?.kind === 'place' ? this.replyTo(aim) : this.askWords();
     const working = this.host.working?.() ?? [];
     return {
       text: draft.line.text,
@@ -770,12 +870,12 @@ export class ThreadsTab {
   // ---- where the stream's line goes ----------------------------------------------------
 
   // The latest message from someone else in the stream as it shows, which the line answers.
-  private latestOther(): ChatItem | undefined {
+  private latestOther(): StreamItem | undefined {
     return latestFrom(this.shown(), this.host.access?.me ?? '');
   }
 
   // The message chosen with Tab, while the stream still shows it.
-  private chosenItem(): ChatItem | undefined {
+  private chosenItem(): StreamItem | undefined {
     return this.chosen === undefined ? undefined : this.shown().find((item) => item.key === this.chosen);
   }
 
@@ -871,10 +971,20 @@ export class ThreadsTab {
   // to the agent the thread is for (core/delivery.ts replyPlaceholder).
   private replyTo(aim: Extract<Aim, { kind: 'place' }>): string {
     const to = aim.how === 'chosen' ? this.chosenItem() : aim.how === 'latest' || aim.how === 'picked' ? this.latestOther() : undefined;
+    if (to?.home?.kind === 'sent' || (to?.home?.kind === 'relay' && to.home.relay.kind !== 'question')) return `Reply in ${safe(to.place.kind === 'thread' ? to.place.title : to.home.kind === 'relay' ? to.home.relay.title : '')}…`;
+    if (to?.home?.kind === 'relay') return `Answer ${safe(ownName(to.author.name))}…`;
     if (to) return `Reply to ${safe(to.author.name)}…`;
     const picked = aim.how === 'picked' ? this.pickedThread() : undefined;
     const here = (this.host.live()?.presence ?? []).filter((p) => p.state !== 'away').map((p) => p.name);
     return picked ? replyPlaceholder(picked, here) : 'Reply…';
+  }
+
+  // What the empty line says while it starts a thread: whom it asks, by the page's rule (core/whoAnswers.ts), the
+  // board's coordinator, else the one agent on the board; with none or several, nobody in particular. As Home's bar says.
+  private askWords(): string {
+    const presence = this.host.live()?.presence ?? [];
+    const asks = this.board && whoAnswers({ agents: agentsOf(this.board, presence), coordinator: coordinatorOf(presence) });
+    return asks ? `Ask ${safe(ownName(asks))}, or give it work…` : 'What do you want to work through?';
   }
 
   // The rows the line takes at the foot, as drawn, for the keys that scroll.
@@ -1104,6 +1214,7 @@ export class ThreadsTab {
     }
     if (this.posting) return; // on its way: the line is as it was sent
     if (key.kind === 'lens') return this.openLens(this.pickedThread()?.id ?? NEW);
+    if (key.kind === 'enter' && draft.line.empty && this.openChosen()) return;
     if (key.kind === 'enter') return void this.submit(draft, NEW);
     if (draft.line.empty && this.chosen && this.chooseKey(key)) return;
     if (draft.line.empty && key.kind === 'tab') return this.choose(draft);
@@ -1114,9 +1225,10 @@ export class ThreadsTab {
     if (next !== undefined) this.streamTop = next;
   }
 
-  // Tab on the stream's empty line: the latest message of someone else's is chosen, to answer or react to.
+  // Tab on the stream's empty line: the latest of what can be chosen (what someone else said, a card, a relay) is
+  // chosen, to answer, open or react to.
   private choose(draft: Draft): void {
-    const last = this.latestOther();
+    const last = answerable(this.shown(), this.host.access?.me ?? '').at(-1);
     if (!last) {
       draft.problem = { text: this.pickedThread() ? 'There is nothing to react to here: reactions go to what others wrote, not to your own messages.' : 'There is no message from anyone else to answer: what you type starts a thread.' };
       return;
@@ -1144,8 +1256,25 @@ export class ThreadsTab {
     }
     if (key.kind !== 'text') return false;
     const emoji = key.text.length === 1 ? EMOJIS[Number(key.text) - 1] : undefined;
-    if (emoji) void this.react(items[at], emoji);
+    if (emoji && reactable(items[at])) void this.react(items[at], emoji);
     return emoji !== undefined;
+  }
+
+  // Enter on what is chosen, with nothing typed: the thread a card leads to, a relay's or an ask's in work, picked as
+  // from the panel; a part's card's page in the browser. Whether it opened something.
+  private openChosen(): boolean {
+    const item = this.chosenItem();
+    const to = item && opens(item);
+    if (!to) return false;
+    if ('page' in to) {
+      if (!this.host.open) return false;
+      this.host.open(to.page);
+      return true;
+    }
+    const thread = this.board?.threads?.find((t) => t.id === to.thread);
+    if (!thread) return false;
+    this.pick(thread);
+    return true;
   }
 
   // Scrolls the stream, if it must, so the message chosen shows.
@@ -1163,7 +1292,7 @@ export class ThreadsTab {
   // as the page does (the board says what it means to an agent): in its
   // thread, or on a comment by where it is (chatAim.ts reactOn). One at a
   // time: the next waits for the board. A refusal is said under the line.
-  private async react(item: ChatItem, emoji: Emoji): Promise<void> {
+  private async react(item: StreamItem, emoji: Emoji): Promise<void> {
     const access = this.host.access;
     if (!access || this.reacting) return;
     const draft = this.draftOf(NEW);
@@ -1405,8 +1534,8 @@ export class ThreadsTab {
     const typed = draft.line.text.trim();
     const to = aim.place.kind === 'thread' || !this.board ? undefined : replyOn(aim.place, this.board);
     const place = to?.place ?? aim.place;
-    const here = conversationOf(place);
-    const sent: Outgoing = { id: `sending-${++this.sent}`, place, text: aim.text, known: new Set(this.stream().filter((item) => conversationOf(item.place) === here).map((item) => item.id)) };
+    const known = place.kind === 'thread' ? (this.board?.threads?.find((t) => t.id === place.id)?.messages ?? []) : [];
+    const sent: Outgoing = { id: `sending-${++this.sent}`, place, text: aim.text, known: new Set(known.map((m) => m.id)) };
     this.outgoing.push(sent);
     draft.line.clear();
     this.held = undefined;

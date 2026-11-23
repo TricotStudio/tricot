@@ -1,23 +1,19 @@
-// The chat's stream (T21): every conversation on a board as one, for the person
-// reading it, merged by time with the oldest first (the Tricot tab's chat
-// draws it, cli/switcher/chatView.ts). It holds each message of every thread,
-// each comment in a task's or a decision's discussion (a comment on a part of
-// that card's canvas is one of these, carrying its pin), and each comment on
-// a part of the board context or a Sketchbook page, which keeps its pin's
-// own thread. Progress
-// notes, activity and requests for permission are not conversation, so they
-// stay out. Nothing is left out for being in the backlog or dropped: that
-// filter is agents' (server/mcp/backlog.ts), and the person sees every card.
+// The places a message of the terminal's chat belongs to, and its items (the
+// Tricot tab's chat draws them, cli/switcher/chatView.ts). Its stream is a
+// board's Home conversation (core/homeConversation.ts, gathered for the
+// terminal by cli/switcher/homeStream.ts), which holds messages of threads
+// alone; a thread picked shows its own messages (`threadChat`). A card's
+// discussion and a pin's comments are places the line can still send to
+// (>T19, >#7, cli/switcher/chatAim.ts), so they keep their places here.
+// Progress notes, activity and requests for permission are not conversation.
 //
 // Each item says where it belongs by ids as well as by name, so what answers
 // one can send to the same place (a thread's messages, a card's comments, a
-// pin's comments), and a view can narrow the stream to one place.
+// pin's comments).
 
-import { cardsLastKindFirst } from './conversationCards';
-import { clip } from './format';
-import { partQuote, threadCanvases, type CardKindName } from './pins';
+import type { CardKindName } from './pins';
 import { shownTitle } from './threads';
-import type { Actor, Board, Comment, Reaction } from './types';
+import type { Actor, Reaction, Thread } from './types';
 
 // A pinned part, by its pin and the part as it read when pinned, as a
 // comment on it quotes it (core/pins.ts partQuote): “the words”, Plan · box 1,
@@ -65,40 +61,9 @@ export interface ChatItem {
   place: ChatPlace;
 }
 
-const time = (at: string): number => {
-  const ms = Date.parse(at);
-  return Number.isFinite(ms) ? ms : 0;
-};
-
-// A comment as an item, at its place.
-function fromComment(comment: Comment, place: ChatPlace, owner: string): ChatItem {
-  return { key: `${owner}:${comment.id}`, id: comment.id, author: comment.author, body: comment.body, at: comment.createdAt, ...(comment.reactions?.length && { reactions: comment.reactions }), place };
-}
-
-// Every conversation on the board, oldest first. Items written at the same
-// moment keep the board's order: threads, then tasks, decisions (each kind of card, the
-// one registered last first) and the board context's pins, then each page's.
-export function chatStream(board: Board): ChatItem[] {
-  const items: ChatItem[] = [];
-  for (const thread of board.threads ?? []) {
-    const lens = thread.lens && thread.lens.name !== 'General' ? thread.lens.name : undefined;
-    const place: ChatPlace = { kind: 'thread', id: thread.id, title: shownTitle(thread), ...(lens && { lens }) };
-    for (const message of thread.messages) {
-      items.push({ key: `thread:${thread.id}:${message.id}`, id: message.id, author: message.author, body: message.body, at: message.at, ...(message.reactions?.length && { reactions: message.reactions }), place });
-    }
-  }
-  for (const card of cardsLastKindFirst(board)) {
-    // A registered kind's name is one of the card places' kinds (CardKindName).
-    const place = { kind: card.kind.kind as NumberedPlace['kind'], id: card.id, number: card.number, title: card.title };
-    for (const comment of card.comments) items.push(fromComment(comment, { ...place, ...(comment.pin && { pin: comment.pin }) }, `${place.kind}:${card.id}`));
-  }
-  for (const { canvas, page } of threadCanvases(board)) {
-    for (const pin of canvas.pins) {
-      if (!pin.discussion?.thread?.length) continue;
-      const block = canvas.blocks.find((b) => b.id === pin.blockId);
-      const place: ChatPlace = { kind: 'board', pin: { id: pin.id, quote: clip(partQuote(pin, block), 200) }, ...(page && { page: { id: page.id, title: page.title } }) };
-      for (const comment of pin.discussion?.thread ?? []) items.push(fromComment(comment, place, `pin:${pin.id}`));
-    }
-  }
-  return items.map((item, i) => ({ item, i, at: time(item.at) })).sort((a, b) => a.at - b.at || a.i - b.i).map(({ item }) => item);
+// A thread's messages as items, oldest first: what the chat shows of a thread picked.
+export function threadChat(thread: Thread): ChatItem[] {
+  const lens = thread.lens && thread.lens.name !== 'General' ? thread.lens.name : undefined;
+  const place: ChatPlace = { kind: 'thread', id: thread.id, title: shownTitle(thread), ...(lens && { lens }) };
+  return thread.messages.map((message) => ({ key: `thread:${thread.id}:${message.id}`, id: message.id, author: message.author, body: message.body, at: message.at, ...(message.reactions?.length && { reactions: message.reactions }), place }));
 }

@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import type { Strand, StrandTone } from '../../core/homeConversation';
 import { Icon } from '../shared/components';
 
 // The yarn beside Home's conversation (timeline.tsx): the conversation is one
@@ -29,17 +30,9 @@ import { Icon } from '../shared/components';
 // ball of yarn (`Unwound`, `YarnBall`), pinned over the scroller, which opens
 // the threads list; the threads' icon is that ball drawn small.
 
-export type StrandTone = 'working' | 'waiting' | 'todo' | 'done';
-
-export interface Strand {
-  id: string; // the thread's
-  title: string;
-  status: string; // where its work stands, in words: "at work · 2/5", "needs you"
-  tone: StrandTone;
-  from: string; // when it was started: where it knits off, unless a card in the rows says
-  to?: string; // when its work was done: where it is tied off
-  live: boolean; // its agent has a step there now: a dot at its end
-}
+// Where a thread's work stands, and its strand, are Home's conversation's (core/homeConversation.ts), which the terminal
+// draws its own yarn from too.
+export type { Strand, StrandTone } from '../../core/homeConversation';
 
 const TRUNK_X = 34;
 const LANE_X = 64; // the first lane
@@ -155,21 +148,6 @@ function acrossKnit(knit: number, x: number, y: number): { x: number; dx: number
   const [dx, dy] = [slope(t, x0, x1, x2, x3), slope(t, y0, y1, y2, y3)];
   const n = Math.hypot(dx, dy) || 1;
   return { x: at(t, x0, x1, x2, x3), dx: dx / n, dy: dy / n };
-}
-
-// Each strand's lane, by when it ran: the lowest lane free since the strand
-// before it there was tied off.
-export function lanesOf(strands: readonly Strand[]): Map<string, number> {
-  const lanes = new Map<string, number>();
-  const freeAt: number[] = []; // by lane, when its last strand ended (Infinity while one runs)
-  for (const strand of [...strands].sort((a, b) => a.from.localeCompare(b.from))) {
-    const from = Date.parse(strand.from);
-    let lane = freeAt.findIndex((end) => end < from);
-    if (lane < 0) lane = freeAt.length;
-    freeAt[lane] = strand.to ? Date.parse(strand.to) : Infinity;
-    lanes.set(strand.id, lane);
-  }
-  return lanes;
 }
 
 // How wide the yarn is, for the rows' gutter: the conversation's strand and the lanes beside it, with room after the last.

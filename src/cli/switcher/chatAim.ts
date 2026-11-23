@@ -18,24 +18,25 @@
 import { boardCardKinds, boardCardKindNamed, cardOf, cardsOfKind, type BoardCard } from '../../core/cards';
 import { isNumbered, type BoardPlace, type ChatItem, type ChatPlace, type NumberedPlace } from '../../core/chatStream';
 import { cardsLastKindFirst } from '../../core/conversationCards';
-import { clip, samePerson } from '../../core/format';
+import { clip } from '../../core/format';
 import { refLabel } from '../../core/refKinds';
 import { shownTitle } from '../../core/threads';
 import type { Board, Canvas, Comment, Thread } from '../../core/types';
 import { conversationOf } from './chatView';
+import { answersLatest, choosable, type StreamItem } from './homeStream';
 import { columns, fit } from './strip';
 import type { CommentOn } from './threadsSend';
 import { safe } from './threadsView';
 
 export type CardPlace = NumberedPlace | BoardPlace;
 
-const mine = (item: ChatItem, me: string) => item.author.kind === 'human' && samePerson(item.author.name, me);
+// What Tab chooses among, in the stream's order: what others wrote, and in Home's conversation the cards under the asks
+// and the relays (homeStream.ts choosable).
+export const answerable = <T extends StreamItem>(items: T[], me: string): T[] => items.filter((item) => choosable(item, me));
 
-// What others wrote, in the stream's order: what Tab chooses among, and what the line answers.
-export const answerable = (items: ChatItem[], me: string): ChatItem[] => items.filter((item) => !mine(item, me));
-
-// The latest message in the stream from someone else, which the line answers while nothing else is chosen.
-export const latestFrom = (items: ChatItem[], me: string): ChatItem | undefined => items.findLast((item) => !mine(item, me));
+// The latest in the stream that the line answers while nothing else is chosen: what someone else wrote, or a question
+// relayed that needs the person (homeStream.ts answersLatest).
+export const latestFrom = <T extends StreamItem>(items: T[], me: string): T | undefined => items.findLast((item) => answersLatest(item, me));
 
 // A card's discussion as a place; its kind's name is a card place's kind until the types leave the core (core/chatStream.ts).
 export const cardPlace = (card: BoardCard): NumberedPlace => ({ kind: card.kind.kind as NumberedPlace['kind'], id: card.id, number: card.number, title: card.title });

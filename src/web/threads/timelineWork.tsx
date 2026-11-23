@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { planProgress } from '../../core/agentWork';
-import { clip, samePerson } from '../../core/format';
-import { inConversation } from '../../core/threadList';
+import { clip } from '../../core/format';
+import { ownedThreads, threadTone } from '../../core/homeConversation';
 import { shownTitle } from '../../core/threads';
 import type { Board, BoardEvent, Thread } from '../../core/types';
 import { AgentWorkOn, phaseOf, StepText, stepWords, useAgents, useSteps, useWork } from '../agents';
@@ -10,7 +10,6 @@ import { useBoardViews } from '../shared/boardViewsContext';
 import { ActorBadge, Icon } from '../shared/components';
 import { followPress, useDismiss } from '../shared/hooks';
 import { go } from '../shared/pages';
-import type { StrandTone } from './yarn';
 
 // Work, beside the conversation on a board's Home (timeline.tsx): the work on
 // the board by where it stands. The core's is the threads agents own
@@ -49,27 +48,14 @@ function groupsWith(added: readonly WorkGroup[]): WorkGroup[] {
   return groups;
 }
 
-// Whether a thread an agent owns is at work: its owner is on the board. Sent
-// on but not started, it waits for its owner to come (Tricot's terminal starts
-// it, core/roles.ts launchesOn).
-export function threadStarted(thread: Thread, onBoard: readonly { name: string; state: string }[]): boolean {
-  return onBoard.some((a) => a.state !== 'away' && samePerson(a.name, thread.owner ?? ''));
-}
-
-// Where a thread an agent owns stands, as its strand and its square say it.
-export function threadTone(thread: Thread, onBoard: readonly { name: string; state: string }[]): StrandTone {
-  if (thread.status === 'needs-you') return 'waiting';
-  if (thread.status === 'done') return 'done';
-  return threadStarted(thread, onBoard) ? 'working' : 'todo';
-}
+// Where a thread an agent owns stands (at work while its owner is on the board, sent on but not started before), and
+// which threads agents own, are Home's conversation's, which the terminal shares (core/homeConversation.ts).
+export { ownedThreads, threadStarted, threadTone } from '../../core/homeConversation';
 
 // What changes Home, for its tab's dot: a thread started, answered, sent on or moved on.
 const THREAD_CHANGES = new Set<BoardEvent['type']>(['thread_started', 'thread_replied', 'thread_routed', 'thread_status_changed']);
 export const threadsChanged = (events: readonly BoardEvent[]): boolean => events.some((e) => THREAD_CHANGES.has(e.type));
 
-// The threads agents own (core/roles.ts), the work a coordinator handed out: every thread out of the conversation
-// (core/threadList.ts inConversation).
-export const ownedThreads = (board: Board): Thread[] => (board.threads ?? []).filter((t) => !inConversation(t));
 
 // When something last moved, briefly: the time today, the day this week, else the date.
 export function brief(iso: string, now = Date.now()): string {

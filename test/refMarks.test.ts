@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { boardCardKind, useBoardCards } from '../src/core/cards';
 import { emptyCanvas } from '../src/core/canvas';
-import type { ChatItem, ChatPlace } from '../src/core/chatStream';
+import type { ChatPlace } from '../src/core/chatStream';
 import { RefMarks } from '../src/core/refMarks';
 import { findRefs, refKinds, refLabel, useRefKinds } from '../src/core/refKinds';
 import { searchBoards, titleField } from '../src/core/search';
@@ -10,7 +10,6 @@ import { registerSearchCard } from '../src/core/searchCards';
 import { workName } from '../src/core/threads';
 import type { Actor, Board, Comment, ThreadRef } from '../src/core/types';
 import { aimRow, placeChoices } from '../src/cli/switcher/chatAim';
-import { chatLines } from '../src/cli/switcher/chatView';
 import { linksIn } from '../src/cli/switcher/threadsView';
 import { RefKinds } from '../src/web/shared/refKinds';
 
@@ -73,9 +72,6 @@ const board = {
 } as unknown as Board;
 
 const placeOf = (kind: 'task' | 'decision', number: number, title: string): ChatPlace => ({ kind, id: `${kind}${number}`, number, title }) as unknown as ChatPlace;
-const NOW = Date.parse('2026-11-07T16:30:00Z');
-const said = (place: ChatPlace): ChatItem => ({ key: 'k1', id: 'i1', author: sam, body: 'Fine.', at: new Date(NOW - 60_000).toISOString(), place });
-const headOf = (place: ChatPlace) => chatLines([said(place)], 120, 'Pat', NOW).lines[0].map(([text]) => text).join('').trimEnd();
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -161,9 +157,8 @@ describe('The terminal and the server with no kind of reference', () => {
     assert.deepEqual(linksIn('See https://x.org/T19', card).map((link) => link.url), ['https://x.org/T19'], 'an address is still a link');
     assert.equal(workName(board, { kind: 'task', id: 't12' } as unknown as ThreadRef), 'a card since removed', 'a card of a kind nothing labels reads as a card');
     assert.equal(refLabel('task', 19), '19');
-    assert.doesNotThrow(() => aimRow(placeOf('task', 19, 'Stopped'), '', 'Claude hears it', 100));
+    assert.equal(aimRow(placeOf('task', 19, 'Stopped'), '', 'Claude hears it', 100), 'to 19 Stopped · Claude hears it', 'a card of a kind nothing labels reads as its number');
     assert.doesNotThrow(() => placeChoices(board, [], 'T'));
     assert.deepEqual(found('provider').map((result) => result.ref), ['1'], 'a card of a kind nothing labels reads as its number');
-    assert.equal(headOf(placeOf('task', 19, 'Stopped')), '  Sam · on 19 Stopped · 1 min ago', 'a card of a kind nothing labels reads as its number');
   });
 });

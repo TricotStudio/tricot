@@ -13,7 +13,9 @@
 import { useCardReading, type CardReading } from '../../core/cardReading';
 import { useBoardCards, type BoardCardKind } from '../../core/cards';
 import { useDoors, type DoorWords } from '../../core/doors';
+import type { CardRelay } from '../../core/homeConversation';
 import type { RefMarks } from '../../core/refMarks';
+import type { Board } from '../../core/types';
 import { useRefKinds } from '../../core/refKinds';
 import { authHeaders } from '../../platform/token';
 import { holdAnswers } from './answers';
@@ -44,6 +46,7 @@ export interface SwitcherEdition {
   boardCards?: readonly BoardCardKind[];
   refKinds?: RefMarks;
   chatFields?: Record<string, readonly string[]>; // the fields of each kind of card's row that the chat shows (live.ts)
+  relays?(board: Board, me: string): CardRelay[]; // what it relays of its cards into Home's conversation (a card blocked)
   doors?: Record<string, DoorWords>; // the doors into a thread its tabs have (core/doors.ts), which name a thread's tag in the list
 }
 
@@ -106,7 +109,7 @@ export async function runSwitcher({ agents, key, live, tricot, wakeHolder }: Swi
     helper,
     ...(feed && { live: feed }),
     ...(wakes && { wakes, ...(wakeHolder && { wakeHolder }) }),
-    ...(live && tricot && { tricot: { ...tricot, url: live.url, ...(answers && { answers, threads: threadsAccess({ cards: edition.cards, url: live.url, board: live.board, headers, me: tricot.actor, answers }) }) } }),
+    ...(live && tricot && { tricot: { ...tricot, url: live.url, ...(answers && { answers, threads: threadsAccess({ cards: edition.cards, ...(edition.relays && { relays: edition.relays }), url: live.url, board: live.board, headers, me: tricot.actor, answers }) }) } }),
     terminal: {
       input: stdin,
       write: (text) => void stdout.write(text),

@@ -64,7 +64,8 @@ import { modeChanges, PLAIN_MODES, terminalModes } from './modes';
 import { NO_MOUSE } from './mouse';
 import { spawnPty, type Pty, type PtyHelper } from './pty';
 import { AgentScreen, type InputModes, type TerminalColours } from './screen';
-import { agentWords, isLight, renderStrip, rgbOf, type AgentNow, type Rgb, type StripEntry, type StripLayout } from './strip';
+import type { Colours } from './homeView';
+import { agentWords, isLight, renderStrip, type AgentNow, type StripEntry, type StripLayout } from './strip';
 import { linkAt, type TabFrame } from './tabView';
 import type { ThreadsAccess } from './threadsTab';
 import { TricotTab, waitingFrom, type AddChoice } from './tricotTab';
@@ -103,7 +104,7 @@ export interface TricotSetup {
   answers?: Answers;
   threads?: ThreadsAccess; // reading the board's threads, and writing in them, as the person
   wordmark?: 'knit' | 'whole'; // at the tab's top: knitted as it first shows, or whole at once (TRICOT_NO_ANIMATION=1)
-  trueColour?: boolean; // the terminal draws 24-bit colour (COLORTERM): the chat's tints lean from its background
+  colours?: Colours; // how much colour the terminal draws (COLORTERM, NO_COLOR), for the chat's yarn: the 256 when not said
   open(page?: string): void; // the board, in the browser, or a page on it (an address after #, core/pages.ts)
   openLink?(url: string): void; // a web address clicked in the Tricot tab, in the browser
   // The agents Tricot can start, but those running (by id); and one made
@@ -221,7 +222,7 @@ export function startHost(options: HostOptions): Host {
   let outer: InputModes | undefined;
   let layout: StripLayout | undefined;
   let light = false;
-  let tintFrom: Rgb | undefined; // the background the chat's tints lean from, where the terminal draws 24-bit colour
+  const colourDrawn: Colours = setup?.colours ?? '256'; // how much colour the terminal draws, for the chat's yarn
   let colours: TerminalColours = {};
   let kitty = false; // the real terminal speaks the kitty keyboard protocol
   let progressShown = false;
@@ -338,7 +339,7 @@ export function startHost(options: HostOptions): Host {
       painted = [];
       stripShown = '';
     }
-    const drawn = agent ? undefined : (tabDrawn ??= tab!.render(size.cols, appRows(), light, tintFrom));
+    const drawn = agent ? undefined : (tabDrawn ??= tab!.render(size.cols, appRows(), light, colourDrawn));
     if (drawn) {
       tabShown = drawn.plain;
       tabLinks = drawn.links;
@@ -399,6 +400,8 @@ export function startHost(options: HostOptions): Host {
     }
     const was = visible === TRICOT_TAB ? undefined : agents[visible];
     if (!was) tab?.endKnitting();
+    if (!was) tab?.left(); // its chat out of sight, for when the person was last there
+    else if (j === TRICOT_TAB) tab?.back();
     // Focus goes with the switch, for agents that asked to hear of it.
     if (was && was.state !== 'ended' && was.screen.inputModes.focus) was.pty?.write('\x1b[O');
     if (progressShown) {
@@ -837,7 +840,6 @@ export function startHost(options: HostOptions): Host {
     ({ colours, kitty } = options.colours ? { colours: options.colours, kitty: options.kitty ?? false } : await askTerminal());
     if (finished) return;
     light = isLight(colours.background);
-    tintFrom = setup?.trueColour ? rgbOf(colours.background) : undefined;
     size = t.size();
     // On its own screen, with its own entry on the kitty keyboard's stack, set as each tab shows.
     t.write(`\x1b[?1049h\x1b[H\x1b[2J${kitty ? '\x1b[>0u' : ''}`);

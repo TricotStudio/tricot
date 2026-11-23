@@ -78,7 +78,8 @@ import { questionsOf, type Approval, type ApprovalReply, type ApprovalReplyBehav
 import { APPROVAL_REASON_LIMIT } from '../../core/approvals';
 import type { AdmissionView } from '../../core/seats';
 import type { Answers } from './answers';
-import { agentDoing, workingNow, type AgentNow, type BoardLive, type Rgb, type Tone } from './strip';
+import type { Colours } from './homeView';
+import { agentDoing, workingNow, type AgentNow, type BoardLive, type Tone } from './strip';
 import { TabKeyReader, type TabKey } from './tabKeys';
 import { KNIT_MS, wordmarkFits, wordmarkNext, wordmarkRows } from './wordmark';
 import { alertOf, choicesOf, noteRows, paint, promptRows, renderTab, tabHeader, type ApprovalChoice, type Part, type TabFrame, type TabPrompt } from './tabView';
@@ -166,6 +167,7 @@ export class TricotTab {
       seatWords: () => (this.asking ? `Waiting for you to let this terminal in${options.answers?.seatCode ? `: code ${options.answers.seatCode}` : ''}.` : undefined),
       navigate: (command) => this.navigate(command),
       working: () => workingNow(host.agents(), host.live(), host.now()),
+      open: (page) => host.open(page),
     });
     if (options.threads) this.threads.start();
   }
@@ -234,6 +236,15 @@ export class TricotTab {
     this.endKnitting();
   }
 
+  // The tab out of sight, and in sight again: the chat's visit (threadsTab.ts left, back).
+  left(): void {
+    this.threads.left();
+  }
+
+  back(): void {
+    this.threads.back();
+  }
+
   // Ends the knitting, for good, the wordmark whole from then on: a key, leaving the tab, quitting.
   endKnitting(): void {
     this.knitting = undefined;
@@ -284,9 +295,9 @@ export class TricotTab {
     else this.host.openLink?.(url);
   }
 
-  // `tintFrom`: the terminal's background, where it draws 24-bit colour, for the chat's tints (chatView.ts chatTints).
-  render(cols: number, rows: number, light = false, tintFrom?: Rgb): TabFrame {
-    if (this.threads.showing && !this.quitting) return this.renderChat(cols, rows, light, tintFrom);
+  // `colours`: how much colour the terminal draws, for the chat's yarn (homeView.ts).
+  render(cols: number, rows: number, light = false, colours: Colours = '256'): TabFrame {
+    if (this.threads.showing && !this.quitting) return this.renderChat(cols, rows, light, colours);
     const now = this.host.now();
     const live = this.host.live();
     const waiting = this.settle();
@@ -323,7 +334,7 @@ export class TricotTab {
   // did shows at its foot, above its keys (the chat's last row); the list or
   // question /add or /stop asks takes the place of those keys while it has
   // them, as at this view's foot. A window too short for it all loses its top rows first.
-  private renderChat(cols: number, rows: number, light: boolean, tintFrom?: Rgb): TabFrame {
+  private renderChat(cols: number, rows: number, light: boolean, colours: Colours): TabFrame {
     const live = this.host.live();
     const header = this.options.wordmark && rows >= 6 ? [...tabHeader({ title: live?.title ?? this.options.title, url: this.options.url, connected: live !== undefined, wordmark: this.wordmark(cols, rows) }, cols, rows - 4), []] : [];
     const notice = this.elsewhere();
@@ -332,7 +343,7 @@ export class TricotTab {
     const asked = this.prompt.kind === 'keys' ? [] : promptRows({ prompt: this.prompt }, Math.max(2, rows - prefix.length - said.length), cols);
     const foot = [...said, ...asked].map((parts) => paint(parts, cols));
     const replaced = asked.length ? 1 : 0; // the chat's rows the list or question takes the place of: its keys
-    const frame = this.threads.render(cols, Math.max(1, rows - prefix.length - foot.length + replaced), light, prefix.length > header.length ? undefined : notice, tintFrom);
+    const frame = this.threads.render(cols, Math.max(1, rows - prefix.length - foot.length + replaced), light, prefix.length > header.length ? undefined : notice, colours);
     const keysAt = frame.rows.length - 1;
     const drawn = prefix.map((parts) => paint(parts, cols));
     const lines = [...drawn.map((row) => row.line), ...frame.rows.slice(0, keysAt), ...foot.map((row) => row.line), ...frame.rows.slice(keysAt + replaced)];

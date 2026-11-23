@@ -49,9 +49,10 @@ export interface WatchOptions {
   fetch?: typeof fetch;
 }
 
-// The fields of a card's row that the chat shows (core/chatStream.ts): its discussion and what names it, by the kind of
-// card, which the terminal's edition says (`SwitcherEdition.chatFields`, set by run.ts). A pin's are its comments. Any change
-// to a thread is the chat's.
+// The fields of a card's row the chat reads the board again for: what names it (a place the line sends to, >T19) and what
+// a part relays of it into Home's conversation (a task blocked, its status and notes), by the kind of card, which the
+// terminal's edition says (`SwitcherEdition.chatFields`, set by run.ts). A pin's are its comments. Any change to a thread
+// is the chat's.
 let cardFields: Record<string, readonly string[]> = {};
 
 // Sets the fields of each kind of card the chat shows, or, with none, those of no card.
