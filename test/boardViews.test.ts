@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { BoardViews, type BoardViewDef } from '../src/web/shared/boardViews';
+import { BoardViews, workGroups, type BoardViewDef } from '../src/web/shared/boardViews';
 import { RefKinds } from '../src/web/shared/refKinds';
 
 // The registry of a board's views (web/shared/boardViews.ts): what the board's
@@ -105,14 +105,17 @@ describe('The registry of board views', () => {
     assert.equal(views.agentWork(), work);
   });
 
-  it("lists and relays no work of a part's on a board's Home until a part registers its own, and takes it once", () => {
+  it("lists and relays no work of a part's on a board's Home until a part registers its own, takes it once, and places its groups among the core's", () => {
     const views = new BoardViews();
     assert.equal(views.work(), undefined, "Home's Work lists the threads agents own alone, and its conversation relays only theirs");
     const blocked = { key: 'card:1', kind: 'blocked' as const, title: 'A card', at: '2026-01-01T00:00:00.000Z', line: 'It waits on a key.', open: () => {} };
     const slot = { groups: [{ id: 'backlog', label: 'Backlog', before: 'done' }], rows: () => [], relays: () => [blocked] };
+    assert.deepEqual(workGroups(undefined).map((g) => g.id), ['needs-you', 'in-review', 'in-progress', 'to-do', 'done'], "the core's groups: threads in review have one of their own");
+    assert.throws(() => new BoardViews().withWork({ ...slot, groups: [{ id: 'in-review', label: 'In review' }] }), /group "in-review" of its own: rows join it/);
     views.withWork(slot);
     assert.throws(() => views.withWork(slot), /two sets of work on a board's Home/);
     assert.equal(views.work(), slot);
+    assert.deepEqual(workGroups(views.work()).map((g) => g.id), ['needs-you', 'in-review', 'in-progress', 'to-do', 'backlog', 'done'], "a part's group goes where it says among the core's");
     assert.deepEqual(views.work()?.relays?.({ board: {} as never, name: 'Sam' }), [blocked], "what the conversation relays of the part's cards comes with its Work");
   });
 

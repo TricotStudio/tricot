@@ -30,6 +30,7 @@ import { tallyOf, type BoardChange, type LiveState } from './changes';
 import { connectorKinds } from './connectors/registry';
 import type { Deletion } from './deletions';
 import type { PairingEnd, PairingSession } from './pairing';
+import type { ReviewVerdict } from './roles';
 import type { SkillList, TricotSkill } from './skills';
 import type { PixelSize } from './blocks/image/image';
 import type { Actor, Block, BlockVersion, Board, BoardEvent, BoardSummary, Comment, ContextRequest, Group, Link, Pin, ScratchPage, Thread, ThreadRef, ThreadStatus, VersionSummary } from './types';
@@ -286,6 +287,7 @@ export class Store {
   threadGroup(threadId: string, actor: Actor): Group | undefined { return this.threads.threadGroup(threadId, actor); }
   routeToThread(fromThreadId: string, messageId: string, actor: Actor, to: RouteTarget): Routed { return this.threads.routeToThread(fromThreadId, messageId, actor, to); }
   setThreadStatus(threadId: string, status: ThreadStatus, actor: Actor, summary?: string): Thread { return this.threads.setThreadStatus(threadId, status, actor, summary); }
+  reviewThread(threadId: string, verdict: ReviewVerdict, actor: Actor, note?: string): Thread { return this.threads.reviewThread(threadId, verdict, actor, note); }
   // What server code asks of a Store about a card, by the name of its kind: a comment on it, what its kind sweeps for lapsed
   // (first looks), and what an agent's call about it keeps. A Store with no such kind refuses the comment and leaves the rest.
   commentOnKind(kind: string, id: string, body: string, actor: Actor, about?: CommentAbout): CardCommented {

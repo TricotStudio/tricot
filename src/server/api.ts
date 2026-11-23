@@ -440,6 +440,14 @@ export function createApiRouter(
     res.json(store.setThreadLens(param(req, 'threadId'), body.lens, human(body.actor)));
   });
 
+  // A person's verdict on work waiting for their review (core/roles.ts): it looks good and its owner commits it, or it
+  // needs changes, which the note says. Posted in the thread as their message, it sets the work back to working. It
+  // approves a commit, so it needs a seat.
+  on(routes.reviewThread, seated, (req, res) => {
+    const body = bodies.threadReview.parse(req.body);
+    res.json(store.reviewThread(param(req, 'threadId'), body.verdict, human(body.actor), body.note));
+  });
+
   // Server-sent events: each change to the board, and who is on it (see live.ts),
   // and to a person, the requests for permission waiting, and, asked for while
   // its Files view is open (`files=1`), what changes in its project folder.

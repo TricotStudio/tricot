@@ -17,7 +17,7 @@ import { pageLens, pageName } from '../scratchPad';
 import { onBoardNow } from '../whoAnswers';
 import { blocksWords, selectionBlocks, selectionGroup, selectionPage, threadCards } from '../threadSelection';
 import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT, TITLE_LENGTH, lensName, presetLens, sameLens, showsWork, threadTitle, threadWork } from '../threads';
-import { inConversation, STATUS_WORDS } from '../roles';
+import { inConversation, STATUS_WORDS, verdictMessage, type ReviewVerdict } from '../roles';
 import { type Actor, type Block, type Board, type Group, type MessageLens, type ScratchPage, type Thread, type ThreadDoor, type ThreadLens, type ThreadMessage, type ThreadRef, type ThreadStatus, boardKey } from '../types';
 
 // How a thread starts besides its message and lens: as the board's General
@@ -234,7 +234,9 @@ export class Threads {
   // #N or TN) too. A person's may ask for a lens (^Name) on this message alone.
   // A person's message in a thread whose work waits on people or is done sets
   // it back to work, and Tricot starts its owner again if it is gone
-  // (core/roles.ts). `routed`: a coordinator's word that it sent a message on.
+  // (core/roles.ts). One in a thread whose work waits for their review leaves
+  // it there: only their verdict sets it back (reviewThread).
+  // `routed`: a coordinator's word that it sent a message on.
   // `movedFrom`: a person's message a coordinator moved here, from the thread it was asked in.
   postToThread(threadId: string, body: string, actor: Actor, refs: string[] = [], messageLens?: LensInput | null, routed?: { sent: NonNullable<ThreadMessage['sent']>; summary: string }, movedFrom?: string): Thread {
     const { board, thread } = this.repo.getThread(threadId);
@@ -326,7 +328,8 @@ export class Threads {
         this.repo.record(board, actor, 'thread_routed', `moved ${message.author.name}'s message from thread "${clip(from.title, 60)}", which held nothing else, into thread "${clip(to.title, 60)}"`, { item: to.id });
         return { from, to, started: false, moved: true };
       }
-      if (to.status && to.status !== 'working') to.status = 'working';
+      // A follow-up sets its work back to work, as the person's own message would; one waiting for review stays there.
+      if (to.status && to.status !== 'working' && to.status !== 'in-review') to.status = 'working';
       this.postToThread(to.id, asked, actor);
     } else {
       const brief = optional(target.brief);
@@ -353,6 +356,27 @@ export class Threads {
     if (thread.status === status) return thread;
     thread.status = status;
     this.repo.record(board, actor, 'thread_status_changed', `marked the work of thread "${clip(thread.title, 60)}" ${STATUS_WORDS[status]}`, { item: thread.id });
+    return thread;
+  }
+
+  // A person's verdict on work waiting for their review (core/roles.ts): it looks good and is to be committed, or it needs
+  // changes, which the note says. Either is posted in the thread as their own message, in the verdict's words, so it is
+  // for its owner and wakes it as any person's message does, and sets the work back to working: after an OK its owner
+  // commits and then sets it done. Only work in review takes one.
+  reviewThread(threadId: string, verdict: ReviewVerdict, actor: Actor, note?: string): Thread {
+    const { board, thread } = this.repo.getThread(threadId);
+    guardArchived(board);
+    if (actor.kind !== 'human') throw new BoardError('Only a person reviews the work of a thread: say where your own work stands with set_thread_status.');
+    if (thread.status !== 'in-review') {
+      const where = thread.status ? `its work is ${STATUS_WORDS[thread.status]}` : 'it is a quick question in the board\'s conversation';
+      throw new BoardError(`Thread "${clip(thread.title, 60)}" isn't waiting for a review: ${where}.`, 'conflict');
+    }
+    const said = optional(note);
+    if (verdict === 'changes' && !said) throw new BoardError('Say what needs changing in note, so its owner knows.');
+    this.postToThread(thread.id, verdictMessage(verdict, said), actor);
+    thread.status = 'working';
+    const what = verdict === 'approve' ? `approved the work of thread "${clip(thread.title, 60)}", to commit it` : `sent the work of thread "${clip(thread.title, 60)}" back, as it needs changes`;
+    this.repo.record(board, actor, 'thread_status_changed', what, { item: thread.id });
     return thread;
   }
 

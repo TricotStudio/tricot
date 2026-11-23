@@ -3,7 +3,7 @@
 # test/dataGolden.ts says how it is made, and test/dataGolden.test.ts compares it.
 
 ## a new data file
-data version 20
+data version 21
 index block_versions_by_asset on block_versions: CREATE INDEX block_versions_by_asset ON block_versions (asset) WHERE asset IS NOT NULL
 index events_by_actor on events: CREATE INDEX events_by_actor ON events (board, actor_kind, actor_name, seq)
 index events_by_decision on events: CREATE INDEX events_by_decision ON events (board, decision_id, seq) WHERE decision_id IS NOT NULL
@@ -79,8 +79,8 @@ table tricot_skills on tricot_skills: CREATE TABLE tricot_skills (
           updated_at   TEXT NOT NULL
         ) STRICT
 
-## Tricot 0.1.0's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.0's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:882f873b2d3ff63d23fad9e25c4fc392664f3e671b963c965db4578d499c6f15
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:b496d7240391c9f20c84b51e700006cc49231335f93749b88abadc235c7e054a
@@ -90,8 +90,8 @@ items 10 named:bb1505ce4dcf0c5aac299b7ed78d545ea1f4939d18683e99a37fd220a275d36c 
 need_dismissals 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 tricot_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
-## Tricot 0.1.1's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.1's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:3d8312b10f70efaf11dcdfecd4b6a0b0c4accad9ac80e6d6d034d821a462bb1d
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:9ef190e5a8c9e5c35c1512b1fd271e1930c120f783f065a61fd977f794be9cb5
@@ -101,8 +101,8 @@ items 10 named:bb1505ce4dcf0c5aac299b7ed78d545ea1f4939d18683e99a37fd220a275d36c 
 need_dismissals 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 tricot_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
-## Tricot 0.1.2's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.2's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:d1f672b49f3213d227f472b215fecec236c81ee18df78f131f7579c4c96273f7
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:417e292f48800bb0101c18e9c23b78255a697afbabdc05b1f7a8fbcf81d3c861
@@ -112,8 +112,8 @@ items 10 named:bb1505ce4dcf0c5aac299b7ed78d545ea1f4939d18683e99a37fd220a275d36c 
 need_dismissals 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 tricot_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
-## Tricot 0.1.3's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.3's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:2b289f78a3af09f944d751cd0737f3c2018306bea0a75cd2efa0ebf33f27b6f5
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:cc96494fefe6d4e48c5a49deb26fec5628f9cf8df42883d2d2d1c620b36142c6
@@ -123,8 +123,8 @@ items 10 named:bb1505ce4dcf0c5aac299b7ed78d545ea1f4939d18683e99a37fd220a275d36c 
 need_dismissals 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 tricot_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
-## Tricot 0.1.4's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.4's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:a88b22abc06e7cb628383465790ee8f40e8b1c586fe6860e127a3d68e8e7a980
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:6213350bcf4d7eb9cd9ffec9e63d892a754320860003016d3fd79a25fd70d448
@@ -134,8 +134,8 @@ items 10 named:bb1505ce4dcf0c5aac299b7ed78d545ea1f4939d18683e99a37fd220a275d36c 
 need_dismissals 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 tricot_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
-## Tricot 0.1.5's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.5's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:ed04ac31adc126f8b582de23fd3928832136a5334ca7e3a4b05ce77a08e5b923
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:adade9fbe8bace2c9694723c692713e3e945aab310a9e90278f8f800f423f02e
@@ -145,8 +145,8 @@ items 10 named:bb1505ce4dcf0c5aac299b7ed78d545ea1f4939d18683e99a37fd220a275d36c 
 need_dismissals 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 tricot_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
-## Tricot 0.1.6's database, migrated to data version 20
-user_version 20
+## Tricot 0.1.6's database, migrated to data version 21
+user_version 21
 agent_skills 0 named:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 exact:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 block_versions 1 named:7d0dfd0e3f654d216daa3362748f585e3efd2f289325e13691bddffe7fd7d001 exact:84471e4e9723961c70f33286d42c04f374a7c7100aa1cf4693d3a560890afacb
 boards 1 named:ee584e7577f5cc7e62cd1e8e7b1400081352a4d5e9a80ef3730c019147979c15 exact:ee22f472da6f2a8b9df99ce08a3e876b3983aaa86b10b84638e0f30c52fcc4c8

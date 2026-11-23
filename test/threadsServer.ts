@@ -10,6 +10,7 @@ import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { storeOf, type Edition } from '../src/server/start';
 import { removeScratch } from './platform';
+import { letIn, seatFetch, type TestSeat } from './seatHelper';
 
 // A server with a Store of its own and two agents connected over MCP, for the tests of people and agents talking in
 // threads over MCP and REST (test/threads.test.ts).
@@ -22,6 +23,8 @@ export interface ThreadsServer<S extends Store = Store> {
   call(agent: ThreadsAgent, name: string, args?: Record<string, unknown>): Promise<ToolResult>;
   callText(agent: ThreadsAgent, name: string, args?: Record<string, unknown>): Promise<string>;
   request(method: 'GET' | 'POST', route: string, body?: Record<string, unknown>): Promise<{ status: number; json: any }>;
+  // The same from one of the person's seats, signed, for a route that needs one (tier B, server/access.ts).
+  seated(method: 'GET' | 'POST', route: string, body?: Record<string, unknown>): Promise<{ status: number; json: any }>;
   // One more session, its MCP address's query as given (`agent=Router&role=coordinator`), as a client of this name.
   connect(query: string, as?: { name: string; version: string }): Promise<Client>;
   stop(): Promise<void>;
@@ -43,6 +46,7 @@ export async function threadsServer<S extends Store = Store>(edition: Edition = 
   }
 
   const more: Client[] = [];
+  let seat: TestSeat | undefined;
 
   async function call(agent: ThreadsAgent, name: string, args: Record<string, unknown> = {}): Promise<ToolResult> {
     return (await clients[agent].callTool({ name, arguments: args })) as ToolResult;
@@ -63,6 +67,11 @@ export async function threadsServer<S extends Store = Store>(edition: Edition = 
         headers: body ? { 'Content-Type': 'application/json', Origin: base } : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
+      return { status: response.status, json: await response.json() };
+    },
+    async seated(method, route, body) {
+      seat ??= letIn(app);
+      const response = await seatFetch(seat, base, method, `/api${route}`, body);
       return { status: response.status, json: await response.json() };
     },
     async connect(query, as = { name: 'test-client', version: '1.0.0' }) {

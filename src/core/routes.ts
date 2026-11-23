@@ -62,6 +62,7 @@ export const routes = {
   thread: get('/api/threads/:threadId'),
   postToThread: post('/api/threads/:threadId/messages'),
   setThreadLens: post('/api/threads/:threadId/lens'),
+  reviewThread: post('/api/threads/:threadId/review'), // a person's verdict on work waiting for their review: looks good, commit it, or needs changes
 
   // ---- reactions, by where the comment is (a task's and a decision's belong to a part) -----
   reactToThreadMessage: post('/api/threads/:threadId/messages/:commentId/reactions'),

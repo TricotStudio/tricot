@@ -23,8 +23,11 @@
 // and where its work stands after a square in that colour. A relay is led by
 // a square in where its thread stands now and its thread's name (a part's
 // card by its number, its page linked), with what it says of it: an agent's
-// question in full, the person's answer once there is one, a thread done
-// with the first line of its summary, a card blocked with what holds it.
+// question in full, the person's answer once there is one, work waiting for
+// their review with its summary in full and where the verdict is given (the
+// board: a reply here is a plain reply, which leaves it waiting), folding to
+// the verdict once there is one, a thread done with the first line of its
+// summary, a card blocked with what holds it.
 // Relays that came while the person was away sit under one head, by group,
 // one line each, a question in full once chosen. ❯ marks the item chosen.
 //
@@ -44,9 +47,10 @@
 // terminal's light or dark background; elsewhere the nearest of the 256.
 // Where it draws none (NO_COLOR), the yarn and the squares are plain
 // characters, each lane's character saying where its work stands (| at work
-// or done, ! waiting on a person, : not started), and words say the rest.
+// or done, ! waiting on a person or their review, : not started), and words
+// say the rest.
 import { samePerson } from '../../core/format';
-import { answeredWords, firstLine, ownName, relayWords, sentStateWords, type Strand, type StrandTone } from '../../core/homeConversation';
+import { answeredWords, firstLine, ownName, relayWords, sentStateWords, verdictWords, type Strand, type StrandTone } from '../../core/homeConversation';
 import { columns, fit, type Rgb } from './strip';
 import { BOLD, DIM, alertOf, cutParts, type Part } from './tabView';
 import type { Divider, StreamItem } from './homeStream';
@@ -62,11 +66,14 @@ export interface Look {
 
 type Tone = StrandTone | 'blocked';
 
-// The page's status colours (web/themes/light.css and dark.css, styles/base.css --status-*): in progress, in review, to
-// do, done and blocked, for a light and a dark background, and the nearest of the 256 to each.
+// The page's status colours (web/themes/light.css and dark.css, styles/base.css --status-*): in progress, in review
+// (waiting on a person, a question or their review), to do, done and blocked, for a light and a dark background, and
+// the nearest of the 256 to each.
+const IN_REVIEW: { light: [Rgb, number]; dark: [Rgb, number] } = { light: [[0x7a, 0x4f, 0xc9], 98], dark: [[0xa9, 0x88, 0xe6], 141] };
 const TONES: Record<Tone, { light: [Rgb, number]; dark: [Rgb, number] }> = {
   working: { light: [[0x3b, 0x6f, 0xd6], 68], dark: [[0x7a, 0xa2, 0xf0], 111] },
-  waiting: { light: [[0x7a, 0x4f, 0xc9], 98], dark: [[0xa9, 0x88, 0xe6], 141] },
+  waiting: IN_REVIEW,
+  review: IN_REVIEW,
   todo: { light: [[0x9a, 0x9a, 0x93], 247], dark: [[0x85, 0x85, 0x7f], 244] },
   done: { light: [[0x2f, 0x8a, 0x57], 29], dark: [[0x5c, 0xc0, 0x8a], 78] },
   blocked: { light: [[0xa3, 0x39, 0x2c], 124], dark: [[0xf2, 0x96, 0x8a], 210] },
@@ -84,7 +91,10 @@ const PLAIN = { trunk: '|', stitch: '*', branch: '+', across: '-', knit: '.', kn
 const glyphsOf = (look: Look) => (look.colours === 'none' ? PLAIN : FANCY);
 
 // A lane in plain characters says where its work stands.
-const PLAIN_LANE: Record<Tone, string> = { working: '|', waiting: '!', todo: ':', done: '|', blocked: '!' };
+const PLAIN_LANE: Record<Tone, string> = { working: '|', waiting: '!', review: '!', todo: ':', done: '|', blocked: '!' };
+
+// Where a review's verdict is given: on the board, as the terminal has no buttons and a reply is a plain one.
+export const REVIEW_HINT = 'Approve it or send it back on the board: a reply here leaves it waiting.';
 
 // The alert colour, or bold where the terminal draws no colour.
 const alert = (look: Look) => (look.colours === 'none' ? BOLD : alertOf(look.light));
@@ -148,7 +158,7 @@ export function homeLines(item: StreamItem, { width, me, sending, selected, look
     // title and its agent. The title gives way before the agent does.
     const agent = home.to.owner ? ownName(safe(home.to.owner)) : undefined;
     const lead: Part[] = [mark, [`  ${g.card} `]];
-    const state: Part[] = [['  '], ...square(home.tone, look), [sentStateWords(home.tone), home.tone === 'waiting' ? alert(look) : undefined]];
+    const state: Part[] = [['  '], ...square(home.tone, look), [sentStateWords(home.tone), home.tone === 'waiting' || home.tone === 'review' ? alert(look) : undefined]];
     const words = home.taken && agent ? `Taken on by ${agent}` : safe(shownOf(item));
     // Where there is no room for both, the title keeps the room and who it went to goes, so where its work stands shows.
     const sentTo: Part[] = home.taken || !agent ? [] : [[` · sent on to ${agent}`, DIM]];
@@ -163,23 +173,33 @@ export function homeLines(item: StreamItem, { width, me, sending, selected, look
   const title: Part[] = [...(relay.label ? [linked(`${safe(relay.label)} `)] : []), linked(safe(relay.title))];
   const asking = relay.kind === 'question' && relay.needsYou;
   const answered = relay.kind === 'question' && !relay.needsYou;
+  const reviewing = relay.kind === 'review' && relay.needsYou;
+  const verdict = relay.kind === 'review' ? verdictWords(relay, me) : undefined;
   const when: Part = [` · ${clock(relay.at)}`, DIM];
   if (stacked) {
-    // One line: what it is, when, and what it says, which is cut first; a question chosen shows in full under it.
+    // One line: what it is, when, and what it says, which is cut first; a question or a review chosen shows in full under it.
     const what: Part[] = asking
       ? [[' · ', DIM], ['Asks: ', `${BOLD};${alert(look)}`], [safe(firstLine(relay.body))]]
-      : relay.kind === 'blocked'
-        ? [[' · ', DIM], ['Blocked: ', `${BOLD};${toneSgr('blocked', look) ?? alert(look)}`], [safe(firstLine(relay.body))]]
-        : answered
-          ? [[` · ${safe(answeredWords(relay, me))}`, DIM]]
-          : [[` · ${safe(firstLine(relay.body))}`, DIM]];
+      : reviewing
+        ? [[' · ', DIM], ['Waits for your review: ', `${BOLD};${alert(look)}`], [safe(firstLine(relay.body))]]
+        : relay.kind === 'blocked'
+          ? [[' · ', DIM], ['Blocked: ', `${BOLD};${toneSgr('blocked', look) ?? alert(look)}`], [safe(firstLine(relay.body))]]
+          : verdict
+            ? [[` · ${safe(verdict)}`, DIM]]
+            : answered
+              ? [[` · ${safe(answeredWords(relay, me))}`, DIM]]
+              : [[` · ${safe(firstLine(relay.body))}`, DIM]];
     lines.push(cutParts([mark, ['  '], ...square(tone, look), ...title, when, ...what], room));
-    if (asking && selected) lines.push(...messageRows(relay.body, item.reactions, width, me, card));
+    if ((asking || reviewing) && selected) lines.push(...messageRows(relay.body, item.reactions, width, me, card));
+    if (reviewing && selected) lines.push(cutParts([[`    ${REVIEW_HINT}`, DIM]], room));
     return lines;
   }
   const words = relayWords(relay);
-  lines.push(cutParts([mark, ...square(tone, look), ...title, [' · ', DIM], [words, asking ? `${BOLD};${alert(look)}` : relay.kind === 'blocked' ? toneSgr('blocked', look) : DIM], when], room));
-  if (asking) lines.push(...messageRows(relay.body, item.reactions, width, me, card));
+  lines.push(cutParts([mark, ...square(tone, look), ...title, [' · ', DIM], [words, asking || reviewing ? `${BOLD};${alert(look)}` : relay.kind === 'blocked' ? toneSgr('blocked', look) : DIM], when], room));
+  if (asking || reviewing) {
+    lines.push(...messageRows(relay.body, item.reactions, width, me, card));
+    if (reviewing) lines.push(cutParts([[`    ${REVIEW_HINT}`, DIM]], room));
+  } else if (verdict) lines.push(cutParts([[`    ${g.check}${safe(verdict)}`, DIM]], room));
   else if (answered) lines.push(cutParts([[`    ${g.check}${safe(answeredWords(relay, me))}`, DIM]], room));
   else lines.push(cutParts([[`    ${safe(firstLine(relay.body))}`, relay.kind === 'done' ? DIM : undefined]], room));
   return lines;

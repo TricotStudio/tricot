@@ -312,6 +312,16 @@ export const MIGRATIONS: Migration[] = [
     name: 'free arrows',
     up() {},
   },
+  {
+    // 21: the work of a thread an agent owns may wait for a person's review
+    // before it is committed (a status: in-review, core/roles.ts), which the
+    // person answers with a verdict, posted in the thread as their own
+    // message. Nothing here changes: this version is so that a Tricot before
+    // it refuses a file that may hold such threads, rather than open it and
+    // misread where their work stands.
+    name: 'threads in review',
+    up() {},
+  },
 ];
 
 type Row = { board: string; owner: string; kind: string; id: string; body: string };

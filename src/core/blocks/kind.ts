@@ -285,6 +285,9 @@ export interface BlockKind<T extends KindTypes = any> {
   // a note's text, a table's cells, a picture's caption. Where a card is
   // mentioned is read from these; a kind without them mentions no card.
   refText?(block: BlockOf<T>): (string | undefined)[];
+  // What it changes in code, for the totals of what a piece of work changed (the review of a thread's work on Home):
+  // the files, and the lines added and taken away. A kind that holds no change has none.
+  changes?(block: BlockOf<T>): { files: number; additions: number; deletions: number };
   // For a kind a part adds (`useBlockKinds`): the kinds it comes after in each listing, by type: as the registry lists the
   // kinds (`registry`), as add_block lists the types an agent may name (`types`) and as the fields by type are told (`docs`).
   // A listing it says nothing of has it after the kinds the core lists.

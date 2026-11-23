@@ -11,7 +11,8 @@ import './workStrip.css';
 
 // Following the work a coordinator hands out (core/roles.ts), over the
 // floating chat bar: a pill for each thread an agent owns whose work isn't
-// done, those waiting on people first, in the accent, and the rest with a
+// done, those waiting on people first, in the accent (waiting for their
+// review, in the in-review colour), and the rest with a
 // dot that knits while its owner or its subagents have a step there; and,
 // when a message the viewer sent was sent on to another thread while they
 // were elsewhere, a quiet chip that offers to follow it. Where the dock shows
@@ -47,9 +48,9 @@ export function useRouted(board: Board, name: string): { latest: Routed | undefi
   return { latest, done: (id) => setHandled((was) => new Set(was).add(id)) };
 }
 
-// The threads an agent owns whose work isn't done, waiting on people first, then the latest.
+// The threads an agent owns whose work isn't done, waiting on people first (a question, then a review), then the latest.
 export function ownedAtWork(board: Board): Thread[] {
-  const rank = (t: Thread) => (t.status === 'needs-you' ? 0 : 1);
+  const rank = (t: Thread) => (t.status === 'needs-you' ? 0 : t.status === 'in-review' ? 1 : 2);
   return (board.threads ?? []).filter((t) => !inConversation(t) && t.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt));
 }
 
@@ -92,7 +93,9 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
         </span>
       )}
       {working.slice(0, SHOWN).map((thread) => {
-        const waits = thread.status === 'needs-you';
+        // Waiting on the viewer, for an answer or their review: the pill opens the thread, and says which.
+        const review = thread.status === 'in-review';
+        const waits = thread.status === 'needs-you' || review;
         const progress = waits ? undefined : progressOf(thread);
         const open = peeking === thread.id;
         return (
@@ -100,7 +103,7 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
             key={thread.id}
             ref={open ? opener : undefined}
             type="button"
-            className={`work-pill${waits ? ' is-waiting' : ''}${open ? ' is-open' : ''}`}
+            className={`work-pill${review ? ' is-in-review' : waits ? ' is-waiting' : ''}${open ? ' is-open' : ''}`}
             title={`${shownTitle(thread)}: ${thread.owner}, ${STATUS_WORDS[thread.status!]}${waits ? '' : '. See what it is doing'}`}
             aria-expanded={waits ? undefined : open}
             onClick={(event) => {
@@ -111,7 +114,7 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
           >
             <span className={`work-dot${waits ? '' : live(thread) ? ' is-live' : ''}`} aria-hidden />
             <span className="work-pill-title">{shownTitle(thread)}</span>
-            {waits && <span className="work-pill-state">needs you</span>}
+            {waits && <span className="work-pill-state">{review ? 'in review' : 'needs you'}</span>}
             {progress && (
               <span className="work-pill-count" aria-label={`${progress.done} of ${progress.total} done`}>
                 {progress.done}/{progress.total}
@@ -138,10 +141,11 @@ export function WorkStrip(props: { board: Board; routed?: Routed; onOpen: (id: s
   );
 }
 
-// A thread's owner and where its work stands, in its head (ThreadTitle).
+// A thread's owner and where its work stands, in its head (ThreadTitle): waiting for review, "in review", as its strand
+// says it, in the in-review colour.
 export function OwnerChip({ thread }: { thread: Thread }) {
   if (!thread.owner) return null;
-  const state = thread.status ? ` · ${STATUS_WORDS[thread.status]}` : '';
+  const state = thread.status ? ` · ${thread.status === 'in-review' ? 'in review' : STATUS_WORDS[thread.status]}` : '';
   return (
     <span className={`dock-owner${thread.status ? ` is-${thread.status}` : ''}`} title={`Owned by ${thread.owner}: what you write here that @-mentions nobody is for it.`}>
       {thread.owner}

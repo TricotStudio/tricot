@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { planProgress } from '../../core/agentWork';
 import { clip } from '../../core/format';
 import { ownedThreads, threadTone } from '../../core/homeConversation';
+import { verdictOf } from '../../core/roles';
 import { shownTitle } from '../../core/threads';
 import type { Board, BoardEvent, Thread } from '../../core/types';
 import { AgentWorkOn, phaseOf, StepText, stepWords, useAgents, useSteps, useWork } from '../agents';
-import type { WorkGroup, WorkRow, WorkSquare } from '../shared/boardViews';
+import { workGroups, type WorkRow, type WorkSquare } from '../shared/boardViews';
 import { useBoardViews } from '../shared/boardViewsContext';
 import { ActorBadge, Icon } from '../shared/components';
 import { followPress, useDismiss } from '../shared/hooks';
@@ -13,10 +14,12 @@ import { go } from '../shared/pages';
 
 // Work, beside the conversation on a board's Home (timeline.tsx): the work on
 // the board by where it stands. The core's is the threads agents own
-// (core/roles.ts), as their status says: waiting on a person, at work, sent on
-// but not started yet (its owner is not on the board), and done. A part adds
-// its cards and the groups they stand in (shared/boardViews.ts WorkSlot), as
-// Studio does its tasks; with none, Work is the threads alone. A row opens its
+// (core/roles.ts), as their status says: waiting on a person, waiting for their
+// review, at work, sent on but not started yet (its owner is not on the
+// board), and done, in the core's groups (shared/boardViews.ts
+// CORE_WORK_GROUPS). A part adds its cards, in those groups or in groups of
+// its own (WorkSlot), as Studio does its tasks; with none, Work is the threads
+// alone. A row opens its
 // thread in the main pane, or its card; pointing at one lights its thread's
 // strand. The thread open has its row lit, with its agent's plan under it.
 // It folds to a slim rail (its button at the top right, where the panel's own
@@ -27,26 +30,9 @@ import { go } from '../shared/pages';
 // nothing else outside it, or Esc inside it, folds it for now, leaving the
 // choice kept as it was.
 
-const CORE_GROUPS: WorkGroup[] = [
-  { id: 'needs-you', label: 'Needs you' },
-  { id: 'in-progress', label: 'In progress' },
-  { id: 'to-do', label: 'To do', hint: 'not started yet' },
-  { id: 'done', label: 'Done', quiet: true },
-];
 const QUIET_SHOWN = 3;
 
 const SQUARE_WORDS: Record<WorkSquare, string> = { waiting: 'Waiting on a person', blocked: 'Blocked', working: 'At work', todo: 'Not started', done: 'Done', later: 'For later' };
-
-// The groups, the core's with a part's placed among them.
-function groupsWith(added: readonly WorkGroup[]): WorkGroup[] {
-  const groups = [...CORE_GROUPS];
-  for (const group of added) {
-    const at = group.before ? groups.findIndex((g) => g.id === group.before) : -1;
-    if (at >= 0) groups.splice(at, 0, group);
-    else groups.push(group);
-  }
-  return groups;
-}
 
 // Where a thread an agent owns stands (at work while its owner is on the board, sent on but not started before), and
 // which threads agents own, are Home's conversation's, which the terminal shares (core/homeConversation.ts).
@@ -81,6 +67,15 @@ const lastWord = (thread: Thread): string | undefined => {
   return said && clip(said.body.split('\n').find((line) => line.trim()) ?? '', 140);
 };
 
+// Back at work after a person's verdict on its review (core/roles.ts), while that is the latest said in it: "Approved:
+// committing", or "Sent back: …" with the first line of their note.
+const verdictLine = (thread: Thread): string | undefined => {
+  const said = thread.messages.at(-1);
+  const given = said?.author.kind === 'human' ? verdictOf(said.body) : undefined;
+  if (!given) return undefined;
+  return given.verdict === 'approve' ? 'Approved: committing' : `Sent back${given.note ? `: ${clip(given.note.split('\n')[0], 120)}` : ''}`;
+};
+
 interface ThreadRowsInput {
   board: Board;
   now: number;
@@ -97,12 +92,13 @@ function useThreadRows({ board, now }: ThreadRowsInput): WorkRow[] {
     const open = () => go.timeline(board.id, thread.id);
     const base = { key: `thread:${thread.id}`, title: shownTitle(thread), agent: owner, at: thread.updatedAt, thread: thread.id, open };
     if (tone === 'waiting') return { ...base, group: 'needs-you', square: 'waiting', line: lastWord(thread) };
+    if (tone === 'review') return { ...base, group: 'in-review', square: 'waiting', line: lastWord(thread) };
     if (tone === 'done') return { ...base, group: 'done', square: 'done' };
     if (tone === 'todo') return { ...base, group: 'to-do', square: 'todo', at: thread.startedAt, end: since(thread.startedAt, now), line: thread.launch ? 'Starting in your terminal' : `Waiting for ${owner} to start` };
     const live = steps.filter((s) => s.thread === thread.id && !s.done && phaseOf(s, now) === 'live').at(-1);
     const plan = work.find((w) => w.thread === thread.id && w.plan)?.plan;
     const progress = planProgress(plan);
-    const line = live ? <StepText text={stepWords(live)} className="work-row-step" /> : (progress?.now?.text ?? lastWord(thread));
+    const line = live ? <StepText text={stepWords(live)} className="work-row-step" /> : (verdictLine(thread) ?? progress?.now?.text ?? lastWord(thread));
     return { ...base, group: 'in-progress', square: 'working', end: since(thread.startedAt, now), line, live: Boolean(live), progress: progress && { done: progress.done, total: progress.total } };
   });
 }
@@ -129,7 +125,7 @@ export function WorkPanel({ board, name, current, lit, onLight, shown, onShow, o
   }, []);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set()); // quiet groups shown whole
   const rows: WorkRow[] = [...useThreadRows({ board, now }), ...(slot?.rows({ board, name }) ?? [])];
-  const groups = groupsWith(slot?.groups ?? []);
+  const groups = workGroups(slot);
   const open = rows.filter((r) => r.group !== 'done').length;
   const waiting = rows.filter((r) => r.square === 'waiting' || r.square === 'blocked').length; // on a person: needs you, in review, blocked
   // Folding or unfolding from its button, the focus goes to the button in its place.

@@ -1,7 +1,7 @@
 // Diff blocks: code changes, a unified diff as an agent sent it and its files
 // parsed (diff.ts). People see it file by file and comment on its lines.
 
-import { type DiffFile, findLine } from './diff';
+import { type DiffFile, diffTotals, findLine } from './diff';
 import { lineParts } from './lines';
 import type { BlockKind } from '../kind';
 import { blockIs } from '../../canvas';
@@ -23,6 +23,7 @@ export const diff: BlockKind<DiffTypes> = {
   label: 'Diff',
   defaultSize: { w: 760, h: 560 },
   untitled: (block) => `diff of ${block.files.length} file${block.files.length === 1 ? '' : 's'}`,
+  changes: (block) => diffTotals(block.files),
 
   fromSnapshot: (version) => ({ patch: version.patch, files: version.files, focus: version.focus }),
   pins: {

@@ -1,5 +1,5 @@
 {
-  "dataVersion": 20,
+  "dataVersion": 21,
   "blockKinds": ["note","table","image","diagram","link","diff","code","chart","scene","site","shape","drawing"],
   "enums": {
     "Actor.kind": ["agent","human"],
@@ -15,6 +15,6 @@
     "Status": ["decided","deferred","exploring","open","provisional","retired"],
     "ThreadDoor": ["canvas","threads"],
     "ThreadRef.kind": ["block","comment"],
-    "ThreadStatus": ["done","needs-you","working"]
+    "ThreadStatus": ["done","in-review","needs-you","working"]
   }
 }

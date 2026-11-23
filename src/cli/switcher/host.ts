@@ -660,9 +660,11 @@ export function startHost(options: HostOptions): Host {
   // should its thread still be at work; one that can't start says why in the strip.
   //
   // Only an owner at work counts towards those at once: one whose thread waits
-  // on people, or is done, sleeps and costs nothing. When the tabs are full,
-  // the owner whose thread is done and that has been quiet longest closes to
-  // make room; a word in its thread later starts a fresh one.
+  // on people (a question, or their review), or is done, sleeps and costs
+  // nothing. When the tabs are full, the owner whose thread is done and that
+  // has been quiet longest closes to make room; a word in its thread later
+  // starts a fresh one. One whose work waits for review is never closed so: it
+  // commits that work once the person approves it.
   function launchOwners(list: Launch[]): void {
     if (quitting || finished || !setup?.launch) return;
     const atWork = (a: Agent) => a.thread !== undefined && a.state !== 'ended' && !a.closing && (ownerStatus.get(a.name.toLowerCase()) ?? 'working') === 'working';
@@ -688,7 +690,8 @@ export function startHost(options: HostOptions): Host {
     }
   }
 
-  // The tab of the owner whose thread is done and that has been quiet longest, closed for a new one: whether there was one.
+  // The tab of the owner whose thread is done and that has been quiet longest, closed for a new one: whether there was
+  // one. An owner at work, waiting on people or in review is kept.
   function makeRoom(): boolean {
     const done = agents.filter((a) => a.thread !== undefined && a.state !== 'ended' && !a.closing && ownerStatus.get(a.name.toLowerCase()) === 'done');
     const quietest = done.sort((a, b) => (a.lastOutput ?? 0) - (b.lastOutput ?? 0))[0];

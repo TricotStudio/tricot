@@ -47,6 +47,7 @@ export const TIER_B_BOARD_ROUTES = [
   'POST /boards/:boardId/delete',
   'POST /pages/:pageId/delete',
   'POST /boards/:boardId/files/write', // a person's edit saved over a project file on this computer
+  'POST /threads/:threadId/review', // a verdict on a thread's work waiting for review, which approves its commit
 ];
 
 // The board routes only a Tricot terminal takes, with its own key: what the

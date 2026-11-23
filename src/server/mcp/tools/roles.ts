@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { agentKinds, findAgent } from '../../../core/agents/registry';
 import { clip, listNames, samePerson } from '../../../core/format';
 import { boardAgents } from '../../../core/mentions';
-import { orchestratorName, STATUS_WORDS, type SessionRole } from '../../../core/roles';
+import { orchestratorName, STATUS_WORDS, VERDICT_WORDS, type SessionRole } from '../../../core/roles';
 import { BoardError } from '../../../core/store';
 import { fields } from '../../../core/schemas/fields';
 import { boardKey, type Thread, type ThreadStatus } from '../../../core/types';
@@ -16,7 +16,18 @@ import type { ToolContext } from './context';
 // word. The role's line goes first, ahead of any part's: what a part says of
 // how to work holds for the work, and this says which work is this session's.
 
-const STATUSES = ['working', 'needs-you', 'done'] as const satisfies readonly ThreadStatus[];
+const STATUSES = ['working', 'needs-you', 'in-review', 'done'] as const satisfies readonly ThreadStatus[];
+
+// What set_thread_status says of each status, and of in review in full (core/roles.ts): work finished that waits on a
+// person's OK before it is committed, which their verdict sets back to working.
+const STATUS_ARG = 'working, needs-you, in-review or done';
+const IN_REVIEW =
+  "Set in-review in place of done when your work is finished but waits on a person's OK before you commit it: put what changed on the board first (a diff block, screenshots) with your thread_id so the review shows it, and summarise what changed. After their OK, commit and set done; if they send it back, it is working again. Work with nothing to commit goes straight to done.";
+
+// What the owner is told once it set where its work stands: for done, that the coordinator tells the person; for in
+// review, what comes next.
+const statusSet = (thread: Thread, status: ThreadStatus, told: boolean): string =>
+  `The work of thread "${clip(thread.title, 80)}" is ${STATUS_WORDS[status]}${status === 'done' && told ? ': the coordinator tells the person' : ''}${status === 'in-review' ? `: the person answers "${VERDICT_WORDS.approve}" or "${VERDICT_WORDS.changes}", which comes to you here as their message and sets it working again` : ''}.`;
 
 // Where a message sent on to a thread of the board went, said to the coordinator that sent it: moved, when the thread
 // it was asked in held nothing else and is gone, or quoted there, its thread answered with where it went.
@@ -118,22 +129,23 @@ function orchestratorTools({ store, getActor }: ToolContext, thread: string): To
     defineTool({
       name: 'set_thread_status',
       title: 'Set thread status',
-      description: "Say where the work of the thread you own stands: working, needs-you while it waits on a person, or done. A summary goes in the thread first.",
+      description: `Say where the work of the thread you own stands: working, needs-you while it waits on a person's answer, in-review, or done. A summary goes in the thread first. ${IN_REVIEW}`,
       guide: {
         topic: 'orchestrating',
         text: [
           'You own one thread and its work: the coordinator sent it to you, and people follow it there. Read it with get_thread, then plan the work and do it through your own subagents: scouts to read and find what the work touches, workers to build, each in its own git worktree so they keep off each other\'s files. Their steps show live in the thread.',
           'Report in the thread with reply_in_thread as the work moves, in a sentence or two: what changed for the person, not what each subagent did. Commit only when a person asks.',
-          'When you need a person (a choice, an OK), ask in the thread and set needs-you; their reply sets it back to working and wakes you. When the work is done, set done with a summary of what changed and how to see it. A person who writes in it again sets it back to working.',
+          'When you need a person (a choice, an answer), ask in the thread and set needs-you; their reply sets it back to working and wakes you. When the work is done, set done with a summary of what changed and how to see it. A person who writes in it again sets it back to working.',
+          `When the work is finished but waits on a person's OK before you commit it, set in-review in place of done. First put what changed on the board with your thread_id (a diff block of the change, screenshots of the result) so the review shows it, then set in-review with a summary of what changed. The person answers "${VERDICT_WORDS.approve}" or "${VERDICT_WORDS.changes}" with a note: either comes to you as their message and sets it back to working. After their OK, commit it, and set done only once it is committed, so done always means landed; sent back, make the changes and set in-review again. A plain reply leaves it in review: answer it there. Work with nothing to commit goes straight to done.`,
         ].join('\n'),
       },
       schema: {
-        status: z.enum(STATUSES).describe('working, needs-you or done'),
-        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and about three sentences: for done, what changed and how to see it'),
+        status: z.enum(STATUSES).describe(STATUS_ARG),
+        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and about three sentences: for in-review and done, what changed and how to see it'),
       },
       handler: async ({ status, summary }) => {
         const owned = store.setThreadStatus(thread, status, getActor(), summary);
-        return text(`The work of thread "${clip(owned.title, 80)}" is ${STATUS_WORDS[status]}${status === 'done' ? ': the coordinator tells the person' : ''}.`);
+        return text(statusSet(owned, status, true));
       },
     }),
   ];
@@ -180,16 +192,16 @@ export function leadTools({ store, getActor }: ToolContext, leads: (boardKey: st
     defineTool({
       name: 'set_thread_status',
       title: 'Set thread status',
-      description: 'Say where the work of a thread you own stands: working, needs-you while it waits on a person, or done. A summary goes in the thread first.',
+      description: `Say where the work of a thread you own stands: working, needs-you while it waits on a person's answer, in-review, or done. A summary goes in the thread first. ${IN_REVIEW}`,
       schema: {
         thread_id: z.string().describe('A thread you own'),
-        status: z.enum(STATUSES).describe('working, needs-you or done'),
-        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and about three sentences: for done, what changed and how to see it'),
+        status: z.enum(STATUSES).describe(STATUS_ARG),
+        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and about three sentences: for in-review and done, what changed and how to see it'),
       },
       handler: async ({ thread_id, status, summary }) => {
         lead(thread_id);
         const owned = store.setThreadStatus(thread_id, status, getActor(), summary);
-        return text(`The work of thread "${clip(owned.title, 80)}" is ${STATUS_WORDS[status]}.`);
+        return text(statusSet(owned, status, false));
       },
     }),
   ];

@@ -548,6 +548,11 @@
   color: var(--open-ink);
   font-weight: 500;
 }
+/* Waiting for your review: square and words in the in-review colour, as Work's In review. */
+.timeline-sent-state.is-review {
+  color: var(--status-in-review-ink);
+  font-weight: 500;
+}
 
 /* The bar at the foot: floating over the conversation, where it floats on
    every view (chatBar.css .chat-float). */
@@ -590,6 +595,11 @@
   text-overflow: ellipsis;
   color: var(--text);
   font-weight: 600;
+}
+/* "…, and it stays in review": right after the thread's name, which gives way first. */
+.timeline-replying-after {
+  flex: none;
+  margin-left: -6px;
 }
 body:has(.timeline-foot .chat-bar) .threads-toast {
   bottom: 84px;
@@ -761,8 +771,87 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   font: inherit;
   font-size: 11px;
 }
+.relay-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.relay-btn:disabled:hover {
+  border-color: var(--border-strong);
+}
+/* The one firm answer in a row: Send back. */
+.relay-btn.is-strong {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+.relay-btn.is-strong:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.relay-btn.is-strong:disabled:hover {
+  border-color: var(--text);
+}
+
+/* Work waiting for your review (review.tsx): the summary in full, as a
+   question is, then what it made, the previews a thread shows under its
+   messages, and the answer: Looks good, commit it, in the done colour
+   (buttons.css .btn-approve), and Needs changes, which opens the note in the
+   card and rings it, as a relay is while you answer it. */
+.relay-card.is-reviewing {
+  padding: 10px 14px 14px;
+}
+.relay-card.is-reviewing .relay-kind {
+  font-weight: 600;
+}
+.relay-made {
+  margin-top: 12px;
+}
+.relay-made-head {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.relay-made .block-previews,
+.relay-made .work-cards {
+  margin-top: 6px;
+}
+.thread-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.thread-review-actions .btn-approve {
+  font-weight: 600;
+}
+.thread-review-note {
+  display: grid;
+  gap: 2px;
+  margin-top: 12px;
+}
+.thread-review-note textarea {
+  min-height: 76px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+}
+.thread-review-note .thread-review-actions {
+  margin-top: 8px;
+}
+.thread-review-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+.relay-card.is-noting {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 18%, transparent);
+}
+
 /* A line: done, blocked, answered. */
-.relay-card:not(.is-asking) {
+.relay-card:not(.is-asking, .is-reviewing) {
   padding: 7px 10px 7px 14px;
 }
 .relay-line {
@@ -792,6 +881,9 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   flex: none;
   font-size: 14px;
   color: var(--status-done);
+}
+.relay-answer.is-sent-back .icon {
+  color: var(--muted);
 }
 .relay-line .relay-btn {
   height: 26px;
@@ -894,13 +986,18 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 .relay-row .relay-btn {
   height: 26px;
 }
-.relay-row.is-aimed {
+.relay-row.is-aimed,
+.relay-row.is-open {
   align-items: start;
   padding-block: 9px 11px;
   background: color-mix(in srgb, var(--tone) 7%, var(--surface));
 }
-.relay-row.is-aimed > .work-square {
+.relay-row.is-aimed > .work-square,
+.relay-row.is-open > .work-square {
   margin-top: 5px;
+}
+.relay-row.is-reviewing .relay-text b {
+  font-weight: 600;
 }
 .relay-row .relay-body {
   margin-top: 4px;
@@ -963,8 +1060,76 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 24px var(--column-right) 110px var(--column-left);
+  padding: 24px var(--column-right) calc(110px + var(--review-room, 0px)) var(--column-left);
   gap: 14px;
+}
+
+/* Work waiting for your review (review.tsx ReviewBar): a bar over the line
+   over the reply bar, in the in-review colour, with the totals of what
+   changed and the review's answer; its note opens in it. The pane's messages
+   scroll clear of it by its height (--review-room, which it sets). */
+.thread-review-bar {
+  --tone: var(--status-in-review);
+  --ink: var(--status-in-review-ink);
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 34px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 2px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--tone) 50%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--tone) 6%, var(--surface));
+  box-shadow: var(--shadow-lg);
+}
+.thread-review-bar.is-noting {
+  border-color: var(--tone);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--tone) 18%, transparent),
+    var(--shadow-lg);
+}
+.thread-review-what {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.thread-review-what .work-square {
+  background: var(--tone);
+}
+.thread-review-what b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.thread-review-sub {
+  grid-column: 1;
+  margin: 0;
+  padding-left: 15px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.thread-review-bar > .thread-review-answer {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.thread-review-bar .thread-review-answer .thread-review-actions {
+  flex-wrap: nowrap;
+  margin: 0;
+}
+.thread-review-bar > .thread-review-note {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+}
+.thread-review-bar .thread-review-note textarea {
+  min-height: 64px;
 }
 .timeline-thread .thread-messages,
 .timeline-thread .threads-quiet,
@@ -1105,6 +1270,9 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 .work-group.is-needs-you .work-group-head {
   color: var(--open-ink);
 }
+.work-group.is-in-review .work-group-head {
+  color: var(--status-in-review-ink);
+}
 .work-count {
   font-weight: 500;
   color: var(--faint);
@@ -1163,7 +1331,8 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   line-height: 20px;
   overflow-wrap: anywhere;
 }
-.work-group.is-needs-you .work-row-title {
+.work-group.is-needs-you .work-row-title,
+.work-group.is-in-review .work-row-title {
   font-weight: 600;
 }
 .work-row-label {
@@ -1196,7 +1365,8 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.work-group.is-needs-you .work-row-text {
+.work-group.is-needs-you .work-row-text,
+.work-group.is-in-review .work-row-text {
   color: var(--text);
 }
 .work-row-progress {
@@ -1278,7 +1448,8 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 .work-square.is-working {
   background: var(--status-in-progress);
 }
-.work-square.is-waiting {
+.work-square.is-waiting,
+.work-square.is-review {
   background: var(--status-in-review);
 }
 .work-square.is-blocked {

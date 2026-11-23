@@ -19,6 +19,7 @@ import { replyingTo } from './chatDoor';
 import { lensChoices, messageLensOf } from './lensChoices';
 import { RelayCard, RelayStack, toneOf } from './relayCard';
 import { useRelays, type Relay } from './relays';
+import { ReviewBar, waitingReview } from './review';
 import { draftMessage, isLocal, replyInThread, startThread, unsentStarts } from './send';
 import { Conversation, footsOf, MessageRow, ThreadTitle, useThreadsOpenHere } from './threads';
 import { ThreadsList } from './threadsList';
@@ -412,8 +413,8 @@ const MainConversation = memo(function MainConversation(props: {
     return homeRows(shown, relays, name, { since, arrived }, Date.now()).map((row): ReactNode => {
       if (row.kind === 'day') return <Divider key={`day:${row.at}`} label={row.label} />;
       if (row.kind === 'since') return <Divider key="since" label="Since you were last here" fresh />;
-      if (row.kind === 'relay') return <RelayCard key={`relay:${row.relay.key}`} relay={row.relay} name={name} clock={clock} aimed={aim === row.relay.key} onReply={reply} onLight={onLight} />;
-      if (row.kind === 'stack') return <RelayStack key="relays:away" relays={row.relays} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />;
+      if (row.kind === 'relay') return <RelayCard key={`relay:${row.relay.key}`} board={board} relay={row.relay} name={name} clock={clock} aimed={aim === row.relay.key} onReply={reply} onLight={onLight} />;
+      if (row.kind === 'stack') return <RelayStack key="relays:away" board={board} relays={row.relays} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />;
       const s = row.said;
       const tag = s.first ? askedTag(s.thread, board) : undefined;
       return (
@@ -637,7 +638,7 @@ function SentCard({ to, taken, lit, onOpen, onLight }: { to: Thread; taken?: boo
           </>
         )}
       </span>
-      <span className={`timeline-sent-state${tone === 'waiting' ? ' is-waiting' : ''}`}>
+      <span className={`timeline-sent-state${tone === 'waiting' ? ' is-waiting' : tone === 'review' ? ' is-review' : ''}`}>
         {live ? <span className="work-dot is-live" aria-hidden /> : <span className={`work-square is-${tone}`} aria-hidden />}
         {sentStateWords(tone)}
         {progress && ` · ${progress.done}/${progress.total}`}
@@ -697,6 +698,7 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
   }, [back]);
   const count = thread.messages.length + (thread.pending?.length ?? 0);
   const tone = strand?.tone; // its strand's, for the square of the line over the bar
+  const review = waitingReview(thread); // its owner's summary, while its work waits for the viewer's review
   // What the thread's messages are drawn with stays the same as the bar is typed in, so they are not drawn again
   // (Conversation): only the bar is.
   const edit = useCallback(
@@ -727,10 +729,13 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
       </Conversation>
       {!readOnly && (
         <div className="timeline-foot">
+          {/* Work waiting for the viewer's review: the review over the bar, whose plain reply leaves it waiting. */}
+          {review && <ReviewBar board={board} thread={thread} name={name} summary={review} />}
           {/* The one bar, aimed at the thread open, which the line over it names: Conversation, its strand or Esc goes back. */}
           <p className="timeline-replying">
             {tone && <span className={`work-square is-${tone}`} aria-hidden />}
-            Replying in <b>{shownTitle(thread)}</b>
+            {review ? 'Or reply in' : 'Replying in'} <b>{shownTitle(thread)}</b>
+            {review && <span className="timeline-replying-after">, and it stays in review</span>}
           </p>
           <ChatBar
             docked={false}

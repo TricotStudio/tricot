@@ -4,10 +4,11 @@
 // threadsTab.ts). What was said is a message; under an ask that was sent on,
 // or whose own thread an agent took on, a card names the thread it went to
 // and where its work stands; a relay is what of the work needs the person (an
-// agent's question, a thread done, a part's card blocked); and the relays
-// that came while they were away come as one stack, its head and its groups
-// written before its first relay. The day, and where the person was last
-// here, are written before the first item after them (`before`).
+// agent's question, work waiting for their review, a thread done, a part's
+// card blocked); and the relays that came while they were away come as one
+// stack, its head and its groups written before its first relay. The day, and
+// where the person was last here, are written before the first item after
+// them (`before`).
 //
 // Each item keeps a place the line can answer in: a message its thread, a card
 // the thread it leads to, a relay its thread, or a card blocked its discussion
@@ -181,11 +182,12 @@ export function choosable(item: StreamItem, me: string): boolean {
   return Boolean(home.relay.thread || (item.place.kind !== 'board' && home.relay.card));
 }
 
-// Whether the line answers it while nothing else is chosen: what others said, and a question that needs the person.
+// Whether the line answers it while nothing else is chosen: what others said, and a question or a review that needs
+// the person (a reply to a review is a plain one in its thread, which leaves it waiting for the verdict).
 export function answersLatest(item: StreamItem, me: string): boolean {
   const home = item.home;
   if (!home || home.kind === 'said') return !mine(item, me);
-  return home.kind === 'relay' && home.relay.kind === 'question' && home.relay.needsYou;
+  return home.kind === 'relay' && (home.relay.kind === 'question' || home.relay.kind === 'review') && home.relay.needsYou;
 }
 
 // Whether 1 2 3 react to it: a message, a relay of one included.

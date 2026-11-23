@@ -52,6 +52,18 @@
   padding: 4px 10px;
   font-size: 13px;
 }
+/* Approving work, "Looks good, commit it": a task's review and a thread's
+   (threads/review.tsx) alike. It makes the work done once committed, so it
+   wears the done colour. */
+.btn-approve {
+  background: var(--decided-bg);
+  border-color: color-mix(in srgb, var(--decided) 40%, transparent);
+  color: var(--decided-ink);
+}
+.btn-approve:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--decided) 16%, var(--decided-bg));
+  border-color: color-mix(in srgb, var(--decided) 60%, transparent);
+}
 
 .link-button {
   justify-self: start;

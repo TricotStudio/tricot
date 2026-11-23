@@ -212,9 +212,9 @@ export interface BoardContextSlot {
 }
 
 // Home's Work, beside its conversation (threads/timelineWork.tsx): the work on a board by where it stands, in groups.
-// The core lists the threads agents own under its four groups, by their ids ('needs-you', 'in-progress', 'to-do',
-// 'done'); a part adds its own cards and groups with `withWork` (a part's tasks, with its backlog and its review), and
-// with none registered Work lists the threads alone.
+// The core lists the threads agents own under its five groups (`CORE_WORK_GROUPS`, by their ids: 'needs-you',
+// 'in-review', 'in-progress', 'to-do', 'done'); a part adds its own cards with `withWork`, in the core's groups or in
+// groups of its own (a part's tasks, with its backlog), and with none registered Work lists the threads alone.
 export type WorkGroupId = string;
 
 export interface WorkGroup {
@@ -260,9 +260,30 @@ export interface WorkRelay {
 }
 
 export interface WorkSlot {
-  groups: WorkGroup[];
+  groups: WorkGroup[]; // its own, never one of the core's: its rows join those by their ids
   rows(props: { board: Board; name: string }): WorkRow[];
   relays?(props: { board: Board; name: string }): WorkRelay[]; // what of its cards Home's conversation relays
+}
+
+// The core's groups, in order: what waits on the viewer (a question, a card blocked), the work waiting for their review
+// (a thread in review, and a part's card in review joins it), what is at work, what is not started yet, and done.
+export const CORE_WORK_GROUPS: readonly WorkGroup[] = [
+  { id: 'needs-you', label: 'Needs you' },
+  { id: 'in-review', label: 'In review', hint: 'waiting for your check' },
+  { id: 'in-progress', label: 'In progress' },
+  { id: 'to-do', label: 'To do', hint: 'not started yet' },
+  { id: 'done', label: 'Done', quiet: true },
+];
+
+// Work's groups: the core's, with a part's placed among them (each before the one it names, else after the last).
+export function workGroups(slot: WorkSlot | undefined): WorkGroup[] {
+  const groups = [...CORE_WORK_GROUPS];
+  for (const group of slot?.groups ?? []) {
+    const at = group.before ? groups.findIndex((g) => g.id === group.before) : -1;
+    if (at >= 0) groups.splice(at, 0, group);
+    else groups.push(group);
+  }
+  return groups;
 }
 
 const PLAIN_WORDS: PageWords = { nameGate: 'Your name is attached to what you add, so everyone can see who did what.' };
@@ -355,8 +376,11 @@ export class BoardViews {
   }
 
   // What a part adds to Home's Work: its cards and the groups they stand in; none, Work lists the threads agents own.
+  // A group of an id the core has is the core's: a part's rows join it, and a second of it is a mistake in Tricot.
   withWork(slot: WorkSlot): void {
     if (this.workSlot) throw new Error("There are two sets of work on a board's Home.");
+    const core = slot.groups.find((g) => CORE_WORK_GROUPS.some((c) => c.id === g.id));
+    if (core) throw new Error(`Home's Work has a group "${core.id}" of its own: rows join it by its id.`);
     this.workSlot = slot;
   }
 

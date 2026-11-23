@@ -35,6 +35,7 @@ import type { PairingSession } from '../../core/pairing';
 import type { ProjectFileText, ProjectFiles } from '../../core/projectFiles';
 import type { ProjectSearch, ProjectSearchOptions } from '../../core/projectSearch';
 import type { ApprovalReply } from '../../core/approvals';
+import type { ReviewVerdict } from '../../core/roles';
 import { routes, routeUrl, type ParamNames, type PathParams, type Route, type UrlArgs } from '../../core/routes';
 import { SEAT_GONE, SEAT_NEEDED, type AdmissionView, type SeatView } from '../../core/seats';
 import type { CardKindName } from '../../core/pins';
@@ -265,6 +266,12 @@ export const api = {
   postToThread: (id: string, actor: string, body: string, messageLens?: MessageLens) => post(routes.postToThread)<Thread>({ actor, body, messageLens }, { threadId: id }),
   // A preset's name, or one's own with a brief; null for General.
   setThreadLens: (id: string, actor: string, lens: ThreadLens | null) => post(routes.setThreadLens)<Thread>({ actor, lens }, { threadId: id }),
+  // A verdict on work waiting for the viewer's review (core/roles.ts): `approve` (Looks good, commit it) or `changes`
+  // (Needs changes), which needs a note. Posted in the thread as their message, it sets the work back to working; it
+  // answers with the thread. Refused (409) once the thread no longer waits for review. It needs a seat, which the
+  // request asks this browser for when it has none.
+  reviewThread: (id: string, actor: string, verdict: ReviewVerdict, note?: string) =>
+    post(routes.reviewThread)<Thread>({ actor, verdict, ...(note?.trim() && { note }) }, { threadId: id }),
   // A board's decisions, tasks, comments, findings, canvas blocks and threads' messages; no board, or all, searches every board.
   search: (boardId: string | undefined, q: string, options: { kinds?: SearchKind[]; all?: boolean; open?: boolean }) => {
     const params = new URLSearchParams({ q });

@@ -23,7 +23,7 @@ import { heldWords } from './agentTalk';
 import { addressedTo, agentsIn, asHeard, asksToRun, asksYouToRun, peopleIn, skillCalled, skillInstructionLines, waitingMention, withoutLeadingMentions } from './mentions';
 import type { AgentBrowserHalf } from './agents/agent';
 import { pageName } from './scratchPad';
-import { STATUS_WORDS, threadAgent } from './roles';
+import { STATUS_WORDS, threadAgent, VERDICT_WORDS } from './roles';
 import { threadFile } from './fileThread';
 import { blocksGone, blocksWords } from './threadSelection';
 import { answeredBy, reactionsLine } from './reactions';
@@ -438,12 +438,17 @@ function lensLine(thread: Thread): string {
   return `${lensName(thread)} lens${brief}${owned}`;
 }
 
-// Who owns a thread, and where its work stands, as get_thread says it.
+// Who owns a thread, and where its work stands, as get_thread says it; to its owner, while its work waits for review,
+// what the person's verdict asks of it (core/roles.ts).
 function ownerLine(thread: Thread, viewer: string | undefined): string {
   const you = viewer !== undefined && samePerson(thread.owner!, viewer);
   const status = thread.status ? ` Its work is ${STATUS_WORDS[thread.status]}.` : '';
+  const review =
+    you && thread.status === 'in-review'
+      ? ` A person answers "${VERDICT_WORDS.approve}" or "${VERDICT_WORDS.changes}" with a note, which sets it back to working and comes to you here: after their OK, commit it and set done. A plain reply leaves it waiting.`
+      : '';
   return you
-    ? `You own it: a person's message here that @-mentions nobody is for you, and so is another agent's.${status}`
+    ? `You own it: a person's message here that @-mentions nobody is for you, and so is another agent's.${status}${review}`
     : `Owned by ${thread.owner}: a person's message here that @-mentions nobody is for ${thread.owner}.${status}`;
 }
 

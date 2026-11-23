@@ -70,6 +70,15 @@
 .work-pill.is-waiting .work-dot {
   background: var(--open);
 }
+/* Waiting for the viewer's review: the in-review colour, as its strand and its card on Home. */
+.work-pill.is-in-review {
+  border-color: color-mix(in srgb, var(--status-in-review) 45%, var(--border));
+  background: var(--status-in-review-bg);
+  color: var(--status-in-review-ink);
+}
+.work-pill.is-in-review .work-dot {
+  background: var(--status-in-review);
+}
 .work-pill.is-open {
   border-color: var(--text);
   color: var(--text);
@@ -159,6 +168,11 @@
 .dock-owner.is-needs-you {
   background: var(--open-bg);
   color: var(--open-ink);
+  box-shadow: none;
+}
+.dock-owner.is-in-review {
+  background: var(--status-in-review-bg);
+  color: var(--status-in-review-ink);
   box-shadow: none;
 }
 .dock-owner.is-done {

@@ -46,7 +46,7 @@ const KNIT = 26; // how far down a strand turns from the conversation's into its
 const DIM = 0.28;
 
 // Each in the status colour of the task status nearest it (styles/base.css), as its square in Work is.
-const TONES: Record<StrandTone, string> = { working: 'var(--status-in-progress)', waiting: 'var(--status-in-review)', todo: 'var(--status-to-do)', done: 'var(--status-done)' };
+const TONES: Record<StrandTone, string> = { working: 'var(--status-in-progress)', waiting: 'var(--status-in-review)', review: 'var(--status-in-review)', todo: 'var(--status-to-do)', done: 'var(--status-done)' };
 const mix = (color: string, pct: number, other = 'var(--bg)') => `color-mix(in srgb, ${color} ${pct}%, ${other})`;
 const cleanId = (id: string) => id.replace(/[^\w-]/g, '');
 

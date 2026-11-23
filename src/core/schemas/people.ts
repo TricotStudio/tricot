@@ -6,6 +6,7 @@ import { orNames } from '../format';
 import { MAX_SEARCH_QUERY } from '../projectSearch';
 import { searchKinds, type SearchKind } from '../search';
 import type { BlockContent } from '../store/inputs';
+import type { ReviewVerdict } from '../roles';
 import type { ThreadDoor } from '../types';
 import { USAGE_SOURCES } from '../usage';
 import { fields } from './fields';
@@ -105,6 +106,9 @@ export const people = {
     file: z.string().min(1).max(1024).optional(),
   }),
   threadLens: z.object({ ...by, lens }),
+  // A verdict on a thread's work waiting for review (core/roles.ts): it looks good and is to be committed, or it needs
+  // changes, which `note` says (the Store refuses changes without one).
+  threadReview: z.object({ ...by, verdict: z.enum(['approve', 'changes'] satisfies ReviewVerdict[]), note: fields.message.optional() }),
   // A Tricot skill, which people add and edit: its name, what it does, what the agent follows, and which agent it is for (none: every agent).
   addSkill: z.object({ ...by, name: skillName, description: tricotSkill.description, instructions: tricotSkill.instructions, agent: tricotSkill.agent.optional() }),
   editSkill: z.object({ ...by, name: skillName.optional(), description: tricotSkill.description.optional(), instructions: tricotSkill.instructions.optional(), agent: tricotSkill.agent.optional() }),

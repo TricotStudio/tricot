@@ -89,8 +89,43 @@ export const askedOfCoordinator = (thread: Pick<Thread, 'owner' | 'status'>, vie
 export const STATUS_WORDS: Record<ThreadStatus, string> = {
   working: 'at work',
   'needs-you': 'waiting on people',
+  'in-review': 'waiting for review',
   done: 'done',
 };
+
+// ---- a review --------------------------------------------------------------------------
+//
+// Work an owner finished that waits on a person's OK before it is committed is in review (Thread.status `in-review`):
+// its owner sets it so in place of done, with a summary of what changed. The person answers with a verdict, in the
+// words of a task's review: it looks good and is to be committed, or it needs changes, with a note. Either one is
+// posted in the thread as the person's own message, so it is for the owner and wakes it as any person's message does,
+// and sets the thread back to working (store/threads.ts reviewThread); after an OK the owner commits and only then sets
+// done, so done always means landed. Nothing else is stored of it: what Home's conversation says of a review
+// (homeConversation.ts) is read from the status and the person's message, by its words (`verdictOf`).
+
+export type ReviewVerdict = 'approve' | 'changes';
+
+// A verdict's words, which lead the person's message.
+export const VERDICT_WORDS: Record<ReviewVerdict, string> = {
+  approve: 'Looks good, commit it',
+  changes: 'Needs changes',
+};
+
+// The person's message a verdict posts: its words, then the note, if any, after a blank line.
+export function verdictMessage(verdict: ReviewVerdict, note?: string): string {
+  const said = note?.trim();
+  return `${VERDICT_WORDS[verdict]}.${said ? `\n\n${said}` : ''}`;
+}
+
+// The verdict a person's message gives, read from its words: a first line that is a verdict's words, with or without
+// its full stop, and the note after it. None for any other message.
+export function verdictOf(body: string): { verdict: ReviewVerdict; note?: string } | undefined {
+  const [head, ...rest] = body.split('\n');
+  const verdict = (Object.keys(VERDICT_WORDS) as ReviewVerdict[]).find((v) => head.trim().replace(/\.$/, '') === VERDICT_WORDS[v]);
+  if (!verdict) return undefined;
+  const note = rest.join('\n').trim();
+  return { verdict, ...(note && { note }) };
+}
 
 // The name an orchestrator has on the board: its agent's, then the first
 // words of its thread's title ("Claude · Sign-in flow"), numbered when the
@@ -109,7 +144,7 @@ export const CLOSE_AFTER_DELETE_MS = 60_000;
 
 // An orchestrator a terminal holds, and where the work of the thread it owns stands, as the board tells the terminal
 // (server/wakes.ts): it counts towards its coordinator's owners at once only while at work, and one done is the first
-// to make room when the terminal has none.
+// to make room when the terminal has none. One whose work waits for review is kept: it commits once the person says so.
 export interface OwnerNow {
   name: string;
   status: ThreadStatus;
@@ -125,7 +160,8 @@ export interface Launch {
 
 // The threads of a board whose work waits on an owner no one answers for:
 // at work, with an agent to start, and none of the owner's name on the board
-// (`answering`).
+// (`answering`). One waiting on people, in review or done starts no one: a
+// person's reply, or their verdict on a review, sets it back to work first.
 export function launchesOn(board: Board, answering: (name: string) => boolean): Launch[] {
   return (board.threads ?? []).flatMap((thread) =>
     thread.status === 'working' && thread.owner && thread.launch && !answering(thread.owner) ? [{ thread: thread.id, title: thread.title, name: thread.owner, agent: thread.launch }] : [],

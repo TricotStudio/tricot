@@ -16,8 +16,9 @@ import { Presence, type AgentPresence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
 import { Store } from '../src/core/store';
-import { askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayWords, threadTone } from '../src/core/homeConversation';
-import type { Colours } from '../src/cli/switcher/homeView';
+import { askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayStack, relayWords, threadTone, verdictWords } from '../src/core/homeConversation';
+import { homeStream } from '../src/cli/switcher/homeStream';
+import { homeLines, REVIEW_HINT, type Colours } from '../src/cli/switcher/homeView';
 import { ThreadsTab } from '../src/cli/switcher/threadsTab';
 import { boardKey, type Actor, type Thread } from '../src/core/types';
 import { askableCards } from './madeUpAsked';
@@ -199,6 +200,28 @@ describe('Threads over MCP and REST', () => {
     assert.match(await said(coordinator, 'search', { board_id: boardId, query: 'tablets' }), /^Nothing found for "tablets"/);
     await request('POST', `/threads/${work.id}/messages`, { actor: 'Sam', body: 'iPads.' });
     assert.equal(store.getThread(work.id).thread.status, 'working', "a person's reply sets it back to work");
+
+    // Finished work that waits on Sam's OK before it is committed is in review (core/roles.ts): a plain reply leaves it
+    // there, and his verdict, which approves a commit and so needs a seat, is posted as his own message, for its owner,
+    // and sets it back to working. Only work in review takes one.
+    const review = `/threads/${work.id}/review`;
+    assert.match(await said(owner, 'set_thread_status', { status: 'in-review', summary: 'Fixed on phones and iPads: the diff is on the board.' }), /is waiting for review: the person answers "Looks good, commit it" or "Needs changes"/);
+    assert.match(await said(owner, 'get_thread', { thread_id: work.id }), /Its work is waiting for review\. A person answers "Looks good, commit it" or "Needs changes" with a note/, 'its owner is told what comes next');
+    await request('POST', `/threads/${work.id}/messages`, { actor: 'Sam', body: 'Does it hold on Android?' });
+    assert.equal(store.getThread(work.id).thread.status, 'in-review', 'a plain reply leaves it waiting for review');
+    assert.equal((await request('POST', review, { actor: 'Sam', verdict: 'approve' })).status, 403, 'from the page alone, it asks for a seat');
+    assert.deepEqual(await server.seated('POST', review, { actor: 'Sam', verdict: 'changes' }), { status: 400, json: { error: 'Say what needs changing in note, so its owner knows.' } });
+    const verdictAt = store.getBoard(boardId).seq;
+    const sentBack = await server.seated('POST', review, { actor: 'Sam', verdict: 'changes', note: 'The keyboard still covers it on Android.' });
+    assert.equal(sentBack.status, 200);
+    assert.deepEqual([sentBack.json.status, sentBack.json.messages.at(-1).author, sentBack.json.messages.at(-1).body], ['working', { kind: 'human', name: 'Sam' }, 'Needs changes.\n\nThe keyboard still covers it on Android.']);
+    const verdictEvents = store.eventsSince(boardId, verdictAt);
+    assert.deepEqual(verdictEvents.map((e) => e.type), ['thread_replied', 'thread_status_changed']);
+    assert.equal(concernsAgent(verdictEvents[0], store.getBoard(boardId), work.owner!), true, 'his verdict is for its owner, and wakes it');
+    assert.deepEqual(await server.seated('POST', review, { actor: 'Sam', verdict: 'approve' }), { status: 409, json: { error: `Thread "Sign-in on mobile" isn't waiting for a review: its work is at work.` } });
+    await said(owner, 'set_thread_status', { status: 'in-review', summary: 'Fixed on Android too.' });
+    const approved = await server.seated('POST', review, { actor: 'Sam', verdict: 'approve' });
+    assert.deepEqual([approved.json.status, approved.json.messages.at(-1).body], ['working', 'Looks good, commit it.'], 'after his OK, its owner commits it');
     await said(owner, 'set_thread_status', { status: 'done', summary: 'Fixed on phones and iPads.' });
     assert.equal(concernsAgent(latest(), store.getBoard(boardId), 'Router'), true, 'the coordinator hears it is done');
     assert.equal(concernsAgent(latest(), store.getBoard(boardId), 'Codex'), false);
@@ -536,6 +559,50 @@ describe("Home's conversation", () => {
       assert.match(drawn(100).find((row) => row.includes('↳')) ?? '', /❯ {3}↳ Sign-in on mobile/);
       tab.key({ kind: 'enter' });
       assert.equal(drawn(100)[0], '  Only Sign-in on mobile · Esc for everything');
+
+      // Work waiting for Sam's review (core/roles.ts) is relayed as a review: its owner's summary, needing him, in the
+      // in-review colour, and its owner is not started meanwhile. A plain reply leaves it waiting; his verdict, read
+      // from his message's words with nothing else stored, folds it, as approved or sent back, once the thread moves on.
+      await tick();
+      store.postToThread(work.id, 'iPads alone.', sam);
+      await tick();
+      store.setThreadStatus(work.id, 'in-review', owner, 'Fixed on phones and iPads: the diff is on the board.');
+      const summary = store.getThread(work.id).thread.messages.at(-1)!;
+      const reviews = () => homeRelays(store.getBoard(board.id), 'Sam', onBoard, new Set(), () => []).filter((r) => r.kind === 'review');
+      const [waiting] = reviews();
+      assert.deepEqual([waiting.key, waiting.at, waiting.body, waiting.tone, waiting.needsYou, relayWords(waiting), waiting.verdict], [summary.id, summary.at, summary.body, 'review', true, 'Waits for your review', undefined]);
+      assert.equal(launchesOn(store.getBoard(board.id), () => false).length, 0, 'its owner is not started while its work waits for review');
+      const stream = (at: number) => homeStream({ board: store.getBoard(board.id), me: 'Sam', onBoard, asked: new Set(), visit: { since: null, arrived: at }, now: at });
+      const reviewLines = () => {
+        const item = stream(Date.now()).items.find((i) => i.home?.kind === 'relay' && i.home.relay.kind === 'review')!;
+        return homeLines(item, { width: 100, me: 'Sam', sending: false, selected: false, look: { colours: 'none', light: false } }).map((parts) => parts.map(([text]) => text).join('').trimEnd());
+      };
+      const lines = reviewLines();
+      assert.match(lines[0], /Sign-in on mobile · Waits for your review · /, 'the terminal says the work waits for review');
+      assert.ok(lines.includes(`    ${REVIEW_HINT}`), 'and where to give the verdict, as a reply there is a plain one');
+      await tick();
+      store.postToThread(work.id, 'Does it hold on Android?', sam);
+      assert.deepEqual([store.getThread(work.id).thread.status, reviews()[0].needsYou], ['in-review', true], 'a plain reply leaves it waiting for review');
+      assert.throws(() => store.reviewThread(work.id, 'changes', sam), /Say what needs changing in note/);
+      await tick();
+      store.reviewThread(work.id, 'changes', sam, 'The keyboard still covers it on Android.');
+      const [sentBack] = reviews();
+      assert.deepEqual([sentBack.key, sentBack.needsYou, sentBack.tone, relayWords(sentBack), verdictWords(sentBack, 'Sam')], [summary.id, false, 'working', 'Sent back', 'You sent it back: “The keyboard still covers it on Android.”']);
+      assert.deepEqual(launchesOn(store.getBoard(board.id), () => false).map((l) => l.thread), [work.id], 'back at work, its owner is started again if it is gone');
+      assert.match(reviewLines().at(-1)!, /^ {4}You sent it back: “The keyboard still covers it on Android\.”$/);
+      await tick();
+      store.setThreadStatus(work.id, 'in-review', owner, 'Fixed on Android too.');
+      await tick();
+      store.reviewThread(work.id, 'approve', sam);
+      await tick();
+      store.setThreadStatus(work.id, 'done', owner, 'Committed: fixed on phones and tablets.');
+      const settled = homeRelays(store.getBoard(board.id), 'Sam', onBoard, new Set([question.id]), () => []).filter((r) => r.thread?.id === work.id);
+      assert.deepEqual(
+        settled.map((r) => [r.kind, r.needsYou, r.verdict ? verdictWords(r, 'Sam') : relayWords(r)]),
+        [['question', false, 'Answered'], ['review', false, 'You sent it back: “The keyboard still covers it on Android.”'], ['review', false, 'You approved it'], ['done', false, 'Done']],
+      );
+      assert.deepEqual(relayStack(settled).answered.map((r) => r.kind), ['review', 'review', 'question'], 'answered, a review is among what was answered');
+      assert.throws(() => store.reviewThread(work.id, 'approve', sam), /isn't waiting for a review: its work is done/);
     } finally {
       removeScratch(dir);
     }

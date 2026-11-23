@@ -404,9 +404,11 @@ export interface ThreadDoors {
 export type ThreadDoor = keyof ThreadDoors;
 
 // Where the work of a thread a coordinator sent work to stands (core/roles.ts):
-// its owner at work, waiting on a person, or done. A person's message in one
-// that waits or is done sets it back to work.
-export type ThreadStatus = 'working' | 'needs-you' | 'done';
+// its owner at work, waiting on a person, finished and waiting on a person's
+// OK before it is committed (in review), or done. A person's message in one
+// that waits or is done sets it back to work; in review, only their verdict
+// does (store/threads.ts reviewThread), and a plain reply leaves it there.
+export type ThreadStatus = 'working' | 'needs-you' | 'in-review' | 'done';
 
 // What a thread looks at the project through, e.g. Legal or Design: agents
 // answer in it as its brief says (core/threads.ts).
