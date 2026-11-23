@@ -165,6 +165,7 @@ export interface WakeReply {
   launches?: Launch[]; // the owners of threads to start, to a terminal holding the board's coordinator (core/roles.ts)
   owners?: OwnerNow[]; // the orchestrators it holds, and where their threads' work stands
   closes?: string[]; // orchestrators to close: their thread deleted, past its undo
+  quiet?: string[]; // orchestrators to close too: their thread done, and asleep for an hour (core/roles.ts QUIET_CLOSE_MS)
 }
 export type WakeLink = (report: WakeReport) => Promise<WakeReply | undefined>;
 
@@ -217,7 +218,7 @@ export interface WakesOptions {
   confirmMs?: number;
   retryMs?: number[];
   launches?: (launches: Launch[]) => void; // the owners of threads the board asks this terminal to start
-  owners?: (owners: OwnerNow[], closes: string[]) => void; // where its orchestrators' work stands, and those to close
+  owners?: (owners: OwnerNow[], closes: string[], quiet: string[]) => void; // where its orchestrators' work stands, those to close, and those done and quiet
 }
 
 export class Wakes {
@@ -497,7 +498,7 @@ export class Wakes {
       if (typeof reply.seq === 'number' && reply.seq > this.seq) this.seq = reply.seq;
       const refused = new Set((reply.refused ?? []).map((name) => name.toLowerCase()));
       for (const [key, held] of this.held) held.refused = refused.has(key);
-      this.options.owners?.(reply.owners ?? [], reply.closes ?? []);
+      this.options.owners?.(reply.owners ?? [], reply.closes ?? [], reply.quiet ?? []);
       if (reply.launches?.length) this.options.launches?.(reply.launches);
       for (const record of reply.agents ?? []) {
         const held = this.held.get(record.name.toLowerCase());

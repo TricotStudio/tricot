@@ -250,7 +250,7 @@ export function startHost(options: HostOptions): Host {
     now,
     changed: () => schedule(),
     launches: (list) => launchOwners(list),
-    owners: (owners, closes) => tendOwners(owners, closes),
+    owners: (owners, closes, quiet) => tendOwners(owners, closes, quiet),
   });
 
   const router = new InputRouter({
@@ -662,7 +662,8 @@ export function startHost(options: HostOptions): Host {
   // Only an owner at work counts towards those at once: one whose thread waits
   // on people (a question, or their review), or is done, sleeps and costs
   // nothing. When the tabs are full, the owner whose thread is done and that
-  // has been quiet longest closes to make room; a word in its thread later
+  // has been quiet longest closes to make room; one done also closes once it
+  // has slept an hour, room or not (tendOwners); a word in its thread later
   // starts a fresh one. One whose work waits for review is never closed so: it
   // commits that work once the person approves it.
   function launchOwners(list: Launch[]): void {
@@ -691,7 +692,8 @@ export function startHost(options: HostOptions): Host {
   }
 
   // The tab of the owner whose thread is done and that has been quiet longest, closed for a new one: whether there was
-  // one. An owner at work, waiting on people or in review is kept.
+  // one. An owner at work, waiting on people or in review is kept. One done that slept an hour is closed without this,
+  // as the board says (tendOwners).
   function makeRoom(): boolean {
     const done = agents.filter((a) => a.thread !== undefined && a.state !== 'ended' && !a.closing && ownerStatus.get(a.name.toLowerCase()) === 'done');
     const quietest = done.sort((a, b) => (a.lastOutput ?? 0) - (b.lastOutput ?? 0))[0];
@@ -702,14 +704,24 @@ export function startHost(options: HostOptions): Host {
   }
 
   // What the board says of the orchestrators this terminal holds: where their threads stand, and those to close, their
-  // thread deleted and its undo past (core/roles.ts). Only a tab Tricot started to own a thread is ever closed so.
-  function tendOwners(owners: OwnerNow[], closes: string[]): void {
+  // thread deleted and its undo past, or done and asleep for an hour (core/roles.ts QUIET_CLOSE_MS). Only a tab Tricot
+  // started to own a thread is ever closed so, and one done and quiet not while it shows: it closes on a later report,
+  // once the person looks elsewhere.
+  function tendOwners(owners: OwnerNow[], closes: string[], quiet: string[]): void {
     for (const { name, status } of owners) ownerStatus.set(name.toLowerCase(), status);
+    const ownerOf = (name: string) => agents.find((a) => a.thread !== undefined && a.state !== 'ended' && !a.closing && samePerson(a.name, name));
     for (const name of closes) {
-      const owner = agents.find((a) => a.thread !== undefined && a.state !== 'ended' && !a.closing && samePerson(a.name, name));
+      const owner = ownerOf(name);
       if (!owner) continue;
       ownerStatus.delete(name.toLowerCase());
       say(`${owner.name} closed: its thread was deleted.`, ANSWER_HINT_MS);
+      stopAgent(owner.index);
+    }
+    for (const name of quiet) {
+      const owner = ownerOf(name);
+      if (!owner || owner.index === visible) continue;
+      ownerStatus.delete(name.toLowerCase());
+      say(`${owner.name} closed after an hour quiet: its thread is done, and a word there starts it again.`, ANSWER_HINT_MS);
       stopAgent(owner.index);
     }
   }

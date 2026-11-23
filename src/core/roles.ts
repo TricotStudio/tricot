@@ -142,9 +142,14 @@ export function orchestratorName(agent: string, title: string, taken: string[]):
 // undo.css), with room for the pointer resting on it, so an Undo finds its owner still there.
 export const CLOSE_AFTER_DELETE_MS = 60_000;
 
+// How long an orchestrator whose thread is done sleeps before it is closed, though its terminal has room: a word in its
+// thread later starts a fresh one, which reads the thread back.
+export const QUIET_CLOSE_MS = 60 * 60_000;
+
 // An orchestrator a terminal holds, and where the work of the thread it owns stands, as the board tells the terminal
 // (server/wakes.ts): it counts towards its coordinator's owners at once only while at work, and one done is the first
-// to make room when the terminal has none. One whose work waits for review is kept: it commits once the person says so.
+// to make room when the terminal has none, and is closed once it has slept QUIET_CLOSE_MS. One whose work waits for
+// review is kept: it commits once the person says so.
 export interface OwnerNow {
   name: string;
   status: ThreadStatus;

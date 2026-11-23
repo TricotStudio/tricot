@@ -7,7 +7,7 @@
 // reading, or a wake that started a turn, moves `since` on.
 import { concernsAgent } from '../core/concerns';
 import { samePerson } from '../core/format';
-import { CLOSE_AFTER_DELETE_MS, launchesOn, type Launch, type OwnerNow } from '../core/roles';
+import { CLOSE_AFTER_DELETE_MS, launchesOn, QUIET_CLOSE_MS, type Launch, type OwnerNow } from '../core/roles';
 import type { Store } from '../core/store';
 import { boardKey, type Board } from '../core/types';
 import { eventVisibleTo } from './mcp/backlog';
@@ -32,10 +32,13 @@ export interface WakesReply {
   // out when there are none.
   launches?: Launch[];
   // The orchestrators it holds, with where their threads' work stands, and those
-  // to close: their thread deleted, past its undo (CLOSE_AFTER_DELETE_MS). Each
-  // left out when empty.
+  // to close: their thread deleted, past its undo (CLOSE_AFTER_DELETE_MS); and
+  // apart, so an older terminal doesn't say their thread was deleted, those
+  // whose thread is done and that have slept for QUIET_CLOSE_MS. Each left out
+  // when empty.
   owners?: OwnerNow[];
   closes?: string[];
+  quiet?: string[];
 }
 
 // `read`: what was read for it before (its record's), read on from where it
@@ -63,26 +66,31 @@ export function heldBy(store: Store, presence: Presence, board: Board, holder: s
   const answering = (name: string) =>
     Boolean(presence.sleepers.held(key, name)) || presence.list(key).some((agent) => agent.state !== 'away' && samePerson(agent.name, name));
   const names = held.map(({ name }) => name);
-  return { seq: board.seq, agents, refused, ...launchesFor(presence, board, names, answering), ...ownersOf(presence, board, names, now) };
+  return { seq: board.seq, agents, refused, ...launchesFor(presence, board, names, answering), ...ownersOf(presence, board, agents, now) };
 }
 
-// The orchestrators among those held, with their threads' status; and those whose thread was deleted, once its undo
-// is past, or is gone from the board altogether, to close (core/roles.ts).
-function ownersOf(presence: Presence, board: Board, held: string[], now: number): { owners?: OwnerNow[]; closes?: string[] } {
+// The orchestrators among those held, with their threads' status; those whose thread was deleted, once its undo is
+// past, or is gone from the board altogether, to close; and those whose thread is done and that have slept for
+// QUIET_CLOSE_MS, as their record says (`asleep`, `at`), with nothing due for them, to close too (core/roles.ts): a
+// coordinator's word in a done thread doesn't set it back to work, so an owner whose wake for it failed is kept, or
+// the word would be lost with no fresh owner to read it. One at work, waiting on people or in review is never closed so.
+function ownersOf(presence: Presence, board: Board, held: Pick<HeldAgent, 'name' | 'asleep' | 'at' | 'due'>[], now: number): { owners?: OwnerNow[]; closes?: string[]; quiet?: string[] } {
   const owners: OwnerNow[] = [];
   const closes: string[] = [];
-  for (const name of held) {
+  const quiet: string[] = [];
+  for (const { name, asleep, at, due } of held) {
     const role = presence.sessionOf(name)?.role;
     if (role?.kind !== 'orchestrator') continue;
     const thread = board.threads?.find((t) => t.id === role.thread);
     if (thread) {
       if (thread.status) owners.push({ name, status: thread.status });
+      if (thread.status === 'done' && asleep && due === undefined && now - at >= QUIET_CLOSE_MS) quiet.push(name);
       continue;
     }
     const deleted = board.deleted?.find((d) => d.kind === 'thread' && d.id === role.thread);
     if (!deleted || now - Date.parse(deleted.at) >= CLOSE_AFTER_DELETE_MS) closes.push(name);
   }
-  return { ...(owners.length && { owners }), ...(closes.length && { closes }) };
+  return { ...(owners.length && { owners }), ...(closes.length && { closes }), ...(quiet.length && { quiet }) };
 }
 
 // The owners this terminal starts (core/roles.ts): those of the agent kinds of the coordinators it holds, each kind from

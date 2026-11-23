@@ -10,7 +10,7 @@ import { conversationWaitingOn, inConversation, threadGroups, threadsWaitingOn, 
 import { concernsAgent } from '../src/core/concerns';
 import { doorNote } from '../src/core/doors';
 import type { Told } from '../src/core/words';
-import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn } from '../src/core/roles';
+import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn, QUIET_CLOSE_MS } from '../src/core/roles';
 import { Leads, leadsFile, RESUME_MS } from '../src/server/leads';
 import { Presence, type AgentPresence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
@@ -227,12 +227,24 @@ describe('Threads over MCP and REST', () => {
     assert.equal(concernsAgent(latest(), store.getBoard(boardId), 'Codex'), false);
     assert.throws(() => store.setThreadStatus(work.id, 'working', { kind: 'agent', name: 'Codex' }), /only its owner says where its work stands/);
 
-    // The terminal holding the owner hears where its thread stands, and, once the thread is deleted and its undo is past,
-    // to close it (server/wakes.ts): never before, so an Undo finds it there.
+    // The terminal holding the owner hears where its thread stands; once it is done and the owner has slept an hour, to
+    // close it, apart from those whose thread was deleted (server/wakes.ts); and, once the thread is deleted and its
+    // undo is past, to close it: never before, so an Undo finds it there.
     const tending = new Presence(() => {});
     tending.started(work.owner!, { tool: 'claude', role: { kind: 'orchestrator', thread: work.id } });
-    const owners = (at: number) => heldBy(store, tending, store.getBoard(boardId), 'terminal-one', [{ name: work.owner!, asleep: true, at: Date.now() }], [], at);
-    assert.deepEqual([owners(Date.now()).owners, owners(Date.now()).closes], [[{ name: work.owner, status: 'done' }], undefined]);
+    const fellAsleep = Date.now();
+    const owners = (now: number, view: { asleep: boolean; at: number; since?: number } = { asleep: true, at: fellAsleep }, board = store.getBoard(boardId)) =>
+      heldBy(store, tending, board, 'terminal-one', [{ name: work.owner!, ...view }], [], now);
+    const first = owners(Date.now());
+    assert.deepEqual([first.owners, first.closes, first.quiet], [[{ name: work.owner, status: 'done' }], undefined, undefined]);
+    assert.equal(owners(fellAsleep + QUIET_CLOSE_MS - 1).quiet, undefined, 'not while it has slept less than an hour');
+    assert.deepEqual([owners(fellAsleep + QUIET_CLOSE_MS).quiet, owners(fellAsleep + QUIET_CLOSE_MS).closes], [[work.owner], undefined], 'closed once it has slept an hour');
+    const done = store.getBoard(boardId);
+    const reviewing = { ...done, threads: done.threads!.map((t) => (t.id === work.id ? { ...t, status: 'in-review' as const } : t)) };
+    assert.equal(owners(fellAsleep + QUIET_CLOSE_MS, undefined, reviewing).quiet, undefined, 'one whose work waits for review is kept');
+    const owed = owners(fellAsleep + 2 * QUIET_CLOSE_MS, { asleep: true, at: fellAsleep + 1, since: verdictAt });
+    assert.deepEqual([owed.agents[0].due !== undefined, owed.quiet], [true, undefined], 'nor one with something due, whose wake may have failed');
+    assert.equal(owners(fellAsleep + 2 * QUIET_CLOSE_MS, { asleep: false, at: fellAsleep + 2 }).quiet, undefined, 'nor one at work on something');
     store.removeItem(work.id, { kind: 'human', name: 'Sam' });
     assert.equal(owners(Date.now()).closes, undefined, 'not while its undo is still offered');
     assert.deepEqual(owners(Date.now() + CLOSE_AFTER_DELETE_MS).closes, [work.owner], 'closed once its undo is past');
