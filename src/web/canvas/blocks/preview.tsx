@@ -18,33 +18,52 @@ export function hasPreview(block: Block): boolean {
   return previewOf(block) !== undefined;
 }
 
-// One observer for every frame: each is drawn once it comes within a screen
-// or so of being seen, and stays drawn. Without one (an old browser), at once.
-let observer: IntersectionObserver | undefined;
+// One observer for the frames in each scroller: each is drawn once it comes
+// within half a screen of being seen, and stays drawn. Without one (an old
+// browser), at once. The observer's root is the scroller the frame is in (a
+// conversation's), as an observer's margin only widens its root and the
+// scroller clips the rest: with the page as its root, a frame would draw only
+// as it came into view.
+const observers = new WeakMap<Element | Document, IntersectionObserver>();
 const waiting = new Map<Element, () => void>();
+
+// The nearest box around it that scrolls up and down, else the page.
+function scrollerOf(element: Element): Element | Document {
+  for (let at = element.parentElement; at; at = at.parentElement) {
+    const { overflowY } = getComputedStyle(at);
+    if (overflowY === 'auto' || overflowY === 'scroll') return at;
+  }
+  return document;
+}
 
 function whenNear(element: Element, near: () => void): () => void {
   if (typeof IntersectionObserver === 'undefined') {
     near();
     return () => {};
   }
-  observer ??= new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        observer?.unobserve(entry.target);
-        const shown = waiting.get(entry.target);
-        waiting.delete(entry.target);
-        shown?.();
-      }
-    },
-    { rootMargin: '50% 0px' },
-  );
+  const root = scrollerOf(element);
+  let observer = observers.get(root);
+  if (!observer) {
+    observer = new IntersectionObserver(
+      (entries, self) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          self.unobserve(entry.target);
+          const shown = waiting.get(entry.target);
+          waiting.delete(entry.target);
+          shown?.();
+        }
+      },
+      { root, rootMargin: '50% 0px' },
+    );
+    observers.set(root, observer);
+  }
+  const watching = observer;
   waiting.set(element, near);
-  observer.observe(element);
+  watching.observe(element);
   return () => {
     waiting.delete(element);
-    observer?.unobserve(element);
+    watching.unobserve(element);
   };
 }
 

@@ -39,6 +39,73 @@ Object.defineProperty(window, 'indexedDB', { configurable: true, get: () => unde
 window.requestAnimationFrame = (callback) => setTimeout(() => callback(performance.now()), 0);
 // The dock opens through a view transition when the browser has them (threads/dockMotion.ts), which a headless page with no frames to show may never run: it opens plainly, as in a browser without them.
 document.startViewTransition = undefined;
+// Under the virtual time the page runs in (test/mermaidPage.ts), Chrome draws a frame only when the page has kept it
+// busy long enough for one to come, and none while it only waits. What the browser does on a frame would come at a
+// time that depends on how fast the machine is, or not at all: a ResizeObserver's callback (a canvas's blocks measured,
+// so a pin can open on one), an IntersectionObserver's (a message on screen, so seen), and the end of a transition
+// (each one a hundredth of a millisecond long with reduced motion). They come on the page's own clock instead, every
+// 16 ms, as requestAnimationFrame does above, until the results are in.
+const watched = new Set();
+let framing = true;
+const sizeOf = (el) => (el instanceof HTMLElement ? [el.offsetWidth, el.offsetHeight] : ((r) => [r.width, r.height])(el.getBoundingClientRect()));
+window.ResizeObserver = class {
+  constructor(callback) { this.callback = callback; this.sizes = new Map(); }
+  observe(el) { if (!this.sizes.has(el)) this.sizes.set(el, [0, 0]); watched.add(this); }
+  unobserve(el) { this.sizes.delete(el); }
+  disconnect() { this.sizes.clear(); watched.delete(this); }
+  check() {
+    const entries = [];
+    for (const [el, [w0, h0]] of this.sizes) {
+      const [w, h] = sizeOf(el);
+      if (w === w0 && h === h0) continue;
+      this.sizes.set(el, [w, h]);
+      const box = [{ inlineSize: w, blockSize: h }];
+      entries.push({ target: el, contentRect: new DOMRectReadOnly(0, 0, w, h), borderBoxSize: box, contentBoxSize: box, devicePixelContentBoxSize: box });
+    }
+    if (entries.length) this.callback(entries, this);
+  }
+};
+const marginOf = (margin, root) => {
+  const [t, r = t, b = t, l = r] = margin.trim().split(/\\s+/).map((v, i) => (v.endsWith('%') ? (parseFloat(v) / 100) * (i % 2 ? root.width : root.height) : parseFloat(v) || 0));
+  return new DOMRectReadOnly(root.left - l, root.top - t, root.width + l + r, root.height + t + b);
+};
+window.IntersectionObserver = class {
+  constructor(callback, options = {}) {
+    this.callback = callback;
+    this.root = options.root ?? null;
+    this.rootMargin = options.rootMargin ?? '0px';
+    this.thresholds = [options.threshold ?? 0].flat().sort((a, b) => a - b);
+    this.states = new Map();
+  }
+  observe(el) { if (!this.states.has(el)) this.states.set(el, ''); watched.add(this); }
+  unobserve(el) { this.states.delete(el); }
+  disconnect() { this.states.clear(); watched.delete(this); }
+  takeRecords() { return []; }
+  check() {
+    const root = marginOf(this.rootMargin, this.root instanceof Element ? this.root.getBoundingClientRect() : new DOMRectReadOnly(0, 0, innerWidth, innerHeight));
+    const entries = [];
+    for (const [el, was] of this.states) {
+      const box = el.getBoundingClientRect();
+      const x = Math.max(box.left, root.left), y = Math.max(box.top, root.top);
+      const w = Math.min(box.right, root.right) - x, h = Math.min(box.bottom, root.bottom) - y;
+      const isIntersecting = el.getClientRects().length > 0 && w >= 0 && h >= 0;
+      const intersectionRatio = !isIntersecting ? 0 : box.width * box.height ? (w * h) / (box.width * box.height) : 1;
+      const now = (isIntersecting ? this.thresholds.filter((v) => intersectionRatio >= v).length : 0) + ':' + isIntersecting;
+      if (now === was) continue;
+      this.states.set(el, now);
+      const intersectionRect = isIntersecting ? new DOMRectReadOnly(x, y, w, h) : new DOMRectReadOnly();
+      entries.push({ target: el, isIntersecting, intersectionRatio, boundingClientRect: box, intersectionRect, rootBounds: root, time: performance.now() });
+    }
+    if (entries.length) this.callback(entries, this);
+  }
+};
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const frame = () => {
+  for (const watcher of [...watched]) watcher.check();
+  if (reducedMotion) for (const a of document.getAnimations()) if (a.playState === 'running' && Number.isFinite(a.effect?.getComputedTiming().endTime)) a.finish();
+  if (framing) setTimeout(frame, 16);
+};
+setTimeout(frame, 16);
 const errors = [];
 window.addEventListener('error', (event) => errors.push(event.message));
 window.addEventListener('unhandledrejection', (event) => errors.push(String((event.reason && event.reason.message) || event.reason)));
@@ -171,6 +238,7 @@ root.render(h(${root.component}));
   out.id = 'results';
   out.textContent = JSON.stringify(results);
   document.body.append(out);
+  framing = false;
 })();
 `;
 

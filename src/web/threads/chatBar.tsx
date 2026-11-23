@@ -171,15 +171,13 @@ function ThreadsButton({ threads }: { threads?: ThreadsOpener }) {
   useEffect(() => {
     if (shown) setSeen(true);
   }, [shown]);
-  // Gone, once its going has played (at once with reduced motion), so a bar
-  // with no button of its own keeps none.
+  // Gone, once its going has played (at once with reduced motion), or was cut
+  // short, so a bar with no button of its own keeps none.
   useLayoutEffect(() => {
     if (threads || shown || !seen || !slot.current) return;
     let here = true;
-    Promise.all(slot.current.getAnimations({ subtree: true }).map((a) => a.finished)).then(
-      () => here && setSeen(false),
-      () => {},
-    );
+    const gone = () => here && setSeen(false);
+    Promise.all(slot.current.getAnimations({ subtree: true }).map((a) => a.finished)).then(gone, gone);
     return () => {
       here = false;
     };

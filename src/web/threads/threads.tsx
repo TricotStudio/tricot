@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { inWindow } from '../../core/delivery';
 import { barPlaceholder, barSends, doorName } from '../../core/doors';
 import { agentOnFile, type OpenFile } from '../../core/fileThread';
@@ -24,7 +24,7 @@ import { ActorBadge, Icon, timeAgo } from '../shared/components';
 import { PanelHandle } from '../shared/PanelHandle';
 import { usePanelWidth } from '../shared/panelWidth';
 import { CLOSED, dockOnArrival, type DockState, type Left } from './dockStays';
-import { escapeCloses, followPress, useBeside, useDismiss, useReadOnly } from '../shared/hooks';
+import { escapeCloses, followPress, useBeside, useDismiss, useReadOnly, useTick } from '../shared/hooks';
 import { askDockToOpen, OPEN_THREAD } from '../shared/openThread';
 import { dropFlag, flagged, flags, go, type BoardViewName } from '../shared/pages';
 import { lensChoices, messageLensOf } from './lensChoices';
@@ -829,7 +829,9 @@ export function ThreadTitle(props: { board: Board; thread: Thread; readOnly: boo
 // agent has that line too, and says who it is for ("Claude → Codex"); once
 // the loop guard holds one, the foot says the agents wait for a person
 // (agentTalk.tsx). An archived board's threads are only read.
-export function Conversation(props: {
+// Drawn again when what it is given changes (memo), not as the bar under it is typed in, and each half minute for
+// the line at its foot, which goes by the clock.
+export const Conversation = memo(function Conversation(props: {
   board: Board;
   thread: Thread | undefined;
   name: string;
@@ -839,6 +841,7 @@ export function Conversation(props: {
   children?: ReactNode; // drawn in the scroller after the messages (Home's yarn beside them)
 }) {
   const { board, thread, name, onOpen, onEdit, onThread, children } = props;
+  useTick(30_000);
   const readOnly = useReadOnly();
   const scroller = useRef<HTMLDivElement>(null);
   const names = useMentionable(name);
@@ -912,7 +915,7 @@ export function Conversation(props: {
       {children}
     </div>
   );
-}
+});
 
 // Which of a thread's drawn messages has the line under it that says what
 // became of it (delivery.tsx): the person's latest, while it is theirs
