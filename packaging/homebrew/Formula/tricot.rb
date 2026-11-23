@@ -1,8 +1,8 @@
 class Tricot < Formula
   desc "Shared board of canvases and threads for humans and agents"
   homepage "https://tricotstudio.com"
-  url "https://github.com/TricotStudio/tricot/releases/download/v0.0.3/tricot-0.0.3.tgz"
-  sha256 "f997b3478097e355a9d26cb5e6e02c71c9e3af95074401a1480e4f61fea9a0bd"
+  url "https://github.com/TricotStudio/tricot/releases/download/v0.0.4/tricot-0.0.4.tgz"
+  sha256 "7cfb3b5c0b92593d1968cccdf2ec42d243c5d4c2b9bf1096201be8c6d448df95"
   license "Apache-2.0"
 
   livecheck do
@@ -11,8 +11,8 @@ class Tricot < Formula
   end
 
   bottle do
-    root_url "https://github.com/TricotStudio/tricot/releases/download/v0.0.3"
-    sha256 cellar: :any_skip_relocation, all: "cbadf562f00fb2a2f1943ff1619c94278f676fb8b93835cb8edf4f9544b95ac7"
+    root_url "https://github.com/TricotStudio/tricot/releases/download/v0.0.4"
+    sha256 cellar: :any_skip_relocation, all: "636b26effdef49de6d19da3269ba123f3a0526103e21f4a546ce9fbc9f946192"
   end
 
   depends_on "node"
