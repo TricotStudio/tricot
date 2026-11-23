@@ -16,6 +16,7 @@ import { Presence, type AgentPresence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
 import { Store } from '../src/core/store';
+import { liveAgents, liveWords, reachedByAny } from '../src/core/liveAgents';
 import { askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayStack, relayWords, threadTone, verdictWords } from '../src/core/homeConversation';
 import { homeStream } from '../src/cli/switcher/homeStream';
 import { homeLines, REVIEW_HINT, type Colours } from '../src/cli/switcher/homeView';
@@ -618,5 +619,28 @@ describe("Home's conversation", () => {
     } finally {
       removeScratch(dir);
     }
+  });
+  it("says who is on a board by the work they own: the coordinator, the threads at work and who a message for any agent reaches", () => {
+    const at = (n: number) => new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString();
+    const thread = (id: string, owner: string, status: Thread['status'], n: number) => ({ id, owner, status, updatedAt: at(n), messages: [] }) as unknown as Thread;
+    const here = (name: string, state: AgentPresence['state'], coordinator?: true) => ({ name, state, lastSeen: at(9), ...(coordinator && { coordinator }) }) as AgentPresence;
+    const board = { threads: [thread('a', 'Claude · Sign-in', 'working', 1), thread('b', 'Claude · Search', 'working', 2), thread('c', 'Claude · Docs', 'done', 3), thread('d', 'Claude · Cache', 'needs-you', 4)] };
+    const claude = here('Claude', 'listening', true);
+    const present = [claude, here('Claude · Sign-in', 'working'), here('Claude · Docs', 'asleep'), here('Claude · Cache', 'asleep')];
+
+    const live = liveAgents(present, board);
+    assert.equal(live.lead?.name, 'Claude');
+    assert.deepEqual([live.atWork.map((t) => [t.thread.id, t.owner?.name]), live.needsYou.map((t) => t.thread.id), live.done.map((t) => t.thread.id), live.others], [[['b', undefined], ['a', 'Claude · Sign-in']], ['d'], ['c'], []], 'an owner is its thread, never an agent; one not started has no owner yet');
+    assert.equal(liveWords(live), 'Claude · listening · 2 at work');
+    assert.equal(liveWords(liveAgents([claude, here('Claude · Docs', 'asleep')], { threads: [thread('c', 'Claude · Docs', 'done', 3)] })), 'Claude · listening');
+    assert.equal(liveWords(liveAgents([here('Pi', 'working')], { threads: [] })), 'Pi · working', 'one agent alone, as before');
+    assert.equal(liveWords(liveAgents([here('Pi', 'working'), here('Codex', 'asleep')], { threads: [] })), '2 agents');
+    assert.equal(liveWords(liveAgents([here('Pi', 'working'), here('Codex', 'asleep')], { threads: [thread('a', 'Claude', 'working', 1)] })), '2 agents · 1 at work');
+    assert.equal(liveWords(liveAgents([], board)), '2 at work', 'none but work');
+    assert.equal(liveWords(liveAgents([], { threads: [] })), 'No agents');
+
+    assert.deepEqual(reachedByAny(present).map((a) => a.name), ['Claude'], 'a new message starts a thread its coordinator owns: only it is woken');
+    const peers = [here('Pi', 'asleep'), here('Codex', 'listening'), here('Claude · Sign-in', 'working'), here('Gone', 'away')];
+    assert.deepEqual(reachedByAny(peers).map((a) => a.name), ['Pi', 'Codex', 'Claude · Sign-in'], 'with no coordinator every agent that is not away, owners of work included');
   });
 });

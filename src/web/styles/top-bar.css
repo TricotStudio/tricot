@@ -311,6 +311,143 @@ button.live-label:hover,
   margin: 0;
   padding: 0;
 }
+/* The card scrolls when its groups are long; the card itself can't, which
+   would clip the bridge above it. */
+.live-scroll {
+  max-height: min(80vh, 800px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* A group of the card: a small heading with its count, quiet lines between groups. */
+.live-group + .live-group {
+  margin-top: 4px;
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+}
+.live-group:not(:only-child) .live-agent + .live-agent {
+  border-top: none;
+}
+.live-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.live-group.is-needs-you .live-group-head {
+  color: var(--open-ink);
+}
+.live-count {
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.live-threads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* A thread of work: a square in the colour of where it stands (the status tokens
+   of styles/base.css, as Home's Work draws it), its title on one line, and under
+   it its owner and what it is doing. The whole row opens the thread on Home. */
+.live-thread {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+.live-thread:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.live-thread:focus-visible {
+  background: var(--surface-2);
+  outline-offset: -2px;
+}
+.live-square {
+  margin-top: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--faint);
+}
+.live-square.is-working {
+  background: var(--status-in-progress);
+}
+.live-square.is-waiting,
+.live-square.is-review {
+  background: var(--status-in-review);
+}
+.live-square.is-done {
+  background: var(--status-done);
+}
+.live-thread-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.live-thread-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-thread-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.live-thread-meta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* A state word in the colour its dot has (live-states.css); the starting have none yet. */
+.live-word {
+  font-weight: 500;
+}
+.live-word.live-starting {
+  color: var(--muted);
+}
+.live-word.live-stuck {
+  color: var(--danger);
+}
+.live-status {
+  font-weight: 600;
+}
+.live-status.is-needs-you,
+.live-status.is-in-review {
+  color: var(--status-in-review-ink);
+}
+/* Done: compact, the title alone, dimmer. */
+.live-group.is-done .live-thread {
+  padding-block: 3px;
+}
+.live-group.is-done .live-thread-title {
+  color: var(--muted);
+  font-weight: 400;
+}
+.live-group.is-done .live-square {
+  margin-top: 5px;
+  opacity: 0.7;
+}
+.live-foot {
+  margin: 2px 0 4px;
+  padding: 0 10px;
+  color: var(--faint);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
 /* One column as wide as the card, never wider: a line that doesn't wrap (a long
    name, the thread an agent works in) ends in an ellipsis rather than
    widening the column past the card's edge. */

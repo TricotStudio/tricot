@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Keyb
 import { LISTEN_PHRASE, notListeningHere, sayTo } from '../../core/delivery';
 import { ApprovalChip } from '../access';
 import { listNames } from '../../core/format';
+import { reachedByAny } from '../../core/liveAgents';
 import { splitLensCommand } from '../../core/lensCommand';
 import { THREAD_TEXT_LIMIT } from '../../core/threads';
 import { listeningLabel } from './chatDoor';
@@ -51,11 +52,12 @@ interface Props {
   // board's Home, the thread the bar is aimed at (timeline.tsx), its ✕
   // putting the thread down.
   context?: { label: string; title: string; onRemove: () => void; icon?: IconName; remove?: { label: string; title: string } };
+  replying?: boolean; // answers in a thread that exists, not a new message: it reaches every agent on the board, not only the coordinator
   error?: string | null;
 }
 
 export function ChatBar(props: Props) {
-  const { docked, value, onValue, onSend, placeholder, label, sendLabel, busy, field, lenses, threads, context, error } = props;
+  const { docked, value, onValue, onSend, placeholder, label, sendLabel, busy, field, lenses, threads, context, replying = false, error } = props;
   // A ^Lens alone says nothing to send.
   const said = lenses ? splitLensCommand(value, lenses.map((l) => l.name)).body : value.trim();
   const ready = Boolean(said) && !busy;
@@ -93,7 +95,7 @@ export function ChatBar(props: Props) {
         aria-label={label}
       />
       <ApprovalChip />
-      <Listening quiet={docked} />
+      <Listening quiet={docked} replying={replying} />
       <button type="submit" className={`chat-send${ready ? ' is-ready' : ''}`} disabled={!ready} aria-label={sendLabel} title={`${sendLabel} (Enter)`}>
         <Icon name="arrow-up" />
       </button>
@@ -263,14 +265,17 @@ function ToolsCapsule() {
   );
 }
 
-// Who will hear what's sent: the agents on the board now, listening or
-// between steps. With none, the bar says so plainly: an agent connected to
-// Tricot isn't listening here (the line under a message says what to tell
-// it, wake.tsx); with none connected at all, the way to connect one.
+// Who will hear what's sent: the agents on the board now that a message for
+// any agent reaches when it starts a thread (core/liveAgents.ts reachedByAny:
+// its coordinator, else every agent), listening or between steps, by name, or how many
+// when there are more than two. A bar that answers in a thread (`replying`) names
+// every agent on the board, as before. With none, the bar says so plainly: an agent
+// connected to Tricot isn't listening here (the line under a message says what
+// to tell it, wake.tsx); with none connected at all, the way to connect one.
 // Docked, the conversation says who answers, so only none is said.
-function Listening({ quiet }: { quiet: boolean }) {
+function Listening({ quiet, replying }: { quiet: boolean; replying: boolean }) {
   const agents = useAgents();
-  const here = agents.filter((a) => a.state !== 'away');
+  const here = replying ? agents.filter((a) => a.state !== 'away') : reachedByAny(agents);
   const names = here.map((a) => a.name);
   if (names.length === 0) return <NotHere onBoard={agents.map((a) => a.name)} />;
   if (quiet) return null;

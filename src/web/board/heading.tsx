@@ -117,7 +117,7 @@ export function BoardTopBar({ board, name, live, agents, controls }: TopBarProps
         <>
           {/* A newer Tricot, in a word, until it's updated or skipped (update.tsx). */}
           <UpdateChip />
-          <LiveIndicator live={live} agents={agents} work={agentWork && ((agent) => agentWork({ board, agent }))} titleOf={(id) => board.threads?.find((t) => t.id === id)?.title} />
+          <LiveIndicator live={live} agents={agents} board={board} work={agentWork && ((agent) => agentWork({ board, agent }))} />
           {controls}
         </>
       }

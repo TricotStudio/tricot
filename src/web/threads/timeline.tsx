@@ -574,6 +574,7 @@ const MainConversation = memo(function MainConversation(props: {
             onSend={send}
             placeholder={aimed ? `Answer ${ownName(aimed.by ?? 'the agent')} in this thread…` : asks ? `Ask ${ownName(asks)}, or give it work…` : 'What do you want to work through?'}
             label={aimed ? `Answer in ${aimed.title}` : "Ask in the board's conversation"}
+            replying={Boolean(aimed)}
             sendLabel="Send"
             field={field}
             lenses={lenses}
@@ -746,6 +747,7 @@ function ThreadPane({ board, name, thread, strand, beside, lit, onLight, onSeeIt
             onSend={send}
             placeholder={agent ? `Reply to ${ownName(agent)} in this thread…` : 'Reply in this thread…'}
             label={`Reply in ${thread.title}`}
+            replying
             sendLabel="Send"
             field={field}
             lenses={lenses}

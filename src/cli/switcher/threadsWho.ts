@@ -2,9 +2,11 @@
 // line as the page's chat bar says who is listening (web/threads/chatBar.tsx):
 // from the agents on the board now (the stream's presence, live.ts), and whom
 // the message is for as agents read it (core/delivery.ts meantFor): those it
-// @-mentions, else the agent a thread's lens routes to, else any agent. A
-// message for people only asks no agent. Nothing is stored or sent: it is read
-// from what the tab holds, on each drawing.
+// @-mentions, else the agent a thread's lens routes to, else any agent. A new
+// message (no thread open) starts a thread its coordinator owns, so for any
+// agent it names the board's coordinator, else every agent here
+// (core/liveAgents.ts reachedByAny). A message for people only asks no agent.
+// Nothing is stored or sent: it is read from what the tab holds, on each drawing.
 //
 // The chat's stream answers comments too, in a task's or a decision's
 // discussion or on a pinned part, and says who hears them in a few words
@@ -25,6 +27,7 @@ import type { AgentBrowserHalf } from '../../core/agents/agent';
 import { cardBacklogAgents } from '../../core/cardReading';
 import { LISTEN_PHRASE, listeningLabel, meantFor, notListeningHere, replyingTo, sayTo, whereCard, type Where } from '../../core/delivery';
 import { listNames, samePerson } from '../../core/format';
+import { reachedByAny } from '../../core/liveAgents';
 import { findMentions, peopleIn, resolveMentions } from '../../core/mentions';
 import type { Board, Thread } from '../../core/types';
 import type { AgentPresence } from '../../server/presence';
@@ -86,7 +89,7 @@ type Reach =
 const isWord = (count: number) => (count === 1 ? 'is' : 'are');
 const hearWord = (count: number) => (count === 1 ? 'hears' : 'hear');
 
-function reach(board: Pick<Board, 'activity'>, where: Where, { text, names, presence, connected }: Omit<WhoInput, 'board' | 'thread'>): Reach {
+function reach(board: Pick<Board, 'activity'>, where: Where, { text, names, presence, connected }: Omit<WhoInput, 'board' | 'thread'>, starts = false): Reach {
   const mentions = resolveMentions(text, names);
   const meant = meantFor(board, where, { author: { kind: 'human', name: '' }, mentions });
   if (!meant) return { kind: 'people', names: peopleIn(board, mentions) };
@@ -110,7 +113,8 @@ function reach(board: Pick<Board, 'activity'>, where: Where, { text, names, pres
     const reading = here.filter((a) => may.some((name) => samePerson(name, a.name)));
     return reading.length ? { kind: 'any', names: reading.map((a) => a.name) } : { kind: 'backlog' };
   }
-  if (here.length) return { kind: 'any', names: here.map((a) => a.name), asleep: here.every((a) => a.state === 'asleep') };
+  const reached = starts ? reachedByAny(presence) : here;
+  if (reached.length) return { kind: 'any', names: reached.map((a) => a.name), asleep: reached.every((a) => a.state === 'asleep') };
   const away = notListeningHere(presence.map((a) => a.name), connected);
   if (away) return { kind: 'away', words: away, agent: presence[0]?.name ?? connected[0] };
   return { kind: 'none' };
@@ -123,7 +127,7 @@ export function heardBy(input: WhoInput): { text: string; tone: Tone } {
 }
 
 function heard({ board, thread, ...input }: WhoInput): { text: string; tone: Tone } {
-  const said = reach(board, thread ? { thread: thread as Thread } : { boardContext: true }, input);
+  const said = reach(board, thread ? { thread: thread as Thread } : { boardContext: true }, input, !thread);
   switch (said.kind) {
     case 'people':
       return { text: `For ${listNames(said.names)} only: no agent is asked.`, tone: 'normal' };
