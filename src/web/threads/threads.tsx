@@ -5,6 +5,7 @@ import { agentOnFile, type OpenFile } from '../../core/fileThread';
 import { listNames, samePerson } from '../../core/format';
 import { splitLensCommand } from '../../core/lensCommand';
 import { boardAgents, splitQuestion } from '../../core/mentions';
+import { agentsOf, coordinatorOf, onBoardNow, whoAnswers } from '../../core/whoAnswers';
 import { STARTERS } from '../../core/requests';
 import { askedTag, inConversation, threadGroups, threadMade, threadTag } from '../../core/threadList';
 import { shownTitle, threadWaiting } from '../../core/threads';
@@ -427,12 +428,17 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   // about: agents talk it through there before they make anything.
   const selection = usePageSelection(overPage?.id);
   // The board's coordinator a message from the bar goes to, when it @-mentions none (core/roles.ts): the one seen last.
-  const lead = present.filter((a) => a.coordinator && a.state !== 'away').sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
-  const pageWords = overPage && pageBar(overPage, selection?.blockIds.length, lead);
+  const lead = coordinatorOf(present);
   // In Files, with a file open, it asks about the file, of the agent last asked about it, if one was.
   const overFile = !docked && door === 'threads' && !shownPage ? shownFile : undefined;
   const fileAgent = useMemo(() => overFile && agentOnFile(board, overFile.named, boardAgents(board, present.map((a) => a.name))), [board, overFile, present]);
-  const fileWords = overFile && fileBar(overFile.path, fileAgent, lead);
+  // Who the bar names, and the thread it starts goes to, by the one rule (core/whoAnswers.ts): the page's agent or the
+  // file's while it is on the board, else the coordinator, else the one agent here; none, "agents".
+  const named = overPage ? overPage.agent?.name : fileAgent;
+  const answerer = useMemo(() => whoAnswers({ agents: agentsOf(board, present), named: named ? [named] : [], coordinator: lead }), [board, present, named, lead]);
+  const routedTo = onBoardNow(named, present.map((a) => a.name));
+  const pageWords = overPage && pageBar(overPage, selection?.blockIds.length ?? 0, answerer, lead);
+  const fileWords = overFile && fileBar(overFile.path, answerer, lead);
   fieldKey.current = draftKey;
   const draft = drafts[draftKey] ?? '';
   const setDraft = (key: string, body: string) => set((current) => ({ drafts: { ...current.drafts, [key]: body } }));
@@ -450,7 +456,7 @@ export function ThreadDock({ board, name, door, page: shownPage, file: shownFile
   const startThread = (text: string, from: ThreadDoor, lens: ThreadLens | null, own?: MessageLens, onPage?: ScratchPage, blockIds?: string[], onFile?: string) => {
     const floating = !docked;
     const sending = sendNewThread(
-      { boardId: board.id, name, names, text, door: from, lens, own, page: onPage, blockIds, file: onFile ? { path: onFile, agent: fileAgent } : undefined },
+      { boardId: board.id, name, names, text, door: from, lens, own, page: onPage, blockIds, file: onFile, to: onPage || onFile ? routedTo : undefined },
       (made) => {
         markSeen(made);
         setStarted((current) => (current?.id === sending.local.id ? made : current));

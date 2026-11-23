@@ -50,7 +50,8 @@ export interface NewThread {
   own?: MessageLens;
   page?: ScratchPage; // over a Sketchbook page, about it
   blockIds?: string[]; // and the blocks selected on it
-  file?: { path: string; agent?: string }; // in Files, about a file, and the agent last asked about it
+  file?: string; // in Files, about the file at this path
+  to?: string; // over a page or a file, the agent it goes to: the page's or the file's, while it is on the board (core/whoAnswers.ts)
 }
 
 // A new thread, its first message sent: the stand-in drawn until the server
@@ -59,8 +60,8 @@ export interface NewThread {
 export function startThread(o: NewThread, onMade: (made: Thread) => void): { local: Thread; made: () => Thread | null } {
   const at = new Date().toISOString();
   const me: Actor = { kind: 'human', name: o.name };
-  // Over a page, or a file, routed as the server will route it (core/scratchPad.ts pageLens).
-  const routed = o.page ? pageLens(o.page, o.lens) : o.file?.agent ? pageLens({ agent: { name: o.file.agent } }, o.lens) : o.lens;
+  // Over a page, or a file, routed as the server will route it (core/scratchPad.ts pageLens, core/store/threads.ts).
+  const routed = o.to ? pageLens({ agent: { name: o.to } }, o.lens) : o.lens;
   const local: Thread = {
     id: `${LOCAL}${Date.now().toString(36)}`,
     title: threadTitle(o.text, resolveMentions(o.text, o.names)),
@@ -74,7 +75,7 @@ export function startThread(o: NewThread, onMade: (made: Thread) => void): { loc
     ...(routed && { lens: routed }),
   };
   let answered: Thread | null = null;
-  const start: Start = { boardId: o.boardId, name: o.name, text: o.text, lens: o.lens, door: o.door, own: o.own, pageId: o.page?.id, blockIds: o.blockIds, file: o.file?.path, local };
+  const start: Start = { boardId: o.boardId, name: o.name, text: o.text, lens: o.lens, door: o.door, own: o.own, pageId: o.page?.id, blockIds: o.blockIds, file: o.file, local };
   const post = async (key: string) => {
     const made = await postStart(start, key);
     answered = made;

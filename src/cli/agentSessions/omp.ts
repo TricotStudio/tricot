@@ -15,8 +15,8 @@
 // The server is named tricot, as `tricot connect omp` names it. One of that
 // name in ~/.omp/agent/mcp.json (or a project's .omp/mcp.json) ranks above the
 // session's, so a person who has connected OMP by hand gets their own entry.
-// Without either, OMP would borrow Claude Code's tricot entry, and show on the
-// board as "Claude" (OMP_WHY); the session's has OMP's own name on it.
+// Without either, OMP would borrow Claude Code's tricot entry, with none of
+// OMP's settings (OMP_WHY); the session's has OMP's own name and timeout on it.
 import { ompConfig, TOKEN_ENV } from '../../core/connect';
 import type { SessionLaunch, SessionSetup } from '../../core/sessions';
 import { sessionFolder, writeSessionFile } from './folder';

@@ -210,7 +210,7 @@ export function ScratchPad({ board, name, pageId, newItems, changed, onSeeItem }
               onDelete={remove}
               onMove={move}
             />
-            <PageMaker page={current} />
+            <PageMaker page={current} board={board} />
           </>
         }
       />

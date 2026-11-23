@@ -266,7 +266,8 @@ export function hermesConfig(url: string, token?: string) {
 // Claude Code's steps hook (`tricot steps on --agent claude --project`) and the other
 // agents' are set up by the hook installers, in src/server/hooks/.
 
-// Without its own `tricot` entry, OMP borrows Claude Code's and the agent
-// shows on the board as "Claude".
+// Without its own `tricot` entry, OMP borrows Claude Code's. Tricot still
+// names it OMP on the board, by its client (agents/registry.ts
+// sessionAgentName), but that entry has no timeout for OMP's calls.
 export const OMP_WHY =
-  'OMP also reads Claude Code\'s servers. Without an entry of its own named tricot it borrows that one, and shows on the board as "Claude".';
+  "OMP also reads Claude Code's servers. Without an entry of its own named tricot it borrows that one: Tricot still shows it as OMP, but its calls give up after 30 seconds, which cuts its waits for the board short.";

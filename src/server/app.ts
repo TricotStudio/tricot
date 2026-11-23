@@ -4,6 +4,7 @@ import { localhostHostValidation } from '@modelcontextprotocol/sdk/server/middle
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { runsOnOf } from '../core/agentRules';
+import { sessionAgentName } from '../core/agents/registry';
 import { roleOf } from '../core/roles';
 import { wokenBy } from '../core/sessions';
 import type { StartFolder } from '../core/firstRun';
@@ -297,7 +298,7 @@ function mountMcp(app: Express, store: Store, mcpOptions: McpOptions): void {
       const address = mcpOptions.address ?? listenAddress(req);
       const server = createMcpServer(
         store,
-        () => ({ kind: 'agent', name: requested || server.server.getClientVersion()?.name || 'agent' }),
+        () => ({ kind: 'agent', name: sessionAgentName(requested, server.server.getClientVersion()?.name) }),
         address ? { ...mcpOptions, address } : mcpOptions,
         watching,
         runsOn,

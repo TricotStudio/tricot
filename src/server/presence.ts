@@ -25,6 +25,7 @@ import type { AgentRule } from '../core/agentRules';
 import { presenceRank, type PresenceState } from '../core/delivery';
 import type { CardKindName } from '../core/pins';
 import type { SessionRole } from '../core/roles';
+import { coordinatorsOf } from '../core/whoAnswers';
 import { Leads } from './leads';
 import { Listeners } from './listeners';
 import { Sleepers } from './sleepers';
@@ -140,10 +141,10 @@ export class Presence {
   // The board's coordinators (core/roles.ts): the agents on it now whose latest
   // session took that role, the one seen last first. Each agent Tricot's terminal
   // starts is one, so `tricot claude codex` has two; and an agent connected on its
-  // own is one on the board it took the role on by listening there (lead).
+  // own is one on the board it took the role on by listening there (lead). The
+  // page and the server read them by the same rule (core/whoAnswers.ts).
   coordinatorsOn(boardId: string): string[] {
-    const on = this.list(boardId).filter((a) => a.state !== 'away' && a.coordinator);
-    return on.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen)).map((a) => a.name);
+    return coordinatorsOf(this.list(boardId));
   }
 
   // An agent connected on its own takes the coordinator's role on a board, held by its session (`holder`) with any other

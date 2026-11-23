@@ -82,6 +82,26 @@ describe('Threads over MCP and REST', () => {
     assert.equal((await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: ' ' })).status, 400);
   });
 
+  // An agent shows on the board as what it is, though its address borrowed another agent's name (core/agents/registry.ts
+  // sessionAgentName), and a thread a person starts over a page goes to the page's agent only while it is on the board, as
+  // the chat bar names it (core/whoAnswers.ts).
+  it("names an agent by its own client when its address borrowed another's, and sends a page's thread to who is on the board", async () => {
+    const boardId = (await request('POST', '/boards', { actor: 'Sam', title: 'Work laptop' })).json.id as string;
+    const pageBy = async (client: Client, title: string) => {
+      const made = (await client.callTool({ name: 'add_page', arguments: { board_id: boardId, title } })) as ToolResult;
+      return store.getPage(/\[page id: (\w+)\]/.exec(made.content[0].text)![1]).page;
+    };
+    const omp = { name: 'omp-coding-agent', version: '18.0.0' };
+    const page = await pageBy(await server.connect('agent=Claude', omp), 'Sign-up flow');
+    assert.equal(page.agent?.name, 'OMP', "OMP through Claude Code's entry shows as OMP");
+    assert.equal((await pageBy(await server.connect('agent=Reviewer', omp), 'Review')).agent?.name, 'Reviewer', 'a name of its own is kept');
+    const over = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Shorter?', pageId: page.id })).json as Thread;
+    assert.equal(over.lens?.agent, 'OMP', "the page's agent, on the board");
+    const gone = store.addPage(boardId, 'Old notes', { kind: 'agent', name: 'Gone' });
+    const overGone = (await request('POST', `/boards/${boardId}/threads`, { actor: 'Sam', body: 'Still right?', pageId: gone.id })).json as Thread;
+    assert.equal(overGone.lens?.agent, undefined, "not the page's agent once it has gone: an agent on the board takes it");
+  });
+
   // core/roles.ts: the coordinator takes the chat bar's threads and sends work on; the thread's owner hears what is said
   // there, says where its work stands, and the coordinator hears when it is done.
   it("lets a coordinator take the chat bar's threads and send work on to a thread an orchestrator owns", async () => {

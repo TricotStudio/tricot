@@ -14,6 +14,7 @@ import { refKinds } from '../refKinds';
 import { agentOnFile, onFiles } from '../fileThread';
 import { requestCardsHeight, requestTitle } from '../requests';
 import { pageLens, pageName } from '../scratchPad';
+import { onBoardNow } from '../whoAnswers';
 import { blocksWords, selectionBlocks, selectionGroup, selectionPage, threadCards } from '../threadSelection';
 import { LENS_BRIEF_LIMIT, LENS_NAME_LIMIT, THREAD_TEXT_LIMIT, TITLE_LENGTH, lensName, presetLens, sameLens, showsWork, threadTitle, threadWork } from '../threads';
 import { inConversation, STATUS_WORDS } from '../roles';
@@ -84,11 +85,12 @@ export class Threads {
   // `general` starts the board's General thread (askInGeneral), titled so;
   // `door`, one a person started from a tab's chat bar, aimed at what that
   // tab holds (core/doors.ts); `pageId`, from the bar over a Sketchbook page,
-  // about that page, and routed to the agent that made it (core/scratchPad.ts);
+  // about that page, and routed to the agent that made it while it is on the
+  // board (core/scratchPad.ts, core/whoAnswers.ts);
   // `blockIds`, with blocks selected there, about them (core/threadSelection.ts);
   // `file`, in Files, about the file open there: its block on the Files canvas,
   // which the thread is started on (core/fileThread.ts), routed to the agent
-  // last asked about the file.
+  // last asked about the file while it is on the board.
   //
   // While coordinators are on the board (core/roles.ts), one a person starts
   // from a chat bar is the one it @-mentions, else the agent of its page or
@@ -103,10 +105,11 @@ export class Threads {
     const over = pageId === undefined ? undefined : board.pages?.find((p) => p.id === pageId);
     if (pageId !== undefined && !over) throw new BoardError(`No Sketchbook page "${pageId}" on ${board.title}.`, 'not_found');
     const picked = blockIds?.length ? this.selectedOn(over, blockIds) : [];
-    // Routed to the page's agent while it is one of the board's, to the agent last asked about the file; else, as asked.
-    const agents = boardAgents(board, this.repo.presentAgents(boardKey(board)));
-    const asked = over?.agent?.name ?? (file && agentOnFile(board, file.named, agents));
-    const chosen = this.lensOf(board, asked && agents.some((a) => samePerson(a, asked)) ? pageLens({ agent: { name: asked } }, lens) : lens);
+    // Routed to the page's agent, or the agent last asked about the file, while it is on the board, as the chat bar names
+    // it (core/whoAnswers.ts); else, as asked: once that agent has gone, the coordinator or any agent here takes it.
+    const present = this.repo.presentAgents(boardKey(board));
+    const asked = onBoardNow(over?.agent?.name ?? (file ? agentOnFile(board, file.named, boardAgents(board, present)) : undefined), present);
+    const chosen = this.lensOf(board, asked ? pageLens({ agent: { name: asked } }, lens) : lens);
     const own = this.messageLensOf(chosen, messageLens);
     const id = this.repo.newThreadId();
     const now = new Date().toISOString();

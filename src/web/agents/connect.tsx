@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Rich } from '../../core/agents/agent';
-import { agentKinds, defaultAgent, findAgent, PANEL_OTHER, panelTexts, type PanelTool } from '../../core/agents/registry';
+import { agentKinds, findAgent, PANEL_OTHER, panelTexts, type PanelTool } from '../../core/agents/registry';
 import { shellFor } from '../../core/connect';
+import { agentToConnect } from '../../core/firstRun';
 import { sessionCommand } from '../../core/sessions';
 import { api } from '../shared/api';
 import { CopyLine } from '../shared/components';
-import { LiveStepsHint } from './liveSteps';
+import { LiveStepsHint, useLiveSteps } from './liveSteps';
 
 // The shell the commands the page shows are for: PowerShell where the page is
 // open on Windows (the same computer as the agent, in nearly every case),
@@ -26,28 +27,33 @@ function Words({ parts }: { parts: Rich }) {
 }
 
 // On a board, a second step: the board's id, to hand the agent. Projects has none.
+// It opens on the tab last used here, else on the agent first run offers
+// (core/firstRun.ts agentToConnect): the first found on this computer, as live
+// steps find them, and the registry's first only where none is.
 export function ConnectAgent({ boardId }: { boardId?: string }) {
   const [url, setUrl] = useState<string>();
-  const [tool, setTool] = useState<PanelTool>(() => {
+  const [picked, setPicked] = useState<PanelTool | null>(() => {
     try {
       const saved = localStorage.getItem(TOOL_KEY);
-      return isTool(saved) ? saved : defaultAgent().id;
+      return isTool(saved) ? saved : null;
     } catch {
-      return defaultAgent().id;
+      return null;
     }
   });
+  const { report } = useLiveSteps();
   useEffect(() => {
     api.info().then((info) => setUrl(info.mcpUrl), () => {});
   }, []);
+  const tool = picked ?? agentToConnect(report ? (report.installedAgents ?? report.agents) : undefined).tool;
   const pick = (next: PanelTool) => {
-    setTool(next);
+    setPicked(next);
     try {
       localStorage.setItem(TOOL_KEY, next);
     } catch {
       // Not remembered; the choice still holds for now.
     }
   };
-  if (!url) return null;
+  if (!url || (!picked && report === null)) return null; // a moment, so the tab doesn't change under the person
   const texts = panelTexts(url, pageShell);
   const tabs = [...agentKinds().map((kind) => ({ key: kind.id, label: kind.name })), { key: PANEL_OTHER, label: 'Other' }];
   const agent = findAgent(tool);

@@ -4,6 +4,7 @@ import { withoutLeadingMentions } from '../../core/mentions';
 import { madeInWords, type ConversationEntry, type ThreadEntry, type ThreadGroups } from '../../core/threadList';
 import { shownTitle } from '../../core/threads';
 import type { Thread } from '../../core/types';
+import { coordinatorOf } from '../../core/whoAnswers';
 import { useAgents } from '../agents';
 import { ActorBadge, Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
@@ -150,9 +151,7 @@ export function ThreadsList(props: Props) {
 // answer as a turn: the conversation marks what is new itself.
 function ConversationRow({ entry, name, onOpen }: { entry: ConversationEntry; name: string; onOpen: () => void }) {
   const { people, me } = useRoster();
-  const coordinator = useAgents()
-    .filter((a) => a.coordinator && a.state !== 'away')
-    .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0]?.name;
+  const coordinator = coordinatorOf(useAgents());
   const title = coordinator ? `Conversation with ${coordinator.split(' · ')[0]}` : 'Conversation';
   return (
     <li className="tl-row is-conversation" data-thread="conversation">

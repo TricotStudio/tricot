@@ -1,19 +1,20 @@
 // A piece's pairing, from its full view (core/pairing.ts): the mode the view
 // is in, Browse (or Read) or Pair; the agent to pair with, picked from the
-// board's agents (offer.ts: the one the piece names, else the most reachable);
+// board's agents by the rule every place that names one asks
+// (core/whoAnswers.ts: the one the piece names, offer.ts, else the most reachable);
 // the session the server keeps while pairing (server/pairing.ts),
 // started as Pair is picked, kept alive while the page is there, and ended
 // on leaving it; and what the session asked, read from the board.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { samePerson } from '../../../core/format';
-import { boardAgents } from '../../../core/mentions';
 import { addressTo, PAIRING_BEAT_MS, pairingRequests, type PairingRequest, type PairingSession } from '../../../core/pairing';
 import type { Block } from '../../../core/types';
+import { agentsOf, whoAnswers } from '../../../core/whoAnswers';
 import { api, type RequestError } from '../../shared/api';
 import { useAgents } from '../../agents';
 import { ownedBy, useCanvas } from '../context';
-import { offeredAgent, pieceAgents, type AgentChoice, type CardAgent } from './offer';
+import { pieceAgents, type AgentChoice, type CardAgent } from './offer';
 
 export type { AgentChoice } from './offer';
 
@@ -73,17 +74,11 @@ export function usePairing(block: Block, name: string, part: string, options: { 
   const wanted = useRef<PairMode>('browse'); // the mode last picked, as a session that was starting lands
   const touched = useRef(false); // the person did something since the last beat
 
-  const agents = useMemo<AgentChoice[]>(() => {
-    const names = boardAgents(board, presence.map((a) => a.name));
-    return names.map((agentName) => {
-      const here = presence.find((a) => samePerson(a.name, agentName));
-      return here ? { name: here.name, state: here.state, lastSeen: here.lastSeen } : { name: agentName, state: 'unseen' as const };
-    });
-  }, [board, presence]);
+  const agents = useMemo<AgentChoice[]>(() => agentsOf(board, presence), [board, presence]);
   const threads = board.threads;
   // A card that is not a task names nobody: it has no assignee and no claim.
   const named = useMemo(() => pieceAgents(block, { task: owner?.card as CardAgent | undefined, threads }), [block, owner, threads]);
-  const agent = offeredAgent({ agents, picked, named, last });
+  const agent = whoAnswers({ agents, picked, named, last, pick: true });
 
   const leave = useCallback(
     async (said: (summary?: string) => string | null) => {

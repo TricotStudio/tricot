@@ -36,8 +36,9 @@ export const filesPageOf = (board: Pick<Board, 'pages'>): ScratchPage | undefine
 // A page an agent made keeps it (ScratchPage.agent), often made at a person's
 // ask in the agent's own terminal ("show me how signup works on Tricot"),
 // which the agent then answers with the page's link. What a person asks on
-// the page that @-mentions nobody goes to that agent: a thread from its chat
-// bar is routed to it, as a lens can be, and so is a selection's ask.
+// the page that @-mentions nobody goes to that agent while it is on the board
+// (core/whoAnswers.ts): a thread from its chat bar is routed to it, as a lens
+// can be, and so is a selection's ask.
 
 // Who made a page, and at whose ask, as its quiet line says: "Asked in Claude
 // Code: “show me how signup works”", or "Made by Codex". None for a person's.

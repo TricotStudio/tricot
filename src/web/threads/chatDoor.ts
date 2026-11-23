@@ -21,32 +21,31 @@ export function viewOfDoor(door: ThreadDoor | undefined): BoardViewName | undefi
   return door && isTabDoor(door) ? door : undefined;
 }
 
-// Over a Sketchbook page, the bar asks about it: of the agent that
-// made it, if one did, as a thread it starts goes to that agent unless the
-// message @-mentions another (core/scratchPad.ts pageLens). With blocks
-// selected there, it starts a thread about them: the agent talks
-// it through with the person before it makes anything. Else, while the board
-// has a coordinator (`lead`, core/roles.ts), it is the one asked, by name, and
-// it takes work too, which it starts a thread of its own for.
-export function pageBar(page: Pick<ScratchPage, 'title' | 'agent'>, selected = 0, lead?: string): { placeholder: string; label: string } {
-  const who = page.agent?.name ?? lead ?? 'agents';
+// Over a Sketchbook page, the bar asks about it, and in Files, with a file
+// open, about the file. `who` is the agent it asks, by the rule every place
+// that names one asks (core/whoAnswers.ts): the page's maker, or the agent
+// last asked about the file, while it is on the board, as the thread it
+// starts goes to that agent unless the message @-mentions another
+// (core/store/threads.ts); else the board's coordinator (`lead`, core/roles.ts),
+// which also takes work, starting a thread of its own for it; else the one
+// agent on the board. None: "agents". With blocks selected on the page, it
+// starts a thread about them: the agent talks it through with the person
+// before it makes anything.
+export function pageBar(page: Pick<ScratchPage, 'title'>, selected: number, who: string | null, lead?: string): { placeholder: string; label: string } {
+  const name = who ?? 'agents';
   if (selected > 0) {
     const these = selected === 1 ? 'this block' : `these ${selected} blocks`;
-    return { placeholder: `Talk ${these} through with ${who}…`, label: `Start a thread with ${who} about ${these} on Sketchbook page ${page.title}` };
+    return { placeholder: `Talk ${these} through with ${name}…`, label: `Start a thread with ${name} about ${these} on Sketchbook page ${page.title}` };
   }
-  if (lead && samePerson(who, lead)) return { placeholder: `Ask ${who}, or give it work, on this page…`, label: `Ask ${who} about Sketchbook page ${page.title}, or give it work there` };
-  return { placeholder: `Ask ${who} about this page…`, label: `Ask ${who} about Sketchbook page ${page.title}` };
+  if (who && lead && samePerson(who, lead)) return { placeholder: `Ask ${who}, or give it work, on this page…`, label: `Ask ${who} about Sketchbook page ${page.title}, or give it work there` };
+  return { placeholder: `Ask ${name} about this page…`, label: `Ask ${name} about Sketchbook page ${page.title}` };
 }
 
-// In Files, with a file open, the bar asks about it: of the agent
-// last asked about it, if one was, as the thread it starts goes to that agent
-// unless the message @-mentions another (core/fileThread.ts agentOnFile); else,
-// while the board has a coordinator, of it, by name, as with a page. The
-// placeholder shortens a long path to its end; the label has it whole.
-export function fileBar(path: string, agent?: string, lead?: string): { placeholder: string; label: string } {
-  const who = agent ?? lead ?? 'agents';
-  if (lead && samePerson(who, lead)) return { placeholder: `Ask ${who}, or give it work, on ${fileLabel(path)}…`, label: `Ask ${who} about ${path} in Files, or give it work there` };
-  return { placeholder: `Ask ${who} about ${fileLabel(path)}…`, label: `Ask ${who} about ${path} in Files` };
+// The placeholder shortens a long path to its end; the label has it whole.
+export function fileBar(path: string, who: string | null, lead?: string): { placeholder: string; label: string } {
+  const name = who ?? 'agents';
+  if (who && lead && samePerson(who, lead)) return { placeholder: `Ask ${who}, or give it work, on ${fileLabel(path)}…`, label: `Ask ${who} about ${path} in Files, or give it work there` };
+  return { placeholder: `Ask ${name} about ${fileLabel(path)}…`, label: `Ask ${name} about ${path} in Files` };
 }
 
 // What the bar says about who is listening and who a reply goes to is the

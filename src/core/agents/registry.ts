@@ -60,6 +60,20 @@ export const skillAgents = (): (AgentKind & { skill: SkillForm })[] => agentKind
 export const agentOfMcpClient = (clientName: string | undefined): AgentKind | undefined =>
   clientName === undefined ? undefined : agentKinds().find((kind) => kind.mcpClient.clientName.toLowerCase() === clientName.toLowerCase());
 
+// The name an MCP session takes on the board: the one its address asks for
+// (`?agent=`), else what its client calls itself. An address that asks for
+// another agent's usual name came with that agent's entry, which this one
+// borrowed (OMP reads Claude Code's servers: connect.ts OMP_WHY), so a session
+// whose client the registry knows as another agent takes that agent's usual
+// name instead: the board, and every word that names it, says which agent is
+// really there. A name of the person's own choosing ("Reviewer") is kept.
+export function sessionAgentName(asked: string, clientName: string | undefined): string {
+  if (!asked) return clientName || 'agent';
+  const client = agentOfMcpClient(clientName);
+  const named = agentKinds().find((kind) => samePerson(kind.boardName, asked));
+  return client && named && client !== named ? client.boardName : asked;
+}
+
 // Which agent one on a board is: as its session said (its MCP client's
 // registry id, `tool`), else the one whose name on the board it has. None for
 // a client Tricot doesn't know.
