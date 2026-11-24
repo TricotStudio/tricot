@@ -4,8 +4,9 @@
 // a click on an image takes a small box round the spot; a drag over a
 // table's cells, its column names or its row numbers takes the cells, the
 // columns or the rows; a click on a chart's bar takes it, in its category
-// and series; and a prompt or a thread opens by the part, under it, or above
-// it when there's no room.
+// and series; and a prompt or a thread opens by the part (popoverPlace).
+
+import { placeBy, type Box, type Place, type Size } from '../../shared/place';
 
 export interface Rect {
   x: number;
@@ -72,35 +73,81 @@ export function isClick(box: Rect, size: { width: number; height: number }, min 
   return box.w * size.width < min || box.h * size.height < min;
 }
 
-// Where a prompt or a thread `width` wide and `height` tall goes by a part
-// drawn at `rect` in a stage `stage` big, kept inside the stage: under it;
-// above it; beside it, right then left (a box on a picture, which it then
-// leaves in view); or, fitting nowhere, on the side with more room, over the
-// part as it must. `top` is its top, or, above, its bottom.
-export function placeBy(rect: Rect, stage: { w: number; h: number }, size: { width: number; height: number }, gap = 10): { left: number; top: number; above: boolean } {
-  const MARGIN = 12;
-  const left = Math.max(MARGIN, Math.min(rect.x, stage.w - size.width - MARGIN));
-  const below = rect.y + rect.h + gap;
-  const roomBelow = stage.h - below - MARGIN;
-  const roomAbove = rect.y - gap - MARGIN;
-  const under = () => ({ left, top: Math.max(MARGIN, Math.min(below, stage.h - size.height - MARGIN)), above: false });
-  const over = () => ({ left, top: Math.max(rect.y - gap, Math.min(size.height + MARGIN, stage.h - MARGIN)), above: true });
-  if (size.height <= roomBelow) return under();
-  if (size.height <= roomAbove) return over();
-  const top = Math.max(MARGIN, Math.min(rect.y, stage.h - size.height - MARGIN));
-  if (stage.w - (rect.x + rect.w + gap) - MARGIN >= size.width) return { left: rect.x + rect.w + gap, top, above: false };
-  if (rect.x - gap - MARGIN >= size.width) return { left: rect.x - gap - size.width, top, above: false };
-  return roomAbove > roomBelow ? over() : under();
+// ---- where a pin's popover goes (popover.tsx) ----------------------------------------
+
+// How a kind's parts take their popover: beside them (a line's words, a box
+// on a picture, a cell, a node), under them (words in a paragraph, which it
+// would cover beside them), or over them (a chip in the row under the piece).
+export type Opens = 'beside' | 'under' | 'over';
+
+// What a popover is about, in the window: its part (or the chip it opened
+// from), and the sheet the part is on, if it is on one.
+export interface PartAt {
+  part: Box;
+  sheet?: Box;
 }
 
-// The box round several drawn rects (a range's rows, a node and its label).
-export function unionRect(rects: Rect[]): Rect | null {
-  if (rects.length === 0) return null;
-  const x = Math.min(...rects.map((r) => r.x));
-  const y = Math.min(...rects.map((r) => r.y));
-  const right = Math.max(...rects.map((r) => r.x + r.w));
-  const bottom = Math.max(...rects.map((r) => r.y + r.h));
-  return { x, y, w: right - x, h: bottom - y };
+const GAP = 12; // between a part and its popover
+
+// Where the popover goes, `menu` its whole size, kept inside `within` (the
+// view's body): beside the sheet the part is on, by the part, when there is
+// room, so it covers none of the piece; else beside the part, for a kind
+// that opens so; else under it or over it, whichever fits. Fitting whole
+// neither under nor over a tall part (a page's section), it goes there all
+// the same while that leaves its comments room (ROOM), scrolling them;
+// else over the part, on the side with more room, as tall as the body lets it.
+export function popoverPlace(at: PartAt, menu: Size, view: Size, within: Box, opens: Opens): Place {
+  const EDGE = 8;
+  const ROOM = 320;
+  const beside = (box: Box) => {
+    const place = placeBy(box, menu, view, { side: 'beside', gap: GAP, shift: -6 }, within);
+    return place.side === 'right' || place.side === 'left' ? place : null;
+  };
+  const near = (at.sheet && beside({ ...at.sheet, top: at.part.top, bottom: at.part.bottom })) || (opens === 'beside' && beside(at.part));
+  if (near) return near;
+  const place = placeBy(at.part, menu, view, { side: opens === 'over' ? 'above' : 'below', gap: opens === 'over' ? 8 : GAP }, within);
+  if (place.maxHeight === undefined || place.maxHeight >= ROOM) return place;
+  const tall = within.bottom - within.top - 2 * EDGE;
+  const height = Math.min(menu.height, tall);
+  return {
+    left: place.left,
+    top: place.side === 'below' ? within.bottom - EDGE - height : within.top + EDGE,
+    side: place.side,
+    ...(menu.height > tall && { maxHeight: tall }),
+  };
+}
+
+// The light line that ties a popover to its part: from the part's edge that
+// faces it to its own edge, level with the part's middle as far as its edge
+// reaches. None while the part is out of sight (outside `within`), or when
+// the two touch or overlap.
+export function tieBetween(part: Box, popover: Box, side: Place['side'], within: Box): { x1: number; y1: number; x2: number; y2: number } | null {
+  if (part.bottom < within.top || part.top > within.bottom || part.right < within.left || part.left > within.right) return null;
+  const apart = { right: popover.left >= part.right - 1, left: popover.right <= part.left + 1, below: popover.top >= part.bottom - 1, above: popover.bottom <= part.top + 1 }[side];
+  if (!apart) return null;
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const END = 14; // the tie meets its edge no nearer its corner than this
+  let tie;
+  if (side === 'right' || side === 'left') {
+    const y = clamp((part.top + part.bottom) / 2, popover.top + END, popover.bottom - END);
+    tie = { x1: side === 'right' ? part.right : part.left, y1: clamp(y, part.top, part.bottom), x2: side === 'right' ? popover.left : popover.right, y2: y };
+  } else {
+    const x = clamp((part.left + part.right) / 2, popover.left + END, popover.right - END);
+    tie = { x1: clamp(x, part.left, part.right), y1: side === 'below' ? part.bottom : part.top, x2: x, y2: side === 'below' ? popover.top : popover.bottom };
+  }
+  return Math.hypot(tie.x2 - tie.x1, tie.y2 - tie.y1) < 3 ? null : tie;
+}
+
+// The box round several boxes in the window (a range's lines, a line's words
+// and its chips, a node and its label).
+export function unionBox(boxes: Box[]): Box | null {
+  if (boxes.length === 0) return null;
+  return {
+    left: Math.min(...boxes.map((b) => b.left)),
+    top: Math.min(...boxes.map((b) => b.top)),
+    right: Math.max(...boxes.map((b) => b.right)),
+    bottom: Math.max(...boxes.map((b) => b.bottom)),
+  };
 }
 
 // ---- a table's cells -------------------------------------------------------------

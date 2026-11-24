@@ -14,10 +14,8 @@
 
 import { useCallback, useLayoutEffect, useMemo, useState, type MouseEvent } from 'react';
 import { readFlowchart } from '../../../../core/blocks/diagram/flowchart';
-import { pinPart } from '../../../../core/pins';
 import type { Block } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
-import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import { usePanDrag, useZoom, ZOOM_KEYS, ZoomControls, ZoomHint, type Size, type Zoom } from '../../pairing/zoom';
 import type { OverlayProps } from '../kind';
@@ -128,13 +126,6 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, si
           <ZoomHint zoom={zoom}>{pointing ? 'Click a box or an arrow to ask about it · drag to pan · scroll to zoom' : 'Scroll or pinch to zoom · drag to pan'}</ZoomHint>
         )}
       </div>
-      {placed.length > 0 && (
-        <div className="diagram-full-chips">
-          {placed.map(({ pin }) => (
-            <PairPinChip key={pin.id} pin={pin} open={pin.id === open} part={pinPart(pin, block)} onToggle={() => openPin(pin.id)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -156,6 +147,7 @@ export function DiagramView({ block, name, version, pinId, pinAsked, onClose }: 
       pinId={pinId}
       pinAsked={pinAsked}
       part="diagram"
+      listed
       className="diagram-full-view"
       label={`Diagram ${block.title ?? ''}`.trim()}
       icon={<Icon name="diagram" />}

@@ -28,7 +28,7 @@ const plural = (n: number, word: string) => `${n.toLocaleString('en-US')} ${word
 function DiffSheet({ block, placed, pointing, chosen, open, pick, openPin }: PieceBodyProps<DiffBlock>) {
   // A comment's marker opens its thread by the line; work pinned there shows where it stands, and opens the card.
   const chips = (pins: Pin[]) => (
-    <span className="diff-full-chips">
+    <span className="diff-full-chips" data-pair-reach="">
       {pins.map((pin) =>
         pin.discussion ? <PairPinChip key={pin.id} pin={pin} open={pin.id === open} onToggle={() => openPin(pin.id)} /> : <PinChip key={pin.id} pin={pin} />,
       )}

@@ -11,11 +11,9 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { cellsQuote } from '../../../../core/blocks/table/quote';
-import { pinPart } from '../../../../core/pins';
 import type { Block } from '../../../../core/types';
 import { Icon, InlineMd } from '../../../shared/components';
 import type { PinDraft } from '../../context';
-import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import { cellCovered, cellSpan, type TableCell } from '../../pairing/pointing';
 import type { OverlayProps } from '../kind';
@@ -129,13 +127,6 @@ function TableCells({ block, placed, pointing, chosen, open, pick, openPin }: Pi
           </table>
         )}
       </div>
-      {placed.length > 0 && (
-        <div className="table-full-chips">
-          {placed.map(({ pin }) => (
-            <PairPinChip key={pin.id} pin={pin} open={pin.id === open} part={pinPart(pin, block)} onToggle={() => openPin(pin.id)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -150,6 +141,7 @@ export function TableView({ block, name, version, pinId, pinAsked, onClose }: Ov
       pinId={pinId}
       pinAsked={pinAsked}
       part="table"
+      listed
       className="table-full-view"
       label={`Table ${block.title ?? ''}`.trim()}
       icon={<Icon name="table" />}

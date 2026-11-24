@@ -17,7 +17,6 @@ import { atVersion } from '../../../../core/canvas';
 import type { Block } from '../../../../core/types';
 import { Icon, InlineMd } from '../../../shared/components';
 import { useCanvas } from '../../context';
-import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import { boxBetween, isClick, spotBox, type Rect } from '../../pairing/pointing';
 import { usePanDrag, useZoom, ZOOM_KEYS, ZoomControls, ZoomHint, type Size } from '../../pairing/zoom';
@@ -170,13 +169,6 @@ function Picture({ block, placed, pointing, chosen, open, pick, openPin, picturi
         </div>
         <ZoomHint zoom={zoom}>{pointing ? 'Drag a box round a part, or click a spot · scroll to zoom' : 'Scroll or pinch to zoom · drag to pan'}</ZoomHint>
       </div>
-      {placed.length > 0 && (
-        <div className="image-full-chips">
-          {placed.map(({ pin }) => (
-            <PairPinChip key={pin.id} pin={pin} open={pin.id === open} part={pin.quote} onToggle={() => openPin(pin.id)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -196,6 +188,7 @@ export function ImageView({ block, name, version, pinId, pinAsked, onClose }: Ov
       pinId={pinId}
       pinAsked={pinAsked}
       part="image"
+      listed
       className="image-full-view"
       label={`${title}, full size`}
       icon={<Icon name="image" />}

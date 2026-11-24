@@ -503,7 +503,13 @@ export function PinPrompt(props: {
 // card's canvas too, which are in the card's discussion. In a piece's full
 // view (canvas/pairing), `live` is said under the comments in place of the
 // note about agents (what the agent is doing about the request), and
-// `address` turns a reply into what is sent (to the agent paired with).
+// `address` turns a reply into what is sent (to the agent paired with); there
+// it is drawn in a popover (pairing/popover.tsx), its comments the one part
+// that scrolls (its body, data-place-scroll), its quote and its reply in view.
+// A reply half written stays for when the thread opens again, however it was
+// closed, until it is sent.
+const replies = new Map<string, string>();
+
 export function PinThread(props: {
   pin: Pin;
   block?: Block;
@@ -521,7 +527,13 @@ export function PinThread(props: {
   const { readOnly, pins } = canvas;
   const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLOListElement>(null);
-  const [body, setBody] = useState('');
+  const scroller = useRef<HTMLDivElement>(null);
+  const [body, setBodyNow] = useState(() => replies.get(pin.id) ?? '');
+  const setBody = (text: string) => {
+    if (text) replies.set(pin.id, text);
+    else replies.delete(pin.id);
+    setBodyNow(text);
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const comments = pinComments(pin, ownedBy(canvas));
@@ -555,10 +567,28 @@ export function PinThread(props: {
     };
   }, [onClose, pin.id, inline]);
 
-  // The latest comment in view, as it arrives.
+  // The latest comment in view, as it arrives: in the comments, or in the
+  // body round them where that is what scrolls (in a popover).
   useEffect(() => {
-    if (list.current) list.current.scrollTop = list.current.scrollHeight;
+    for (const scrolled of [list.current, scroller.current]) if (scrolled) scrolled.scrollTop = scrolled.scrollHeight;
   }, [comments.length]);
+  // A popover's body finds its height once it is placed, and as the window
+  // changes: it keeps the latest comment in view, until the person scrolls up.
+  useEffect(() => {
+    const body = scroller.current;
+    if (!body) return;
+    let atEnd = true;
+    const onScroll = () => void (atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 4);
+    const observer = new ResizeObserver(() => {
+      if (atEnd) body.scrollTop = body.scrollHeight;
+    });
+    observer.observe(body);
+    body.addEventListener('scroll', onScroll);
+    return () => {
+      observer.disconnect();
+      body.removeEventListener('scroll', onScroll);
+    };
+  }, []);
   useLayoutEffect(() => {
     if (root.current) onHeight?.(root.current.offsetHeight);
   });
@@ -585,6 +615,7 @@ export function PinThread(props: {
       style={style}
       role={inline ? 'region' : 'dialog'}
       aria-label="Comments on this part"
+      tabIndex={-1}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="pin-prompt-head">
@@ -595,44 +626,46 @@ export function PinThread(props: {
           <Icon name="x" />
         </button>
       </div>
-      <ol className="pin-thread-comments" ref={list}>
-        {comments.map((comment) => (
-          <li key={comment.id} className={`pin-thread-comment comment-${comment.author.kind}`}>
-            <div className="comment-head">
-              <ActorBadge actor={comment.author} /> <span className="faint small">{timeAgo(comment.createdAt)}</span>
-              {comment.ask && <span className="pin-thread-ask">Asked agents</span>}
-              <CommentLens lens={comment.lens} />
-              <ViaSkill via={comment.via} />
-              <AsksYou comment={comment} thread={comments} />
-            </div>
-            <CommentText comment={comment} />
-            <Reactions item={comment} place={{ pinId: pin.id }} name={name} />
-          </li>
-        ))}
-      </ol>
-      {(() => {
-        const note = waiting && (
-          <p className="pin-thread-note">
-            {asked ? `Agents see this request in their updates, ${partHooks(pin.anchor.kind, block)?.askedTo ?? 'act on it'} and reply here.` : 'Agents see this in their updates and reply here.'}
-          </p>
-        );
-        return live ? live(note) : note;
-      })()}
-      {alongside.length > 0 && (
-        <div className="pin-thread-also">
-          <span>Pinned here too</span>
-          {alongside.map((p) => (
-            <PinChip key={p.id} pin={p} />
+      <div className="pin-thread-body" ref={scroller} data-place-scroll="">
+        <ol className="pin-thread-comments" ref={list}>
+          {comments.map((comment) => (
+            <li key={comment.id} className={`pin-thread-comment comment-${comment.author.kind}`}>
+              <div className="comment-head">
+                <ActorBadge actor={comment.author} /> <span className="faint small">{timeAgo(comment.createdAt)}</span>
+                {comment.ask && <span className="pin-thread-ask">Asked agents</span>}
+                <CommentLens lens={comment.lens} />
+                <ViaSkill via={comment.via} />
+                <AsksYou comment={comment} thread={comments} />
+              </div>
+              <CommentText comment={comment} />
+              <Reactions item={comment} place={{ pinId: pin.id }} name={name} />
+            </li>
           ))}
-        </div>
-      )}
-      {resolved && (
-        <p className="pin-thread-resolved">
-          <Icon name="check" /> Resolved by {resolved.by.name} {timeAgo(resolved.at)}
-        </p>
-      )}
+        </ol>
+        {(() => {
+          const note = waiting && (
+            <p className="pin-thread-note">
+              {asked ? `Agents see this request in their updates, ${partHooks(pin.anchor.kind, block)?.askedTo ?? 'act on it'} and reply here.` : 'Agents see this in their updates and reply here.'}
+            </p>
+          );
+          return live ? live(note) : note;
+        })()}
+        {alongside.length > 0 && (
+          <div className="pin-thread-also">
+            <span>Pinned here too</span>
+            {alongside.map((p) => (
+              <PinChip key={p.id} pin={p} />
+            ))}
+          </div>
+        )}
+        {resolved && (
+          <p className="pin-thread-resolved">
+            <Icon name="check" /> Resolved by {resolved.by.name} {timeAgo(resolved.at)}
+          </p>
+        )}
+      </div>
       {!readOnly && (
-        <>
+        <div className="pin-thread-foot">
           <MentionTextarea
             skills
             lenses={COMMENT_LENSES}
@@ -672,7 +705,7 @@ export function PinThread(props: {
               </button>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

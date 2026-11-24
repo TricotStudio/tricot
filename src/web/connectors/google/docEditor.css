@@ -512,15 +512,6 @@
   box-shadow: var(--shadow-sm);
   transform-origin: top left;
 }
-.pin-thread-ask {
-  margin-left: auto;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--pin-bg);
-  color: var(--pin-ink);
-  font-size: 11px;
-  font-weight: 500;
-}
 .doc-gone {
   display: grid;
   gap: 8px;

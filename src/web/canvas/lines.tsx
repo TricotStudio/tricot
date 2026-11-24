@@ -13,9 +13,10 @@ import './diff.css';
 const plural = (n: number, word: string) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
 
 // A line's text, coloured. React escapes each piece; white-space: pre keeps its spacing.
-export function Code({ tokens, note }: { tokens: Token[]; note?: boolean }) {
+// `reach`: in a full view, the line's words are what a popover goes beside (pairing/piece.tsx).
+export function Code({ tokens, note, reach }: { tokens: Token[]; note?: boolean; reach?: boolean }) {
   return (
-    <span className={note ? 'diff-text is-note' : 'diff-text'}>
+    <span className={note ? 'diff-text is-note' : 'diff-text'} data-pair-reach={reach ? '' : undefined}>
       {tokens.map((token, i) => (token.kind ? <span key={i} className={`tok-${token.kind}`}>{token.text}</span> : token.text))}
     </span>
   );

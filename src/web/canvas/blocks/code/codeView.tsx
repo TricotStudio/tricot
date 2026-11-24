@@ -7,7 +7,7 @@
 // pin stays on its lines while their first line reads the same.
 
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
-import { codeLanguage, codeLines, linesText, shortPath } from '../../../../core/blocks/code/code';
+import { codeLanguage, codeLines, linesText } from '../../../../core/blocks/code/code';
 import { lineQuote } from '../../../../core/blocks/diff/diff';
 import type { Block, Pin } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
@@ -106,9 +106,9 @@ function CodeLines({ block, placed, pointing, chosen, open, pick, openPin }: Pie
                   <Fragment key={n}>
                     <div className={classes.filter(Boolean).join(' ')} data-line={n} data-pair-anchor={anchors || undefined}>
                       <span className="diff-num">{n}</span>
-                      <Code tokens={tokens[i] ?? ([{ text: lines[i] }] as Token[])} />
+                      <Code tokens={tokens[i] ?? ([{ text: lines[i] }] as Token[])} reach />
                       {chips.length > 0 && (
-                        <span className="code-full-chips">
+                        <span className="code-full-chips" data-pair-reach="">
                           {chips.map((pin) => (
                             <PairPinChip key={pin.id} pin={pin} open={pin.id === open} onToggle={() => openPin(pin.id)} />
                           ))}
@@ -133,7 +133,7 @@ export function CodeView({ block, name, version, pinId, pinAsked, paired, onClos
   const from = [language?.name ?? 'Code', block.start && block.start > 1 ? linesText(block, lines) : plural(lines, 'line'), block.commit && `at ${shortCommit(block.commit)}`]
     .filter(Boolean)
     .join(' · ');
-  const file = block.path ? shortPath(block.path, 48) : '';
+  const file = block.path?.split('/').at(-1) ?? '';
   return (
     <PieceView
       block={block}
@@ -152,7 +152,7 @@ export function CodeView({ block, name, version, pinId, pinAsked, paired, onClos
       browse={{ label: 'Read', hint: 'Read it, and select code to copy' }}
       it="the code"
       point="click a line, or drag over several,"
-      does={file ? `changes the code (and ${file} in its repository, if it has it)` : 'changes the code'}
+      does={file ? `changes the code (and ${file}, if it has the repository)` : 'changes the code'}
       example="rename it, say"
       body={(props) => <CodeLines {...props} />}
       onClose={onClose}

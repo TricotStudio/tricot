@@ -70,14 +70,3 @@
 .table-full-empty {
   padding: 24px;
 }
-.table-full-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  margin: -32px auto 32px;
-  padding: 0 16px;
-}
-.table-full-chips .pin-chip {
-  margin-left: 0;
-}

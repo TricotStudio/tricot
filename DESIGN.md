@@ -411,7 +411,7 @@ Where the page doesn't follow it yet, to bring in line:
 - On the canvas, Esc cancels a long edit (a note, a diagram, a scene) instead of keeping it.
 - A double-click on an image's picture or a website's preview opens it instead of editing it; a code block's path is edited with a single click.
 - In a block's full view, pointing at a part asks only once Pair is on; the Google Doc editor and the canvas ask without it.
-- Four prompts ask about a part, each with its own words: `PinPrompt`, `PairAskPrompt`, `SiteAskPrompt` and `DocAskPrompt` (*Comment* or *Add a note*).
+- Three prompts ask about a part, each with its own words: `PinPrompt`, `PairAskPrompt` (a piece's full view and a website's) and `DocAskPrompt` (*Comment* or *Add a note*).
 - The reading mode of a full view is *Read*, *View* or *Browse*, by kind.
 
 ## Do's and Don'ts

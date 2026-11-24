@@ -73,6 +73,20 @@ export function asksBack(reply: Pick<Comment, 'body' | 'mentions'>, person: stri
   return Boolean(reply.mentions?.some((m) => samePerson(m, person))) || /\?["”’)\]]*\s*$/.test(reply.body.trim());
 }
 
+// Where a pin's thread stands, as its chip in a full view says it: resolved;
+// the agents' word last, which answers it (answered) or asks `person`
+// something back (waiting on them); a person's request still with the agents
+// (working); or a note, which asked nothing and waits on no one. Resolved
+// and answered are settled: the row under a piece folds them away.
+export type PinStanding = 'resolved' | 'answered' | 'waiting' | 'working' | 'note';
+
+export function pinStanding(pin: Pick<Pin, 'discussion'>, comments: Comment[], person: string): PinStanding {
+  if (pin.discussion?.resolved) return 'resolved';
+  const last = comments.at(-1);
+  if (last?.author.kind === 'agent') return asksBack(last, person) ? 'waiting' : 'answered';
+  return comments.some((c) => c.ask) ? 'working' : 'note';
+}
+
 // What a session asked, in the order it was asked: each pin on the block the
 // person wrote to the agent on since the session started.
 export function pairingRequests(

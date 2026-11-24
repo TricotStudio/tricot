@@ -120,6 +120,7 @@ export function NoteView({ block, name, version, pinId, pinAsked, onClose }: Ove
       pinId={pinId}
       pinAsked={pinAsked}
       part="note"
+      opens="under"
       className="note-full-view"
       label={`Note ${title}`}
       icon={<Icon name="note" />}

@@ -21,6 +21,17 @@ const STEP = 1.25; // + and -
 const PAN = 80; // an arrow key, in CSS pixels; with Shift, a screenful
 const HINT_MS = 4000;
 const DRAG = 4; // how far a press moves, in CSS pixels, before it pans instead of clicking
+const REFIT = 1.3; // a fitted piece grows to fit again once the stage has this much more room for it
+
+// Focus given to an element by the view, not by the person's Tab: no ring
+// round it (zoom.css), which a ring round the whole stage would be, until it
+// loses the focus and the keyboard brings it back.
+export function quietFocus(element: HTMLElement | null | undefined) {
+  if (!element) return;
+  element.setAttribute('data-quiet-focus', '');
+  element.addEventListener('blur', () => element.removeAttribute('data-quiet-focus'), { once: true });
+  element.focus({ preventScroll: true });
+}
 
 // The stage keeps a pointer that pans or pinches, wherever it goes (a pointer
 // the browser no longer knows of can't be kept).
@@ -62,13 +73,25 @@ export function useZoom(natural: Size | null, rules: ZoomRules) {
     };
   }, [element]);
 
-  // Fitted, it stays fitted as the stage or the piece changes; otherwise it is kept in bounds.
+  // Fitted, it stays fitted as the stage or the piece changes; otherwise it
+  // is kept in bounds. A fitted piece keeps its size while it still fits
+  // whole and the stage hasn't grown by much (a band, the session's list,
+  // the row of pins coming and going), so it doesn't jump: centred again.
   const [naturalWidth, naturalHeight] = [natural?.width ?? 0, natural?.height ?? 0];
+  const fittedTo = useRef({ width: 0, height: 0 }); // the piece the fitted scale was found for
   useLayoutEffect(() => {
     if (!stage || !naturalWidth || !naturalHeight) return;
     const size = { width: naturalWidth, height: naturalHeight };
     const r = latest.current.rules;
-    setView((v) => (v.fitted ? clamp({ scale: fitScale(stage, size, r), x: 0, y: 0, fitted: true }, stage, size, r, true) : clamp(v, stage, size, r)));
+    const samePiece = fittedTo.current.width === naturalWidth && fittedTo.current.height === naturalHeight;
+    fittedTo.current = size;
+    setView((v) => {
+      if (!v.fitted) return clamp(v, stage, size, r);
+      const fit = fitScale(stage, size, r);
+      const whole = Math.min(stage.width / size.width, stage.height / size.height); // the room round it may go
+      const keep = samePiece && v.scale <= whole && fit < v.scale * REFIT;
+      return clamp({ scale: keep ? v.scale : fit, x: 0, y: 0, fitted: true }, stage, size, r, true);
+    });
   }, [stage, naturalWidth, naturalHeight]);
 
   // Zooms to `scale`, keeping the piece's point under `at` (in the stage)
@@ -169,9 +192,13 @@ export function useZoom(natural: Size | null, rules: ZoomRules) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [element, panBy, show, zoomTo]);
 
-  // The stage takes the keys when it is shown, and how to move around shows for a moment.
+  // The stage takes the keys when it is shown, unless a field or a popover
+  // of the view has them (a thread it opened at), and how to move around
+  // shows for a moment.
   useEffect(() => {
-    element?.focus({ preventScroll: true });
+    const at = document.activeElement;
+    if (at instanceof Element && (typing(at) || at.closest('[data-on-top]'))) return;
+    quietFocus(element);
   }, [element]);
   useEffect(() => {
     const timer = setTimeout(() => setHint(false), HINT_MS);

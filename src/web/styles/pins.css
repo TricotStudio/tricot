@@ -439,7 +439,27 @@
   line-height: 1.4;
 }
 
-/* A board context pin's comment thread, under its chip. */
+/* A board context pin's comment thread, under its chip. Its body (the
+   comments and what is said under them) and its foot (the reply) are one
+   grid with its quote here; a pairing view's popover lays them out apart, so
+   only the body scrolls (canvas/pairing/piece.css). */
+.pin-thread:focus {
+  outline: none; /* it takes the focus as it opens, the dialog itself */
+}
+.pin-thread-body,
+.pin-thread-foot {
+  display: contents;
+}
+/* A comment that asked agents to act, so marked in its thread. */
+.pin-thread-ask {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pin-bg);
+  color: var(--pin-ink);
+  font-size: 11px;
+  font-weight: 500;
+}
 .pin-thread-comments {
   list-style: none;
   margin: 0;

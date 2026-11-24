@@ -1,14 +1,15 @@
 // What a person says about a part they pointed at in a piece's full view (a
-// code block's lines, a note's words, a diagram's node, a box on an image):
-// the prompt by the part, Ask <agent> first, as on a website or a doc
-// (site/pins.tsx, google/docPins.tsx), or a note that just stays on it; and
-// the marker on a part people asked or commented about, which opens its
-// thread.
+// code block's lines, a note's words, a diagram's node, a box on an image, a
+// website's element): the prompt by the part, Ask <agent> first, as on a
+// Google Doc (google/docPins.tsx), or a note that just stays on it; and the
+// marker on a part people asked or commented about, which opens its thread.
+// Both are drawn in the view's popover (popover.tsx), which places them.
 
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef } from 'react';
+import { pinStanding, type PinStanding } from '../../../core/pairing';
 import { pinComments } from '../../../core/pins';
 import type { Pin } from '../../../core/types';
-import { Icon } from '../../shared/components';
+import { Icon, type IconName } from '../../shared/components';
 import { askToUnpin } from '../../shared/confirm';
 import { MentionTextarea, COMMENT_LENSES } from '../../shared/mentions';
 import { insideOf } from '../../shared/onTop';
@@ -20,22 +21,23 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // The prompt by a part pointed at. Clicking away closes it while it's empty;
 // once something is typed it stays, and pointing at another part moves it
 // there. `agent`: the agent paired with, whom a request goes to. `does`:
-// what an agent does with a request here ("changes the code").
+// what an agent does with a request here ("changes the code"), said under it
+// until the session has a request (`hint`).
 export function PairAskPrompt(props: {
   quote: string;
-  style: CSSProperties;
-  above: boolean;
+  label?: string; // the dialog's name: "Ask about this part"
   text: string;
   busy: boolean;
   error: string | null;
   agent?: string | null;
   does: string;
   example: string; // what a request might say: "rename it, say"
+  hint?: boolean;
   onText: (text: string) => void;
   onSubmit: (ask: boolean) => void;
   onClose: () => void;
 }) {
-  const { quote, style, above, text, busy, error, agent, does, example, onText, onSubmit, onClose } = props;
+  const { quote, label = 'Ask about this part', text, busy, error, agent, does, example, hint, onText, onSubmit, onClose } = props;
   const root = useRef<HTMLDivElement>(null);
   const empty = !text.trim();
   const textRef = useRef(text);
@@ -51,10 +53,9 @@ export function PairAskPrompt(props: {
   return (
     <div
       ref={root}
-      className={`pin-prompt pair-ask${above ? ' is-above' : ''}`}
-      style={style}
+      className="pin-prompt pair-ask"
       role="dialog"
-      aria-label="Ask about this part"
+      aria-label={label}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
@@ -66,7 +67,7 @@ export function PairAskPrompt(props: {
     >
       <div className="pin-prompt-head">
         <p className="pin-prompt-quote">{quote}</p>
-        <button type="button" className="pin-prompt-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+        <button type="button" className="pin-prompt-close" onClick={onClose} aria-label="Close" title="Close (Esc). What you typed stays for when you come back.">
           <Icon name="x" />
         </button>
       </div>
@@ -89,36 +90,71 @@ export function PairAskPrompt(props: {
         <button type="button" className="btn btn-small btn-primary" disabled={empty || busy} onClick={() => onSubmit(true)}>
           {agent ? `Ask ${agent}` : 'Ask an agent'}
         </button>
-        <button type="button" className="btn btn-small" disabled={empty || busy} onClick={() => onSubmit(false)}>
+        <button type="button" className="btn btn-small" disabled={empty || busy} onClick={() => onSubmit(false)} title="A note stays on the part, for whoever reads it">
           Add a note
         </button>
         <kbd className="pin-prompt-keys" title={`${MOD}+Enter asks ${agent ?? 'an agent'}`}>
           {MOD === '⌘' ? '⌘↵' : 'Ctrl ↵'}
         </kbd>
       </div>
-      <p className="pin-prompt-hint">
-        {agent ?? 'An agent'} {does} and replies here{agent ? ', with its steps on the pin as it works' : ''}. A note just stays on the part.
-      </p>
+      {hint && (
+        <p className="pin-prompt-hint">
+          {agent ?? 'An agent'} {does} and replies here. A note just stays.
+        </p>
+      )}
     </div>
   );
 }
 
-// A part's marker for its thread: a pen while people ask agents to change it,
-// a speech bubble for notes, a tick once resolved. `part` names the part,
-// where the chip is drawn apart from it; `lost` says what happened to it.
-export function PairPinChip(props: { pin: Pin; open: boolean; part?: string; lost?: string; onToggle: () => void }) {
-  const { pin, open, part, lost, onToggle } = props;
+// Whether a pin's thread is settled: resolved, or answered by the agents.
+export const settled = (standing: PinStanding) => standing === 'resolved' || standing === 'answered';
+
+// What a chip says of where its thread stands, after the count, and its icon.
+const FACE: Record<PinStanding, { icon: IconName; word?: string }> = {
+  working: { icon: 'edit', word: 'asked' },
+  waiting: { icon: 'comment', word: 'for you' },
+  note: { icon: 'comment' },
+  answered: { icon: 'check', word: 'done' },
+  resolved: { icon: 'check', word: 'resolved' },
+};
+
+// A part's marker for its thread, by where it stands: a pen while the agents
+// work on what was asked, amber when they asked the person something back, a
+// speech bubble for a note, and a tick, quiet, once answered or resolved.
+// `part` names the part, where the chip is drawn apart from it; `lost` says
+// what happened to it, in its title, the chip only outlined dashed. `noun`
+// is what unpinning it asks about: "this part".
+export function PairPinChip(props: { pin: Pin; open: boolean; part?: string; lost?: string; noun?: string; onToggle: (from: HTMLElement) => void }) {
+  const { pin, open, part, lost, noun = 'this part', onToggle } = props;
   const canvas = useCanvas();
   const comments = pinComments(pin, ownedBy(canvas));
+  const standing = pinStanding(pin, comments, canvas.viewer);
   const resolved = pin.discussion?.resolved;
   const asked = comments.some((c) => c.ask);
-  const waiting = !resolved && comments.at(-1)?.author.kind === 'human';
   const fresh = !resolved && !open && canvas.newItems.has(pin.id);
-  const classes = ['pin-chip', 'is-comment', 'pair-pin-chip', asked && 'is-ask', resolved && 'is-done', lost && 'is-lost', fresh && 'is-new', open && 'is-open'];
+  const classes = [
+    'pin-chip',
+    'is-comment',
+    'pair-pin-chip',
+    `is-${standing}`,
+    asked && 'is-ask',
+    settled(standing) && 'is-done',
+    lost && 'is-lost',
+    fresh && 'is-new',
+    open && 'is-open',
+  ];
+  const face = FACE[standing];
+  const word = standing === 'answered' && !asked ? 'answered' : face.word;
   const what = asked ? 'Asked agents to change' : 'Notes on';
-  const state = resolved ? `, resolved by ${resolved.by.name}` : asked && waiting ? ', waiting for an agent' : '';
+  const state = {
+    resolved: resolved ? `, resolved by ${resolved.by.name}` : '',
+    answered: asked ? ', done' : ', answered',
+    waiting: `, ${comments.at(-1)?.author.name ?? 'an agent'} asked you something`,
+    working: ', waiting for an agent',
+    note: '',
+  }[standing];
   const unpin = async () => {
-    if (comments.length && !(await askToUnpin('this part', comments.length))) return;
+    if (comments.length && !(await askToUnpin(noun, comments.length))) return;
     canvas.removeItem(pin.id);
   };
   return (
@@ -134,20 +170,14 @@ export function PairPinChip(props: { pin: Pin; open: boolean; part?: string; los
       <button
         type="button"
         className="pin-chip-open"
-        onClick={onToggle}
+        onClick={(e) => onToggle(e.currentTarget)}
         aria-expanded={open}
-        title={`${what} ${pin.quote}: ${plural(comments.length, 'comment')}${state}${lost ? ` (${lost})` : ''}`}
+        title={`${what} ${pin.quote}: ${plural(comments.length, 'comment')}${state}${lost ? ` (its part: ${lost})` : ''}`}
       >
-        {part && (
-          <>
-            <span className="pin-chip-part">{part}</span>
-            {lost && <span className="pin-chip-lost">{lost}</span>}
-            <Icon name="arrow-right" className="pin-chip-arrow" />
-          </>
-        )}
-        <Icon name={resolved ? 'check' : asked ? 'edit' : 'comment'} className="pin-chip-icon" />
+        {part && <span className="pin-chip-part">{part}</span>}
+        <Icon name={face.icon} className="pin-chip-icon" />
         <span className="pin-chip-ref">{comments.length}</span>
-        {resolved ? <span className="pin-chip-status">resolved</span> : asked && waiting && <span className="pin-chip-status">asked</span>}
+        {word && <span className="pin-chip-status">{word}</span>}
         {fresh && <span className="pin-chip-new" aria-label="new replies" />}
       </button>
       {!canvas.readOnly && (

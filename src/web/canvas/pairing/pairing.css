@@ -246,6 +246,15 @@
   color: var(--muted);
   font-size: 13px;
 }
+/* How to point at a part, while pairing: one line, whatever the width; all
+   of it in its tooltip. */
+.pair-band-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pair-band.is-note {
   background: var(--surface);
   color: var(--text);
@@ -282,7 +291,8 @@
   flex-direction: column;
 }
 
-/* ---- the session's list --------------------------------------------------- */
+/* ---- the session's list ---------------------------------------------------
+   Beside the piece once the session has a request, sliding in. */
 
 .pair-list {
   flex: none;
@@ -293,6 +303,13 @@
   border-left: 1px solid var(--border);
   background: var(--surface);
   overflow-y: auto;
+  animation: pair-list-in 0.18s ease-out;
+}
+@keyframes pair-list-in {
+  from {
+    width: 0;
+    opacity: 0;
+  }
 }
 .pair-list-head {
   display: flex;
@@ -304,13 +321,6 @@
 .pair-list-head h3 {
   font-size: 14px;
   font-weight: 600;
-}
-.pair-list-empty {
-  margin: 0;
-  padding: 4px 16px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
 }
 .pair-requests {
   list-style: none;
@@ -416,8 +426,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pair-shell,
-  .pair-picker {
+  .pair-picker,
+  .pair-list {
     animation: none;
+  }
+}
+@media (max-width: 1100px) {
+  .pair-list {
+    width: 250px;
   }
 }
 @media (max-width: 900px) {
@@ -425,7 +441,7 @@
     flex-wrap: wrap;
   }
   .pair-list {
-    width: 240px;
+    width: 220px;
   }
 }
 @media (max-width: 640px) {

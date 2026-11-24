@@ -188,6 +188,7 @@ button.code-path:hover {
   -webkit-user-select: none;
 }
 .code-full-chips {
+  justify-self: start; /* as wide as its chips: a popover goes beside the line's words and them */
   display: inline-flex;
   gap: 4px;
   padding: 0 12px 0 4px;

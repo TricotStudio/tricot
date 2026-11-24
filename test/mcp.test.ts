@@ -238,6 +238,33 @@ describe('MCP + REST end to end', () => {
     assert.equal(boxed.json.ends, undefined, 'only an arrow keeps its ends');
   });
 
+  it("adds a person's comments on a part to its thread while its pin finds the part, and starts one on a line an agent's change took the pinned words from", async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Retries' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Retry loop' }));
+    const code = idOf(await callText('add_block', { page_id: pageId, type: 'code', path: 'src/retry.ts', text: 'let attempt = 0;\nwhile (attempt < 3) attempt++;' }));
+    const comment = (body: string, ask = false) => post(`/canvas/blocks/${code}/pins/comment`, { actor: 'Sam', part: { kind: 'line', file: 'src/retry.ts', line: 1 }, body, ask });
+
+    // Said twice about line 1 as it reads: one thread.
+    const asked = (await comment('Start at one?', true)).json.pin;
+    const more = await comment('So three tries are three.');
+    assert.deepEqual([more.status, more.json.pin.id, more.json.pin.discussion.thread.length], [201, asked.id, 2]);
+
+    // The agent's change takes the words away, and the person resolves the thread.
+    await callText('update_block', { block_id: code, rev: 1, text: 'let attempt = 1;\nwhile (attempt <= 3) attempt++;' });
+    assert.equal((await post(`/canvas/pins/${asked.id}/resolve`, { actor: 'Sam', resolved: true })).status, 200);
+
+    // A new comment on line 1 is about what it holds now: a pin of its own, the old thread kept as it was, resolved.
+    const fresh = await comment('Is <= right here?', true);
+    assert.equal(fresh.status, 201);
+    assert.notEqual(fresh.json.pin.id, asked.id);
+    assert.deepEqual([fresh.json.pin.quote, fresh.json.pin.discussion.thread.length], ['let attempt = 1;', 1]);
+    const board = await (await fetch(`${base}/api/boards/${boardId}`)).json();
+    const old = board.pages[0].canvas.pins.find((p: { id: string }) => p.id === asked.id);
+    assert.deepEqual([old.quote, old.discussion.thread.length, old.discussion.resolved.by.name], ['let attempt = 0;', 2, 'Sam']);
+    assert.equal((await comment('And the wait between?')).json.pin.id, fresh.json.pin.id, 'the new pin finds its line: said again, it joins');
+  });
+
   it('ends an idle wait with a hint to call again', async () => {
     const boardId = (await callText('create_board', { title: 'Idle' })).match(/\[id: ([^\]]+)\]/)![1];
     const result = await callText('wait_for_updates', { board_id: boardId, since: 1, timeout_seconds: 1 });

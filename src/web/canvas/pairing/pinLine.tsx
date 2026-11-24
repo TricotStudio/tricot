@@ -60,9 +60,14 @@ export function usePinDelivery(pin: Pin): PinDelivery | undefined {
   return { delivery, words, said, busy: deliveryBusy(delivery, (step) => phaseOf(step, at) === 'live') };
 }
 
-// The line itself, or `fallback` while it has nothing to say.
+// The line itself, or `fallback` while it has nothing to say. Under a note,
+// which asks no agent anything (no request, no @-mention), nothing: a note
+// just stays on its part.
 export function PinLine({ pin, fallback = null }: { pin: Pin; fallback?: ReactNode }) {
+  const canvas = useCanvas();
   const live = usePinDelivery(pin);
+  const latest = pinComments(pin, ownedBy(canvas)).findLast((c) => c.author.kind === 'human');
+  if (latest && !latest.ask && !latest.mentions?.length) return null;
   if (!live) return <>{fallback}</>;
   const { delivery, words, busy, said } = live;
   const working = delivery.state === 'working';

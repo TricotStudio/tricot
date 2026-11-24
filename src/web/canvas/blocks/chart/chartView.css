@@ -91,18 +91,6 @@
   cursor: pointer;
 }
 
-.chart-full-chips {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 16px 18px;
-}
-.chart-full-chips .pin-chip {
-  margin-left: 0;
-}
-
 /* Editing it by hand: the numbers on the left, the chart as they draw it on the right. */
 .chart-edit-kind {
   display: flex;

@@ -10,7 +10,7 @@ import { blockLabel } from '../canvas';
 import { askRefusal, partOf } from '../parts';
 import { clip, listNames } from '../format';
 import { type EventCard, namedCards, cardOf, linkOf } from '../cards';
-import { canvasName, partQuote, pinPart, samePart } from '../pins';
+import { canvasName, partQuote, pinPart, placePin, samePart } from '../pins';
 import type { Actor, Block, Board, Comment, Pin, PinAnchor, PinDiscussion } from '../types';
 
 // The one card a pin's target names (`{ taskId }`), whichever kind it is of: a target names exactly one.
@@ -30,6 +30,13 @@ const linksTo = (pin: Pin, { kind, id }: EventCard): boolean => {
   const links = namedCards(pin);
   return links.length === 1 && links[0].kind === kind && links[0].id === id;
 };
+
+// Whether a pin is on this part of the block as it is now: the same part, and still finding it. A part keyed by its place
+// (a code block's line 6) can hold other words after a change, and the pin made on the words it held no longer finds them:
+// the page shows it apart, under its block (placePin is its test too). What is said about the part now starts a pin of its
+// own on what it holds, and the lost one keeps its history as it was, resolved or not.
+const onPart = (pin: Pin, block: Block, anchor: PinAnchor): boolean =>
+  pin.blockId === block.id && samePart(pin.anchor, anchor, block) && placePin(block, pin) !== null;
 
 // Pins: parts of a block that link to work, or carry a comment. The work and
 // the cards it lives on are a part's, and Pins reaches them only through the
@@ -64,7 +71,8 @@ export class Pins {
   // decision's canvas the comment goes in that card's discussion, quoting the
   // part, so the conversation stays in one place; the board context has no
   // discussion, so there it starts a thread on the pin. Commenting on a part
-  // that already has comments adds to them. Where a card's discussion is
+  // that already has comments adds to them, while their pin still finds it
+  // (onPart). Where a card's discussion is
   // belongs to its kind (cardKinds.ts): a Tricot with none for the card whose
   // canvas this is has nowhere to put the comment, and says so before it
   // changes anything.
@@ -78,7 +86,7 @@ export class Pins {
     const text = commentText(body);
     if (options.ask && !partOf(block, anchor.kind)?.ask) throw new BoardError(askRefusal());
     const card = this.discussionOf(located);
-    const same = located.canvas.pins.find((p) => p.blockId === block.id && p.discussion && samePart(p.anchor, anchor, block));
+    const same = located.canvas.pins.find((p) => p.discussion && onPart(p, block, anchor));
     const discussion: PinDiscussion = card ? {} : { thread: [] };
     // Pinned quietly: the comment is what's worth telling, and it says where.
     const pin = same ?? this.commitPin(located, block, anchor, quote, { discussion }, actor, true);
@@ -191,12 +199,13 @@ export class Pins {
 
   // Links a task or decision that already exists to part of a block, e.g. an
   // agent connecting the board context's phrases to the work doing them.
-  // Pinning the same part to the same work again changes nothing.
+  // Pinning the same part to the same work again changes nothing, while that
+  // pin still finds it (onPart).
   pin(blockId: string, part: PinPart, target: PinTarget, actor: Actor): Pin {
     const card = targetOf(target);
     const { located, block, anchor, quote } = this.preparePin(blockId, part);
     guardOnBoard(located.board, card);
-    const same = located.canvas.pins.find((p) => p.blockId === block.id && linksTo(p, card) && samePart(p.anchor, anchor, block));
+    const same = located.canvas.pins.find((p) => linksTo(p, card) && onPart(p, block, anchor));
     return same ?? this.commitPin(located, block, anchor, quote, linkOf(card), actor);
   }
 

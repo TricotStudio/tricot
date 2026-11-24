@@ -4,17 +4,15 @@
 // object to ask the agent to change it, or to leave a note (the spot goes
 // where the click landed on it). The agent sends the scene's JSON whole; the
 // view draws it anew from where it was being seen, and each spot stays on its
-// object, found by its uuid or its name, wherever it has moved. A spot whose
-// object went is listed under the scene, with its thread.
+// object, found by its uuid or its name, wherever it has moved. Its spots'
+// pins are listed under the scene too, those whose object went among them.
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { editableSource, findObject, nextSpot, readScene, sceneMakeUp, spotQuote, type SceneFacts } from '../../../../core/blocks/scene/scene';
 import type { SceneView as SceneViewpoint } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
 import { useCanvas } from '../../context';
-import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
-import { pinPart } from '../../../../core/pins';
 import { dragged } from '../interaction';
 import type { OverlayProps } from '../kind';
 import { factsOf, loadViewer, type SceneBlock } from './scene';
@@ -259,13 +257,6 @@ function SceneParts({ block, placed, pointing, chosen, open, pick, openPin }: Pi
           </p>
         )}
       </div>
-      {placed.length > 0 && (
-        <div className="scene-full-chips">
-          {placed.map(({ pin }) => (
-            <PairPinChip key={pin.id} pin={pin} open={pin.id === open} part={pinPart(pin, block)} onToggle={() => openPin(pin.id)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -293,6 +284,7 @@ export function SceneFullView({ block, name, version, pinId, pinAsked, onClose }
       pinId={pinId}
       pinAsked={pinAsked}
       part="scene"
+      listed
       className="scene-full-view"
       label={`3D scene ${block.title ?? ''}`.trim()}
       icon={<Icon name="scene" />}

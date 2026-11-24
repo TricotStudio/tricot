@@ -3,8 +3,10 @@
 // charts and scenes (core/pairing.ts). The same top bar on each: the piece's
 // mark, its title and where it is from, the mode switch (Browse, or Read,
 // and "Pair with <agent> ▾", where the agent is picked), the piece's own view
-// controls, and Close. While pairing, a band says how to point at a part,
-// and the session's requests are listed beside the piece. A piece people can
+// controls, and Close. While pairing, a band says how to point at a part, on
+// one line (all of it in its tooltip), and the session's requests are listed
+// beside the piece once it has one: before, the band says it all, and the
+// piece keeps the room. A piece people can
 // edit by hand has Edit between the two (piece.tsx, edit.tsx).
 //
 // The piece is the body. It knows how to point at one of its parts, show the
@@ -18,6 +20,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import type { Pin } from '../../../core/types';
 import { ActorBadge, Icon, timeAgo } from '../../shared/components';
 import { otherPanelOpen, typing, useDismiss } from '../../shared/hooks';
+import { insideOf } from '../../shared/onTop';
 import { PairingList } from './requests';
 import type { AgentChoice, Pairing } from './session';
 import './pairing.css';
@@ -40,18 +43,22 @@ export const panelOpen = () => otherPanelOpen(NO_PANEL);
 // is closed: `inner` closes what the view has open inside it (its editor, a
 // prompt, a thread) and says whether it did, and with nothing open the view
 // closes. A thread or the canvas's prompt drawn over the piece closes itself
-// on Escape (pins.tsx) before this hears it, so whether one was open (`open`)
-// is taken as the key goes down: that Escape closes it alone.
+// on Escape (pins.tsx) before this hears it, and so does a panel (the agent
+// picker, the lists of the row under the piece), so whether one was open is
+// taken as the key goes down: that Escape closes it alone.
 export function useEscapeSteps(open: boolean, inner: (event: KeyboardEvent) => boolean, onClose: () => void): void {
   const now = useRef({ open, inner, onClose });
   now.current = { open, inner, onClose };
   useEffect(() => {
     let wasOpen = false;
+    let wasPanel = false;
     const begin = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') wasOpen = now.current.open;
+      if (e.key !== 'Escape') return;
+      wasOpen = now.current.open;
+      wasPanel = panelOpen();
     };
     const step = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || panelOpen()) return;
+      if (e.key !== 'Escape' || wasPanel || panelOpen()) return;
       if (!now.current.inner(e) && !wasOpen) now.current.onClose();
     };
     window.addEventListener('keydown', begin, true);
@@ -144,18 +151,19 @@ export function PairingShell(
   // them back on the block (CanvasView's refocus) or, for a view that doesn't
   // ask for that, back where they were before it opened, as long as nothing
   // outside the view took them meanwhile. What had them is read as the view
-  // is first drawn, before any piece of it takes them.
+  // is first drawn, before any piece of it takes them. A popover the view
+  // draws on top (a thread it opens at) is part of it.
   const root = useRef<HTMLDivElement>(null);
   const [before] = useState(() => document.activeElement);
   useEffect(() => {
     const element = root.current;
-    if (element && !element.contains(document.activeElement)) element.focus({ preventScroll: true });
+    if (element && !insideOf(document.activeElement, element)) element.focus({ preventScroll: true });
   }, []);
   useLayoutEffect(() => {
     const element = root.current;
     return () => {
       const now = document.activeElement;
-      const stranded = !now || now === document.body || Boolean(element?.contains(now));
+      const stranded = !now || now === document.body || insideOf(now, element);
       if (stranded && before instanceof HTMLElement && before !== document.body && before.isConnected) before.focus({ preventScroll: true });
     };
   }, [before]);
@@ -186,7 +194,9 @@ export function PairingShell(
       </header>
       {isPairing && (
         <div className="pair-band" role="status">
-          {pairBand}
+          <span className="pair-band-text" title={typeof pairBand === 'string' ? pairBand : undefined}>
+            {pairBand}
+          </span>
         </div>
       )}
       {pairing?.note && (
@@ -200,7 +210,7 @@ export function PairingShell(
       {band}
       <div className="pair-main">
         <div className="pair-body">{children}</div>
-        {paired && isPairing && <PairingList pairing={paired.pairing} open={paired.open} onOpen={paired.onOpenRequest} />}
+        {paired && isPairing && paired.pairing.requests.length > 0 && <PairingList pairing={paired.pairing} open={paired.open} onOpen={paired.onOpenRequest} />}
       </div>
       {foot}
     </div>

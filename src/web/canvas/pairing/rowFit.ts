@@ -1,5 +1,5 @@
 // How much of a row of entries fits on one line, with a "N more" button at
-// its end for the rest (apart.tsx). Entries keep their order; each is a
+// its end for the rest (strip.tsx). Entries keep their order; each is a
 // heading (a section's name) or an item, at the width it is drawn at.
 
 export interface RowEntry {

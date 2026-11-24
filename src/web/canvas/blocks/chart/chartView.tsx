@@ -8,10 +8,8 @@
 // or a double-click while viewing, edits its kind and numbers by hand.
 
 import { CHART_KINDS, CHART_KIND_LABEL } from '../../../../core/blocks/chart/chart';
-import { pinPart } from '../../../../core/pins';
 import type { Block } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
-import { PairPinChip } from '../../pairing/ask';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import type { OverlayProps } from '../kind';
 import type { BlockPatch } from '../../../shared/api';
@@ -37,13 +35,6 @@ function ChartParts({ block, placed, pointing, chosen, open, pick, openPin }: Pi
       <div className={`piece-sheet chart-full${pointing ? ' is-pointing' : ''}`}>
         <ChartPlot block={block} marks={marks} pinnable={pointing} full onPick={onPick} onOpen={openPin} />
       </div>
-      {placed.length > 0 && (
-        <div className="chart-full-chips">
-          {placed.map(({ pin }) => (
-            <PairPinChip key={pin.id} pin={pin} open={pin.id === open} part={pinPart(pin, block)} onToggle={() => openPin(pin.id)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -98,6 +89,7 @@ export function ChartView({ block, name, version, pinId, pinAsked, onClose }: Ov
       pinId={pinId}
       pinAsked={pinAsked}
       part="chart"
+      listed
       className="chart-full-view"
       label={`Chart ${block.title ?? ''}`.trim()}
       icon={<Icon name="chart" />}

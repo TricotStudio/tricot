@@ -435,7 +435,7 @@ function FileChanges(props: {
                         <span className="diff-num">{row.old}</span>
                         <span className="diff-num">{row.new}</span>
                         <span className="diff-mark">{MARK[row.kind]}</span>
-                        <Code tokens={tokens} note={row.kind === 'note'} />
+                        <Code tokens={tokens} note={row.kind === 'note'} reach={Boolean(full)} />
                         {chips(unique)}
                       </div>
                       {line !== undefined && thread(unique, side, line)}
@@ -497,7 +497,7 @@ function Half(props: { row?: DiffRow; side: DiffSide; tokens: Token[]; draft: bo
     >
       <span className="diff-num">{line}</span>
       <span className="diff-mark">{MARK[row.kind]}</span>
-      <Code tokens={tokens} note={row.kind === 'note'} />
+      <Code tokens={tokens} note={row.kind === 'note'} reach={Boolean(anchors)} />
       {children}
     </span>
   );

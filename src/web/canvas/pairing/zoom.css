@@ -24,8 +24,9 @@
   -webkit-user-select: none;
   outline: none;
 }
-/* Drawn over the piece, which would cover an inset shadow. */
-.zoom-stage:focus-visible {
+/* Drawn over the piece, which would cover an inset shadow; only when the
+   keyboard brought the focus here, not as the view gave it (quietFocus). */
+.zoom-stage:focus-visible:not([data-quiet-focus]) {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
 }

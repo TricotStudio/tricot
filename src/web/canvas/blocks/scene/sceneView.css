@@ -53,14 +53,3 @@
   color: var(--muted);
   pointer-events: none;
 }
-.scene-full-chips {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 16px 14px;
-}
-.scene-full-chips .pin-chip {
-  margin-left: 0;
-}
