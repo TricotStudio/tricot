@@ -10,15 +10,16 @@ import { ActorBadge, Icon } from '../shared/components';
 import { useDismiss } from '../shared/hooks';
 import { useRoster } from '../shared/mentions';
 
-// The threads list (core/threadList.ts): the board's conversation as one row,
-// then the work handed out, a row each, rising from the chat bar as wide as it
-// is, or filling the docked panel as a page of its own, under the panel's
-// header, which then says Threads and offers New thread (threads.tsx). The
-// conversation's row opens it on the board's Home, where every quick question
-// and its answer is (`onConversation`), with its latest message and a dot
-// while something in it is new to the viewer. Then the work: waiting on you
-// first, the rest under Work, and the finished, quiet ones under Earlier,
-// quieter and a line each. Each row leads with what the work is, then says
+// The threads list (core/threadList.ts): the board's conversation, set apart
+// on a card of its own, then the work handed out, a row each, rising from the
+// chat bar as wide as it is, or filling the docked panel as a page of its own,
+// under the panel's header, which then says Threads and offers New thread
+// (threads.tsx). The conversation's card opens it on the board's Home, where
+// every quick question and its answer is (`onConversation`), with its latest
+// message and a dot while something in it is new to the viewer. Then the
+// work, under headings of its own: waiting on you first, the rest under Work,
+// and the finished, quiet ones under Earlier, quieter and a line each. Each
+// row leads with what the work is, then says
 // what it made in plain words (in the panel, with two lines of the latest
 // message); the whole row opens it. New thread is the open-ended door
 // (threads.tsx).
@@ -36,7 +37,7 @@ interface Props {
   // `scroll`, for coming back to it from a thread.
   page?: { scroll: { current: number | null } };
   onOpen: (id: string) => void;
-  onConversation: () => void; // the conversation's row: Home's conversation
+  onConversation: () => void; // the conversation's card: Home's conversation
   onNew: () => void;
   onDelete: (thread: Thread) => void;
   onClose?: (escape: boolean) => void; // the popover's
@@ -104,17 +105,8 @@ export function ThreadsList(props: Props) {
       )}
       <div className="tl-body" ref={body} onScroll={page ? (e) => void (page.scroll.current = e.currentTarget.scrollTop) : undefined}>
         {none && <p className="tl-empty">{readOnly ? 'No threads.' : "Nothing asked yet. What you send from the bar goes to the board's conversation, wherever you are."}</p>}
-        {conversation && (
-          <section className="tl-group is-conversation" aria-label="Conversation">
-            <ol className="tl-rows">
-              <ConversationRow entry={conversation} name={name} onOpen={onConversation} />
-            </ol>
-            <p className="tl-note">
-              <Icon name="search" /> Your quick questions are in it, and search finds them
-            </p>
-            {work === 0 && <p className="tl-none">No work sent on yet. What an agent is given to do gets a thread here.</p>}
-          </section>
-        )}
+        {conversation && <Conversation entry={conversation} name={name} onOpen={onConversation} />}
+        {conversation && work === 0 && <p className="tl-none">No work sent on yet. What an agent is given to do gets a thread here.</p>}
         {waiting.length > 0 && (
           <section className="tl-group is-waiting" aria-label="Waiting on you">
             <h3 className="tl-group-head">Waiting on you</h3>
@@ -145,16 +137,18 @@ export function ThreadsList(props: Props) {
   );
 }
 
-// The conversation's row: a swatch of its plied strand (Home's yarn), its
-// name with whom it is with, the latest message said in it, and when; the
+// The board's conversation, set apart above the work as the one thing of its
+// kind: on a card of its own, with a swatch of its plied strand (Home's yarn),
+// its name with whom it is with, the latest message said in it, and when; the
 // blue dot while something in it is new to the viewer. It is never theirs to
-// answer as a turn: the conversation marks what is new itself.
-function ConversationRow({ entry, name, onOpen }: { entry: ConversationEntry; name: string; onOpen: () => void }) {
+// answer as a turn: the conversation marks what is new itself, and nothing
+// here deletes it.
+function Conversation({ entry, name, onOpen }: { entry: ConversationEntry; name: string; onOpen: () => void }) {
   const { people, me } = useRoster();
   const coordinator = coordinatorOf(useAgents());
   const title = coordinator ? `Conversation with ${coordinator.split(' · ')[0]}` : 'Conversation';
   return (
-    <li className="tl-row is-conversation" data-thread="conversation">
+    <section className="tl-conversation" aria-label="Conversation" data-thread="conversation">
       <span className="conversation-swatch" aria-hidden />
       <button type="button" className="tl-open" onClick={onOpen} aria-label={`${title}, on the board's Home${entry.unread ? ', new replies' : ''}`}>
         <span className="tl-title">{title}</span>
@@ -168,7 +162,7 @@ function ConversationRow({ entry, name, onOpen }: { entry: ConversationEntry; na
           {shortAgo(entry.last.at)}
         </span>
       </span>
-    </li>
+    </section>
   );
 }
 
