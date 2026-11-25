@@ -1,8 +1,8 @@
 {
   "name": "tricot",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "A shared board of canvases, threads and files where humans and agents work together, over MCP",
-  "releaseNotes": "Home has a fuller look: the conversation sits on one sheet over a quiet knit, with Work beside it. Finished work can wait there for your review, every running thread stays on the yarn while one is open, and the terminal's chat shows the same conversation as Home.",
+  "releaseNotes": "Answers come back to Home's conversation: a thread you sent work to replies there as one card, and pairing on a page gets an agent session of its own. Every block opens full screen, every canvas lies on knitted cloth, and the terminal wakes an agent seconds after your message.",
   "license": "Apache-2.0",
   "author": "Tricot Studio",
   "homepage": "https://tricotstudio.com",
