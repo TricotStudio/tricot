@@ -272,7 +272,7 @@ function sceneRefused(source: string): string | null {
   }
 }
 
-export function SceneFullView({ block, name, version, pinId, pinAsked, onClose }: OverlayProps<SceneBlock>) {
+export function SceneFullView({ block, name, version, pinId, pinAsked, paired, onClose }: OverlayProps<SceneBlock>) {
   const facts = factsOf(block.scene);
   const named = facts?.named.length ?? 0;
   const from = facts ? `3D scene · ${named === 1 ? '1 named object' : `${named.toLocaleString('en-US')} named objects`} · ${sceneMakeUp(facts)}` : '3D scene';
@@ -283,6 +283,7 @@ export function SceneFullView({ block, name, version, pinId, pinAsked, onClose }
       version={version}
       pinId={pinId}
       pinAsked={pinAsked}
+      paired={paired}
       part="scene"
       listed
       className="scene-full-view"

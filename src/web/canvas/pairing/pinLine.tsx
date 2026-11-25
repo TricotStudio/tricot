@@ -4,13 +4,18 @@
 // board context or a Sketchbook page, on no card) since the request, its
 // latest one: "Claude is on it · Editing index.html", with the "working on
 // it" stitch. Without steps, where the request stands: "Seen by Claude",
-// "Delivered · Claude is listening". It gives way once the agent replies, as
-// the change lands.
+// "Delivered · Claude is listening", or, to a pairing session of its own not
+// up yet, "Starting Claude · Pair app.css in Tricot's terminal", or what holds
+// it back there. It gives way
+// once the agent replies, as the change lands.
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { deliveryBusy, deliveryOf, deliveryTitle, inWindow, type BusyState, type Delivery, type Where } from '../../../core/delivery';
+import { samePerson } from '../../../core/format';
+import { pairedPlace } from '../../../core/homePairing';
 import { pinLineWords } from '../../../core/pairing';
 import { pinComments } from '../../../core/pins';
+import { pairingThread } from '../../../core/roles';
 import type { Comment, Pin } from '../../../core/types';
 import { phaseOf, StepText, useAgents, useSteps } from '../../agents';
 import { Stitch } from '../../shared/stitch';
@@ -36,9 +41,12 @@ export function usePinDelivery(pin: Pin): PinDelivery | undefined {
   const at = Math.max(now, Date.now());
   const index = comments.findLastIndex((c) => c.author.kind === 'human');
   const said = index >= 0 ? comments[index] : undefined;
-  // A page's pin is on no card, as the board context's is.
+  // A page's pin is on no card, as the board context's is. A pairing session of its own on the page has its steps, its
+  // background agents' too, on its thread (server/steps.ts): they show here as its steps on the page.
   const where = (canvas.owner ? { [canvas.owner.kind]: canvas.owner.card } : { boardContext: true }) as Where;
-  const showing = steps.filter((s) => phaseOf(s, at) || s.done);
+  const page = canvas.owner ? undefined : pairedPlace(canvas.board, pin.blockId);
+  const sessions = new Set(page ? (canvas.board.threads ?? []).filter((t) => pairingThread(t) && t.pageId === page.pageId).map((t) => t.id) : []);
+  const showing = steps.filter((s) => phaseOf(s, at) || s.done).map((s) => (s.thread && sessions.has(s.thread) ? { ...s, thread: undefined } : s));
   const delivery =
     said && !canvas.readOnly && inWindow({ at: said.createdAt }, at)
       ? deliveryOf({
@@ -50,7 +58,16 @@ export function usePinDelivery(pin: Pin): PinDelivery | undefined {
           steps: showing,
         })
       : undefined;
-  const words = delivery && pinLineWords(delivery, at);
+  // A request to a pairing session of its own whose agent Tricot's terminal is starting (core/roles.ts) waits for it.
+  const place = said && delivery?.state === 'waiting' ? pairedPlace(canvas.board, pin.blockId) : undefined;
+  const session = place ? canvas.board.threads?.find((t) => t.status === 'working' && pairingThread(t) && t.pageId === place.pageId && said!.mentions?.some((m) => samePerson(m, t.owner!))) : undefined;
+  // One the terminal holds back says why (core/roles.ts HeldLaunch).
+  const held = session && agents.flatMap((a) => a.holds ?? []).find((h) => h.thread === session.id);
+  const words = session
+    ? held
+      ? `${session.owner} waits for ${held.why === 'full' ? 'a free tab' : 'a pairing session to finish'} in Tricot's terminal`
+      : `Starting ${session.owner} in Tricot's terminal`
+    : delivery && pinLineWords(delivery, at);
   useEffect(() => {
     if (!words) return;
     const timer = setInterval(() => setNow(Date.now()), TICK_MS);

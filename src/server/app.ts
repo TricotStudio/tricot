@@ -185,6 +185,7 @@ export function createApp(
   const steps = new Steps(store, presence);
   // Who is pairing with which agent on which piece (pairing.ts).
   const pairing = new PairingSessions(store);
+  store.reservedAgents = (key) => pairing.reserved(key);
   // Each agent's plan usage, from its harness, for its panel (usageRoutes.ts).
   app.use('/api/agents', createUsageRouter(store, new Usage()));
   // The model and thinking level each agent starts on: read by the page and

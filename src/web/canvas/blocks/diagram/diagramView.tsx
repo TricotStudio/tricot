@@ -130,7 +130,7 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, si
   );
 }
 
-export function DiagramView({ block, name, version, pinId, pinAsked, onClose }: OverlayProps<DiagramBlock>) {
+export function DiagramView({ block, name, version, pinId, pinAsked, paired, onClose }: OverlayProps<DiagramBlock>) {
   const chart = readFlowchart(block.source);
   const kind = block.source.trim().split(/\s/)[0] || 'Mermaid';
   const from = chart ? `Flowchart · ${chart.nodes.length} boxes, ${chart.arrows.length} arrows` : `Mermaid ${kind}`;
@@ -146,6 +146,7 @@ export function DiagramView({ block, name, version, pinId, pinAsked, onClose }: 
       version={version}
       pinId={pinId}
       pinAsked={pinAsked}
+      paired={paired}
       part="diagram"
       listed
       className="diagram-full-view"

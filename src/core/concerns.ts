@@ -15,7 +15,8 @@
 // - a message, mention or request for it or for any agent: a comment or
 //   thread message, a request on the board context or about blocks on a
 //   Sketchbook page (for a decision, tasks or anything), a first look asked
-//   of it, a person pairing with it, a person asking agents to explore a card
+//   of it, a person pairing with it, the end of a pairing session of its own
+//   whose thread is at work, a person asking agents to explore a card
 //   or plan its tasks;
 // - a question: a card a person posts;
 // - an answer to its question: a person deciding, deferring or retiring a
@@ -34,6 +35,7 @@ import { meantFor, type Where } from './delivery';
 import { samePerson } from './format';
 import { eventComment, isAnswer, reactionIn } from './reactions';
 import { requestFor } from './requests';
+import { pairingThread } from './roles';
 import { isThreadEvent } from './threads';
 import type { Actor, Board, BoardEvent } from './types';
 
@@ -65,6 +67,12 @@ export function concernsAgent(event: BoardEvent, board: Board, agent: string): b
     }
     case 'pairing_started':
       return Boolean(event.forAgent && samePerson(event.forAgent, agent));
+    // A pairing's end concerns no one, but a session of its own's, which asks it to set its thread done while that is
+    // at work (core/store/pairing.ts): the event is about that thread.
+    case 'pairing_ended': {
+      const thread = board.threads?.find((t) => t.id === event.itemId);
+      return Boolean(event.forAgent && samePerson(event.forAgent, agent) && thread && pairingThread(thread) && thread.status !== 'done' && samePerson(thread.owner!, agent));
+    }
     case 'thread_status_changed':
       return doneWhereItSent(event, board, agent);
     case 'sync_requested':

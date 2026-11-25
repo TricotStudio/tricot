@@ -380,10 +380,11 @@ export interface Thread {
 
   // The agent that owns it (core/roles.ts): the board's coordinator on one a
   // person started from a chat bar while a coordinator was on the board, an
-  // orchestrator on one a coordinator sent work to. A person's message there
-  // that @-mentions nobody is for it, and so is another agent's.
+  // orchestrator on one a coordinator sent work to, a pairing session of its
+  // own on one a person's first request while pairing made. A person's message
+  // there that @-mentions nobody is for it, and so is another agent's.
   owner?: string;
-  status?: ThreadStatus; // where its owner's work stands: only on one a coordinator sent work to
+  status?: ThreadStatus; // where its owner's work stands: only on work, one a coordinator sent on or a pairing session's
   launch?: string; // the agent Tricot's terminal starts as its owner while none of that name is on the board, by its id ("claude")
 
   startedBy: Actor;

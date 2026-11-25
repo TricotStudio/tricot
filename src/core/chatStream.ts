@@ -43,7 +43,8 @@ export interface NumberedPlace {
 export interface BoardPlace {
   kind: 'board';
   pin: ChatPin;
-  page?: { id: string; title: string };
+  page?: { id: string; title: string; files?: true }; // `files`: the Files canvas, which people read as Files
+  to?: string; // a pairing's agent, whom a reply there is addressed to (core/pairing.ts addressTo)
 }
 export type ChatPlace = ThreadPlace | NumberedPlace | BoardPlace;
 

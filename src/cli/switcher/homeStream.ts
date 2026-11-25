@@ -4,16 +4,17 @@
 // threadsTab.ts). What was said is a message; under an ask that was sent on,
 // or whose own thread an agent took on, a card names the thread it went to
 // and where its work stands; a relay is what of the work needs the person (an
-// agent's question, work waiting for their review, a thread done, a part's
-// card blocked); and the relays that came while they were away come as one
-// stack, its head and its groups written before its first relay. The day, and
-// where the person was last here, are written before the first item after
-// them (`before`).
+// agent's question, work waiting for their review, a thread's latest word, an
+// agent's latest word in a pairing, a thread done, a part's card blocked); and
+// the relays that came while they were away come as one stack, its head and
+// its groups written before its first relay. The day, and where the person
+// was last here, are written before the first item after them (`before`).
 //
 // Each item keeps a place the line can answer in: a message its thread, a card
-// the thread it leads to, a relay its thread, or a card blocked its discussion
-// (a card of a kind the terminal was given, cli/switcher/run.ts). Only
-// messages are reacted to.
+// the thread it leads to, a relay its thread, a pairing its pin (addressed to
+// its agent, as pairing does), or a card blocked its discussion (a card of a
+// kind the terminal was given, cli/switcher/run.ts). Only messages are reacted
+// to.
 import { cardOf } from '../../core/cards';
 import { samePerson } from '../../core/format';
 import type { ChatItem, ChatPlace, NumberedPlace } from '../../core/chatStream';
@@ -84,15 +85,21 @@ const placeOf = (thread: Thread): ChatPlace => {
   return { kind: 'thread', id: thread.id, title: shownTitle(thread), ...(lens && { lens }) };
 };
 
-// Where a relay is answered: its thread, or its card's discussion; none for a card of a kind this terminal doesn't know.
+// Where a relay is answered: its thread, a pairing's pin (addressed to its agent), or its card's discussion; none for a
+// card of a kind this terminal doesn't know.
 function relayPlace(board: Board, relay: Relay): ChatPlace | undefined {
   if (relay.thread) return placeOf(relay.thread);
+  const on = relay.pairing;
+  if (on) {
+    const page = on.pageId ? board.pages?.find((p) => p.id === on.pageId) : undefined;
+    return { kind: 'board', pin: { id: on.pinId, quote: on.part }, ...(page && { page: { id: page.id, title: page.title, ...(page.files && { files: true as const }) } }), to: on.agent };
+  }
   const card = relay.card?.card && cardOf(board, relay.card.card.kind, relay.card.card.id);
   return card ? ({ kind: card.kind.kind, id: card.id, number: card.number, title: card.title } as NumberedPlace) : undefined;
 }
 
 const relaySig = (relay: Relay, stacked: boolean): string =>
-  JSON.stringify([relay.kind, relay.tone, relay.needsYou, relay.answer, relay.title, relay.label, relay.body, relay.by, stacked]);
+  JSON.stringify([relay.kind, relay.tone, relay.needsYou, relay.answer, relay.title, relay.label, relay.body, relay.by, relay.earlier, stacked]);
 
 export function homeStream({ board, me, onBoard, asked, visit, now, cards = [], link }: HomeInput): HomeStream {
   const conversation = (board.threads ?? []).filter(inConversation);
@@ -127,9 +134,9 @@ export function homeStream({ board, me, onBoard, asked, visit, now, cards = [], 
     else if (row.kind === 'since') before.push({ kind: 'since' });
     else if (row.kind === 'relay') relayItem(row.relay, false);
     else if (row.kind === 'stack') {
-      const { head, needs, answered, done } = relayStack(row.relays);
+      const { head, needs, replied, answered, done } = relayStack(row.relays);
       before.push({ kind: 'away', head, from: row.relays[0].at, to: row.relays.at(-1)!.at });
-      for (const [label, group, needsYou] of [['Needs you', needs, true], ['Answered', answered, false], ['Done', done, false]] as const) {
+      for (const [label, group, needsYou] of [['Needs you', needs, true], ['Replied', replied, false], ['Answered', answered, false], ['Done', done, false]] as const) {
         if (!group.length) continue;
         before.push({ kind: 'group', label, count: group.length, needsYou });
         for (const relay of group) relayItem(relay, true);
@@ -179,11 +186,12 @@ export function choosable(item: StreamItem, me: string): boolean {
   const home = item.home;
   if (!home || home.kind === 'said') return !mine(item, me);
   if (home.kind === 'sent') return true;
-  return Boolean(home.relay.thread || (item.place.kind !== 'board' && home.relay.card));
+  return Boolean(home.relay.thread || home.relay.pairing || (item.place.kind !== 'board' && home.relay.card));
 }
 
 // Whether the line answers it while nothing else is chosen: what others said, and a question or a review that needs
-// the person (a reply to a review is a plain one in its thread, which leaves it waiting for the verdict).
+// the person (a reply to a review is a plain one in its thread, which leaves it waiting for the verdict). A thread's
+// latest word (a reply) waits on no one, so the line stays on the conversation: Tab chooses it to answer in its thread.
 export function answersLatest(item: StreamItem, me: string): boolean {
   const home = item.home;
   if (!home || home.kind === 'said') return !mine(item, me);

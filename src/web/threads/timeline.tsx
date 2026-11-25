@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { splitLensCommand } from '../../core/lensCommand';
-import { conversationStart, homeRows, homeSaid, lanesOf, ownedThreads, ownName, seenBy, sentStateWords, strandOf, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
-import { askedTag, inConversation, threadGroups } from '../../core/threadList';
+import { conversationStart, homeRows, homeSaid, lanesOf, ownedThreads, ownName, repliable, seenBy, sentStateWords, strandOf, strandsShown, threadTone, type Said as HomeSaid } from '../../core/homeConversation';
+import { addressTo } from '../../core/pairing';
+import { askedOn, askedTag, inConversation, threadGroups } from '../../core/threadList';
 import { agentsOf, coordinatorOf, whoAnswers } from '../../core/whoAnswers';
 import { shownTitle } from '../../core/threads';
 import type { Board, Thread, ThreadLens, ThreadMessage } from '../../core/types';
@@ -375,7 +376,7 @@ const MainConversation = memo(function MainConversation(props: {
   // Reply on a relay aims the bar at its thread for one message: sending, Esc or the chip's ✕ lets go, and so
   // does its question being answered anywhere else.
   const [aim, setAim] = useState<string | null>(null); // the relay's key
-  const aimed = aim ? relays.find((r) => r.key === aim && r.needsYou && r.thread) : undefined;
+  const aimed = aim ? relays.find((r) => r.key === aim && repliable(r)) : undefined;
   useEffect(() => {
     if (aim && !aimed) setAim(null);
   }, [aim, aimed]);
@@ -390,9 +391,26 @@ const MainConversation = memo(function MainConversation(props: {
   useLayoutEffect(() => {
     if (aim) scroller.current?.querySelector('.relay-card.is-aimed, .relay-row.is-aimed')?.scrollIntoView({ block: 'nearest' });
   }, [aim]);
+  const [sendError, setSendError] = useState<string | null>(null);
   const send = () => {
     const { body: text, lens: asked } = splitLensCommand(draft.trim(), lenses.map((l) => l.name));
     if (!text) return;
+    setSendError(null);
+    // A pairing's reply goes where a request while pairing goes: on its pin, addressed to its agent, which reads it as
+    // asked of it. A refusal puts it back in the bar, aimed there again.
+    const pairing = aimed?.pairing;
+    if (pairing) {
+      const key = aimed.key;
+      api.commentOnPin(pairing.pinId, name, addressTo(text, pairing.agent, agentsOf(board, agents).map((a) => a.name))).catch((failed: Error) => {
+        setDraft(text);
+        setAim(key);
+        setSendError(`Not sent to ${ownName(pairing.agent)}: ${failed.message}`);
+      });
+      setDraft('');
+      setAim(null);
+      atFoot.current = true;
+      return;
+    }
     if (aimed?.thread) {
       replyInThread(aimed.thread, name, text, asked ? messageLensOf(asked, aimed.thread.lens) : undefined);
       setDraft('');
@@ -453,6 +471,9 @@ const MainConversation = memo(function MainConversation(props: {
       if (row.kind === 'stack') return <RelayStack key="relays:away" board={board} relays={row.relays} name={name} clock={clock} aimed={aim} onReply={reply} onLight={onLight} />;
       const s = row.said;
       const tag = s.first ? askedTag(s.thread, board) : undefined;
+      // Where it was asked opens there: the Sketchbook page, or the file in Files. A page gone keeps the plain tag.
+      const on = tag ? askedOn(s.thread, board) : undefined;
+      const href = on && (on.file ? linkTo.files(board.id, on.file) : linkTo.page(board.id, on.pageId));
       return (
         <MessageRow
           key={s.drawn.key}
@@ -471,7 +492,14 @@ const MainConversation = memo(function MainConversation(props: {
           next={row.next}
           tag={
             <>
-              {tag && <span className="dock-door timeline-tag">{tag}</span>}
+              {tag &&
+                (href ? (
+                  <a className="dock-door timeline-tag" href={href} title={on?.file ? `Open ${on.file} in Files` : 'Open the Sketchbook page it was asked on'}>
+                    {tag}
+                  </a>
+                ) : (
+                  <span className="dock-door timeline-tag">{tag}</span>
+                ))}
               {/* Only a message with a thread of its own, work, opens it: a quick question lives here. */}
               {!isLocal(s.thread) && !inConversation(s.thread) && (
                 <button type="button" className="timeline-open" onClick={() => onOpen(s.thread.id)} title={`Open “${shownTitle(s.thread)}” here, to read it on its own and reply in it`}>
@@ -573,22 +601,29 @@ const MainConversation = memo(function MainConversation(props: {
             value={draft}
             onValue={setDraft}
             onSend={send}
-            placeholder={aimed ? `Answer ${ownName(aimed.by ?? 'the agent')} in this thread…` : asks ? `Ask ${ownName(asks)}, or give it work…` : 'What do you want to work through?'}
+            placeholder={
+              aimed
+                ? `${aimed.kind === 'reply' ? 'Reply to' : 'Answer'} ${ownName(aimed.by ?? 'the agent')}${aimed.pairing ? '' : ' in this thread'}…`
+                : asks
+                  ? `Ask ${ownName(asks)}, or give it work…`
+                  : 'What do you want to work through?'
+            }
             label={aimed ? `Answer in ${aimed.title}` : "Ask in the board's conversation"}
             replying={Boolean(aimed)}
+            to={aimed?.pairing?.agent}
             sendLabel="Send"
             field={field}
             lenses={lenses}
             context={
               aimed && {
                 label: aimed.title,
-                title: `Your answer goes to “${aimed.title}”, for this one message`,
+                title: aimed.pairing ? `Your reply goes to ${ownName(aimed.pairing.agent)} on ${aimed.pairing.part}, as pairing does, for this one message` : `Your answer goes to “${aimed.title}”, for this one message`,
                 icon: 'reply',
-                remove: { label: 'Let go of the thread', title: 'Ask the coordinator instead (Esc)' },
+                remove: { label: aimed.pairing ? 'Let go of the pairing' : 'Let go of the thread', title: 'Ask the coordinator instead (Esc)' },
                 onRemove: () => setAim(null),
               }
             }
-            error={removeError}
+            error={sendError ?? removeError}
           />
         </div>
       )}

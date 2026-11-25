@@ -13,17 +13,34 @@
 //   conversation keeps what was asked in it: the ask of a thread a person
 //   started that an agent took on as its work, and a follow-up the coordinator
 //   moved into it (ThreadMessage.movedFrom), each with the thread as its card.
-// - Relays (`homeRelays`): what of the work handed out needs the viewer, at
-//   when it was said. An agent's question in a thread an agent owns, while the
-//   thread waits on a person (its latest agent message), or one that
-//   @-mentions them, or one the side remembers it relayed while the thread
-//   waited (`asked`, as a thread that moves on says nothing of it); it is
-//   answered once a person writes in the thread after it. Work waiting for
+// - Relays (`homeRelays`): what of the work handed out comes back to the
+//   viewer, at when it was said. An agent's question in a thread an agent
+//   owns, while the thread waits on a person (its latest agent message), or
+//   one that @-mentions them, or one the side remembers it relayed while the
+//   thread waited (`asked`, as a thread that moves on says nothing of it); it
+//   is answered once a person writes in the thread after it. Work waiting for
 //   their review (core/roles.ts), with the summary its agent wrote as it set it
 //   so (its latest message, as a question is): answered once a person gives
 //   their verdict, read from their message's words, when it folds to the
 //   verdict, so it stays as approved or sent back after the thread moves on
 //   with nothing remembered. A thread done, with the summary its agent wrote.
+//   The thread's latest word otherwise (a reply), which needs no one: its
+//   latest agent message, when its owner said it (never the coordinator's
+//   brief, nor another agent's word) and nothing above relays it, so one card
+//   per thread that moves down as its owner says something newer, counting the
+//   owner's words before it that stay in the thread, and that gives way to a
+//   question, a review or done, which then says it once; answered once a
+//   person writes in the thread after it. A question its thread moved on from,
+//   not remembered, is no longer asked: it is the owner's latest word too.
+//   The agent's latest word in a pairing the viewer had on a piece (a block of
+//   the board context or a Sketchbook page, a file in Files), a reply of the
+//   same family with no thread: one per pin paired on, read in homePairing.ts.
+//   A pairing session of its own (core/roles.ts pairingThread) is a thread an
+//   agent owns, with its strand and its row in Work, but what was asked in it
+//   is on its pins, so its first message is no ask here; its agent's words
+//   come as the pins' cards above, stitched to its strand, and its one Done
+//   line is its latest message once done: its agent's summary, or the one
+//   Tricot set it done with when its agent didn't.
 //   And what a part relays of its cards (a card blocked), which the part works
 //   out and hands in.
 // - The rows (`homeRows`): what was said and the relays by when, with the day
@@ -41,7 +58,9 @@
 // Nothing here is a part's: threads are the core's, and a part's cards come
 // in as relays it made.
 import { samePerson } from './format';
-import { inConversation, verdictOf, type ReviewVerdict } from './roles';
+import { pairingWords, type PairedOn } from './homePairing';
+import { withoutLeadingMentions } from './mentions';
+import { inConversation, pairingThread, verdictOf, type ReviewVerdict } from './roles';
 import { shownTitle } from './threads';
 import type { Actor, Board, Thread, ThreadMessage } from './types';
 
@@ -198,6 +217,7 @@ export function homeSaid<T>(
 ): Said<T>[] {
   const said: Said<T>[] = [];
   for (const thread of owned) {
+    if (pairingThread(thread)) continue; // what was asked in a pairing is on its pins
     thread.messages.forEach((message, i) => {
       if (message.author.kind !== 'human') return;
       const asked = i === 0 && thread.startedBy.kind === 'human';
@@ -227,7 +247,7 @@ export function seenBy(thread: Pick<Thread, 'messages'>): string | undefined {
 
 // ---- relays -----------------------------------------------------------------------------
 
-export type RelayKind = 'question' | 'review' | 'blocked' | 'done';
+export type RelayKind = 'question' | 'review' | 'reply' | 'blocked' | 'done';
 
 // A moment of a part's card that needs the viewer, as the part relays it: a
 // card blocked, with what holds it in a line. `card` names the card, for a
@@ -253,9 +273,10 @@ export interface Verdict {
 }
 
 // A relay: what it is, when it was said, the thread it came from (Reply
-// answers in it, and its strand stitches into it) or the part's card, where
-// it stands now (its thread's tone), the question or summary in full, who
-// answered it first and what they said, and whether it needs the viewer.
+// answers in it, and its strand stitches into it), the pairing it came from
+// (Reply answers on its pin) or the part's card, where it stands now (its
+// thread's tone), the question or summary in full, who answered it first and
+// what they said, and whether it needs the viewer.
 // A review (work waiting for the viewer's OK before it is committed) is its
 // agent's summary, and, once a person gave it, their verdict.
 export interface Relay<C extends CardRelay = CardRelay> {
@@ -265,12 +286,15 @@ export interface Relay<C extends CardRelay = CardRelay> {
   title: string; // its thread's name, or its card's
   label?: string;
   thread?: Thread;
+  pairing?: PairedOn; // a pairing's: the piece it is on, and whom a reply goes to
   by?: string; // the agent that asked or finished
   tone: StrandTone | 'blocked';
   body: string;
+  mentions?: string[]; // a pairing's: who its comment @-mentions (a thread's are on its message)
   answer?: { by: string; body: string };
   verdict?: Verdict; // a review's, once given
   needsYou: boolean; // a question not answered yet, a review with no verdict yet, or a card blocked
+  earlier?: number; // a reply's: how many of its owner's messages before it Home did not relay (a pairing's: its agent's, on the pin)
   card?: C; // a part's, as it relayed it
 }
 
@@ -293,41 +317,89 @@ export function reviewsIn(thread: Pick<Thread, 'status' | 'messages'>): Map<stri
 }
 
 // A thread's relays, oldest first: its questions to the viewer, its work
-// waiting for their review and, once done, its summary. `asked`: the questions
-// the side remembers relaying while the thread waited on a person; `sending`:
-// what the viewer is sending in it, the first of which answers its latest
-// question at once (a reply leaves a review waiting: only a verdict answers it).
+// waiting for their review, once done its summary, and otherwise its latest
+// word, when its owner said it (a reply). `asked`: the questions the side
+// remembers relaying while the thread waited on a person; `sending`: what the
+// viewer is sending in it, the first of which answers its latest question or
+// reply at once (a reply leaves a review waiting: only a verdict answers it).
 export function threadRelays(thread: Thread, name: string, tone: StrandTone, asked: ReadonlySet<string>, sending: readonly { body: string }[] = []): Relay<never>[] {
   const relays: Relay<never>[] = [];
   const last = thread.messages.findLast((m) => m.author.kind === 'agent');
   const title = shownTitle(thread);
   const reviews = reviewsIn(thread);
+  const base = (message: ThreadMessage) => ({ key: message.id, at: message.at, title, thread, by: message.author.name, tone, body: message.body });
+  // The first person to write in the thread after a message answers it, or the viewer sending in it, after its latest.
+  const answerTo = (message: ThreadMessage, i: number) => {
+    const reply = thread.messages.slice(i + 1).find((m) => m.author.kind === 'human');
+    const mine = !reply && message === last ? sending[0] : undefined;
+    return reply ? { by: reply.author.name, body: reply.body } : mine ? { by: name, body: mine.body } : undefined;
+  };
+  // A pairing session's one Done line is its latest message: its agent's summary, or Tricot's when its agent didn't.
+  const paired = pairingThread(thread);
+  // What was asked in it is never its Done line: one set done with no word after its request has none.
+  const latest = thread.messages.at(-1);
+  const doneOn = thread.status === 'done' ? (paired ? (latest !== thread.messages[0] ? latest : undefined) : last) : undefined;
+  if (doneOn && paired && doneOn.author.kind !== 'agent') relays.push({ ...base(doneOn), by: thread.owner, kind: 'done', needsYou: false });
   thread.messages.forEach((message, i) => {
     if (message.author.kind !== 'agent') return;
-    const base = { key: message.id, at: message.at, title, thread, by: message.author.name, tone, body: message.body };
-    if (thread.status === 'done' && message === last) {
-      relays.push({ ...base, kind: 'done', needsYou: false });
+    if (message === doneOn) {
+      relays.push({ ...base(message), kind: 'done', needsYou: false });
       return;
     }
     const review = reviews.get(message.id);
     if (review !== undefined) {
       const said = review && thread.messages.find((m) => m.id === review.messageId);
-      relays.push({ ...base, kind: 'review', ...(review && { verdict: review }), ...(said && { answer: { by: said.author.name, body: said.body } }), needsYou: !review });
+      relays.push({ ...base(message), kind: 'review', ...(review && { verdict: review }), ...(said && { answer: { by: said.author.name, body: said.body } }), needsYou: !review });
       return;
     }
     const waits = (thread.status === 'needs-you' && message === last) || Boolean(message.mentions?.some((n) => samePerson(n, name))) || asked.has(message.id);
     if (!waits) return;
-    const reply = thread.messages.slice(i + 1).find((m) => m.author.kind === 'human');
-    const mine = !reply && message === last ? sending[0] : undefined;
-    const answer = reply ? { by: reply.author.name, body: reply.body } : mine ? { by: name, body: mine.body } : undefined;
-    relays.push({ ...base, kind: 'question', ...(answer && { answer }), needsYou: !answer });
+    const answer = answerTo(message, i);
+    relays.push({ ...base(message), kind: 'question', ...(answer && { answer }), needsYou: !answer });
   });
+  // Its latest word, when its owner said it and none of the above relays it: never the coordinator's brief, nor another
+  // agent's word. The owner's words before it stay in the thread, counted.
+  const owner = thread.owner;
+  const ownWord = (m: ThreadMessage) => m.author.kind === 'agent' && Boolean(owner) && samePerson(m.author.name, owner!);
+  if (thread.status !== 'done' && last && ownWord(last) && !relays.some((r) => r.key === last.id)) {
+    const i = thread.messages.indexOf(last);
+    const relayed = new Set(relays.map((r) => r.key));
+    const earlier = thread.messages.slice(0, i).filter((m) => ownWord(m) && !relayed.has(m.id)).length;
+    const answer = answerTo(last, i);
+    relays.push({ ...base(last), kind: 'reply', earlier, ...(answer && { answer }), needsYou: false });
+  }
   return relays;
 }
 
-// Every relay on the board, oldest first: the threads agents own, and what a part relays of its cards (`cards`).
+// Whether Reply on a relay aims the bar at its thread, or its pairing's pin: a question that needs the viewer, or a
+// reply no one answered yet.
+export const repliable = (relay: Pick<Relay, 'kind' | 'needsYou' | 'answer' | 'thread' | 'pairing'>): boolean =>
+  Boolean(relay.thread || relay.pairing) && ((relay.kind === 'question' && relay.needsYou) || (relay.kind === 'reply' && !relay.answer));
+
+// The pairings the viewer had on the board, each its agent's latest word (homePairing.ts): a reply that needs no one,
+// in the colour of where its session's thread stands, as a thread's reply is (`onBoard`, for its tone).
+export function pairingRelays(board: Partial<Pick<Board, 'canvas' | 'pages' | 'threads'>>, name: string, onBoard: readonly OnBoard[] = []): Relay<never>[] {
+  return pairingWords(board, name).map(({ comment, title, answer, earlier, session, on }) => ({
+    key: comment.id,
+    kind: 'reply',
+    at: comment.createdAt,
+    title,
+    pairing: on,
+    by: comment.author.name,
+    tone: threadTone(session, onBoard),
+    body: comment.body,
+    ...(comment.mentions?.length && { mentions: comment.mentions }),
+    // A reply sent while pairing is addressed to the agent: what it says is after the @-mention.
+    ...(answer && { answer: { by: answer.author.name, body: withoutLeadingMentions(answer.body, answer.mentions ?? []) } }),
+    earlier,
+    needsYou: false,
+  }));
+}
+
+// Every relay on the board, oldest first: the threads agents own, the viewer's pairings, and what a part relays of its
+// cards (`cards`).
 export function homeRelays<C extends CardRelay>(
-  board: Pick<Board, 'threads'>,
+  board: Pick<Board, 'threads'> & Partial<Pick<Board, 'canvas' | 'pages'>>,
   name: string,
   onBoard: readonly OnBoard[],
   asked: ReadonlySet<string>,
@@ -336,7 +408,7 @@ export function homeRelays<C extends CardRelay>(
 ): Relay<C>[] {
   const threads: Relay<C>[] = ownedThreads(board).flatMap((thread) => threadRelays(thread, name, threadTone(thread, onBoard), asked, sending(thread)));
   const blocked: Relay<C>[] = cards.map((card) => ({ key: card.key, kind: card.kind, at: card.at, title: card.title, ...(card.label && { label: card.label }), tone: 'blocked', body: card.line, needsYou: true, card }));
-  return [...threads, ...blocked].sort((a, b) => a.at.localeCompare(b.at));
+  return [...threads, ...pairingRelays(board, name, onBoard), ...blocked].sort((a, b) => a.at.localeCompare(b.at));
 }
 
 // The questions relayed while their thread waits on a person, for a side to
@@ -344,13 +416,21 @@ export function homeRelays<C extends CardRelay>(
 export const askedWhileWaiting = (relays: readonly Relay<CardRelay>[]): string[] => relays.filter((r) => r.kind === 'question' && r.thread?.status === 'needs-you').map((r) => r.key);
 
 // What a relay says of where it stands, after its name.
-export function relayWords(relay: Pick<Relay, 'kind' | 'needsYou' | 'by' | 'tone' | 'verdict'>): string {
+export function relayWords(relay: Pick<Relay, 'kind' | 'needsYou' | 'by' | 'tone' | 'verdict' | 'answer' | 'pairing'>): string {
   if (relay.kind === 'blocked') return 'Blocked';
+  // A pairing answered is with its agent again: there is no thread to be at work in.
+  if (relay.pairing && relay.answer) return `With ${ownName(relay.by ?? 'its agent')}`;
   if (relay.kind === 'done') return 'Done';
   if (relay.kind === 'review') return relay.verdict ? (relay.verdict.kind === 'approve' ? 'Approved' : 'Sent back') : 'Waits for your review';
+  if (relay.kind === 'reply' && !relay.answer) return `${ownName(relay.by ?? 'An agent')} replied`;
   if (relay.needsYou) return `${ownName(relay.by ?? 'An agent')} asks you`;
-  return relay.tone === 'working' ? 'Back at work' : relay.tone === 'todo' ? 'Waiting for its agent' : 'Answered'; // its thread done says so on its own card, never twice
+  // A reply's thread never stopped for the answer: it is at work still, not back at it.
+  if (relay.tone === 'working') return relay.kind === 'reply' ? 'At work' : 'Back at work';
+  return relay.tone === 'todo' ? 'Waiting for its agent' : 'Answered'; // its thread done says so on its own card, never twice
 }
+
+// How many of a reply's agent's words before it stay where it was said: "2 earlier in the thread", "1 earlier on this part".
+export const earlierWords = (relay: Pick<Relay, 'earlier' | 'pairing'>): string => `${relay.earlier ?? 0} earlier ${relay.pairing ? 'on this part' : 'in the thread'}`;
 
 // Who answered a question, and the first line of what they said: "You answered: “Tablets too.”".
 export function answeredWords(relay: Pick<Relay, 'answer'>, name: string): string {
@@ -369,17 +449,27 @@ export function verdictWords(relay: Pick<Relay, 'verdict'>, name: string): strin
 }
 
 // Several that came in while the viewer was away, as one: what needs them
-// first, then what was answered, then what was done, each the latest first,
-// under a line that says how many threads (or pieces of work) moved.
-export function relayStack<R extends Relay<CardRelay>>(relays: readonly R[]): { head: string; needs: R[]; answered: R[]; done: R[] } {
+// first, then the threads' latest words, then what was answered, then what was
+// done, each the latest first, under a line that says how many threads and
+// pairings (or pieces of work) moved.
+export function relayStack<R extends Relay<CardRelay>>(relays: readonly R[]): { head: string; needs: R[]; replied: R[]; answered: R[]; done: R[] } {
   const latest = (a: R, b: R) => b.at.localeCompare(a.at);
-  const sources = new Set(relays.map((r) => r.thread?.id ?? r.key));
-  const allThreads = relays.every((r) => r.thread);
-  const what = allThreads ? (sources.size === 1 ? 'thread' : 'threads') : sources.size === 1 ? 'piece of work' : 'pieces of work';
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  // A pairing session of its own is one pairing, however many of its pins came back, its Done line included.
+  const sessionOf = (r: R) => r.pairing?.thread ?? (r.thread && pairingThread(r.thread) ? r.thread.id : undefined);
+  const threads = new Set(relays.flatMap((r) => (r.thread && !sessionOf(r) ? [r.thread.id] : []))).size;
+  const pairings = new Set(relays.flatMap((r) => sessionOf(r) ?? [])).size;
+  const sources = new Set(relays.map((r) => sessionOf(r) ?? r.thread?.id ?? r.key)).size;
+  // Threads and pairings by name ("1 thread and 2 pairings"); with a part's cards among them, pieces of work.
+  const what =
+    threads + pairings === sources
+      ? [threads && count(threads, 'thread', 'threads'), pairings && count(pairings, 'pairing', 'pairings')].filter(Boolean).join(' and ')
+      : count(sources, 'piece of work', 'pieces of work');
   return {
-    head: `${sources.size} ${what} moved while you were away`,
+    head: `${what} moved while you were away`,
     needs: relays.filter((r) => r.needsYou).sort(latest),
-    answered: relays.filter((r) => (r.kind === 'question' || r.kind === 'review') && !r.needsYou).sort(latest),
+    replied: relays.filter((r) => r.kind === 'reply' && !r.answer).sort(latest),
+    answered: relays.filter((r) => (r.kind === 'question' || r.kind === 'review' ? !r.needsYou : r.kind === 'reply' && Boolean(r.answer))).sort(latest),
     done: relays.filter((r) => r.kind === 'done').sort(latest),
   };
 }

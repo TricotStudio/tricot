@@ -152,6 +152,35 @@ export class Threads {
     return thread;
   }
 
+  // A pairing session's thread (core/roles.ts pairingThread), made by the
+  // person's first request in it: theirs, about the page paired on (none for
+  // the board context) and no block of it, its first message what they asked,
+  // owned by the session's agent at work, which Tricot's terminal starts as
+  // `launch`. It is no chat bar's, so no coordinator takes it.
+  startPairingThread(board: Board, page: ScratchPage | undefined, actor: Actor, title: string, body: string, owner: { name: string; launch: string }): Thread {
+    guardArchived(board);
+    const text = limited(required(body, 'A message'), THREAD_TEXT_LIMIT, 'A message');
+    const id = this.repo.newThreadId();
+    const now = new Date().toISOString();
+    const thread: Thread = {
+      id,
+      title: threadTitle(limited(required(title, 'A title'), TITLE_LENGTH * 3, 'A title')),
+      ...(page && { pageId: page.id }),
+      owner: owner.name,
+      status: 'working',
+      launch: owner.launch,
+      startedBy: actor,
+      startedAt: now,
+      updatedAt: now,
+      messages: [{ id: randomId(8), author: actor, body: text, at: now }],
+    };
+    board.threads = [...(board.threads ?? []), thread];
+    this.repo.indexThread(id, board);
+    const where = page ? pageName(page) : 'the board context';
+    this.repo.record(board, actor, 'thread_started', `started pairing thread "${clip(thread.title, 60)}" with ${owner.name}, on ${where}`, { item: id }, { at: now, commentId: thread.messages[0].id });
+    return thread;
+  }
+
   // The blocks a thread is started about, which must be on the page it is
   // started over, in canvas order.
   private selectedOn(page: ScratchPage | undefined, blockIds: string[]) {

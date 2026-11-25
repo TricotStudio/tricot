@@ -8,7 +8,7 @@ import { SourceIcon } from '../../canvas/sources/icon';
 import { useCanvas } from '../../canvas/context';
 import { PinLine } from '../../canvas/pairing/pinLine';
 import { usePairing } from '../../canvas/pairing/session';
-import { PairingShell, panelOpen, reachWords } from '../../canvas/pairing/shell';
+import { PairingShell, panelOpen, pairingReach } from '../../canvas/pairing/shell';
 import { DRAFT, MarkedText, PinThread, type TextMark } from '../../canvas/pins';
 import { ActorBadge, Icon, timeAgo } from '../../shared/components';
 import { onConnectorMessage, useLinkFile } from '../live';
@@ -135,7 +135,7 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
   const [justPinned, setJustPinned] = useState<Pin | null>(null); // shown until the board has it
   const page = useRef<HTMLDivElement>(null);
   const selecting = useRef<HTMLTextAreaElement | null>(null);
-  const pairing = usePairing(block, name, 'doc');
+  const pairing = usePairing(block, name, 'doc', { own: false }); // its requests go through the connector's route
   const pairedWith = pairing.mode === 'pair' ? pairing.agent : null;
 
   const drive = useLinkFile(useMemo(() => linkSource(block.url), [block.url]));
@@ -659,7 +659,6 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
     );
   }
 
-  const choice = pairing.agents.find((a) => a.name === pairing.agent);
   return (
     <PairingShell
       pairing={pairing}
@@ -672,7 +671,7 @@ export function DocEditor({ block, name, pinId, onClose }: { block: LinkBlock; n
       pairHint="Select words to ask the agent to change them in the draft, or to comment."
       pairBand={
         pairing.agent
-          ? `Pairing with ${pairing.agent}: select words to ask ${pairing.agent} to change them; ${pairing.agent} edits the draft and replies on the pin. ${reachWords(choice, pairing.agent)}`
+          ? `Pairing with ${pairing.agent}: select words to ask ${pairing.agent} to change them; ${pairing.agent} edits the draft and replies on the pin. ${pairingReach(pairing)}`
           : 'Select words to ask an agent to change them, or to comment.'
       }
       controls={openInGoogle}

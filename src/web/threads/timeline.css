@@ -626,6 +626,20 @@
   font-size: 11.5px;
   line-height: 17px;
 }
+/* "Asked on" opens the page or the file it was asked over: a chip still,
+   in the board's link blue as it is pointed at. */
+a.timeline-tag {
+  text-decoration: none;
+  cursor: pointer;
+}
+a.timeline-tag:hover,
+a.timeline-tag:focus-visible {
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .timeline-open {
   align-self: center;
   margin-left: auto;
@@ -787,13 +801,14 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
   bottom: 84px;
 }
 
-/* ---- relays: what of the work handed out needs the viewer ----------------
+/* ---- relays: what of the work handed out comes back to the viewer --------
    A card from a thread (relayCard.tsx), never the coordinator speaking: led
    by the thread's name, with no author's badge. Its border takes the colour
    of where its thread stands (--tone, and --ink for its words), never a
    stripe, and the thread's strand stitches into its left edge (yarn.tsx).
-   A question is shown in full; something done, a card blocked and a question
-   answered are a line or two. */
+   A question is shown in full, a thread's latest word in three lines;
+   something done, a card blocked and a question or reply answered are a line
+   or two. */
 .relay-card,
 .relay-stack {
   max-width: 620px;
@@ -886,6 +901,31 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 }
 .relay-body > * + * {
   margin-top: 6px;
+}
+/* A thread's latest word (a reply) in up to three lines, its last line
+   fading where it is cut: Open thread reads the rest. */
+.relay-body.is-short {
+  max-height: 4.65em;
+}
+.relay-body.is-cut {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.4em), transparent);
+}
+/* How many of its owner's words before it stay in the thread: quiet, at the foot's end. */
+.relay-earlier {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.relay-earlier:hover {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .relay-actions {
   display: flex;
@@ -1033,7 +1073,7 @@ body:has(.timeline-foot .chat-bar) .threads-toast {
 }
 
 /* A line: done, blocked, answered. */
-.relay-card:not(.is-asking, .is-reviewing) {
+.relay-card:not(.is-asking, .is-reviewing, .is-replied) {
   padding: 7px 10px 7px 14px;
 }
 .relay-line {

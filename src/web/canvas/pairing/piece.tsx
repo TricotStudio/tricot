@@ -57,7 +57,7 @@ import { PinLine } from './pinLine';
 import { unionBox, type Opens, type PartAt } from './pointing';
 import { PinPopover } from './popover';
 import { usePairing } from './session';
-import { PairingShell, reachWords, useEscapeSteps } from './shell';
+import { PairingShell, pairingReach, useEscapeSteps } from './shell';
 import { PinStrip, stripAnchor, type StripPin } from './strip';
 import { quietFocus } from './zoom';
 import './piece.css';
@@ -135,7 +135,7 @@ export function PieceView<B extends Block>(props: {
   version?: BlockVersion; // an earlier version: shown, not paired on
   pinId?: string; // a thread to open at
   pinAsked?: number; // counts the asks to open at pinId: asked again for the same pin, it opens it again
-  paired?: boolean; // it opens already paired
+  paired?: boolean | string; // it opens already paired, with this agent when named
   part: string; // its part's name (core/parts.ts): 'code', 'note', 'diagram', 'image'
   asks?: false; // its parts take no requests: no Pair, and pointing works while reading
   opens?: Opens; // where a popover goes by a part: beside it (the default), or under it (words in a paragraph)
@@ -162,7 +162,7 @@ export function PieceView<B extends Block>(props: {
   const { seeItem } = canvas;
   const shown = useMemo(() => (version ? (atVersion(block, version) as B) : block), [block, version]);
   const asks = props.asks !== false;
-  const pairing = usePairing(block, name, part, { readOnly: Boolean(version), start: props.paired && asks ? 'pair' : undefined });
+  const pairing = usePairing(block, name, part, { readOnly: Boolean(version), start: props.paired && asks ? 'pair' : undefined, ...(typeof props.paired === 'string' && { agent: props.paired }) });
   const stage = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLElement>(null);
   const [chosen, setChosen] = useState<PinDraft | null>(null);
@@ -357,8 +357,7 @@ export function PieceView<B extends Block>(props: {
   const live = (pin: Pin) => (note: ReactNode) => <PinLine pin={pin} fallback={note} />;
   const within = () => bodyOf(stage.current);
 
-  const who = pairing.agent;
-  const choice = pairing.agents.find((a) => a.name === who);
+  const who = pairing.who;
   const canEdit = Boolean(edit) && !pairing.readOnly;
   // Reading, a double-click on the piece opens its editor, unless it was on a control or a pin.
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -373,7 +372,7 @@ export function PieceView<B extends Block>(props: {
         pairing,
         pairHint: `Point at any part to ask the agent to change it, or to leave a note on it.`,
         pairBand: who
-          ? `Pairing with ${who}: ${point} to ask for a change, or to leave a note. ${reachWords(choice, who)}`
+          ? `Pairing with ${who}: ${point} to ask for a change, or to leave a note. ${pairingReach(pairing)}`
           : `${point[0].toUpperCase()}${point.slice(1)} to leave a note on it or ask an agent to change it.`,
         open: thread,
         onOpenRequest: openRequest,
@@ -392,7 +391,7 @@ export function PieceView<B extends Block>(props: {
             text={askText}
             busy={askBusy}
             error={askError}
-            agent={pairing.agent}
+            agent={pairing.who}
             does={does}
             example={example}
             hint={pairing.requests.length === 0}

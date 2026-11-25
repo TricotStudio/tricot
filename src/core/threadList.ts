@@ -146,6 +146,15 @@ export function askedTag(thread: Pick<Thread, 'door' | 'general' | 'pageId' | 'b
   return threadTag(thread, board);
 }
 
+// Where an ask of the conversation was asked, for its tag to open: the Sketchbook page it was asked over, or the
+// file in Files (its path as its block names it). None for anywhere else, or a page or a file's block that is gone.
+export function askedOn(thread: Pick<Thread, 'general' | 'pageId' | 'blockIds'>, board: Pick<Board, 'pages'>): { pageId: string; file?: string } | undefined {
+  if (thread.general || !thread.pageId) return undefined;
+  const file = threadFile(board, thread);
+  if (file) return file.path ? { pageId: file.page.id, file: file.path } : undefined;
+  return board.pages?.some((p) => p.id === thread.pageId) ? { pageId: thread.pageId } : undefined;
+}
+
 // The tab a thread opens on where no conversation is docked (a card's own
 // view, Home, another board): the one it was started from, the General
 // thread's Board Context, else the tab the registered doors open on (Decisions).

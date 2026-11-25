@@ -24,7 +24,7 @@ import { EventEmitter } from 'node:events';
 import type { AgentRule } from '../core/agentRules';
 import { presenceRank, type PresenceState } from '../core/delivery';
 import type { CardKindName } from '../core/pins';
-import type { SessionRole } from '../core/roles';
+import type { HeldLaunch, SessionRole } from '../core/roles';
 import { coordinatorsOf } from '../core/whoAnswers';
 import { Leads } from './leads';
 import { Listeners } from './listeners';
@@ -60,6 +60,10 @@ export interface AgentPresence {
   lastSeen: string;
   state: AgentState;
   coordinator?: true; // the board's coordinator (core/roles.ts): the chat bar's threads go to it
+  // A coordinator a Tricot terminal holds: the agent kind that terminal starts sessions of its own as (an orchestrator,
+  // a pairing session), by its id ("claude"). None for an agent connected on its own, which has no terminal to start them in.
+  starts?: string;
+  holds?: HeldLaunch[]; // the pairing sessions that terminal holds back for now, and why
   focus?: AgentFocus; // only while its last call about the card is recent
   stuck?: true; // asleep, and a wake its terminal typed into it started no turn
 }
@@ -81,6 +85,7 @@ export class Presence {
   private connected = new Map<string, { name: string; lastSeen: number }>(); // by name, lower-cased
   private sessions = new Map<string, AgentSession>(); // its latest session's details, by name, lower-cased
   private shown = new Map<string, string>(); // board id -> last presence viewers were told about
+  private heldBack = new Map<string, Map<string, HeldLaunch[]>>(); // board id -> terminal -> the pairing launches it holds back
   private timer: NodeJS.Timeout;
   // The agents Tricot's terminals hold to wake, and whether each is asleep.
   readonly sleepers: Sleepers;
@@ -188,8 +193,20 @@ export class Presence {
     // it if it doesn't.
   }
 
+  // The pairing sessions a terminal holds back on a board for now, as it said with its latest view (server/wakes.ts):
+  // the agents it holds say so, for the page to tell the person who waits.
+  holdBack(boardId: string, holder: string, held: HeldLaunch[]): void {
+    const was = JSON.stringify(this.heldBack.get(boardId)?.get(holder) ?? []);
+    const terminals = this.heldBack.get(boardId) ?? new Map<string, HeldLaunch[]>();
+    if (held.length) terminals.set(holder, held);
+    else terminals.delete(holder);
+    this.heldBack.set(boardId, terminals);
+    if (was !== JSON.stringify(held)) this.announce(boardId);
+  }
+
   // A board deleted for good: no agent is on it any more.
   forget(boardId: string): void {
+    this.heldBack.delete(boardId);
     this.boards.delete(boardId);
     this.shown.delete(boardId);
     this.sleepers.forget(boardId);
@@ -209,11 +226,17 @@ export class Presence {
       .filter(([name, e]) => e.waiting > 0 || now - e.lastSeen < PRESENT_MS || this.stateOf(e, now, boardId, name) === 'asleep')
       .map(([name, e]): AgentPresence => {
         const state = this.stateOf(e, now, boardId, name);
+        const session = this.sessions.get(name.toLowerCase());
+        const record = this.sleepers.held(boardId, name);
+        const starts = session?.role?.kind === 'coordinator' && record ? session.tool : undefined;
+        const holds = starts ? this.heldBack.get(boardId)?.get(record!.holder) : undefined;
         return {
           name,
           lastSeen: new Date(seenAt(e, now)).toISOString(),
           state,
           ...(coordinates(name) && { coordinator: true as const }),
+          ...(starts && { starts }),
+          ...(holds?.length && { holds }),
           ...(e.focus && now - e.focus.at < FOCUS_MS ? { focus: { kind: e.focus.kind, id: e.focus.id } } : {}),
           ...(state === 'asleep' && this.sleepers.held(boardId, name)?.stuck && { stuck: true as const }),
         };
@@ -319,7 +342,7 @@ export class Presence {
   // they're looking at actually changed.
   private announce(boardId: string): void {
     const summary = this.list(boardId)
-      .map((a) => `${a.name}:${a.state}:${a.focus ? `${a.focus.kind}/${a.focus.id}` : ''}${a.stuck ? ':stuck' : ''}`)
+      .map((a) => `${a.name}:${a.state}:${a.focus ? `${a.focus.kind}/${a.focus.id}` : ''}${a.stuck ? ':stuck' : ''}${a.holds ? `:${JSON.stringify(a.holds)}` : ''}`)
       .join(',');
     if (summary === (this.shown.get(boardId) ?? '')) return;
     this.shown.set(boardId, summary);

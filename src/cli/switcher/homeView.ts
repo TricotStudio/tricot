@@ -26,8 +26,10 @@
 // question in full, the person's answer once there is one, work waiting for
 // their review with its summary in full and where the verdict is given (the
 // board: a reply here is a plain reply, which leaves it waiting), folding to
-// the verdict once there is one, a thread done with the first line of its
-// summary, a card blocked with what holds it.
+// the verdict once there is one, a thread's latest word (a reply) in two lines
+// at most, folding as a question does once answered, and so an agent's latest
+// word in a pairing, led by the piece and where it is, a thread done with the
+// first line of its summary, a card blocked with what holds it.
 // Relays that came while the person was away sit under one head, by group,
 // one line each, a question in full once chosen. ❯ marks the item chosen.
 //
@@ -50,7 +52,7 @@
 // or done, ! waiting on a person or their review, : not started), and words
 // say the rest.
 import { samePerson } from '../../core/format';
-import { answeredWords, firstLine, ownName, relayWords, sentStateWords, verdictWords, type Strand, type StrandTone } from '../../core/homeConversation';
+import { answeredWords, earlierWords, firstLine, ownName, relayWords, sentStateWords, verdictWords, type Strand, type StrandTone } from '../../core/homeConversation';
 import { columns, fit, type Rgb } from './strip';
 import { BOLD, DIM, alertOf, cutParts, type Part } from './tabView';
 import type { Divider, StreamItem } from './homeStream';
@@ -172,7 +174,8 @@ export function homeLines(item: StreamItem, { width, me, sending, selected, look
   const linked = (text: string): Part => (link ? [text, BOLD, link] : [text, BOLD]);
   const title: Part[] = [...(relay.label ? [linked(`${safe(relay.label)} `)] : []), linked(safe(relay.title))];
   const asking = relay.kind === 'question' && relay.needsYou;
-  const answered = relay.kind === 'question' && !relay.needsYou;
+  const replied = relay.kind === 'reply' && !relay.answer;
+  const answered = (relay.kind === 'question' && !relay.needsYou) || (relay.kind === 'reply' && Boolean(relay.answer));
   const reviewing = relay.kind === 'review' && relay.needsYou;
   const verdict = relay.kind === 'review' ? verdictWords(relay, me) : undefined;
   const when: Part = [` · ${clock(relay.at)}`, DIM];
@@ -188,21 +191,34 @@ export function homeLines(item: StreamItem, { width, me, sending, selected, look
             ? [[` · ${safe(verdict)}`, DIM]]
             : answered
               ? [[` · ${safe(answeredWords(relay, me))}`, DIM]]
-              : [[` · ${safe(firstLine(relay.body))}`, DIM]];
+              : replied
+                ? [[' · ', DIM], [safe(firstLine(relay.body))]]
+                : [[` · ${safe(firstLine(relay.body))}`, DIM]];
     lines.push(cutParts([mark, ['  '], ...square(tone, look), ...title, when, ...what], room));
     if ((asking || reviewing) && selected) lines.push(...messageRows(relay.body, item.reactions, width, me, card));
+    if (replied && selected) lines.push(...shortRows(relay.body, width, me, card));
     if (reviewing && selected) lines.push(cutParts([[`    ${REVIEW_HINT}`, DIM]], room));
     return lines;
   }
   const words = relayWords(relay);
-  lines.push(cutParts([mark, ...square(tone, look), ...title, [' · ', DIM], [words, asking || reviewing ? `${BOLD};${alert(look)}` : relay.kind === 'blocked' ? toneSgr('blocked', look) : DIM], when], room));
-  if (asking || reviewing) {
+  const earlier: Part[] = replied && relay.earlier ? [[` · ${earlierWords(relay)}`, DIM]] : [];
+  lines.push(cutParts([mark, ...square(tone, look), ...title, [' · ', DIM], [words, asking || reviewing ? `${BOLD};${alert(look)}` : relay.kind === 'blocked' ? toneSgr('blocked', look) : DIM], when, ...earlier], room));
+  if (replied) lines.push(...shortRows(relay.body, width, me, card));
+  else if (asking || reviewing) {
     lines.push(...messageRows(relay.body, item.reactions, width, me, card));
     if (reviewing) lines.push(cutParts([[`    ${REVIEW_HINT}`, DIM]], room));
   } else if (verdict) lines.push(cutParts([[`    ${g.check}${safe(verdict)}`, DIM]], room));
   else if (answered) lines.push(cutParts([[`    ${g.check}${safe(answeredWords(relay, me))}`, DIM]], room));
   else lines.push(cutParts([[`    ${safe(firstLine(relay.body))}`, relay.kind === 'done' ? DIM : undefined]], room));
   return lines;
+}
+
+// A thread's latest word, in two lines at most, the second ending in … where the thread holds more.
+function shortRows(body: string, width: number, me: string, card?: CardLink): Part[][] {
+  const rows = messageRows(body, undefined, width, me, card).filter((row) => row.some(([text]) => text.trim()));
+  if (rows.length <= 2) return rows;
+  const second = cutParts(rows[1], Math.max(1, width - 3));
+  return [rows[0], second.map(([text]) => text).join('').endsWith('…') ? second : [...second, [' …', DIM]]];
 }
 
 // The title of the thread a card leads to, as its place names it.
@@ -271,7 +287,7 @@ function laneAt(strand: YarnStrand, item: StreamItem, index: number, line: numbe
   if (index === strand.start && index === strand.end) return line === head ? (Number.isFinite(strand.end) ? 'knot' : 'knit') : line > head && !Number.isFinite(strand.end) ? 'lane' : undefined;
   if (index === strand.start) return line < head ? undefined : line === head ? 'knit' : 'lane';
   if (index === strand.end) return line < head ? 'lane' : line === head ? 'knot' : undefined;
-  const relay = item.home?.kind === 'relay' && item.home.relay.thread?.id === strand.id && item.home.relay.kind !== 'done';
+  const relay = item.home?.kind === 'relay' && (item.home.relay.thread?.id ?? item.home.relay.pairing?.thread) === strand.id && item.home.relay.kind !== 'done';
   return relay && line === head ? 'stitch' : 'lane';
 }
 

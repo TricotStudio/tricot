@@ -147,8 +147,8 @@ export class Store {
       cards.replace(parts.cardKindsOver(modulesOf));
     };
     this.pins = new Pins(this.repo, this.people, cards);
-    this.pairings = new Pairings(this.repo, cards);
     this.threads = new Threads(this.repo, this.people, this.canvases, this.pins);
+    this.pairings = new Pairings(this.repo, cards, this.threads);
     this.reactions = new Reactions(this.repo);
     this.deletions = new Deletions(this.repo, this.assets);
     this.connectorParts = new Map(connectorKinds().flatMap((kind) => (kind.store ? [[kind.id, kind.store(this.repo)] as const] : [])));
@@ -174,6 +174,15 @@ export class Store {
   }
   set presentAgents(present: (boardKey: string) => string[]) {
     this.repo.presentAgents = present;
+  }
+
+  // The pairing sessions of their own not on the board yet, by its key (server/pairing.ts): the server sets it, so a
+  // request @-mentions one before it is up.
+  get reservedAgents(): (boardKey: string) => string[] {
+    return this.repo.reservedAgents;
+  }
+  set reservedAgents(reserved: (boardKey: string) => string[]) {
+    this.repo.reservedAgents = reserved;
   }
 
   // The coordinators on a board now, by its key, the one seen last first, from
@@ -362,8 +371,19 @@ export class Store {
   // Pairing sessions (core/pairing.ts): the piece one is on, its start and its end on the board, and what its agent is told.
   pairingPiece(blockId: string, part: string): { board: Board; block: Block; piece: string; where: string } { const { located, block, piece, where } = this.pairings.piece(blockId, part); return { board: located.board, block, piece, where }; }
   pairingStarted(session: PairingSession): void { return this.pairings.started(session); }
-  pairingEnded(session: PairingSession, endedAt: number, why: PairingEnd): { summary: string; comment?: Comment } { return this.pairings.ended(session, endedAt, why); }
+  pairingEnded(session: PairingSession, endedAt: number, why: PairingEnd): { summary: string; comment?: Comment; thread?: string } { return this.pairings.ended(session, endedAt, why); }
   pairingLine(session: PairingSession): string | undefined { return this.pairings.line(session); }
+  // A pairing session of its own (core/roles.ts pairingThread): the name a new one takes, its thread made or set back to
+  // work by a request, and set done once its pairing ended and its agent didn't.
+  pairingSessionName(blockId: string, person: string, agent: string, kind: string, reserved: readonly string[] = []): string { return this.pairings.sessionName(blockId, person, agent, kind, reserved); }
+  pairingThread(blockId: string, person: string, which: { kind?: string; owner?: string } = {}): Thread | undefined { return this.pairings.sessionThread(blockId, person, which); }
+  pairingPlace(blockId: string): { pageId?: string } { return this.pairings.place(blockId); }
+  pairingRequest(session: PairingSession, body: string): Thread | undefined { return this.pairings.request(session, body); }
+  pairingDone(threadId: string, person: string, summary: string): boolean { return this.pairings.done(threadId, person, summary); }
+  pairingThreadsAtWork(): { thread: Thread; boardKey: string }[] { return this.pairings.atWork(); }
+  // The block a pin is on, and a block, where the board has them: what a request on a pin, or a reply from Home, pairs on.
+  pinBlock(pinId: string): string | undefined { try { return this.canvasOf(pinId).canvas.pins.find((p) => p.id === pinId)?.blockId; } catch { return undefined; } }
+  pairingBlock(blockId: string): Block | undefined { try { return this.repo.locateItem(blockId).canvas.blocks.find((b) => b.id === blockId); } catch { return undefined; } }
   pinAlongside(pinId: string, target: PinTarget, actor: Actor): Pin { return this.pins.pinAlongside(pinId, target, actor); }
   removeItem(itemId: string, actor: Actor): Deletion { return this.deletions.removeItem(itemId, actor); }
   restoreItem(itemId: string, actor: Actor): { deletion: Deletion; notes: string[] } { return this.deletions.restoreItem(itemId, actor); }

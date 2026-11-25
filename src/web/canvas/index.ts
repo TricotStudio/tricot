@@ -2,7 +2,7 @@
 // and pairing. What the other features use of it; the connectors, its plug-ins,
 // reach its files (test/webImports.test.ts).
 export { CanvasView } from './CanvasView';
-export { useWebBlockKinds } from './blocks/registry';
+export { blockIcon, useWebBlockKinds } from './blocks/registry';
 export { BlockPreview, hasPreview } from './blocks/preview';
 export type { OverlayProps, ToolsProps, WebBlockKind } from './blocks/kind';
 export { useCanvas } from './context';

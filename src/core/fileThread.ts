@@ -64,6 +64,9 @@ export function agentOnFile(board: Pick<Board, 'pages'>, named: string, agents: 
 // Whether a page is the Files canvas.
 export const onFiles = (page: Pick<ScratchPage, 'files'> | undefined): boolean => Boolean(page && isFilesPage(page));
 
+// The file a block on the Files canvas is, by the path its code block names it with; none for any other block.
+export const fileOfBlock = (page: Pick<ScratchPage, 'files'>, block: Block): string | undefined => (onFiles(page) && block.type === 'code' ? block.path : undefined);
+
 // The file a thread is about, if it was started in Files: the page it is on
 // and the file's path as its block names it, which is gone once the block
 // is. Nothing for any other thread, a thread over blocks on a Sketchbook page included.
@@ -72,7 +75,8 @@ export function threadFile(board: Pick<Board, 'pages'>, thread: Pick<Thread, 'pa
   const blockId = thread.blockIds?.[0];
   if (!page || !blockId || !onFiles(page)) return undefined;
   const block = page.canvas.blocks.find((b) => b.id === blockId);
-  return { page, blockId, ...(block?.type === 'code' && { path: block.path }) };
+  const path = block && fileOfBlock(page, block);
+  return { page, blockId, ...(path && { path }) };
 }
 
 // A file as a label names it, its start left out when long: "…/connectors/oauth.ts".

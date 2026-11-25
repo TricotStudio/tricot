@@ -115,7 +115,10 @@ export const people = {
   // Pairing (core/pairing.ts): a person starting a session with an agent on a
   // block's parts of a kind ('site', 'doc'), its page saying it is still there
   // (active: the person did something since), and leaving it.
-  pairingStart: z.object({ ...by, blockId: z.string().trim().min(1).max(200), part: z.string().trim().min(1).max(20), agent: actorName }),
+  // `agent`: one of the board's to pair with; or `launch`, the agent kind of a session of its own Tricot starts (core/roles.ts).
+  pairingStart: z
+    .object({ ...by, blockId: z.string().trim().min(1).max(200), part: z.string().trim().min(1).max(20), agent: actorName.optional(), launch: z.string().trim().min(1).max(40).optional() })
+    .refine((body) => Boolean(body.agent) !== Boolean(body.launch), { message: 'Pass agent, to pair with one of the board, or launch, for a new session: one of them.' }),
   pairingBeat: z.object({ ...by, active: z.boolean().optional() }),
   pairingEnd: z.object(by),
 };
@@ -245,6 +248,11 @@ export const wakes = z.object({
     )
     .max(20),
   gone: z.array(actorName).max(20).optional(),
+  // The pairing sessions it was told to start and holds back for now, and why (core/roles.ts HeldLaunch).
+  held: z
+    .array(z.object({ thread: z.string().trim().min(1).max(80), why: z.enum(['busy', 'full']) }))
+    .max(20)
+    .optional(),
 });
 
 // What `tricot listen` sends (server/listeners.ts): the word the

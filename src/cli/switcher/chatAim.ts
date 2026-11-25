@@ -20,6 +20,7 @@ import { isNumbered, type BoardPlace, type ChatItem, type ChatPlace, type Number
 import { cardsLastKindFirst } from '../../core/conversationCards';
 import { clip } from '../../core/format';
 import { refLabel } from '../../core/refKinds';
+import { FILES_NAME } from '../../core/scratchPad';
 import { shownTitle } from '../../core/threads';
 import type { Board, Canvas, Comment, Thread } from '../../core/types';
 import { conversationOf } from './chatView';
@@ -137,7 +138,8 @@ const ABOUT = ', about ';
 function placeLabel(place: ChatPlace): { head: string; title: string; part?: string } {
   if (isNumbered(place)) return { head: `${refLabel(place.kind, place.number)} `, title: safe(place.title), ...(place.pin && { part: safe(place.pin.quote) }) };
   if (place.kind === 'thread') return { head: '', title: safe(place.title) };
-  return { head: '', title: place.page ? `the Sketchbook page “${safe(place.page.title)}”` : 'the board', part: safe(place.pin.quote) };
+  const page = place.page && (place.page.files ? FILES_NAME : `the Sketchbook page “${safe(place.page.title)}”`);
+  return { head: '', title: page ?? 'the board', part: safe(place.pin.quote) };
 }
 
 // "to T19 Stopped agents leave the strip, the latest · Claude hears it", cut

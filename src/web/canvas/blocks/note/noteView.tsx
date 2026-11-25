@@ -108,7 +108,7 @@ function NoteWords({ block, placed, pointing, chosen, open, pick, openPin }: Pie
   );
 }
 
-export function NoteView({ block, name, version, pinId, pinAsked, onClose }: OverlayProps<NoteBlock>) {
+export function NoteView({ block, name, version, pinId, pinAsked, paired, onClose }: OverlayProps<NoteBlock>) {
   const { done, total } = taskProgress(block.text);
   const title = block.title || clip(noteText(block.text.split('\n').find((line) => line.trim()) ?? '').trim(), 60) || 'Note';
   const from = [total ? `Note · ${done} of ${total} done` : 'Note', `changed by ${block.updatedBy.name} ${timeAgo(block.updatedAt)}`].join(' · ');
@@ -119,6 +119,7 @@ export function NoteView({ block, name, version, pinId, pinAsked, onClose }: Ove
       version={version}
       pinId={pinId}
       pinAsked={pinAsked}
+      paired={paired}
       part="note"
       opens="under"
       className="note-full-view"

@@ -57,6 +57,9 @@ export class BoardRepository {
   // The agents on a board now, by its key, from presence: the server sets it,
   // so a mention or an assignee can name an agent that has only read the board.
   presentAgents: (boardKey: string) => string[] = () => [];
+  // The pairing sessions of their own a board's people have started that aren't agents of it yet (core/roles.ts), by
+  // its key: the server sets it (server/pairing.ts), so the request that makes one's thread @-mentions it.
+  reservedAgents: (boardKey: string) => string[] = () => [];
   // The board's coordinators now, by its key, the one seen last first, from
   // presence (core/roles.ts): the server sets it, so a thread a person starts
   // from a chat bar is one of theirs.

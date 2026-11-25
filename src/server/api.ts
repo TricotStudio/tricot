@@ -470,8 +470,10 @@ export function createApiRouter(
       return;
     }
     if (!presence) throw new BoardError('Agents are not woken on this server.');
-    const { holder, agents, gone } = wakesBody.parse(req.body);
-    res.json(heldBy(store, presence, store.getBoard(param(req, 'boardId')), holder, agents, gone ?? []));
+    const { holder, agents, gone, held } = wakesBody.parse(req.body);
+    const board = store.getBoard(param(req, 'boardId'));
+    presence.holdBack(boardKey(board), holder, held ?? []);
+    res.json(heldBy(store, presence, board, holder, agents, gone ?? []));
   });
 
   // `tricot listen`, which an agent connected on its own runs in the
@@ -498,8 +500,8 @@ export function createApiRouter(
     return pairing;
   };
   on(routes.startPairing, (req, res) => {
-    const { actor, blockId, part, agent } = bodies.pairingStart.parse(req.body);
-    res.status(201).json(pairs().start({ blockId, part, person: actor, agent }));
+    const { actor, blockId, part, agent, launch } = bodies.pairingStart.parse(req.body);
+    res.status(201).json(pairs().start({ blockId, part, person: actor, ...(agent && { agent }), ...(launch && { launch }) }));
   });
   on(routes.pairingBeat, (req, res) => {
     const { actor, active } = bodies.pairingBeat.parse(req.body);
@@ -633,13 +635,19 @@ export function createApiRouter(
   // rest of its routes.
   on(routes.pinComment, (req, res) => {
     const { actor, part, body, ask } = canvasBodies.pinComment.parse(req.body);
-    res.status(201).json(store.pinComment(param(req, 'id'), part, body, human(actor), { ask: Boolean(ask) }));
+    const made = store.pinComment(param(req, 'id'), part, body, human(actor), { ask: Boolean(ask) });
+    // Kept, a request in a pairing session of its own makes its thread (server/pairing.ts).
+    pairing?.requested(param(req, 'id'), actor, made.comment);
+    res.status(201).json(made);
   });
 
   // Replies about a pinned part people commented on, and resolving its thread.
   on(routes.commentOnPin, (req, res) => {
     const body = bodies.comment.parse(req.body);
-    res.json(store.commentOnPin(param(req, 'id'), body.body, human(body.actor)));
+    const made = store.commentOnPin(param(req, 'id'), body.body, human(body.actor));
+    // Kept, a request in a pairing session of its own, or a reply from Home to one that ended, sets its thread to work.
+    pairing?.requestedOnPin(param(req, 'id'), body.actor, made.comment);
+    res.json(made);
   });
 
   on(routes.resolvePin, (req, res) => {

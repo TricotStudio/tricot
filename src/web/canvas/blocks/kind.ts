@@ -121,7 +121,7 @@ export interface OverlayProps<B extends Block = Block> {
   version?: BlockVersion; // an earlier version, when one is being looked at
   pinId?: string; // the pin whose thread to open at
   pinAsked?: number; // counts the asks to open at pinId: asked again for the same pin, it opens it again
-  paired?: boolean; // it opens already paired (the Files view's Pair): a view that pairs takes it
+  paired?: boolean | string; // it opens already paired (the Files view's Pair), with this agent when named (a pairing opened from Home): a view that pairs takes it
   onClose(): void;
 }
 

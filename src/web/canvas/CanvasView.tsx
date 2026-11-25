@@ -37,7 +37,7 @@ import { AddMenu, type AddForm } from './addMenu';
 import { Cloth } from './cloth';
 import { PendingRequests } from './askAgents';
 import { FOCUS_PIN, showComments } from '../conversation';
-import { useFocusBlock } from './focus';
+import { askedPair, useFocusBlock } from './focus';
 import type { KeptBlocks } from '../shared/boardViews';
 import { useBoardViews } from '../shared/boardViewsContext';
 import { useReadOnly } from '../shared/hooks';
@@ -461,10 +461,10 @@ function CanvasSurface(props: Props) {
   // A kind that has one opens it from its card (canvas.openOverlay), unless it
   // edits and the board is read-only. Closing one that asks puts focus back on the block.
   // Each ask to open it at a pin is counted, so asking for the same pin again opens it again.
-  const [overlay, setOverlay] = useState<{ blockId: string; version?: BlockVersion; pinId?: string; pinAsked?: number; paired?: boolean } | null>(null);
+  const [overlay, setOverlay] = useState<{ blockId: string; version?: BlockVersion; pinId?: string; pinAsked?: number; paired?: boolean | string } | null>(null);
   const pinAsks = useRef(0);
   const openOverlay = useCallback(
-    (blockId: string, options: { version?: BlockVersion; pinId?: string; paired?: boolean } = {}) => {
+    (blockId: string, options: { version?: BlockVersion; pinId?: string; paired?: boolean | string } = {}) => {
       const block = canvas.blocks.find((b) => b.id === blockId);
       const open = block && webKindOf(block.type).overlay;
       if (open && !(readOnly && open.changes)) setOverlay({ blockId, ...options, ...(options.pinId ? { pinAsked: ++pinAsks.current } : {}) });
@@ -485,7 +485,7 @@ function CanvasSurface(props: Props) {
   useEffect(() => {
     if (!opens || openedFor.current === opens || !canvas.blocks.some((b) => b.id === opens)) return;
     openedFor.current = opens;
-    if (!overlay) openOverlay(opens, paired ? { paired } : undefined);
+    if (!overlay) openOverlay(opens, paired ? { paired: askedPair(canvas, opens) ?? paired } : undefined);
   }, [opens, paired, canvas, overlay, openOverlay]);
   // A block that goes while its overlay is open closes it.
   useEffect(() => {
@@ -774,18 +774,21 @@ function CanvasSurface(props: Props) {
   // notification) opens its thread: in its block's full view, at its part (a
   // website's element, on its page), when the kind opens there or that view
   // is open already; else by its chip, out from under another block's full
-  // view, shown as a comment's quote shows it once its block is drawn.
+  // view, shown as a comment's quote shows it once its block is drawn. A
+  // pairing opened from Home (`pair`, its agent) opens in the block's full
+  // view, paired with that agent again, where the kind has one.
   // Opened, its replies are seen.
   const showPin = useCallback(
-    (pin: Pin) => {
+    (pin: Pin, pair?: string) => {
       const block = canvas.blocks.find((b) => b.id === pin.blockId);
       if (!block) return true;
       const drawn = Boolean(flow.getInternalNode(block.id)?.measured.width);
       const bring = () => void flow.fitView({ nodes: [{ id: block.id }], duration: 400, maxZoom: 1, padding: 0.3 });
-      if (webKindOf(block.type).opensOnPin?.(block, pin) || (overlay?.blockId === block.id && !overlay.version)) {
+      const kind = webKindOf(block.type);
+      if ((pair && kind.overlay) || kind.opensOnPin?.(block, pin) || (overlay?.blockId === block.id && !overlay.version)) {
         if (drawn) bring(); // for when the full view closes
         onSeeItem(pin.id);
-        openOverlay(block.id, { pinId: pin.id });
+        openOverlay(block.id, { pinId: pin.id, ...(pair && { paired: pair }) });
         return true;
       }
       if (!drawn) return false;

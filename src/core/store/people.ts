@@ -6,6 +6,7 @@ import { heldRun, type Talk } from '../agentTalk';
 import { agentsIn, boardAgents, boardPeople, resolveMentions } from '../mentions';
 import { splitLensCommand } from '../lensCommand';
 import { pendingSkill, readSkillRequest, withTricot } from '../skills';
+import { pairingThread } from '../roles';
 import { LENSES } from '../threads';
 import { type Actor, type Board, type MessageLens, type SkillRequest, boardKey } from '../types';
 
@@ -17,7 +18,7 @@ export class People {
   // Who a text @-mentions: the board's agents (present now, or seen in its
   // events) and its people, by name; never the writer. Unknown names stay text.
   mentionsIn(board: Board, text: string, actor: Actor): string[] {
-    const names = [...boardAgents(board, this.repo.presentAgents(boardKey(board))), ...boardPeople(board)];
+    const names = [...this.agentsOf(board), ...boardPeople(board)];
     return resolveMentions(text, names).filter((name) => !samePerson(name, actor.name));
   }
 
@@ -36,10 +37,18 @@ export class People {
     return { text: body, ...(lens !== 'General' && { lens: { name: lens } }) };
   }
 
+  // The agents a text can @-mention: the board's (core/mentions.ts boardAgents), and its pairing sessions of their own
+  // (core/roles.ts), started or not up yet, so a request reaches one before it comes, and a reply from Home after it left.
+  private agentsOf(board: Board): string[] {
+    const key = boardKey(board);
+    const sessions = [...this.repo.reservedAgents(key), ...(board.threads ?? []).flatMap((t) => (pairingThread(t) ? [t.owner!] : []))];
+    return [...boardAgents(board, this.repo.presentAgents(key)), ...sessions.filter((name, i) => sessions.findIndex((n) => samePerson(n, name)) === i)];
+  }
+
   requestIn(board: Board, text: string, actor: Actor): { mentions: string[]; skill?: SkillRequest } {
     const mentions = this.mentionsIn(board, text, actor);
     if (actor.kind !== 'human') return { mentions };
-    const agents = boardAgents(board, this.repo.presentAgents(boardKey(board)));
+    const agents = this.agentsOf(board);
     const found = readSkillRequest(text, withTricot(this.repo.agentSkills(), agents, this.repo.tricotSkills()), [...agents, ...boardPeople(board)]);
     if (!found) return { mentions };
     const asked = found.skill.agents.filter((a) => !mentions.some((m) => samePerson(m, a)));

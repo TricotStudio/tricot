@@ -23,7 +23,7 @@ import { PinLine } from '../../pairing/pinLine';
 import type { PartAt } from '../../pairing/pointing';
 import { PinPopover } from '../../pairing/popover';
 import { usePairing } from '../../pairing/session';
-import { PairingShell, reachWords, useEscapeSteps } from '../../pairing/shell';
+import { PairingShell, pairingReach, useEscapeSteps } from '../../pairing/shell';
 import { PinStrip, stripAnchor, type StripPin } from '../../pairing/strip';
 import { PinThread } from '../../pins';
 import type { OverlayProps } from '../kind';
@@ -384,7 +384,7 @@ export function SiteView({ block, name, pinId, pinAsked, onClose }: OverlayProps
           text={askText}
           busy={askBusy}
           error={askError}
-          agent={pairing.agent}
+          agent={pairing.who}
           does={`changes the site's ${chosen.file ? `file (${chosen.file}${chosen.line ? `, line ${chosen.line}` : ''})` : 'files'}`}
           example="make this shorter, say"
           hint={pairing.requests.length === 0}
@@ -478,8 +478,7 @@ export function SiteView({ block, name, pinId, pinAsked, onClose }: OverlayProps
     );
   }
 
-  const who = pairing.agent;
-  const choice = pairing.agents.find((a) => a.name === who);
+  const who = pairing.who;
 
   return (
     <PairingShell
@@ -494,7 +493,7 @@ export function SiteView({ block, name, pinId, pinAsked, onClose }: OverlayProps
       pairHint="Pick any part of the page to ask the agent to change it, or to leave a note on it."
       pairBand={`${
         who ? `Pairing with ${who}: click any part of the page to ask for a change, or to leave a note.` : 'Click any part of the page to leave a note on it or ask an agent to change it.'
-      } Links don't open; Browse moves around.${who ? ` ${reachWords(choice, who)}` : ''}`}
+      } Links don't open; Browse moves around.${who ? ` ${pairingReach(pairing)}` : ''}`}
       band={
         changedAt && (
           <div className="pair-band is-changed" role="status">

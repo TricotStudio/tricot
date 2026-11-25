@@ -1,26 +1,46 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { askedWhileWaiting, homeRelays, type Relay as HomeRelay, type RelayKind } from '../../core/homeConversation';
+import type { PairedOn } from '../../core/homePairing';
 import { boardKey, type Board } from '../../core/types';
+import { blockIcon, openPin } from '../canvas';
 import { outbox } from '../conversation';
 import type { WorkRelay } from '../shared/boardViews';
 import { useBoardViews } from '../shared/boardViewsContext';
-import { go } from '../shared/pages';
+import type { IconName } from '../shared/components';
+import { go, linkTo, openAddress } from '../shared/pages';
 
-// Relays: what of the work a coordinator handed out needs the viewer, brought
-// into Home's conversation (timeline.tsx) so they can stay there. Which they
-// are is Home's conversation's (core/homeConversation.ts homeRelays, which the
-// terminal's chat relays from too): an agent's question to the viewer, a
-// thread done with its summary, and what a part relays of its cards through
-// Work's slot (shared/boardViews.ts WorkSlot.relays: a card blocked). Here
-// each gets what opens it, and the questions relayed while their thread waited
-// on a person are remembered, per board in this browser, as a thread that
-// moves on says nothing of them: they stay in the conversation as answered
-// rather than go.
+// Relays: what of the work a coordinator handed out comes back to the viewer,
+// brought into Home's conversation (timeline.tsx) so they can stay there.
+// Which they are is Home's conversation's (core/homeConversation.ts
+// homeRelays, which the terminal's chat relays from too): an agent's question
+// to the viewer, work waiting for their review, a thread's latest word (a
+// reply), a thread done with its summary, and what a part relays of its cards
+// through Work's slot (shared/boardViews.ts WorkSlot.relays: a card blocked).
+// Here each gets what opens it (a pairing, its piece's full view at its pin,
+// paired with its agent again), and the questions relayed while their thread
+// waited on a person are remembered, per board in this browser, as a thread
+// that moves on says nothing of them: they stay in the conversation as
+// answered rather than go.
 
 export type { RelayKind };
 
-// A relay, with what opens it: its thread in the main pane, or the part's card.
-export type Relay = HomeRelay<WorkRelay> & { open(): void };
+// A relay, with what opens it: its thread in the main pane, its pairing's piece, or the part's card; and a pairing's
+// mark, its block's kind.
+export type Relay = HomeRelay<WorkRelay> & { open(): void; icon?: IconName };
+
+// A pairing's piece, opened where it is (the Sketchbook page, Files, the board context) in its full view at its pin,
+// paired with its agent again (canvas/focus.ts).
+function openPairing(board: Board, on: PairedOn): void {
+  openPin(on.pinId, { pair: on.agent });
+  openAddress(on.file ? linkTo.files(board.id, on.file, true) : on.pageId ? linkTo.page(board.id, on.pageId) : linkTo.context(board.id));
+}
+
+// The kind of block a pairing is on, for its mark.
+function pairedIcon(board: Board, on: PairedOn): IconName | undefined {
+  const canvas = on.pageId ? board.pages?.find((p) => p.id === on.pageId)?.canvas : board.canvas;
+  const block = canvas?.blocks.find((b) => b.id === on.blockId);
+  return block && blockIcon(block.type);
+}
 
 const KEY = 'tricot:relayed:';
 const KEEP = 200;
@@ -52,7 +72,11 @@ export function useRelays(board: Board, name: string, agents: readonly { name: s
   const relays = useMemo(
     () =>
       homeRelays(board, name, agents, remembered(key), (thread) => all.filter((o) => o.place === `thread:${thread.id}` && o.state !== 'failed'), part?.relays?.({ board, name }) ?? []).map(
-        (relay): Relay => ({ ...relay, open: relay.card ? relay.card.open : () => go.timeline(board.id, relay.thread!.id) }),
+        (relay): Relay => {
+          const on = relay.pairing;
+          if (on) return { ...relay, open: () => openPairing(board, on), icon: pairedIcon(board, on) };
+          return { ...relay, open: relay.card ? relay.card.open : () => go.timeline(board.id, relay.thread!.id) };
+        },
       ),
     [board, name, agents, all, part, key],
   );

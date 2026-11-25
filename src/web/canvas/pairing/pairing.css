@@ -221,6 +221,51 @@
   display: inline-flex;
   color: var(--text);
 }
+.pair-picker-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* The coordinator, listed last: it stays free for the chat bar unless picked. */
+.pair-picker-role {
+  flex: none;
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 17px;
+}
+/* A session of its own, first: a new one, or the person's own on this piece again. */
+.pair-picker .pair-picker-fresh {
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.pair-picker-agent.is-fresh {
+  grid-template-columns: 22px minmax(0, 1fr) 16px;
+}
+.pair-picker-new {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--exploring-bg);
+  color: var(--exploring-ink);
+}
+.pair-picker-what {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.pair-picker-what b {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pair-picker-empty,
 .pair-picker-foot {
   margin: 0;

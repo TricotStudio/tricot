@@ -16,12 +16,16 @@
 // `pick` is for pairing, which needs one agent: with several, the most
 // reachable (listening, then asleep, then working), the one this browser
 // last chose breaking a tie; with none on the board, the one named, else
-// the board's first.
+// the board's first. Pairing never falls to a coordinator, which it picks
+// only when the person does: with only coordinators, none. A session of its
+// own, which the pairing view offers first where one can be had
+// (web/canvas/pairing/session.ts), is not an agent of the board's yet.
 //
 // Pure: it reads nothing but what it is given.
 
 import type { PresenceState } from './delivery';
 import { samePerson } from './format';
+import type { HeldLaunch } from './roles';
 import { boardAgents } from './mentions';
 import type { Board } from './types';
 
@@ -33,10 +37,12 @@ export interface BoardAgent {
   state: PresenceState | 'unseen';
   lastSeen?: string;
   coordinator?: true;
+  starts?: string; // a coordinator a Tricot terminal holds: the agent kind it starts sessions of its own as
+  holds?: HeldLaunch[]; // the pairing sessions that terminal holds back for now
 }
 
 // An agent on the board now, as presence lists it.
-export type AgentHereNow = Pick<BoardAgent, 'name' | 'lastSeen' | 'coordinator'> & { state: PresenceState };
+export type AgentHereNow = Pick<BoardAgent, 'name' | 'lastSeen' | 'coordinator' | 'starts' | 'holds'> & { state: PresenceState };
 
 // The board's agents: those on it now first, as presence lists them, then
 // those its activity has seen.
@@ -46,7 +52,9 @@ export function agentsOf(board: Pick<Board, 'activity'>, present: readonly Agent
     present.map((a) => a.name),
   ).map((name) => {
     const here = present.find((a) => samePerson(a.name, name));
-    return here ? { name: here.name, state: here.state, ...(here.lastSeen && { lastSeen: here.lastSeen }), ...(here.coordinator && { coordinator: true as const }) } : { name, state: 'unseen' as const };
+    return here
+      ? { name: here.name, state: here.state, ...(here.lastSeen && { lastSeen: here.lastSeen }), ...(here.coordinator && { coordinator: true as const }), ...(here.starts && { starts: here.starts }), ...(here.holds?.length && { holds: here.holds }) }
+      : { name, state: 'unseen' as const };
   });
 }
 
@@ -83,15 +91,17 @@ export function whoAnswers({ agents, named = [], picked, coordinator, last, pick
   const find = (name: string | null | undefined) => (name ? agents.find((a) => samePerson(a.name, name)) : undefined);
   const kept = find(picked);
   if (kept) return kept.name;
-  const theOne = named.length === 1 ? find(named[0]) : undefined;
+  // Pairing never falls to a coordinator: it stays free for the chat bar, and is paired with only when picked.
+  const offered = pick ? agents.filter((a) => !a.coordinator) : agents;
+  const theOne = named.length === 1 ? offered.find((a) => samePerson(a.name, named[0])) : undefined;
   if (theOne && theOne.state !== 'unseen') return theOne.name;
-  const lead = find(coordinator);
+  const lead = offered.find((a) => coordinator && samePerson(a.name, coordinator));
   if (lead && lead.state !== 'unseen' && lead.state !== 'away') return lead.name;
-  const reachable = agents.filter((a) => a.state !== 'unseen' && a.state !== 'away');
+  const reachable = offered.filter((a) => a.state !== 'unseen' && a.state !== 'away');
   if (!pick) return reachable.length === 1 ? reachable[0].name : null;
   for (const state of ['listening', 'asleep', 'working'] as const) {
     const ready = reachable.filter((a) => a.state === state);
     if (ready.length) return (ready.find((a) => last && samePerson(a.name, last)) ?? ready[0]).name;
   }
-  return (theOne ?? agents[0])?.name ?? null;
+  return (theOne ?? offered[0])?.name ?? null;
 }

@@ -134,6 +134,7 @@ import { replyPlaceholder, type Where } from '../../core/delivery';
 import { samePerson } from '../../core/format';
 import { ownName, seenBy, type CardRelay, type Visit } from '../../core/homeConversation';
 import { agentStateWords, boardAgents, boardPeople, findMentions, readTagTyping, readTyping } from '../../core/mentions';
+import { addressTo } from '../../core/pairing';
 import { EMOJIS, hasReaction, type Emoji } from '../../core/reactions';
 import { refLabel } from '../../core/refKinds';
 import type { AgentSkills } from '../../core/skills';
@@ -1543,7 +1544,9 @@ export class ThreadsTab {
     this.aimNew = false;
     this.streamTop = 'end';
     this.host.changed();
-    const result = place.kind === 'thread' ? await access.send.reply(place.id, aim.text) : await access.send.comment(to!.on, aim.text);
+    // On a pairing's pin, addressed to its agent as pairing does, so it reads it as asked of it.
+    const text = place.kind === 'board' && place.to ? addressTo(aim.text, place.to, this.roster().agents) : aim.text;
+    const result = place.kind === 'thread' ? await access.send.reply(place.id, text) : await access.send.comment(to!.on, text);
     this.outgoing = this.outgoing.filter((o) => o !== sent);
     if (result.ok && 'thread' in result) this.merge(result.thread);
     else if (result.ok) this.commented(place as CardPlace, result, draft);

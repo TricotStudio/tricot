@@ -16,6 +16,7 @@ import { site } from './site';
 import { note } from './note';
 import { table } from './table';
 import { ordered } from '../../../core/blocks/order';
+import type { IconName } from '../../shared/components';
 
 // A function so the kinds are read once they have all loaded.
 const registered = () => [note, table, image, diagram, link, diff, code, chart, scene, site, shape, drawing];
@@ -45,6 +46,9 @@ export function webKindOf(type: string): WebBlockKind {
   if (!kind) throw new Error(`No web half for block type "${type}".`);
   return kind;
 }
+
+// The mark of a kind of block, as the Add menu shows it: a code block's, a note's. None for a kind the menu doesn't list.
+export const blockIcon = (type: string): IconName | undefined => webKinds().find((k) => k.type === type)?.menu?.icon;
 
 // The Add menu lists them in the order it always has; a kind not named here comes after.
 const MENU = ['note', 'table', 'diagram', 'code', 'chart', 'image', 'link'];

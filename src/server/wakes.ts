@@ -7,7 +7,7 @@
 // reading, or a wake that started a turn, moves `since` on.
 import { concernsAgent } from '../core/concerns';
 import { samePerson } from '../core/format';
-import { CLOSE_AFTER_DELETE_MS, launchesOn, QUIET_CLOSE_MS, type Launch, type OwnerNow } from '../core/roles';
+import { CLOSE_AFTER_DELETE_MS, launchesOn, ownedThreadOf, QUIET_CLOSE_MS, type Launch, type OwnerNow } from '../core/roles';
 import type { Store } from '../core/store';
 import { boardKey, type Board } from '../core/types';
 import { eventVisibleTo } from './mcp/backlog';
@@ -69,7 +69,7 @@ export function heldBy(store: Store, presence: Presence, board: Board, holder: s
   return { seq: board.seq, agents, refused, ...launchesFor(presence, board, names, answering), ...ownersOf(presence, board, agents, now) };
 }
 
-// The orchestrators among those held, with their threads' status; those whose thread was deleted, once its undo is
+// The orchestrators and pairing sessions among those held, with their threads' status; those whose thread was deleted, once its undo is
 // past, or is gone from the board altogether, to close; and those whose thread is done and that have slept for
 // QUIET_CLOSE_MS, as their record says (`asleep`, `at`), with nothing due for them, to close too (core/roles.ts): a
 // coordinator's word in a done thread doesn't set it back to work, so an owner whose wake for it failed is kept, or
@@ -79,15 +79,15 @@ function ownersOf(presence: Presence, board: Board, held: Pick<HeldAgent, 'name'
   const closes: string[] = [];
   const quiet: string[] = [];
   for (const { name, asleep, at, due } of held) {
-    const role = presence.sessionOf(name)?.role;
-    if (role?.kind !== 'orchestrator') continue;
-    const thread = board.threads?.find((t) => t.id === role.thread);
+    const owned = ownedThreadOf(presence.sessionOf(name)?.role);
+    if (!owned) continue;
+    const thread = board.threads?.find((t) => t.id === owned);
     if (thread) {
       if (thread.status) owners.push({ name, status: thread.status });
       if (thread.status === 'done' && asleep && due === undefined && now - at >= QUIET_CLOSE_MS) quiet.push(name);
       continue;
     }
-    const deleted = board.deleted?.find((d) => d.kind === 'thread' && d.id === role.thread);
+    const deleted = board.deleted?.find((d) => d.kind === 'thread' && d.id === owned);
     if (!deleted || now - Date.parse(deleted.at) >= CLOSE_AFTER_DELETE_MS) closes.push(name);
   }
   return { ...(owners.length && { owners }), ...(closes.length && { closes }), ...(quiet.length && { quiet }) };

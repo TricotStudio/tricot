@@ -48,7 +48,7 @@ import path from 'node:path';
 import { atOnce, DEFAULT_AT_ONCE, roleRule, stripWords, subagentWords, type AgentRule } from '../core/agentRules';
 import { agentUrl } from '../core/connect';
 import { listNames } from '../core/format';
-import { coordinatorMessage, orchestratorMessage, roleUrl, type Launch, type SessionRole } from '../core/roles';
+import { coordinatorMessage, launchRole, roleUrl, type Launch, type SessionRole } from '../core/roles';
 import { firstMessage, wakeUrl } from '../core/sessions';
 import { isWindows } from '../platform/os';
 import { which } from '../platform/which';
@@ -239,8 +239,8 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
       const set = 'rules' in now ? now.rules : {};
       try {
         // On the orchestrators' rule, told what to run its scouts and workers on (core/agentRules.ts).
-        const subagents = subagentWords(set, wanted.agent);
-        const role = { role: { kind: 'orchestrator', thread: wanted.thread } as const, message: subagents ? `${orchestratorMessage(wanted)} ${subagents}` : orchestratorMessage(wanted) };
+        // As an orchestrator, or a pairing session of its own (core/roles.ts launchRole), which runs no subagents.
+        const role = launchRole(wanted, subagentWords(set, wanted.agent));
         return hostedAgent(wanted.agent, wanted.name, command, [], ruleForRun(agent, roleRule(set, wanted.agent, 'orchestrator'), undefined), () => {}, role);
       } catch (error) {
         return { problem: `${wanted.name} didn't start: ${error instanceof Error ? error.message : error}` };

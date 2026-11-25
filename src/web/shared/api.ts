@@ -35,7 +35,7 @@ import type { PairingSession } from '../../core/pairing';
 import type { ProjectFileText, ProjectFiles } from '../../core/projectFiles';
 import type { ProjectSearch, ProjectSearchOptions } from '../../core/projectSearch';
 import type { ApprovalReply } from '../../core/approvals';
-import type { ReviewVerdict } from '../../core/roles';
+import type { HeldLaunch, ReviewVerdict } from '../../core/roles';
 import { routes, routeUrl, type ParamNames, type PathParams, type Route, type UrlArgs } from '../../core/routes';
 import { SEAT_GONE, SEAT_NEEDED, type AdmissionView, type SeatView } from '../../core/seats';
 import type { CardKindName } from '../../core/pins';
@@ -58,6 +58,8 @@ export interface AgentPresence {
   stuck?: true; // asleep, and a wake its terminal typed into it started no turn
   focus?: { kind: CardKindName; id: string }; // the card it is taking a look at, for a minute after its last call about it
   coordinator?: true; // the board's coordinator (core/roles.ts): the chat bar's threads go to it
+  starts?: string; // a coordinator a Tricot terminal holds: the agent kind it starts sessions of its own as (server/presence.ts)
+  holds?: HeldLaunch[]; // the pairing sessions that terminal holds back for now, and why
 }
 
 // What an agent is doing now, from a hook in its harness (server/steps.ts): its
@@ -324,7 +326,8 @@ export const api = {
   resolvePin: (pinId: string, actor: string, resolved: boolean) => post(routes.resolvePin)<Pin>({ actor, resolved }, { id: pinId }),
   // Pairing with an agent on a piece in its full view (server/pairing.ts):
   // starting, the page's beat (active: the person did something since), and leaving.
-  startPairing: (actor: string, input: { blockId: string; part: string; agent: string }) => post(routes.startPairing)<PairingSession>({ actor, ...input }),
+  // `agent`: one of the board's to pair with; `launch`: a session of its own, which a Tricot terminal starts as that agent kind (core/roles.ts).
+  startPairing: (actor: string, input: { blockId: string; part: string } & ({ agent: string } | { launch: string })) => post(routes.startPairing)<PairingSession>({ actor, ...input }),
   pairingBeat: (id: string, actor: string, active: boolean) => post(routes.pairingBeat)<PairingSession>({ actor, active }, { id }),
   endPairing: (id: string, actor: string) => post(routes.endPairing)<{ summary?: string }>({ actor }, { id }),
   // Leaving as the page goes away: sent even as it unloads.

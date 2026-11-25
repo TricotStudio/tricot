@@ -51,6 +51,7 @@ import type { Store } from '../core/store';
 import { applyPlan, MAX_WORK_FILES, MAX_WORK_TRAIL, type AgentWork, type KeptPlan, type PlanChange } from '../core/agentWork';
 import { boardKey } from '../core/types';
 import type { AgentFocus, Presence } from './presence';
+import { ownedThreadOf } from '../core/roles';
 
 export const STEP_BODY_LIMIT = '16kb'; // what a step's request may carry (app.ts): a whole to-do list, at most
 export const WORK_KEEP_MS = 2 * 60 * 60_000; // what an agent session is working on (the peek) is kept this long after its last step
@@ -479,7 +480,7 @@ export class Steps {
   // Where a step goes: the card or thread its own Tricot call names, else the
   // one this session last called about (a subagent's own calls, else its
   // session's), else the thread its agent owns as an
-  // orchestrator (core/roles.ts), its subagents' steps too, else the card its
+  // orchestrator or a pairing session (core/roles.ts), its subagents' steps too, else the card its
   // agent last read or changed over MCP; else the board its agent is on, with
   // no card; else nowhere.
   private placeOf(key: string, agent: string, named: Place | undefined, now: number): Place | undefined {
@@ -506,12 +507,13 @@ export class Steps {
     return seen?.board ? { board: seen.board } : undefined; // only connected: no board to go on
   }
 
-  // The thread an orchestrator owns, while the board has it.
+  // The thread an orchestrator or a pairing session owns, while the board has it: a pairing session's steps, its
+  // background agents' too, show on the pins waiting on it from there (web/canvas/pairing/pinLine.tsx).
   private ownedThread(agent: string): Place | undefined {
-    const role = this.presence?.sessionOf(agent)?.role;
-    if (role?.kind !== 'orchestrator') return undefined;
+    const owned = ownedThreadOf(this.presence?.sessionOf(agent)?.role);
+    if (!owned) return undefined;
     return found((): Place => {
-      const { board, thread } = this.store.getThread(role.thread);
+      const { board, thread } = this.store.getThread(owned);
       return { board: boardKey(board), thread: thread.id };
     });
   }

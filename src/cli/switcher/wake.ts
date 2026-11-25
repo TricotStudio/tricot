@@ -49,7 +49,7 @@ import { randomUUID } from 'node:crypto';
 import type { WakeTraits } from '../../core/agents/agent';
 import { samePerson } from '../../core/format';
 import { routes, routeUrl } from '../../core/routes';
-import type { Launch, OwnerNow } from '../../core/roles';
+import type { HeldLaunch, Launch, OwnerNow } from '../../core/roles';
 import type { Answers } from './answers';
 import type { InputModes } from './screen';
 import { waitingFor, type BoardLive, type WakeView } from './strip';
@@ -157,6 +157,7 @@ export interface WakeReport {
   holder: string;
   agents: HeldView[];
   gone: string[];
+  held?: HeldLaunch[]; // the pairing sessions it was told to start and holds back for now (core/roles.ts)
 }
 export interface WakeReply {
   seq?: number;
@@ -224,6 +225,7 @@ export interface WakesOptions {
 export class Wakes {
   private held = new Map<string, Held>(); // by name, lower-cased
   private gone = new Map<string, string>(); // let go of since the last report, by name, lower-cased
+  private heldBack: HeldLaunch[] = []; // the pairing sessions held back for now, said with each report
   private reporting: Promise<void> | undefined;
   private again = false;
   private heard = { seq: -1, chat: -1, presence: '' };
@@ -469,6 +471,14 @@ export class Wakes {
     void this.report();
   }
 
+  // The pairing sessions the terminal holds back for now (host.ts launchOwners), said with each report until they start,
+  // so the page tells the person who waits why.
+  holdBack(held: HeldLaunch[]): void {
+    const changed = JSON.stringify(held) !== JSON.stringify(this.heldBack);
+    this.heldBack = held;
+    if (changed) void this.report();
+  }
+
   // One report at a time; one asked for meanwhile goes once it is back.
   private report(last = false): Promise<void> {
     const link = this.options.link;
@@ -481,6 +491,7 @@ export class Wakes {
       holder: this.holder,
       agents: [...this.held.values()].map(({ target, asleep, since, at, stuck }) => ({ name: target.name, asleep, at, ...(since !== undefined && { since }), ...(stuck && { stuck }) })),
       gone: [...this.gone.values()],
+      ...(this.heldBack.length && { held: this.heldBack }),
     };
     this.gone.clear();
     this.reporting = (async () => {

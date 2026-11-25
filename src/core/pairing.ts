@@ -41,6 +41,9 @@ export interface PairingSession {
   person: string;
   agent: string;
   startedAt: string;
+  // A session of its own (core/roles.ts): the agent Tricot's terminal starts as `agent`, by its id ("claude"), whose
+  // thread the person's first request makes; none when the person paired with an agent on the board.
+  launch?: string;
 }
 
 // How a session ended: the person left it (Browse, Close, another agent), it

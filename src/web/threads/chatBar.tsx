@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { LISTEN_PHRASE, notListeningHere, sayTo } from '../../core/delivery';
 import { ApprovalChip } from '../access';
-import { listNames } from '../../core/format';
+import { listNames, samePerson } from '../../core/format';
 import { reachedByAny } from '../../core/liveAgents';
 import { splitLensCommand } from '../../core/lensCommand';
 import { THREAD_TEXT_LIMIT } from '../../core/threads';
@@ -53,11 +53,12 @@ interface Props {
   // putting the thread down.
   context?: { label: string; title: string; onRemove: () => void; icon?: IconName; remove?: { label: string; title: string } };
   replying?: boolean; // answers in a thread that exists, not a new message: it reaches every agent on the board, not only the coordinator
+  to?: string; // answers one agent (a pairing's, on Home): it reaches that agent alone
   error?: string | null;
 }
 
 export function ChatBar(props: Props) {
-  const { docked, value, onValue, onSend, placeholder, label, sendLabel, busy, field, lenses, threads, context, replying = false, error } = props;
+  const { docked, value, onValue, onSend, placeholder, label, sendLabel, busy, field, lenses, threads, context, replying = false, to, error } = props;
   // A ^Lens alone says nothing to send.
   const said = lenses ? splitLensCommand(value, lenses.map((l) => l.name)).body : value.trim();
   const ready = Boolean(said) && !busy;
@@ -95,7 +96,7 @@ export function ChatBar(props: Props) {
         aria-label={label}
       />
       <ApprovalChip />
-      <Listening quiet={docked} replying={replying} />
+      <Listening quiet={docked} replying={replying} to={to} />
       <button type="submit" className={`chat-send${ready ? ' is-ready' : ''}`} disabled={!ready} aria-label={sendLabel} title={`${sendLabel} (Enter)`}>
         <Icon name="arrow-up" />
       </button>
@@ -269,15 +270,16 @@ function ToolsCapsule() {
 // any agent reaches when it starts a thread (core/liveAgents.ts reachedByAny:
 // its coordinator, else every agent), listening or between steps, by name, or how many
 // when there are more than two. A bar that answers in a thread (`replying`) names
-// every agent on the board, as before. With none, the bar says so plainly: an agent
+// every agent on the board, as before; one that answers an agent (`to`, a pairing's) names
+// that agent alone. With none, the bar says so plainly: an agent
 // connected to Tricot isn't listening here (the line under a message says what
 // to tell it, wake.tsx); with none connected at all, the way to connect one.
 // Docked, the conversation says who answers, so only none is said.
-function Listening({ quiet, replying }: { quiet: boolean; replying: boolean }) {
+function Listening({ quiet, replying, to }: { quiet: boolean; replying: boolean; to?: string }) {
   const agents = useAgents();
-  const here = replying ? agents.filter((a) => a.state !== 'away') : reachedByAny(agents);
+  const here = to ? agents.filter((a) => a.state !== 'away' && samePerson(a.name, to)) : replying ? agents.filter((a) => a.state !== 'away') : reachedByAny(agents);
   const names = here.map((a) => a.name);
-  if (names.length === 0) return <NotHere onBoard={agents.map((a) => a.name)} />;
+  if (names.length === 0) return <NotHere onBoard={to ? [to] : agents.map((a) => a.name)} />;
   if (quiet) return null;
   const title = here
     .map((a) =>

@@ -43,6 +43,7 @@ function sentWords(routed: { from: Thread; to: Thread; moved: boolean }, whose: 
 const ROLE_BOARD = { name: 'role-board', replaces: 'find-board', text: '- Your board is the one your first message names.' };
 
 export function roleGroup(role: SessionRole): ToolGroup {
+  if (role.kind === 'pairing') return pairingGroup(role.thread);
   return role.kind === 'coordinator'
     ? {
         id: 'coordinator',
@@ -72,6 +73,55 @@ export function roleGroup(role: SessionRole): ToolGroup {
           ROLE_BOARD,
         ],
       };
+}
+
+// A pairing session's (core/roles.ts): it owns the thread of one person's pairing on one page, acts on a small request
+// itself and hands a big one to a background agent of its own, replies on each request's pin, and sets its thread done
+// once the pairing ends.
+function pairingGroup(thread: string): ToolGroup {
+  return {
+    id: 'pairing',
+    tools: (context) => pairingTools(context, thread),
+    topics: { pairing: "pairing with a person on one page: acting on a small request yourself, handing a big one to a background agent, replying on its pin, and closing the thread when the pairing ends" },
+    after: 'start_thread',
+    instructions: () => [
+      {
+        name: 'pairing',
+        before: 'neutral',
+        text: `This session pairs with one person on one page and owns its thread [thread id: ${thread}], over any role below: do small requests yourself, hand big ones to a background agent, reply on each request's pin, and set the thread done when the pairing ends. read_guide pairing says how.`,
+      },
+      ROLE_BOARD,
+    ],
+  };
+}
+
+function pairingTools({ store, getActor }: ToolContext, thread: string): Tool[] {
+  return [
+    defineTool({
+      name: 'set_thread_status',
+      title: 'Set thread status',
+      description: `Say where the pairing you own stands: done once it ended, with a summary of what changed (which done needs); working again on a new request. A summary goes in the thread first.`,
+      guide: {
+        topic: 'pairing',
+        text: [
+          "A person is pairing with you on one page (a Sketchbook page, Files, or the board context), in the full view of any piece on it: get_board names it while they do. Their requests come as comments that @-mention you on pins on any of its blocks or files, one pin a part. Act on a small one yourself, right away: make the change (the block with update_block, the file it shows when it is in your repository), then reply on its pin with comment(pin_id) in a sentence or two. They watch your steps on the pin while you work.",
+          "Hand a big one (several files, a long build or test run), or one on another piece while you are still on one, to a background agent of your own, with the pin's id and what was asked, so nothing queues; its steps show on the pins waiting on you too. Every request and reply passes through you, so you keep the whole page in mind: when its work is done, reply on that request's pin yourself.",
+          'Keep to that page. Ask on the pin when a request is unclear, and do nothing the person did not ask for. Commit only when they ask.',
+          'When Tricot tells you the pairing ended, set your thread done with a summary of what changed, in a sentence or two, for the person to read on Home. A request after that sets it back to working and wakes you.',
+        ].join('\n'),
+      },
+      schema: {
+        status: z.enum(STATUSES).describe(STATUS_ARG),
+        summary: fields.message.optional().describe('What to say in the thread first, in Markdown and a sentence or two: for done, what changed on the page'),
+      },
+      handler: async ({ status, summary }) => {
+        // Its summary is its one Done line on Home: done says what changed.
+        if (status === 'done' && !summary?.trim()) throw new BoardError('Pass summary with done: what changed on the page, in a sentence or two, for the person to read on Home.');
+        const owned = store.setThreadStatus(thread, status, getActor(), summary);
+        return text(statusSet(owned, status, false));
+      },
+    }),
+  ];
 }
 
 function coordinatorTools({ store, getActor, options }: ToolContext): Tool[] {

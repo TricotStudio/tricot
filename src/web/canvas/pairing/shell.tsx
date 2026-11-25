@@ -22,7 +22,7 @@ import { ActorBadge, Icon, timeAgo } from '../../shared/components';
 import { otherPanelOpen, typing, useDismiss } from '../../shared/hooks';
 import { insideOf } from '../../shared/onTop';
 import { PairingList } from './requests';
-import type { AgentChoice, Pairing } from './session';
+import { NEW_SESSION, type AgentChoice, type Pairing } from './session';
 import './pairing.css';
 
 const NO_PANEL = { current: null };
@@ -77,6 +77,18 @@ const STATE_WORDS: Record<AgentChoice['state'], string> = {
   away: 'not checking',
   unseen: 'not on the board now',
 };
+
+// What pairing means now, in a sentence: with a session of its own, whether the person's first request starts it,
+// it is starting, or it is up; with an agent of the board's, where it is (reachWords).
+export function pairingReach(pairing: Pairing): string {
+  const { agent, who, ownState } = pairing;
+  if (ownState === 'first') return `Your first request starts ${agent ?? who} in Tricot's terminal, for every piece on this page.`;
+  if (ownState === 'starting') return `Starting ${agent} in Tricot's terminal: your request waits for it, and it picks it up as it comes up.`;
+  if (ownState === 'busy') return `${agent} waits to start: Tricot's terminal is running as many pairing sessions as it runs at once, and starts it as one is done.`;
+  if (ownState === 'full') return `${agent} waits to start: Tricot's terminal has no free tab, and starts it as one closes.`;
+  if (ownState === 'up') return `${agent} pairs on this page alone, and picks up each request at once.`;
+  return agent ? reachWords(pairing.agents.find((a) => a.name === agent), agent) : '';
+}
 
 // What pairing with an agent means while it is where it is, in a sentence.
 export function reachWords(choice: AgentChoice | undefined, agent: string): string {
@@ -230,7 +242,9 @@ function ModeSwitch(props: { pairing?: Pairing; edit?: ShellEdit; browse: Browse
   const editing = Boolean(edit?.on);
   const reading = !on && !editing;
   const agent = pairing?.agent;
+  const who = pairing?.who;
   const choice = pairing?.agents.find((a) => a.name === agent);
+  const dot = pairing?.own ? (pairing.ownState === 'up' ? (choice?.state ?? 'listening') : 'asleep') : (choice?.state ?? 'away');
   const pair = (name?: string) => {
     if (!edit?.on) return pairing?.pair(name);
     void edit.stop().then((closed) => closed && pairing?.pair(name));
@@ -253,9 +267,9 @@ function ModeSwitch(props: { pairing?: Pairing; edit?: ShellEdit; browse: Browse
       )}
       {pairing && (
         <span className={`pair-mode pair-mode-pair${on ? ' is-on' : ''}`}>
-          <button type="button" className="pair-mode-main" aria-pressed={on} disabled={pairing.busy} onClick={() => pair()} title={agent ? `${pairHint} ${reachWords(choice, agent)}` : pairHint}>
-            {agent && <span className={`live-dot pair-dot live-${choice?.state ?? 'away'}`} aria-hidden />}
-            {agent ? `Pair with ${agent}` : 'Pair'}
+          <button type="button" className="pair-mode-main" aria-pressed={on} disabled={pairing.busy} onClick={() => pair()} title={who ? `${pairHint} ${pairingReach(pairing)}` : pairHint}>
+            {who && <span className={`live-dot pair-dot live-${dot}`} aria-hidden />}
+            {who ? `Pair with ${who}` : 'Pair'}
           </button>
           <button
             type="button"
@@ -284,33 +298,61 @@ function ModeSwitch(props: { pairing?: Pairing; edit?: ShellEdit; browse: Browse
   );
 }
 
-// The board's agents, with where each is now: the one picked is paired with.
+// What to pair with: a session of its own first, where one can be had (theirs on this page again, else a new one
+// Tricot's terminal starts); then the board's agents, with where each is now, the coordinator last, which stays free
+// for the chat bar unless picked. The one picked is paired with.
 function AgentPicker({ pairing, onPick }: { pairing: Pairing; onPick: (name: string) => void }) {
-  const { agents, agent } = pairing;
+  const { agents, agent, fresh, own } = pairing;
+  // Beside a session of its own, the agents on the board now: one that has gone isn't worth starting a pairing with.
+  const here = fresh ? agents.filter((a) => a.state !== 'unseen' && a.name !== fresh.name) : agents;
+  const listed = [...here.filter((a) => !a.coordinator), ...here.filter((a) => a.coordinator)];
   return (
     <div className="pair-picker" role="menu" aria-label="Pair with">
-      {agents.length === 0 ? (
-        <p className="pair-picker-empty">No agent has been on this board yet. Connect one, and it shows here.</p>
+      {fresh && (
+        <ul className="pair-picker-fresh">
+          <li>
+            <button type="button" role="menuitemradio" aria-checked={own} className="pair-picker-agent is-fresh" onClick={() => onPick(NEW_SESSION)}>
+              <span className="pair-picker-new" aria-hidden>
+                <Icon name="plus" />
+              </span>
+              <span className="pair-picker-what">
+                <b>{fresh.name ?? `New ${fresh.by} session`}</b>
+                <span className="muted small">{fresh.name ? 'Your session on this page, its thread kept' : 'Starts with your first request, for every piece on this page'}</span>
+              </span>
+              <span className="pair-picker-check" aria-hidden>
+                {own && <Icon name="check" />}
+              </span>
+            </button>
+          </li>
+        </ul>
+      )}
+      {listed.length === 0 ? (
+        !fresh && <p className="pair-picker-empty">No agent has been on this board yet. Connect one, and it shows here.</p>
       ) : (
         <ul>
-          {agents.map((a) => (
+          {listed.map((a) => (
             <li key={a.name}>
-              <button type="button" role="menuitemradio" aria-checked={a.name === agent} className="pair-picker-agent" onClick={() => onPick(a.name)}>
-                <ActorBadge actor={{ kind: 'agent', name: a.name }} />
+              <button type="button" role="menuitemradio" aria-checked={!own && a.name === agent} className="pair-picker-agent" onClick={() => onPick(a.name)}>
+                <span className="pair-picker-name">
+                  <ActorBadge actor={{ kind: 'agent', name: a.name }} />
+                  {a.coordinator && <span className="pair-picker-role">coordinator</span>}
+                </span>
                 <span className={`live-state live-${a.state === 'unseen' ? 'away' : a.state}`}>
                   <span className="live-dot" />
                   {STATE_WORDS[a.state]}
                   {a.state === 'away' && a.lastSeen ? ` · ${timeAgo(a.lastSeen)}` : ''}
                 </span>
                 <span className="pair-picker-check" aria-hidden>
-                  {a.name === agent && <Icon name="check" />}
+                  {!own && a.name === agent && <Icon name="check" />}
                 </span>
               </button>
             </li>
           ))}
         </ul>
       )}
-      <p className="pair-picker-foot">Your requests go straight to the agent you pick, and its steps show on each pin as it works.</p>
+      <p className="pair-picker-foot">
+        {fresh ? 'A session of its own keeps the coordinator free, and works on this page alone. ' : ''}Your requests go straight to the agent you pick, and its steps show on each pin as it works.
+      </p>
     </div>
   );
 }

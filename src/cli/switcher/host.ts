@@ -55,7 +55,7 @@
 import type { WakeTraits } from '../../core/agents/agent';
 import { samePerson } from '../../core/format';
 import { DEFAULT_AT_ONCE } from '../../core/agentRules';
-import type { Launch, OwnerNow } from '../../core/roles';
+import { launchRoom, type HeldLaunch, type Launch, type OwnerNow } from '../../core/roles';
 import type { ThreadStatus } from '../../core/types';
 import type { Answers } from './answers';
 import { InputRouter, ARM_MS, type HostAction, type SwitchKey } from './keys';
@@ -242,6 +242,7 @@ export function startHost(options: HostOptions): Host {
   const launching = new Map<string, string>(); // owners of threads being made to start: thread id -> agent kind
   const ownerStatus = new Map<string, ThreadStatus>(); // where each orchestrator's thread stands, as the board last said, by name lower-cased
   const launched = new Map<string, number>(); // when each thread's owner was last started here, by thread id
+  const pairings = new Set<string>(); // the threads whose owners are pairing sessions of their own (core/roles.ts), by id
   const wakes = new Wakes({
     ...options.wakeTiming,
     ...(options.wakes && { link: options.wakes }),
@@ -666,15 +667,30 @@ export function startHost(options: HostOptions): Host {
   // has slept an hour, room or not (tendOwners); a word in its thread later
   // starts a fresh one. One whose work waits for review is never closed so: it
   // commits that work once the person approves it.
+  //
+  // A pairing session of its own (core/roles.ts) starts the same way, counted
+  // apart (launchRoom): a long build never holds one back, and a person pairing
+  // waits for it. One held back, as many being at work as run at once or the
+  // tabs full, is said with the terminal's next view (wake.ts holdBack), and the
+  // page tells the person why where they wait.
   function launchOwners(list: Launch[]): void {
     if (quitting || finished || !setup?.launch) return;
     const atWork = (a: Agent) => a.thread !== undefined && a.state !== 'ended' && !a.closing && (ownerStatus.get(a.name.toLowerCase()) ?? 'working') === 'working';
-    for (const wanted of list) {
-      const owning = agents.filter((a) => atWork(a) && a.id === wanted.agent).length + [...launching.values()].filter((kind) => kind === wanted.agent).length;
-      if (owning >= (setup.orchestrators?.(wanted.agent) ?? DEFAULT_AT_ONCE)) continue;
-      if (launching.has(wanted.thread) || agents.some((a) => a.state !== 'ended' && samePerson(a.name, wanted.name))) continue;
+    const running = (wanted: string) => launching.has(wanted) || list.some((l) => l.thread === wanted && agents.some((a) => a.state !== 'ended' && samePerson(a.name, l.name)));
+    const held: HeldLaunch[] = [];
+    for (const wanted of list) if (wanted.pairing) pairings.add(wanted.thread);
+    for (const [at, wanted] of list.entries()) {
+      if (running(wanted.thread)) continue;
+      const busy = [...agents.filter(atWork).map((a) => ({ kind: a.id ?? '', pairing: pairings.has(a.thread!) })), ...[...launching].map(([thread, kind]) => ({ kind, pairing: pairings.has(thread) }))];
+      if (!launchRoom(wanted, busy, setup.orchestrators?.(wanted.agent) ?? DEFAULT_AT_ONCE)) {
+        if (wanted.pairing) held.push({ thread: wanted.thread, why: 'busy' });
+        continue;
+      }
       if (now() - (launched.get(wanted.thread) ?? -Infinity) < RELAUNCH_MS) continue;
-      if (agents.length + adding.size + launching.size >= MAX_AGENTS && !makeRoom()) return;
+      if (agents.length + adding.size + launching.size >= MAX_AGENTS && !makeRoom()) {
+        held.push(...list.slice(at).filter((l) => l.pairing && !running(l.thread)).map((l): HeldLaunch => ({ thread: l.thread, why: 'full' })));
+        break;
+      }
       launched.set(wanted.thread, now());
       launching.set(wanted.thread, wanted.agent);
       void Promise.resolve(setup.launch(wanted))
@@ -689,6 +705,7 @@ export function startHost(options: HostOptions): Host {
         )
         .finally(() => launching.delete(wanted.thread));
     }
+    wakes.holdBack(held);
   }
 
   // The tab of the owner whose thread is done and that has been quiet longest, closed for a new one: whether there was

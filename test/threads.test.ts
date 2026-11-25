@@ -8,19 +8,22 @@ import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/co
 import { answersForYou, commentsForYou } from '../src/core/bell';
 import { batchWords, canvasBatches, canvasHoldings } from '../src/core/canvasBatches';
 import { GAP_MS } from '../src/core/agentActivity';
-import { conversationWaitingOn, inConversation, threadGroups, threadsWaitingOn, waitsOnYou } from '../src/core/threadList';
+import { askedOn, conversationWaitingOn, inConversation, threadGroups, threadsWaitingOn, waitsOnYou } from '../src/core/threadList';
 import { concernsAgent } from '../src/core/concerns';
+import { whoAnswers } from '../src/core/whoAnswers';
 import { doorNote } from '../src/core/doors';
 import type { Told } from '../src/core/words';
-import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn, QUIET_CLOSE_MS } from '../src/core/roles';
+import { CLOSE_AFTER_DELETE_MS, LEAD_WORDS, launchesOn, launchRole, launchRoom, PAIRINGS_AT_ONCE, pairingName, pairingThread, QUIET_CLOSE_MS, roleOf, roleUrl } from '../src/core/roles';
+import { PAIRING_IDLE_MS, type PairingSession } from '../src/core/pairing';
+import { DONE_WAIT_MS, PAIRING_LEAVE_MS, PairingSessions } from '../src/server/pairing';
 import { Leads, leadsFile, RESUME_MS } from '../src/server/leads';
 import { Presence, type AgentPresence } from '../src/server/presence';
 import { heldBy } from '../src/server/wakes';
 import { Steps, type StepInput } from '../src/server/steps';
 import { Store } from '../src/core/store';
 import { liveAgents, liveWords, reachedByAny } from '../src/core/liveAgents';
-import { askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayStack, relayWords, threadTone, verdictWords } from '../src/core/homeConversation';
-import { homeStream } from '../src/cli/switcher/homeStream';
+import { answeredWords, askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayStack, relayWords, repliable, threadTone, verdictWords, type Relay } from '../src/core/homeConversation';
+import { choosable, homeStream } from '../src/cli/switcher/homeStream';
 import { homeLines, REVIEW_HINT, type Colours } from '../src/cli/switcher/homeView';
 import { ThreadsTab } from '../src/cli/switcher/threadsTab';
 import { boardKey, type Actor, type BoardEvent, type Thread } from '../src/core/types';
@@ -252,6 +255,181 @@ describe('Threads over MCP and REST', () => {
     assert.equal(owners(Date.now()).closes, undefined, 'not while its undo is still offered');
     assert.deepEqual(owners(Date.now() + CLOSE_AFTER_DELETE_MS).closes, [work.owner], 'closed once its undo is past');
     tending.close();
+  });
+  // core/roles.ts: a pairing session of its own, one for a page (a Sketchbook page, Files, or the board context). Pairing
+  // as a new session names it after the page, none another holds; the person's request on any of its blocks, once kept,
+  // makes its thread, and a note or a refused comment makes none; the terminal holding the coordinator is told to start
+  // it with the pairing role and its brief, apart from the orchestrators' cap; moving between its pieces goes on in it;
+  // leaving the page tells it alone to set its thread done, which is its one Done line; a reply from Home on its page
+  // starts it again, and Tricot sets it done when its agent doesn't.
+  it('starts a pairing session of its own for a page on the first request, tells it when the pairing there ends, and starts it again from a reply', async () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const boardId = (await request('POST', '/boards', { actor: 'Sam', title: 'Pairing' })).json.id as string;
+    const coordinator = await server.connect('agent=Router&role=coordinator');
+    await coordinator.callTool({ name: 'get_board', arguments: { board_id: boardId } });
+    const page = store.addPage(boardId, 'Mood board', sam);
+    const code = (path: string) => store.addBlock({ pageId: page.id }, { content: { type: 'code', path, text: 'let a = 1;\nlet b = 2;' } }, sam);
+    const block = code('src/cart.ts');
+    const second = code('src/total.ts');
+    const started = await request('POST', '/pairing', { actor: 'Sam', blockId: block.id, part: 'code', launch: 'claude' });
+    const session = started.json as PairingSession;
+    assert.deepEqual([started.status, session.agent, session.launch], [201, 'Claude · Pair Mood board', 'claude'], 'named after the page');
+    const onSecond = (await request('POST', '/pairing', { actor: 'Sam', blockId: second.id, part: 'code', launch: 'claude' })).json as PairingSession;
+    assert.equal(onSecond.agent, session.agent, 'another piece of the page is the same session');
+    const other = (await request('POST', '/pairing', { actor: 'Pat', blockId: block.id, part: 'code', launch: 'claude' })).json as PairingSession;
+    assert.equal(other.agent, 'Claude · Pair Mood board 2', "another person's, not up yet either, takes a name of its own");
+    // A session of its own is offered first where a terminal can start one; else an agent of the board's, never the
+    // coordinator unless picked (core/whoAnswers.ts): with only the coordinator here, none until the person picks.
+    const here = [{ name: 'Router', state: 'listening' as const, coordinator: true as const }, { name: 'Codex', state: 'asleep' as const }];
+    assert.deepEqual(
+      [whoAnswers({ agents: here, pick: true }), whoAnswers({ agents: here.slice(0, 1), pick: true }), whoAnswers({ agents: here.slice(0, 1), pick: true, coordinator: 'Router' }), whoAnswers({ agents: here.slice(0, 1), picked: 'Router', pick: true })],
+      ['Codex', null, null, 'Router'],
+    );
+
+    // A note, or a comment the board refuses, makes no thread: a request to it on any piece of the page, once kept, does.
+    const pinOn = (on: string, path: string, line: number, body: string, ask = true) => request('POST', `/canvas/blocks/${on}/pins/comment`, { actor: 'Sam', part: { kind: 'line', file: path, line }, body, ask });
+    assert.equal((await pinOn(block.id, 'src/cart.ts', 1, 'Check this later.', false)).status, 201);
+    assert.equal((await pinOn(block.id, 'src/cart.ts', 99, `@${session.agent} Rename it.`)).status, 400);
+    assert.equal(store.pairingThread(block.id, 'Sam'), undefined, 'a note and a refused request make none');
+    const asked = await pinOn(block.id, 'src/cart.ts', 2, `@${session.agent} Call it total.`);
+    const thread = store.pairingThread(block.id, 'Sam')!;
+    assert.deepEqual(
+      [thread.owner, thread.status, thread.launch, thread.title, thread.blockIds, thread.pageId, thread.startedBy.name, thread.messages.map((m) => m.body)],
+      ['Claude · Pair Mood board', 'working', 'claude', 'Pair Mood board', undefined, page.id, 'Sam', ['Call it total.']],
+      'about the page, and no block of it',
+    );
+    assert.deepEqual(asked.json.comment.mentions, ['Claude · Pair Mood board'], 'the request @-mentions it before it is up: its name is reserved');
+    await pinOn(second.id, 'src/total.ts', 1, `@${session.agent} And here?`);
+    assert.deepEqual([store.pairingThread(second.id, 'Sam')?.id, (store.getBoard(boardId).threads ?? []).filter((t) => pairingThread(t)).length], [thread.id, 1], "a request on another piece goes to the page's one session");
+    const pin = asked.json.pin as { id: string };
+
+    // The terminal holding the coordinator starts it as a pairing session, told what to do, and no subagents; it counts
+    // pairing sessions apart from the orchestrators, and says when it holds one back.
+    const presence = new Presence(() => {});
+    presence.started('Router', { tool: 'claude', role: { kind: 'coordinator' } });
+    presence.seen(boardKey(store.getBoard(boardId)), 'Router');
+    const launches = heldBy(store, presence, store.getBoard(boardId), 'terminal-one', [{ name: 'Router', asleep: true, at: Date.now() }], []).launches ?? [];
+    const launch = launches.find((l) => l.thread === thread.id)!;
+    assert.deepEqual(launch.pairing, { person: 'Sam', page: page.id });
+    const { role, message } = launchRole(launch, 'Run your scouts on haiku.');
+    assert.deepEqual(role, { kind: 'pairing', thread: thread.id });
+    assert.ok(message.startsWith(`Sam is pairing with you on one page of the board [page id: ${page.id}], and you own its Tricot thread "Pair Mood board" [thread id: ${thread.id}].`), message);
+    assert.match(message, /pins on any of its blocks or files: act on a small one yourself, right away; hand a big one .*to a background agent of your own, so nothing queues\..*reply on each request's pin yourself.*Keep to that page\./s);
+    assert.ok(message.endsWith(' Run your scouts on haiku.'), 'told what its background agents run on, as an orchestrator is');
+    assert.deepEqual(roleOf(Object.fromEntries(new URL(roleUrl('http://127.0.0.1/mcp?agent=A', role)).searchParams)), role);
+    const builds = Array.from({ length: 3 }, () => ({ kind: 'claude', pairing: false }));
+    assert.deepEqual(
+      [launchRoom(launch, builds, 3), launchRoom({ agent: 'claude' }, builds, 3), launchRoom(launch, Array.from({ length: PAIRINGS_AT_ONCE }, () => ({ kind: 'claude', pairing: true })), 3)],
+      [true, false, false],
+      'three builds at work hold back a fourth, never a pairing; as many pairings as run at once hold one back',
+    );
+    presence.holdBack(boardKey(store.getBoard(boardId)), 'terminal-one', [{ thread: thread.id, why: 'busy' }]);
+    assert.deepEqual(presence.list(boardKey(store.getBoard(boardId))).find((a) => a.name === 'Router')?.holds, [{ thread: thread.id, why: 'busy' }], 'its coordinator says what its terminal holds back, for the page');
+    presence.close();
+
+    // Up, it is told it pairs, and answers on the pin.
+    const pairer = await server.connect(`agent=${encodeURIComponent(thread.owner!)}&role=pairing&thread=${thread.id}`);
+    assert.match(pairer.getInstructions() ?? '', /^This session pairs with one person on one page and owns its thread/);
+    await pairer.callTool({ name: 'comment', arguments: { pin_id: pin.id, body: 'Renamed it total.' } });
+    const stepped = await request('POST', `/agents/${encodeURIComponent(thread.owner!)}/steps`, { text: 'Editing total.ts', session: 's-pair', worker: 'w1', running: true, at: Date.now() });
+    assert.equal(stepped.json.thread, thread.id, "its background agent's step goes to its thread, which the pins of its page show (pinLine.tsx)");
+
+    // The pairing on the page goes on from piece to piece; once the person has left it, its agent alone is told to set its
+    // thread done. A reply from Home on the page starts it again, and Tricot sets it done when its agent doesn't.
+    let now = Date.now();
+    const pairs = new PairingSessions(store, () => now);
+    const reserved = store.reservedAgents;
+    store.reservedAgents = (key) => [...reserved(key), ...pairs.reserved(key)];
+    const ended = () => store.eventsSince(boardId, 0).filter((e) => e.type === 'pairing_ended');
+    try {
+      const before = ended().length;
+      const one = pairs.start({ blockId: block.id, part: 'code', person: 'Sam', launch: 'claude' });
+      const two = pairs.start({ blockId: second.id, part: 'code', person: 'Sam', launch: 'claude' });
+      assert.deepEqual([one.agent, two.agent], [thread.owner, thread.owner]);
+      pairs.end(one.id, 'Sam');
+      now += PAIRING_LEAVE_MS * 2;
+      pairs.sweep();
+      assert.equal(ended().length, before, 'closing one piece while another is open goes on');
+      pairs.end(two.id, 'Sam');
+      now += PAIRING_LEAVE_MS - 1;
+      pairs.sweep();
+      const back = pairs.start({ blockId: block.id, part: 'code', person: 'Sam', launch: 'claude' });
+      pairs.end(back.id, 'Sam');
+      now += PAIRING_LEAVE_MS - 1;
+      pairs.sweep();
+      assert.equal(ended().length, before, 'nor does coming back to it a moment later');
+      now += 2;
+      pairs.sweep();
+      const told = ended().at(-1)!;
+      assert.equal(ended().length, before + 1, 'leaving the page ends it, once');
+      assert.ok(told.summary.includes(`on the Sketchbook page "Mood board"`) && told.summary.includes(`The pairing ended: set thread "Pair Mood board" [thread id: ${thread.id}] done with a summary of what changed`), told.summary);
+      assert.deepEqual([concernsAgent(told, store.getBoard(boardId), thread.owner!), concernsAgent(told, store.getBoard(boardId), 'Router')], [true, false], 'its agent alone hears it: the coordinator stays clean');
+      const bare = (await pairer.callTool({ name: 'set_thread_status', arguments: { status: 'done' } })) as ToolResult;
+      assert.ok(bare.isError && /Pass summary with done/.test(bare.content[0].text), 'done says what changed: it is its Done line');
+      const doneBy = (await pairer.callTool({ name: 'set_thread_status', arguments: { status: 'done', summary: 'cart.ts now says total.' } })) as ToolResult;
+      assert.ok(!doneBy.isError, doneBy.content[0]?.text);
+      assert.equal(concernsAgent(told, store.getBoard(boardId), thread.owner!), false, 'its thread done, the end concerns it no more');
+      const doneRelays = () => homeRelays(store.getBoard(boardId), 'Sam', [], new Set(), () => []).filter((r) => r.thread?.id === thread.id);
+      assert.deepEqual(doneRelays().map((r) => [r.kind, r.body]), [['done', 'cart.ts now says total.']], 'its one Done line, its own summary');
+      const said = homeSaid(store.getBoard(boardId), [], ownedThreads(store.getBoard(boardId)), (t) => t.messages, (m) => m, (m) => m);
+      assert.deepEqual(said.filter((s) => s.thread.id === thread.id), [], 'what was asked in it is on its pins, not an ask on Home');
+      const card = homeRelays(store.getBoard(boardId), 'Sam', [], new Set(), () => []).find((r) => r.pairing);
+      assert.deepEqual([card?.pairing?.thread, card?.tone], [thread.id, 'done'], "its pin's card is stitched to its strand, in its colour");
+
+      // An ordinary pairing's end, with an agent of the board's, concerns no one.
+      pairs.end(pairs.start({ blockId: block.id, part: 'code', person: 'Sam', agent: 'Router' }).id, 'Sam');
+      const ordinary = ended().at(-1)!;
+      assert.deepEqual([ordinary.itemId === thread.id, concernsAgent(ordinary, store.getBoard(boardId), 'Router')], [false, false]);
+
+      const reply = store.commentOnPin(pin.id, `@${thread.owner} And the docs?`, sam);
+      pairs.requestedOnPin(pin.id, 'Sam', reply.comment);
+      assert.equal(store.getThread(thread.id).thread.status, 'working', 'back at work: the terminal starts it again');
+      now += PAIRING_IDLE_MS + 1;
+      pairs.sweep();
+      pairs.end(pairs.start({ blockId: block.id, part: 'code', person: 'Sam', agent: 'Router' }).id, 'Sam');
+      now += PAIRING_LEAVE_MS;
+      pairs.sweep();
+      now += DONE_WAIT_MS - 1;
+      pairs.sweep();
+      assert.equal(store.getThread(thread.id).thread.status, 'working', 'its agent has a few minutes to say what changed, pairing with another meanwhile or not');
+      now += 2;
+      pairs.sweep();
+      assert.equal(store.getThread(thread.id).thread.status, 'done');
+      assert.deepEqual(doneRelays().map((r) => [r.kind, r.body.startsWith('Paired')]), [['done', true]], "one Done line: Tricot's summary");
+      const codex = pairs.start({ blockId: second.id, part: 'code', person: 'Sam', launch: 'codex' });
+      assert.equal(codex.agent, 'Codex · Pair Mood board', 'another kind is another session');
+      const again = store.pinComment(second.id, { kind: 'line', file: 'src/total.ts', line: 2 }, `@${codex.agent} Add a test.`, sam, { ask: true });
+      pairs.requested(second.id, 'Sam', again.comment);
+      const theirs = store.pairingThread(block.id, 'Sam', { owner: codex.agent })!;
+      assert.deepEqual([theirs.id !== thread.id, theirs.launch, store.getThread(thread.id).thread.status], [true, 'codex', 'done'], 'with a thread of its own, of its kind');
+    } finally {
+      store.reservedAgents = reserved;
+      pairs.stop();
+    }
+  });
+
+  // What marks a pairing session's thread is its shape: a thread of older data that has it in part (a quick question its
+  // coordinator marked before that was refused) is none, and a session's name reads whole in an @-mention and an address.
+  it("tells a pairing session's thread by its shape, never one of older data, and names it safely", () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const thread = (more: Partial<Thread>) => ({ id: 't1', title: 'Pair Mood board', startedBy: sam, startedAt: '', updatedAt: '', messages: [], pageId: 'p1', status: 'working', ...more }) as Thread;
+    assert.deepEqual(
+      [
+        pairingThread(thread({ owner: 'Claude · Pair Mood board', launch: 'claude' })),
+        pairingThread(thread({ owner: 'Claude · Pair board context', launch: 'claude', pageId: undefined })),
+        pairingThread(thread({ owner: 'Claude', status: 'done', blockIds: ['b1'] })),
+        pairingThread(thread({ owner: 'Claude · Pair Mood board' })),
+        pairingThread(thread({ owner: 'Claude · Pair Mood board', launch: 'claude', blockIds: ['b1'] })),
+        pairingThread(thread({ owner: 'Claude · Sign-in flow', launch: 'claude' })),
+        pairingThread(thread({ owner: 'Claude · Pair Mood board', launch: 'claude', startedBy: { kind: 'agent', name: 'Router' } })),
+      ],
+      [true, true, false, false, false, false, false],
+    );
+    const name = pairingName('Claude', `${'x'.repeat(35)}😀 end`, []);
+    assert.doesNotThrow(() => encodeURIComponent(name), 'no half of a character is left to break its address');
+    assert.ok(Array.from(name).length <= 50, name);
+    assert.equal(pairingName('Claude', 'a@b.c: x/y & z?', []), 'Claude · Pair a b.c x y z');
+    assert.equal(pairingName('Claude', 'Files', ['Claude · Pair Files']), 'Claude · Pair Files 2');
   });
 
   // An agent connected on its own (core/roles.ts) has no terminal to start owners in: it takes the coordinator's role on
@@ -602,8 +780,12 @@ describe("Home's conversation", () => {
       assert.deepEqual(relays.map((r) => [r.kind, r.key, r.needsYou, r.tone, relayWords(r)]), [['question', question.id, true, 'waiting', 'Claude asks you']]);
       assert.deepEqual(askedWhileWaiting(relays), [question.id], 'remembered, as it says nothing of it once its thread moves on');
       const later = { ...now, threads: now.threads!.map((t) => (t.id === work.id ? { ...t, status: 'working' as const } : t)) };
-      assert.deepEqual(homeRelays(later, 'Sam', onBoard, new Set(), () => []), [], 'moved on, the thread no longer asks');
-      assert.equal(homeRelays(later, 'Sam', onBoard, new Set([question.id]), () => []).length, 1, 'but one remembered stays');
+      assert.deepEqual(
+        homeRelays(later, 'Sam', onBoard, new Set(), () => []).map((r) => [r.kind, r.key, r.needsYou, relayWords(r)]),
+        [['reply', question.id, false, 'Claude replied']],
+        "moved on, the thread no longer asks: a question not remembered is its owner's latest word, relayed as a reply that needs no one",
+      );
+      assert.deepEqual(homeRelays(later, 'Sam', onBoard, new Set([question.id]), () => []).map((r) => r.kind), ['question'], 'but one remembered stays a question');
       const rows = homeRows(said, relays, 'Sam', { since: said[1].message.at, arrived: Date.now() }, Date.now());
       assert.deepEqual(rows.map((row) => row.kind), ['day', 'said', 'said', 'said', 'since', 'said', 'relay'], "since then, from the first that isn't Sam's own");
       const atWork = later.threads.find((t) => t.id === work.id)!;
@@ -688,6 +870,191 @@ describe("Home's conversation", () => {
       assert.deepEqual(relayStack(settled).answered.map((r) => r.kind), ['review', 'review', 'question'], 'answered, a review is among what was answered');
       assert.throws(() => store.reviewThread(work.id, 'approve', sam), /isn't waiting for a review: its work is done/);
     } finally {
+      removeScratch(dir);
+    }
+  });
+  it("relays the latest word of a thread an agent owns, when its owner said it: one card, which gives way to a question, a review or done, and folds once a person answers", async () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const router: Actor = { kind: 'agent', name: 'Router' };
+    const owner: Actor = { kind: 'agent', name: 'Claude · Search' };
+    const codex: Actor = { kind: 'agent', name: 'Codex' };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 3));
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-reply-'));
+    const store = new Store(dir);
+    try {
+      store.load();
+      const board = store.createBoard({ title: 'Shop' }, sam);
+      const ask = store.startThread(board.id, 'Make search find tags.', sam, null, { door: 'threads' });
+      await tick();
+      store.postToThread(ask.id, 'Sending it on.', router);
+      await tick();
+      const { to: work } = store.routeToThread(ask.id, ask.messages[0].id, router, { title: 'Search finds tags', owner: owner.name, launch: 'claude' });
+      const onBoard = [{ name: router.name, state: 'listening' }, { name: owner.name, state: 'working' }];
+      const relays = (asked: ReadonlySet<string> = new Set(), sending: { body: string }[] = []) =>
+        homeRelays(store.getBoard(board.id), 'Sam', onBoard, asked, () => sending).filter((r) => r.thread?.id === work.id);
+      const say = async (body: string, by: Actor) => {
+        await tick();
+        return store.postToThread(work.id, body, by).messages.at(-1)!;
+      };
+      const words = (rs: Relay[]) => rs.map((r) => [r.kind, r.key, r.earlier, r.needsYou, relayWords(r)]);
+      const lines = (width: number) => {
+        const stream = homeStream({ board: store.getBoard(board.id), me: 'Sam', onBoard, asked: new Set(), visit: { since: null, arrived: Date.now() }, now: Date.now() });
+        const item = stream.items.find((i) => i.home?.kind === 'relay' && i.home.relay.thread?.id === work.id)!;
+        return homeLines(item, { width, me: 'Sam', sending: false, selected: false, look: { colours: 'none', light: false } }).map((parts) => parts.map(([text]) => text).join('').trimEnd());
+      };
+
+      assert.deepEqual(relays(), [], "the coordinator's brief is never a reply");
+      await say('Tags are indexed apart from titles, which is why search misses them.', owner);
+      const latest = await say('Indexing tags with the titles finds them. '.repeat(6).trim(), owner);
+      const [reply] = relays();
+      assert.deepEqual(words([reply]), [['reply', latest.id, 1, false, 'Claude replied']], "the owner's latest word alone, with how many of its words before it Home left in the thread");
+      assert.deepEqual([reply.at, reply.body, reply.tone, repliable(reply)], [latest.at, latest.body, 'working', true], 'at when it was said, in the colour of where its thread stands, and Reply answers it');
+      const drawn = lines(100);
+      assert.match(drawn[0], /^ {2}Search finds tags · Claude replied · .+ · 1 earlier in the thread$/, 'the terminal says whose word it is and how many came before');
+      assert.deepEqual([drawn.length, drawn[2].endsWith('…')], [3, true], 'and two lines of it at most, the thread holding the rest');
+
+      await say('I can review the migration once it is up.', codex);
+      assert.deepEqual(relays(), [], "another agent's message is never a reply, and the owner's before it is no longer the thread's latest word");
+      const newer = await say('The migration is written.', owner);
+      assert.deepEqual(words(relays()), [['reply', newer.id, 2, false, 'Claude replied']], "the owner's newer word is the one card, its earlier ones counted, the other agent's not");
+
+      assert.deepEqual(relays(new Set(), [{ body: 'Ship it behind a flag.' }]).map((r) => r.answer), [{ by: 'Sam', body: 'Ship it behind a flag.' }], 'what the viewer is sending answers it at once');
+      await say('Ship it behind a flag.', sam);
+      const [folded] = relays();
+      assert.deepEqual(
+        [folded.key, folded.needsYou, relayWords(folded), answeredWords(folded, 'Sam'), repliable(folded)],
+        [newer.id, false, 'At work', 'You answered: “Ship it behind a flag.”', false],
+        'a person writing in the thread after it answers it: it folds, its thread at work still',
+      );
+      assert.deepEqual(lines(100).slice(1), ['    You answered: “Ship it behind a flag.”'], 'and the terminal folds it as an answered question');
+
+      const question = await say('Flag on for everyone, or for staff first?', owner);
+      store.setThreadStatus(work.id, 'needs-you', owner);
+      assert.deepEqual(words(relays()), [['question', question.id, undefined, true, 'Claude asks you']], 'a question takes its place');
+      await say('Staff first.', sam);
+      await tick();
+      store.setThreadStatus(work.id, 'in-review', owner, 'Search finds tags, behind a flag for staff.');
+      const asked = new Set([question.id]);
+      assert.deepEqual(relays(asked).map((r) => r.kind), ['question', 'review'], 'so does a review');
+      await tick();
+      store.reviewThread(work.id, 'approve', sam);
+      await tick();
+      store.setThreadStatus(work.id, 'done', owner, 'Committed: search finds tags for staff.');
+      const settled = relays(asked);
+      assert.deepEqual(settled.map((r) => r.kind), ['question', 'review', 'done'], 'and done: no reply is left, so done is said once');
+
+      // Away, a thread's latest word is a group of the stack between what needs the viewer and what was answered or done.
+      const stack = relayStack([folded, reply, ...settled]);
+      assert.deepEqual(
+        [stack.needs, stack.replied, stack.answered, stack.done].map((group) => group.map((r) => r.key)),
+        [[], [reply.key], [settled[1].key, question.id, folded.key], [settled[2].key]],
+        'a reply no one answered is Replied, one answered is among what was answered',
+      );
+    } finally {
+      removeScratch(dir);
+    }
+  });
+  it("relays the latest word of each pairing session the viewer had, one card a pin on one strand a page, which folds once a person answers there and is answered on its pin, addressed to its agent", async () => {
+    const sam: Actor = { kind: 'human', name: 'Sam' };
+    const claude: Actor = { kind: 'agent', name: 'Claude' };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 3));
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tricot-pairing-'));
+    const store = new Store(dir);
+    const pairs = new PairingSessions(store);
+    store.reservedAgents = (key) => pairs.reserved(key);
+    try {
+      store.load();
+      const board = store.createBoard({ title: 'Shop' }, sam);
+      const page = store.addPage(board.id, 'Mood board', sam);
+      // Claude showed the code, so the board knows it and a comment @-mentions it.
+      const block = store.addBlock({ pageId: page.id }, { content: { type: 'code', path: 'src/cart.ts', text: 'let a = 1;\nlet b = 2;\nlet c = 3;' } }, claude);
+      const second = store.addBlock({ pageId: page.id }, { content: { type: 'code', path: 'src/total.ts', text: 'let t = 0;' } }, claude);
+      let onBoardNow = () => [] as { name: string; state: string }[];
+      const pairings = (name = 'Sam') => homeRelays(store.getBoard(board.id), name, onBoardNow(), new Set(), () => []).filter((r) => r.pairing);
+
+      // A pin's thread with an agent of the board's, @-mentioned and answering, is no pairing session: it stays on its pin.
+      const { pin: old } = store.pinComment(block.id, { kind: 'line', file: 'src/cart.ts', line: 3 }, '@Claude Is this used?', sam, { ask: true });
+      await tick();
+      store.commentOnPin(old.id, 'Not any more.', claude);
+      assert.deepEqual(pairings(), [], 'what the board had before sessions of their own brings nothing back');
+
+      const session = pairs.start({ blockId: block.id, part: 'code', person: 'Sam', launch: 'claude' });
+      const agent: Actor = { kind: 'agent', name: session.agent };
+      const asked = store.pinComment(block.id, { kind: 'line', file: 'src/cart.ts', line: 2 }, `@${session.agent} Call it total.`, sam, { ask: true });
+      pairs.requested(block.id, 'Sam', asked.comment);
+      const thread = store.pairingThread(block.id, 'Sam')!;
+      assert.deepEqual(pairings(), [], 'asked, and not answered yet: nothing comes back');
+      await tick();
+      store.commentOnPin(asked.pin.id, 'Renamed.', agent);
+      await tick();
+      const latest = store.commentOnPin(asked.pin.id, 'Renamed it, and the test that read it.', agent).comment;
+      onBoardNow = () => [{ name: session.agent, state: 'listening' }];
+      const [reply] = pairings();
+      assert.deepEqual(
+        [reply.kind, reply.key, reply.at, reply.title, reply.by, reply.earlier, reply.needsYou, reply.tone, relayWords(reply), repliable(reply)],
+        ['reply', latest.id, latest.createdAt, 'Mood board · cart.ts', session.agent, 1, false, 'working', 'Claude replied', true],
+        "its agent's latest word on the pin, led by the page and the piece, its words before it counted, in its session's colour, and needing no one",
+      );
+      assert.deepEqual(reply.pairing, { pinId: asked.pin.id, blockId: block.id, pageId: page.id, agent: session.agent, part: 'line 2', thread: thread.id }, 'Reply answers on its pin, addressed to its agent');
+      assert.deepEqual(pairings('Pat'), [], "another person's pairing is theirs");
+
+      // Another piece of the page: its own card, on the same session's strand.
+      pairs.start({ blockId: second.id, part: 'code', person: 'Sam', launch: 'claude' });
+      const there = store.pinComment(second.id, { kind: 'line', file: 'src/total.ts', line: 1 }, `@${session.agent} Start it at 1?`, sam, { ask: true });
+      pairs.requested(second.id, 'Sam', there.comment);
+      await tick();
+      store.commentOnPin(there.pin.id, 'It starts at 1 now.', agent);
+      assert.deepEqual(
+        pairings().map((r) => [r.title, r.pairing?.thread]),
+        [
+          ['Mood board · cart.ts', thread.id],
+          ['Mood board · total.ts', thread.id],
+        ],
+        'one card a pin, both on the one strand of the session of the page',
+      );
+
+      // The session's end leaves its summary in the activity, never on a pin, so it is never relayed.
+      pairs.end(session.id, 'Sam');
+      assert.deepEqual(pairings().map((r) => r.key).includes(latest.id), true, 'the summary is not among them');
+
+      await tick();
+      const answer = store.commentOnPin(asked.pin.id, `@${session.agent} Thanks. And the docs?`, sam);
+      pairs.requestedOnPin(asked.pin.id, 'Sam', answer.comment);
+      const folded = pairings().find((r) => r.key === latest.id)!;
+      assert.deepEqual(
+        [folded.tone, relayWords(folded), answeredWords(folded, 'Sam'), repliable(folded)],
+        ['working', 'With Claude', 'You answered: “Thanks. And the docs?”', false],
+        'a person writing on the pin after it answers it: it folds, with its agent again',
+      );
+
+      // A file paired on in Files: by its name, in Files, its session Files'.
+      const file = store.syncFileBlock(board.id, { path: 'src/web/app.css', text: 'a {}\nb {}' }, sam);
+      const onFile = pairs.start({ blockId: file.block.id, part: 'code', person: 'Sam', launch: 'claude' });
+      assert.equal(onFile.agent, 'Claude · Pair Files');
+      const fileAsk = store.pinComment(file.block.id, { kind: 'line', file: 'src/web/app.css', line: 1 }, `@${onFile.agent} Darker links?`, sam, { ask: true });
+      pairs.requested(file.block.id, 'Sam', fileAsk.comment);
+      await tick();
+      store.commentOnPin(fileAsk.pin.id, 'Darker in both themes, or only in light?', { kind: 'agent', name: onFile.agent });
+      onBoardNow = () => [{ name: session.agent, state: 'listening' }, { name: onFile.agent, state: 'listening' }];
+      const filed = pairings().find((r) => r.pairing?.pinId === fileAsk.pin.id)!;
+      assert.deepEqual([filed.title, filed.pairing?.file, filed.pairing?.pageId, filed.tone], ['app.css in Files', 'src/web/app.css', file.pageId, 'working']);
+      assert.equal(relayStack(pairings()).head, '2 pairings moved while you were away', 'pairings counted by session');
+      assert.deepEqual(askedOn({ pageId: file.pageId, blockIds: [file.block.id] }, store.getBoard(board.id)), { pageId: file.pageId, file: 'src/web/app.css' }, 'an ask over a file opens the file');
+      assert.deepEqual(askedOn({ pageId: page.id, blockIds: [block.id] }, store.getBoard(board.id)), { pageId: page.id }, 'over a page, the page');
+      assert.equal(askedOn({ pageId: 'gone' }, store.getBoard(board.id)), undefined, 'a page gone keeps the plain tag');
+
+      // The terminal: the same row, answered on its pin, addressed to its agent.
+      const now = store.getBoard(board.id);
+      const stream = homeStream({ board: now, me: 'Sam', onBoard: onBoardNow(), asked: new Set(), visit: { since: null, arrived: Date.now() }, now: Date.now() });
+      const item = stream.items.find((i) => i.home?.kind === 'relay' && i.home.relay.pairing?.pinId === fileAsk.pin.id)!;
+      const filesTitle = now.pages!.find((p) => p.id === file.pageId)!.title;
+      assert.deepEqual(item.place, { kind: 'board', pin: { id: fileAsk.pin.id, quote: 'line 1' }, page: { id: file.pageId, title: filesTitle, files: true }, to: onFile.agent });
+      assert.ok(choosable(item, 'Sam'), 'Tab chooses it, to answer on its pin');
+      const drawn = homeLines(item, { width: 100, me: 'Sam', sending: false, selected: false, look: { colours: 'none', light: false } }).map((parts) => parts.map(([text]) => text).join('').trimEnd());
+      assert.match(drawn[0], /^ {2}app\.css in Files · Claude replied · .+$/);
+      assert.deepEqual(drawn.slice(1), ['    Darker in both themes, or only in light?']);
+    } finally {
+      pairs.stop();
       removeScratch(dir);
     }
   });

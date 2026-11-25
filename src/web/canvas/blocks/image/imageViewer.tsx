@@ -173,7 +173,7 @@ function Picture({ block, placed, pointing, chosen, open, pick, openPin, picturi
   );
 }
 
-export function ImageView({ block, name, version, pinId, pinAsked, onClose }: OverlayProps<ImageBlock>) {
+export function ImageView({ block, name, version, pinId, pinAsked, paired, onClose }: OverlayProps<ImageBlock>) {
   const shown = (version ? atVersion(block, version) : block) as ImageBlock;
   const picturing = usePictureZoom(shown);
   const { zoom, src } = picturing;
@@ -187,6 +187,7 @@ export function ImageView({ block, name, version, pinId, pinAsked, onClose }: Ov
       version={version}
       pinId={pinId}
       pinAsked={pinAsked}
+      paired={paired}
       part="image"
       listed
       className="image-full-view"

@@ -124,7 +124,7 @@ describe('the MCP server and its tools', () => {
     assert.deepEqual(labelled('claim_work', {}, {}), generic, 'none given, none said, whatever the file has');
   });
 
-  // A coordinator's and an orchestrator's session (core/roles.ts, named on its MCP address) list their role's tool
+  // A coordinator's, an orchestrator's and a pairing session's (core/roles.ts, named on its MCP address) list their role's tool
   // besides, documented, labelled, in their guide topic and told first; a session with no role lists and is told neither.
   it("lists a role's tool, and says its role first, only to a session of that role", async () => {
     const plain = await hookIn('hook-roles');
@@ -133,6 +133,7 @@ describe('the MCP server and its tools', () => {
     const roles = [
       ['agent=Router&role=coordinator', 'route_to_thread', 'coordinating', /^This session is the board's coordinator/],
       ['agent=Owner&role=orchestrator&thread=th_1', 'set_thread_status', 'orchestrating', /^This session owns thread \[thread id: th_1\]/],
+      ['agent=Pairer&role=pairing&thread=th_1', 'set_thread_status', 'pairing', /^This session pairs with one person on one page and owns its thread \[thread id: th_1\]/],
     ] as const;
     for (const [query, tool, topic, told] of roles) {
       assert.ok(!names.includes(tool), `${tool} is not listed without the role`);
