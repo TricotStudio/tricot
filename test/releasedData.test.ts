@@ -33,6 +33,7 @@ const RELEASES: [version: string, dataVersion: number, blocksOn: 'board' | 'page
   ['0.0.3', 19, 'page'],
   ['0.0.4', 20, 'page'],
   ['0.0.5', 21, 'page'],
+  ['0.0.6', 21, 'page'],
 ];
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const planner: Actor = { kind: 'agent', name: 'Planner' };
