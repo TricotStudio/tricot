@@ -21,9 +21,18 @@
 // the board is refused it: its agent's session, which names its own
 // terminal, then waits as any agent's does.
 //
+// What counts as its drawing, here, is a change to its screen from the top
+// down to its cursor's row, where its prompt is (screen.ts write): its
+// words, its spinner and the timer on it. What it redraws under the prompt
+// (the panel of its background work, its footer, its status line), its
+// terminal's title and anything that changes nothing it shows are not: while
+// a background subagent runs, Claude Code redraws all of these every second,
+// and its turn is over all the same. The strip's "working" is not this: it
+// counts any output.
+//
 // Its turn is over, as far as this terminal knows, once the board says so,
-// once its hooks sent the end of its turn (a done step), or once it has been
-// quiet for QUIET_TURN_MS with no bell, when neither came (it ended its turn
+// once its hooks sent the end of its turn (a done step), or once it has not
+// drawn for QUIET_TURN_MS, with no bell, when neither came (it ended its turn
 // another way, or errored). Being given something to do starts a turn: woken,
 // sent something by the person in its tab (whatever its prompt held as they
 // pressed Enter, a command or a wake line left there included), or drawing
@@ -34,8 +43,8 @@
 // A wake goes only when every one of these holds (holdOf), and waits until they do:
 //  - something is due, newer than what it was last woken for, or a stuck
 //    wake's own, retried after a pause, a few times (RETRY_MS);
-//  - its turn is over, it isn't waiting on the board, and it has drawn
-//    nothing for SETTLE_MS;
+//  - its turn is over, it isn't waiting on the board, and it has not drawn
+//    for SETTLE_MS;
 //  - no request for permission from it waits on the board;
 //  - the person hasn't typed in its tab for TYPING_MS, and its prompt, as its
 //    screen shows it, holds nothing but, at most, the wake line itself.
@@ -56,10 +65,10 @@ import { waitingFor, type BoardLive, type WakeView } from './strip';
 import { TabKeyReader } from './tabKeys';
 
 export const WAKE_LINE = 'Something on the board needs you: read your updates.';
-export const SETTLE_MS = 1_500; // drew nothing for this long: its turn's last words are out
+export const SETTLE_MS = 1_500; // not drawn for this long: its turn's last words are out
 export const TYPING_MS = 4_000; // a key in its tab this recently: the person is typing there
 export const REPORT_MS = 5_000; // how often the board hears which agents this terminal holds (server/sleepers.ts REACHABLE_MS is four of these)
-export const QUIET_TURN_MS = 20_000; // quiet this long, with no bell, since it was given something to do: its turn is over, though nothing said so
+export const QUIET_TURN_MS = 20_000; // not drawn this long, with no bell, since it was given something to do: its turn is over, though nothing said so
 export const DRAWING_TURN_MS = 3_000; // drawing without a break this long while asleep: it began a turn of its own
 export const ECHO_MS = 1_000; // the typed line shows in its prompt within this
 export const CONFIRM_MS = 1_500; // after Enter, its prompt is empty within this, or Enter goes once more
@@ -123,7 +132,7 @@ export interface HoldInput {
   waking?: boolean; // a wake being typed into it now
   asleep: boolean; // its turn is over
   listening?: boolean; // it waits on the board, in a wait that waited after all
-  quietMs: number; // since it last drew
+  quietMs: number; // since it last drew above its prompt
   approval: boolean; // a request for permission from it waits
   typedMs: number; // since the person's last key in its tab
   prompt: string; // what its prompt holds (promptContent)
@@ -186,7 +195,7 @@ export interface WakeTarget {
   write(data: string): void; // to its pty
   modes(): InputModes; // what it asked of its terminal
   prompt(): { before: string; after: string }; // its cursor's row (screen.ts cursorRow)
-  lastOutput(): number | undefined; // when it last drew
+  lastDrawn(): number | undefined; // when it last drew (above its prompt: see the top of this file)
   drawingFor(): number; // how long it has drawn without a break, up to now (0: it isn't drawing)
   rangAt(): number | undefined; // when it last rang its bell or sent a notification
   running(): boolean;
@@ -344,13 +353,13 @@ export class Wakes {
     return this.stopping;
   }
 
-  // Its turn is over by its hooks' word, or by a quiet that its own drawing,
-  // its bell and the board's word on it would have broken.
+  // Its turn is over by its hooks' word, or by a quiet that its own drawing
+  // above its prompt, its bell and the board's word on it would have broken.
   private turnOver(held: Held, now: number): boolean {
     if (held.asleep || held.waking) return false;
     if (held.turnEndedAt !== undefined && held.turnEndedAt > held.at) return true;
     const { target } = held;
-    const quiet = now - Math.max(held.at, target.lastOutput() ?? 0, target.rangAt() ?? 0);
+    const quiet = now - Math.max(held.at, target.lastDrawn() ?? 0, target.rangAt() ?? 0);
     const live = this.options.live();
     const listening = live?.presence.some((p) => samePerson(p.name, target.name) && p.state === 'listening');
     return target.running() && !listening && !waitingFor(target.name, live).length && quiet >= this.quietTurnMs;
@@ -387,7 +396,7 @@ export class Wakes {
       waking: held.waking,
       asleep: held.asleep,
       listening: live?.presence.some((p) => samePerson(p.name, target.name) && p.state === 'listening'),
-      quietMs: now - (target.lastOutput() ?? 0),
+      quietMs: now - (target.lastDrawn() ?? 0),
       approval: waitingFor(target.name, live).length > 0,
       typedMs: now - held.typedAt,
       prompt: promptContent(target.prompt()),

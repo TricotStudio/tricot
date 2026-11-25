@@ -177,7 +177,8 @@ interface Agent extends AgentNow {
   index: number;
   thread?: string; // the thread it owns, as an orchestrator Tricot started for it
   rangAt?: number; // when it last rang its bell or sent a notification
-  drawingSince?: number; // when its latest run of drawing, without a break of DRAWING_GAP_MS, began
+  lastDrawn?: number; // when it last changed its screen above its prompt (screen.ts write), as lastOutput is when it last wrote anything
+  drawingSince?: number; // when its latest run of that, without a break of DRAWING_GAP_MS, began
   id?: string;
   runsOn?: string;
   screen: AgentScreen;
@@ -193,7 +194,7 @@ const FLASH_MS = 2_500;
 const ANSWER_HINT_MS = 5_000;
 const SYNC_WAIT_MS = 150; // the most a frame asked to be shown whole is waited for
 const FRAME_MS = 8;
-const DRAWING_GAP_MS = 750; // a pause this long ends a run of drawing (wake.ts: a turn it began on its own)
+const DRAWING_GAP_MS = 750; // a pause this long ends a run of drawing above its prompt (wake.ts: a turn it began on its own)
 const WHEEL_LINES = 3; // what a turn of the wheel scrolls the scroll view and the chat by; an agent drawing its own screen gets one ↑ or ↓
 // The Tricot tab reads pastes whole (a reason for a denial), and nothing else.
 const TAB_MODES: InputModes = { ...PLAIN_MODES, bracketedPaste: true };
@@ -604,9 +605,15 @@ export function startHost(options: HostOptions): Host {
     });
     let told = 0;
     pty.onData((data) => {
-      if (agent.lastOutput === undefined || now() - agent.lastOutput > DRAWING_GAP_MS) agent.drawingSince = now();
-      agent.lastOutput = now();
-      void agent.screen.write(data).then(() => {
+      const at = now();
+      agent.lastOutput = at;
+      void agent.screen.write(data).then((drew) => {
+        // Only what it changes above its prompt is drawing for the wake: while a background
+        // subagent runs, Claude Code redraws its panel, footer and title under it every second.
+        if (drew) {
+          if (agent.lastDrawn === undefined || at - agent.lastDrawn > DRAWING_GAP_MS) agent.drawingSince = at;
+          agent.lastDrawn = at;
+        }
         if (!hidden()) schedule();
         else if (now() - told > 500) {
           told = now();
@@ -622,8 +629,8 @@ export function startHost(options: HostOptions): Host {
         write: (data) => pty.write(data),
         modes: () => agent.screen.inputModes,
         prompt: () => agent.screen.cursorRow(),
-        lastOutput: () => agent.lastOutput,
-        drawingFor: () => (agent.lastOutput !== undefined && agent.drawingSince !== undefined && now() - agent.lastOutput <= DRAWING_GAP_MS ? now() - agent.drawingSince : 0),
+        lastDrawn: () => agent.lastDrawn,
+        drawingFor: () => (agent.lastDrawn !== undefined && agent.drawingSince !== undefined && now() - agent.lastDrawn <= DRAWING_GAP_MS ? now() - agent.drawingSince : 0),
         rangAt: () => agent.rangAt,
         running: () => agent.state === 'running' && !agent.closing,
       });

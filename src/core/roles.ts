@@ -270,7 +270,7 @@ export function launchesOn(board: Board, answering: (name: string) => boolean): 
 
 // The first thing an orchestrator Tricot starts reads.
 export const orchestratorMessage = (launch: Pick<Launch, 'thread' | 'title'>): string =>
-  `You own the Tricot thread "${launch.title}" [thread id: ${launch.thread}]: read it with get_thread, then do the work it asks. Plan it, hand it to your own subagents (scouts to read and find, workers to build, each in its own git worktree), report in the thread with reply_in_thread, ask people there when you need them, and end with set_thread_status.`;
+  `You own the Tricot thread "${launch.title}" [thread id: ${launch.thread}]: read it with get_thread, then do the work it asks. Plan it, hand it to your own subagents (scouts to read and find, workers to build, each in its own git worktree, each run in the background, never the foreground, so a person's message reaches you while they work), report in the thread with reply_in_thread, ask people there when you need them, and end with set_thread_status.`;
 
 // The first thing a pairing session Tricot starts reads: who it pairs with, on which page, and how.
 export function pairingMessage(launch: Pick<Launch, 'thread' | 'title'> & { pairing: { person: string; page?: string } }): string {

@@ -68,6 +68,7 @@ const ENCODINGS: Record<number, MouseEncoding> = { 1005: 'utf8', 1006: 'sgr', 10
 
 export class AgentScreen {
   readonly term: Terminal;
+  private shown = ''; // `drawn`, as of the last write
   private cursorVisible = true;
   private cursorStyle = 0;
   private mouseEncoding: MouseEncoding = 'default';
@@ -187,9 +188,28 @@ export class AgentScreen {
     });
   }
 
-  // Resolves once the emulator has taken it in.
-  write(data: Uint8Array | string): Promise<void> {
-    return new Promise((resolve) => this.term.write(data, resolve));
+  // Resolves once the emulator has taken it in, with whether it changed what
+  // shows from the top of the screen down to the cursor's row (`drawn`).
+  write(data: Uint8Array | string): Promise<boolean> {
+    return new Promise((resolve) =>
+      this.term.write(data, () => {
+        const drawn = this.drawn();
+        resolve(drawn !== this.shown);
+        this.shown = drawn;
+      }),
+    );
+  }
+
+  // The text of the rows from the top of the screen to the cursor's row, and
+  // how far the screen has scrolled. An agent keeps its prompt at the cursor
+  // and what it does above it (its words, its spinner and their timer); what
+  // it redraws under the prompt (a panel of its background work, a footer,
+  // a status line) or in the terminal's title is no sign of a turn.
+  private drawn(): string {
+    const buffer = this.term.buffer.active;
+    const rows = [String(buffer.baseY)];
+    for (let y = 0; y <= buffer.cursorY; y++) rows.push(buffer.getLine(buffer.baseY + y)?.translateToString(true) ?? '');
+    return rows.join('\n');
   }
 
   resize(cols: number, rows: number): void {

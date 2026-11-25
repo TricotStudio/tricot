@@ -25,6 +25,7 @@ import { liveAgents, liveWords, reachedByAny } from '../src/core/liveAgents';
 import { answeredWords, askedWhileWaiting, homeRelays, homeRows, homeSaid, ownedThreads, relayStack, relayWords, repliable, threadTone, verdictWords, type Relay } from '../src/core/homeConversation';
 import { choosable, homeStream } from '../src/cli/switcher/homeStream';
 import { homeLines, REVIEW_HINT, type Colours } from '../src/cli/switcher/homeView';
+import { AgentScreen } from '../src/cli/switcher/screen';
 import { ThreadsTab } from '../src/cli/switcher/threadsTab';
 import { boardKey, type Actor, type BoardEvent, type Thread } from '../src/core/types';
 import { askableCards } from './madeUpAsked';
@@ -1080,5 +1081,18 @@ describe("Home's conversation", () => {
     assert.deepEqual(reachedByAny(present).map((a) => a.name), ['Claude'], 'a new message starts a thread its coordinator owns: only it is woken');
     const peers = [here('Pi', 'asleep'), here('Codex', 'listening'), here('Claude · Sign-in', 'working'), here('Gone', 'away')];
     assert.deepEqual(reachedByAny(peers).map((a) => a.name), ['Pi', 'Codex', 'Claude · Sign-in'], 'with no coordinator every agent that is not away, owners of work included');
+  });
+});
+
+describe("What counts as an agent's drawing, for waking it (cli/switcher/screen.ts write)", () => {
+  it('counts what changes from the top of the screen to its prompt, and not its footer, panel or title', async () => {
+    const screen = new AgentScreen(40, 10);
+    const lower = (row: number, text: string) => `\x1b7\x1b[${row};1H\x1b[K${text}\x1b8`;
+    assert.equal(await screen.write('\x1b[2J\x1b[1;1Hanswer\x1b[6;1H> \x1b[7;1Hfooter\x1b[6;3H'), true, 'its first screen');
+    const quiet = [lower(7, 'footer: 2 background tasks'), lower(9, 'subagent 24s'), '\x1b]0;◐ title\x07', '\x1b[?25l\x1b[?25h', '\x1b[0m'];
+    for (const chunk of quiet) assert.equal(await screen.write(chunk), false, `${JSON.stringify(chunk)} changes nothing above its prompt`);
+    assert.equal(await screen.write('\x1b7\x1b[3;1Hthinking 1s\x1b8'), true, 'a line above the prompt');
+    assert.equal(await screen.write('\x1b[6;3Hhi'), true, 'its prompt row');
+    for (let i = 0; i < 14; i++) assert.equal(await screen.write('\x1b[10;1Hsame\r\n'), true, 'a screen that scrolls, though the lines it shows are the same');
   });
 });
