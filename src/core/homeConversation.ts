@@ -32,25 +32,25 @@
 // - The yarn: the conversation is one strand, and each thread an agent owns
 //   runs in a lane of its own beside it (`lanesOf`), in the colour of where
 //   its work stands (`threadTone`: at work, waiting on a person, waiting for
-//   their review, sent on but not started, done), from where it was sent on to
-//   where it is tied off. With a thread open, the same strands in the same
-//   lanes are drawn against its messages: those not done before the
-//   conversation starts (`strandsShown`, `conversationStart`), on the
-//   conversation and with a thread open alike.
+//   their review, sent on and its owner not come to it yet, done), from where
+//   it was sent on to where it is tied off. With a thread open, the same
+//   strands in the same lanes are drawn against its messages: those not done
+//   before the conversation starts (`strandsShown`, `conversationStart`), on
+//   the conversation and with a thread open alike.
 //
 // Nothing here is a part's: threads are the core's, and a part's cards come
 // in as relays it made.
 import { samePerson } from './format';
 import { inConversation, verdictOf, type ReviewVerdict } from './roles';
 import { shownTitle } from './threads';
-import type { Board, Thread, ThreadMessage } from './types';
+import type { Actor, Board, Thread, ThreadMessage } from './types';
 
 // ---- where a thread an agent owns stands ---------------------------------------------
 
 // Where its work stands, as its strand, its square and its card say it: at
 // work, waiting on a person, finished and waiting for their review (in the
-// in-review colour), sent on but not started yet (its owner is not on the
-// board), or done.
+// in-review colour), sent on and its owner not come to it yet (`threadStarted`),
+// or done.
 export type StrandTone = 'working' | 'waiting' | 'review' | 'todo' | 'done';
 
 // An agent on the board, as presence says it.
@@ -62,14 +62,24 @@ export interface OnBoard {
 // The threads agents own: the work a coordinator handed out, every thread out of the conversation.
 export const ownedThreads = (board: Pick<Board, 'threads'>): Thread[] => (board.threads ?? []).filter((t) => !inConversation(t));
 
-// Whether a thread an agent owns is at work: its owner is on the board. Sent
-// on but not started, it waits for its owner to come (Tricot's terminal starts
-// it, core/roles.ts launchesOn).
-export function threadStarted(thread: Pick<Thread, 'owner'>, onBoard: readonly OnBoard[]): boolean {
-  return onBoard.some((a) => a.state !== 'away' && samePerson(a.name, thread.owner ?? ''));
+// Whether the owner of a thread has come to it, so its work is at work until
+// its owner says otherwise: it has written there, or made work answering it
+// ahead of its reply (`pending`), or it is on the board now. Once come, it
+// stays at work however long it goes quiet, as while its subagents build:
+// presence reads an agent away two minutes after a call of its own, and
+// forgets it after five. Its status says nothing of it: a coordinator starts
+// a thread at work before its owner comes, which is how Tricot's terminal
+// knows to start one (core/roles.ts launchesOn). A coordinator that owns
+// what it sends on (an agent connected on its own) has come to it as it
+// writes the ask there. Sent on and not come to yet, it waits for its owner.
+export function threadStarted(thread: Pick<Thread, 'owner' | 'messages' | 'pending'>, onBoard: readonly OnBoard[]): boolean {
+  const owner = thread.owner;
+  if (!owner) return false;
+  const isOwner = (actor: Actor) => actor.kind === 'agent' && samePerson(actor.name, owner);
+  return thread.messages.some((m) => isOwner(m.author)) || Boolean(thread.pending?.some((p) => isOwner(p.by))) || onBoard.some((a) => a.state !== 'away' && samePerson(a.name, owner));
 }
 
-export function threadTone(thread: Pick<Thread, 'owner' | 'status'>, onBoard: readonly OnBoard[]): StrandTone {
+export function threadTone(thread: Pick<Thread, 'owner' | 'status' | 'messages' | 'pending'>, onBoard: readonly OnBoard[]): StrandTone {
   if (thread.status === 'needs-you') return 'waiting';
   if (thread.status === 'in-review') return 'review';
   if (thread.status === 'done') return 'done';

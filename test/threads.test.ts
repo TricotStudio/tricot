@@ -607,7 +607,12 @@ describe("Home's conversation", () => {
       const rows = homeRows(said, relays, 'Sam', { since: said[1].message.at, arrived: Date.now() }, Date.now());
       assert.deepEqual(rows.map((row) => row.kind), ['day', 'said', 'said', 'said', 'since', 'said', 'relay'], "since then, from the first that isn't Sam's own");
       const atWork = later.threads.find((t) => t.id === work.id)!;
-      assert.deepEqual([threadTone(atWork, onBoard), threadTone(atWork, [])], ['working', 'todo'], 'at work while its agent is on the board, not started before');
+      const sentOn = { ...atWork, messages: atWork.messages.slice(0, 1) }; // the coordinator's ask alone: its owner hasn't come
+      assert.deepEqual(
+        [threadTone(atWork, onBoard), threadTone(atWork, []), threadTone(sentOn, onBoard), threadTone(sentOn, [{ name: owner.name, state: 'away' }]), threadTone(sentOn, [])],
+        ['working', 'working', 'working', 'todo', 'todo'],
+        'at work once its owner has written in it, though presence no longer sees it as its subagents build; sent on, at work only while its owner is on the board',
+      );
 
       // The terminal draws it: the card knits the work's strand off the conversation's, and the question stitches into it.
       const tab = new ThreadsTab({
