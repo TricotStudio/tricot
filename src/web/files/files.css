@@ -142,34 +142,38 @@
 .files-body.no-side .files-side {
   display: none;
 }
-.files-panels {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
-  padding-left: 10px;
-  border-left: 1px solid var(--border);
-}
-/* A panel shown: its side filled, in ink; folded: an empty outline. */
-.files-panels .icon-button {
+/* A panel's switch (PanelToggle), in its panel's first line, or on the line
+   the panel leaves while it is folded. Every one of those lines centres on
+   the same height, 26px down, and the switch keeps 12px from the left edge
+   or 16px from the right one wherever it sits, so it stays put as its panel
+   folds. A panel shown: its side filled, in ink; folded: an empty outline. */
+.files-panel.icon-button {
+  flex: none;
   width: 28px;
   height: 28px;
   color: var(--text);
 }
-.files-panels .icon-button .icon-fill {
+.files-panel .icon-fill {
   opacity: 0.35;
 }
-.files-panels .icon-button:not(.is-on) {
+.files-panel:not(.is-on) {
   color: var(--muted);
 }
-.files-panels .icon-button:not(.is-on) .icon-fill {
+.files-panel:not(.is-on) .icon-fill {
   opacity: 0;
 }
-.files-panels .icon-button:hover {
+.files-panel:hover {
   color: var(--text);
 }
-.files-panels .icon-button .icon {
+.files-panel .icon {
   width: 16px;
   height: 16px;
+}
+.files-body.no-tree .files-head {
+  padding-left: 12px;
+}
+.files-body.no-side .files-head {
+  padding-right: 16px;
 }
 
 /* the list: the search, the filters, the folders and files */
@@ -456,6 +460,18 @@
 .files-side h4:first-child {
   margin-top: 0;
 }
+/* Its first line: the heading, and the panel's switch at its right. */
+.files-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin: -4px 0 4px;
+}
+.files-side-head h4 {
+  margin: 0;
+}
 .files-side .files-note {
   margin: 0 0 6px;
 }
@@ -514,10 +530,22 @@
 .files-lately {
   min-width: 0;
   overflow-y: auto;
-  padding: 22px 28px 90px;
+  padding: 12px 28px 90px;
+}
+/* Its title line: the title, On the board's switch at the far right, and
+   the files' at the left while their tree is folded. */
+.files-lately-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 -12px 14px 0;
+}
+.files-body.no-tree .files-lately-head {
+  margin-left: -16px;
 }
 .files-lately h3 {
-  margin: 0 0 10px;
+  margin: 0 auto 0 0;
   font-size: 15px;
 }
 .files-lately ul {
@@ -617,8 +645,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
   /* stacked, the panels take no width from the file: they stay, and their switches go */
-  .files-panels {
+  .files-panel.icon-button {
     display: none;
+  }
+  .files-body.no-tree .files-head {
+    padding-left: 20px;
+  }
+  .files-body.no-side .files-head {
+    padding-right: 20px;
+  }
+  .files-body.no-tree .files-lately-head {
+    margin-left: 0;
   }
   .files-body.no-tree .files-list {
     display: flex;
@@ -901,9 +938,18 @@
 }
 
 /* ---- searching inside the files ---- */
-.files-scope {
+/* The tree's first line: its switch, then File names or Inside files,
+   centred where the file's head centres. */
+.files-list-head {
   flex: none;
-  margin: 12px 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: 10px 12px 0;
+}
+.files-list-head .files-scope {
+  flex: 1;
 }
 .files-scope .pair-mode {
   flex: 1;

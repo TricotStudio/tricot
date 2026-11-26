@@ -44,7 +44,7 @@
 // a picture, which has no text to ask about, nor while the list or nothing
 // is picked. What is sent starts a thread on the file's block.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
 import { codeLines } from '../../core/blocks/code/code';
 import type { OpenFile } from '../../core/fileThread';
 import { hasText, previewOf, type ProjectFile, type ProjectFileText, type ProjectFiles } from '../../core/projectFiles';
@@ -114,11 +114,23 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
   // Its panels: the file tree and On the board fold away, one at a
   // time or both at once (⌘\), for the file to take the whole width, to
   // read, edit or pair on; remembered on this computer. A ⌘P search shows
-  // the tree while it is folded, until a file is opened.
+  // the tree while it is folded, until a file is opened. Each panel's switch
+  // is in its own first line, and on the line it leaves while folded
+  // (PanelToggle), so it moves as the panel folds: the focus goes with it.
   const [treeShown, showTree] = useStoredFlag('tricot:files-tree', () => true);
   const [sideShown, showSide] = useStoredFlag('tricot:files-side', () => true);
   const [peek, setPeek] = useState(false);
   const treeOn = treeShown || peek;
+  const body = useRef<HTMLDivElement>(null);
+  const moved = useRef<string | null>(null);
+  const keepFocus = () => {
+    moved.current = document.activeElement?.closest('[data-panel]')?.getAttribute('data-panel') ?? null;
+  };
+  useEffect(() => {
+    const panel = moved.current;
+    moved.current = null;
+    if (panel) body.current?.querySelector<HTMLElement>(`[data-panel="${panel}"]`)?.focus();
+  });
   useFindRequest(
     useCallback((kind: 'file' | 'text') => {
       setInside(kind === 'text');
@@ -130,6 +142,7 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
     const fold = (e: KeyboardEvent) => {
       if (!isFoldPanels(e)) return;
       e.preventDefault();
+      keepFocus();
       const open = !(treeShown || sideShown); // both folded: both back; else both away
       showTree(open);
       showSide(open);
@@ -254,6 +267,27 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
   }
 
   const picked = file ? files.find((f) => f.path === file) : undefined;
+  const treeSwitch = (
+    <PanelToggle
+      panel="files"
+      shown={treeOn}
+      onToggle={() => {
+        keepFocus();
+        showTree(!treeOn);
+        setPeek(false);
+      }}
+    />
+  );
+  const sideSwitch = (
+    <PanelToggle
+      panel="side"
+      shown={sideShown}
+      onToggle={() => {
+        keepFocus();
+        showSide(!sideShown);
+      }}
+    />
+  );
   return (
     <section className="files" aria-label="Project files">
       <header className="files-title">
@@ -269,44 +303,20 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
             .filter(Boolean)
             .join(' · ')}
         </span>
-        <span className="files-panels" role="group" aria-label="Panels">
-          <button
-            type="button"
-            className={`icon-button${treeOn ? ' is-on' : ''}`}
-            aria-pressed={treeOn}
-            aria-keyshortcuts={FOLD_PANELS_KEYS}
-            onClick={() => {
-              showTree(!treeOn);
-              setPeek(false);
-            }}
-            title={`${treeOn ? 'Hide' : 'Show'} the files (${FOLD_PANELS} for both panels)`}
-            aria-label={treeOn ? 'Hide the files' : 'Show the files'}
-          >
-            <Icon name="panel-left" />
-          </button>
-          <button
-            type="button"
-            className={`icon-button${sideShown ? ' is-on' : ''}`}
-            aria-pressed={sideShown}
-            aria-keyshortcuts={FOLD_PANELS_KEYS}
-            onClick={() => showSide(!sideShown)}
-            title={`${sideShown ? 'Hide' : 'Show'} On the board (${FOLD_PANELS} for both panels)`}
-            aria-label={sideShown ? 'Hide On the board' : 'Show On the board'}
-          >
-            <Icon name="panel-right" />
-          </button>
-        </span>
       </header>
 
-      <div className={`files-body${picked || file ? ' has-file' : ''}${treeOn ? '' : ' no-tree'}${sideShown ? '' : ' no-side'}`}>
+      <div className={`files-body${picked || file ? ' has-file' : ''}${treeOn ? '' : ' no-tree'}${sideShown ? '' : ' no-side'}`} ref={body}>
         <aside className="files-list" aria-label="The project's files">
-          <div className="pair-modes files-scope" role="group" aria-label="Search">
-            <button type="button" className={`pair-mode${inside ? '' : ' is-on'}`} aria-pressed={!inside} onClick={() => setInside(false)} title="Find a file by its name">
-              File names
-            </button>
-            <button type="button" className={`pair-mode${inside ? ' is-on' : ''}`} aria-pressed={inside} aria-keyshortcuts={FIND_IN_FILES_KEYS} onClick={() => setInside(true)} title={`Find text inside the files (${FIND_IN_FILES})`}>
-              Inside files
-            </button>
+          <div className="files-list-head">
+            {treeOn && treeSwitch}
+            <div className="pair-modes files-scope" role="group" aria-label="Search">
+              <button type="button" className={`pair-mode${inside ? '' : ' is-on'}`} aria-pressed={!inside} onClick={() => setInside(false)} title="Find a file by its name">
+                File names
+              </button>
+              <button type="button" className={`pair-mode${inside ? ' is-on' : ''}`} aria-pressed={inside} aria-keyshortcuts={FIND_IN_FILES_KEYS} onClick={() => setInside(true)} title={`Find text inside the files (${FIND_IN_FILES})`}>
+                Inside files
+              </button>
+            </div>
           </div>
           <label className="files-find">
             <Icon name="search" />
@@ -391,9 +401,12 @@ export function FilesView({ board, name, file: asked, pair, line, onShown }: { b
             onSaved={load}
             pairNow={Boolean(pair)}
             onShown={onShown}
+            treeSwitch={treeOn ? undefined : treeSwitch}
+            sideSwitch={sideSwitch}
+            sideShown={sideShown}
           />
         ) : (
-          <Lately board={board} files={files} listed={Boolean(listing)} />
+          <Lately board={board} files={files} listed={Boolean(listing)} treeSwitch={treeOn ? undefined : treeSwitch} sideSwitch={sideSwitch} />
         )}
       </div>
       {folderDialog}
@@ -566,8 +579,33 @@ function Rows(props: {
   return <>{rows}</>;
 }
 
-// With no file picked: what changed lately, to start from.
-function Lately({ board, files, listed }: { board: Board; files: ProjectFile[]; listed: boolean }) {
+// The switch that folds one of the view's panels away or brings it back:
+// the file tree (`files`) or On the board (`side`). It is in its panel's
+// first line while the panel shows, and on the line the panel leaves while
+// it is folded; ⌘\ folds both. A panel shown: its side of the icon filled,
+// in ink; folded: an empty outline.
+function PanelToggle({ panel, shown, onToggle }: { panel: 'files' | 'side'; shown: boolean; onToggle: () => void }) {
+  const what = panel === 'files' ? 'the files' : 'On the board';
+  return (
+    <button
+      type="button"
+      className={`icon-button files-panel${shown ? ' is-on' : ''}`}
+      data-panel={panel}
+      aria-pressed={shown}
+      aria-keyshortcuts={FOLD_PANELS_KEYS}
+      onClick={onToggle}
+      title={`${shown ? 'Hide' : 'Show'} ${what} (${FOLD_PANELS} for both panels)`}
+      aria-label={`${shown ? 'Hide' : 'Show'} ${what}`}
+    >
+      <Icon name={panel === 'files' ? 'panel-left' : 'panel-right'} />
+    </button>
+  );
+}
+
+// With no file picked: what changed lately, to start from. Its title line
+// holds the panels' switches: On the board's at its right, and the files'
+// at its left while their tree is folded.
+function Lately({ board, files, listed, treeSwitch, sideSwitch }: { board: Board; files: ProjectFile[]; listed: boolean; treeSwitch?: ReactNode; sideSwitch: ReactNode }) {
   const lately = useMemo(
     () =>
       files
@@ -578,7 +616,11 @@ function Lately({ board, files, listed }: { board: Board; files: ProjectFile[]; 
   );
   return (
     <div className="files-lately">
-      <h3>{listed ? 'Changed lately' : ' '}</h3>
+      <div className="files-lately-head">
+        {treeSwitch}
+        <h3>{listed ? 'Changed lately' : ' '}</h3>
+        {sideSwitch}
+      </div>
       {listed && !lately.length && <p className="files-note">Nothing changed this week. Pick a file at the left to read it here.</p>}
       <ul>
         {lately.map((file) => (
@@ -611,6 +653,10 @@ function Lately({ board, files, listed }: { board: Board; files: ProjectFile[]; 
 // is read; under a draft, the band says it changed and asks whose to keep.
 // Pair opens the file's code block on the Files canvas already paired, to
 // point at lines and ask; not with a draft, which the agent wouldn't see.
+//
+// The panels' switches: the files' first on the head while their tree is
+// folded, and On the board's at the right of its heading, or last on the
+// head while it is folded.
 function Preview(props: {
   board: Board;
   name: string;
@@ -624,8 +670,11 @@ function Preview(props: {
   onSaved: () => void;
   pairNow: boolean;
   onShown?: (file: OpenFile | undefined) => void;
+  treeSwitch?: ReactNode;
+  sideSwitch: ReactNode;
+  sideShown: boolean;
 }) {
-  const { board, name, file, line, listed, places, changes, draft, onDraft, onSaved, pairNow, onShown } = props;
+  const { board, name, file, line, listed, places, changes, draft, onDraft, onSaved, pairNow, onShown, treeSwitch, sideSwitch, sideShown } = props;
   const cards = useCardKinds();
   const context = useBoardViews().boardContext()?.name.toLowerCase() ?? 'board';
   const readOnly = useReadOnly();
@@ -778,6 +827,7 @@ function Preview(props: {
       <div className="files-preview">
         {mode !== 'pair' && (
           <div className="files-head">
+            {treeSwitch}
             <span className="files-crumbs" title={file}>
               {parts.slice(0, -1).map((part, i) => (
                 <span key={i}>{part} / </span>
@@ -820,6 +870,7 @@ function Preview(props: {
                 Pair
               </button>
             )}
+            {!sideShown && sideSwitch}
           </div>
         )}
         {stale && (
@@ -885,7 +936,10 @@ function Preview(props: {
       </div>
 
       <aside className="files-side" aria-label={`${nameOf(file)} on the board`}>
-        <h4>On the board</h4>
+        <div className="files-side-head">
+          <h4>On the board</h4>
+          {sideShown && sideSwitch}
+        </div>
         {places.length ? (
           places.map((place) => (
             <CardAnchor key={place.blockId} className="files-place" href={placeLink(cards, board, place, file)}>
