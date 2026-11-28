@@ -85,6 +85,8 @@ export interface HostedAgent {
   // Takes away what was made for this session alone (a folder, for some):
   // called when the agent ends, or the host does. Safe to call twice.
   cleanup?: () => void;
+  // A thread's owner carrying on its earlier session (core/agents/agent.ts resumes), as the strip says when it starts.
+  resumed?: true;
 }
 
 // The real terminal: process.stdin and stdout in raw mode (run.ts), or a
@@ -672,7 +674,8 @@ export function startHost(options: HostOptions): Host {
   // nothing. When the tabs are full, the owner whose thread is done and that
   // has been quiet longest closes to make room; one done also closes once it
   // has slept an hour, room or not (tendOwners); a word in its thread later
-  // starts a fresh one. One whose work waits for review is never closed so: it
+  // starts it again, on the session it had where its agent can (setup.launch).
+  // One whose work waits for review is never closed so: it
   // commits that work once the person approves it.
   //
   // A pairing session of its own (core/roles.ts) starts the same way, counted
@@ -680,22 +683,28 @@ export function startHost(options: HostOptions): Host {
   // waits for it. One held back, as many being at work as run at once or the
   // tabs full, is said with the terminal's next view (wake.ts holdBack), and the
   // page tells the person why where they wait.
+  //
+  // An owner a word waits for in its thread (a person's reply, whatever its
+  // thread's status: Launch.asked) starts first, past those at once, though
+  // never past the tabs, so what a person said never waits behind work no one
+  // wrote in; it counts towards those at once like any other once at work.
   function launchOwners(list: Launch[]): void {
     if (quitting || finished || !setup?.launch) return;
     const atWork = (a: Agent) => a.thread !== undefined && a.state !== 'ended' && !a.closing && (ownerStatus.get(a.name.toLowerCase()) ?? 'working') === 'working';
     const running = (wanted: string) => launching.has(wanted) || list.some((l) => l.thread === wanted && agents.some((a) => a.state !== 'ended' && samePerson(a.name, l.name)));
     const held: HeldLaunch[] = [];
     for (const wanted of list) if (wanted.pairing) pairings.add(wanted.thread);
-    for (const [at, wanted] of list.entries()) {
+    const order = [...list.filter((l) => l.asked), ...list.filter((l) => !l.asked)];
+    for (const [at, wanted] of order.entries()) {
       if (running(wanted.thread)) continue;
       const busy = [...agents.filter(atWork).map((a) => ({ kind: a.id ?? '', pairing: pairings.has(a.thread!) })), ...[...launching].map(([thread, kind]) => ({ kind, pairing: pairings.has(thread) }))];
-      if (!launchRoom(wanted, busy, setup.orchestrators?.(wanted.agent) ?? DEFAULT_AT_ONCE)) {
+      if (!wanted.asked && !launchRoom(wanted, busy, setup.orchestrators?.(wanted.agent) ?? DEFAULT_AT_ONCE)) {
         if (wanted.pairing) held.push({ thread: wanted.thread, why: 'busy' });
         continue;
       }
       if (now() - (launched.get(wanted.thread) ?? -Infinity) < RELAUNCH_MS) continue;
       if (agents.length + adding.size + launching.size >= MAX_AGENTS && !makeRoom()) {
-        held.push(...list.slice(at).filter((l) => l.pairing && !running(l.thread)).map((l): HeldLaunch => ({ thread: l.thread, why: 'full' })));
+        held.push(...order.slice(at).filter((l) => l.pairing && !running(l.thread)).map((l): HeldLaunch => ({ thread: l.thread, why: 'full' })));
         break;
       }
       launched.set(wanted.thread, now());
@@ -706,7 +715,7 @@ export function startHost(options: HostOptions): Host {
             if ('problem' in ready) return say(ready.problem, ANSWER_HINT_MS);
             if (quitting || finished) return ready.cleanup?.();
             startAgent(ready).thread = wanted.thread;
-            say(`${ready.name} started, to own "${wanted.title}".`, ANSWER_HINT_MS);
+            say(ready.resumed ? `${ready.name} is back where it left off, owning "${wanted.title}".` : `${ready.name} started, to own "${wanted.title}".`, ANSWER_HINT_MS);
           },
           (error: unknown) => say(`${wanted.name} didn't start: ${error instanceof Error ? error.message : error}`, ANSWER_HINT_MS),
         )

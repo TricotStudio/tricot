@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { useBoardCards } from '../src/core/cards';
 import { atOnce, cleanRule, roleRule, ruleKeyOf, subagentWords } from '../src/core/agentRules';
+import { findAgent } from '../src/core/agents/registry';
 import { answersForYou, commentsForYou } from '../src/core/bell';
 import { batchWords, canvasBatches, canvasHoldings } from '../src/core/canvasBatches';
 import { GAP_MS } from '../src/core/agentActivity';
@@ -146,8 +147,13 @@ describe('Threads over MCP and REST', () => {
     assert.match(started, /^Started thread "Sign-in on mobile" \[thread id: \S+\] for Claude · Sign-in on mobile, whom Tricot starts/);
     assert.equal(work.messages[0].body, 'Sam asked in "Fix sign-in on mobile.":\n\n> Fix sign-in on mobile.\n\nThe button hides under the keyboard.');
     assert.deepEqual(store.getThread(asked.id).thread.messages.at(-1)!.sent, { threadId: work.id, messageId: message }, 'where it was asked, the coordinator says where it went');
-    assert.deepEqual(launchesOn(store.getBoard(boardId), () => false), [{ thread: work.id, title: work.title, name: work.owner, agent: 'claude' }]);
+    assert.deepEqual(launchesOn(store.getBoard(boardId), () => false), [{ thread: work.id, title: work.title, name: work.owner, agent: 'claude' }], 'new work its owner never came to waits its turn: no word waits for it yet');
     assert.deepEqual(launchesOn(store.getBoard(boardId), (name) => name === work.owner), [], 'none while its owner is on the board');
+    // Started again on the session it had for the thread, where its agent keeps one, it is told only to answer what is new.
+    assert.equal(
+      launchRole(launchesOn(store.getBoard(boardId), () => false)[0], undefined, true).message,
+      `Tricot restarted, and you are still the owner of the Tricot thread "Sign-in on mobile" [thread id: ${work.id}]: read it with get_thread, and answer what is new there.`,
+    );
     // The board asks a terminal holding a coordinator of the owner's kind, and no other, to start it (server/wakes.ts):
     // Router is a Claude in one terminal, Cody a Codex in another; a terminal that holds no coordinator starts none.
     const presence = new Presence(() => {});
@@ -311,7 +317,8 @@ describe('Threads over MCP and REST', () => {
     presence.seen(boardKey(store.getBoard(boardId)), 'Router');
     const launches = heldBy(store, presence, store.getBoard(boardId), 'terminal-one', [{ name: 'Router', asleep: true, at: Date.now() }], []).launches ?? [];
     const launch = launches.find((l) => l.thread === thread.id)!;
-    assert.deepEqual(launch.pairing, { person: 'Sam', page: page.id });
+    assert.deepEqual([launch.pairing, launch.asked], [{ person: 'Sam', page: page.id }, undefined], 'its first request waits its turn, as new work does');
+    assert.match(launchRole(launch, undefined, true).message, new RegExp(`^Tricot restarted, and you are still the owner of the Tricot thread "Pair Mood board" \\[thread id: ${thread.id}\\], pairing with Sam: read it with get_thread, catch up with get_canvas\\(page_id: ${page.id}\\)`));
     const { role, message } = launchRole(launch, 'Run your scouts on haiku.');
     assert.deepEqual(role, { kind: 'pairing', thread: thread.id });
     assert.ok(message.startsWith(`Sam is pairing with you on one page of the board [page id: ${page.id}], and you own its Tricot thread "Pair Mood board" [thread id: ${thread.id}].`), message);
@@ -396,6 +403,7 @@ describe('Threads over MCP and REST', () => {
       now += 2;
       pairs.sweep();
       assert.equal(store.getThread(thread.id).thread.status, 'done');
+      assert.equal(launchesOn(store.getBoard(boardId), () => false).some((l) => l.thread === thread.id), false, "the summary Tricot closed it with, as Sam's, starts no owner");
       assert.deepEqual(doneRelays().map((r) => [r.kind, r.body.startsWith('Paired')]), [['done', true]], "one Done line: Tricot's summary");
       const codex = pairs.start({ blockId: second.id, part: 'code', person: 'Sam', launch: 'codex' });
       assert.equal(codex.agent, 'Codex · Pair Mood board', 'another kind is another session');
@@ -647,6 +655,33 @@ describe('The model of each role', () => {
     assert.equal(atOnce({}, 'claude'), 3);
     assert.deepEqual([cleanRule({ orchestrators: 9 }), cleanRule({ orchestrators: 2.5 }), cleanRule({ orchestrators: null })], [{}, {}, {}]);
   });
+
+  // The registry's resume trait (core/agents/agent.ts): Claude Code's session for a thread's owner is named by the
+  // thread and the folder, started on that id while it has kept none, and resumed once it keeps its transcript.
+  it("starts a thread's owner again on the session it had there, where its agent keeps one", () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tricot-resume-'));
+    try {
+      const claude = findAgent('claude')!.resumes!;
+      const owner = { thread: 'k3x9q2mf', folder: '/Users/sam/work/my_app' };
+      const target = { home, env: {} };
+      const [id] = claude.session(owner, target).args.slice(1);
+      assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, 'a UUID, which is all --session-id takes');
+      assert.deepEqual(claude.session(owner, target), { args: ['--session-id', id], resumed: false }, 'the same each time, started on it while none is kept');
+      assert.notEqual(claude.session({ ...owner, folder: '/Users/sam/work/other' }, target).args[1], id, 'another folder, another session');
+      const kept = path.join(home, '.claude', 'projects', '-Users-sam-work-my-app');
+      mkdirSync(kept, { recursive: true });
+      writeFileSync(path.join(kept, `${id}.jsonl`), '');
+      assert.deepEqual(claude.session(owner, target), { args: ['--resume', id], resumed: true }, 'kept under its folder, named as Claude Code names it');
+      assert.equal(claude.session(owner, { home, env: { CLAUDE_CONFIG_DIR: path.join(home, 'elsewhere') } }).resumed, false, 'in the folder CLAUDE_CONFIG_DIR moves');
+      const linked = path.join(home, 'elsewhere', 'projects', '-private-Users-sam-work-my-app');
+      mkdirSync(linked, { recursive: true });
+      writeFileSync(path.join(linked, `${id}.jsonl`), '');
+      assert.equal(claude.session(owner, { home, env: { CLAUDE_CONFIG_DIR: path.join(home, 'elsewhere') } }).resumed, true, 'or under another name, as for a folder reached through a link');
+      assert.equal(findAgent('codex')!.resumes, undefined, 'an agent with no such trait starts afresh, as ever');
+    } finally {
+      removeScratch(home);
+    }
+  });
 });
 
 describe("The bell's comments", () => {
@@ -850,6 +885,8 @@ describe("Home's conversation", () => {
       await tick();
       store.postToThread(work.id, 'Does it hold on Android?', sam);
       assert.deepEqual([store.getThread(work.id).thread.status, reviews()[0].needsYou], ['in-review', true], 'a plain reply leaves it waiting for review');
+      assert.deepEqual(launchesOn(store.getBoard(board.id), () => false).map((l) => [l.thread, l.asked]), [[work.id, true]], 'but its owner, if it is gone, is started for it, ahead of the others');
+      assert.deepEqual(launchesOn(store.getBoard(board.id), () => true), [], 'and none while it answers');
       assert.throws(() => store.reviewThread(work.id, 'changes', sam), /Say what needs changing in note/);
       await tick();
       store.reviewThread(work.id, 'changes', sam, 'The keyboard still covers it on Android.');

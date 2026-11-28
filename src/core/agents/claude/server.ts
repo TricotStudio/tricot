@@ -2,14 +2,42 @@
 // one session, with Tricot's hooks for it; its live-steps installer; what
 // `tricot connect claude` says.
 
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { claudeCommand, shellQuote } from '../../connect';
 import { claudeSession } from '../../sessions';
 import { claudeFolder, claudeUserSettings, claude as hooks } from '../../../server/hooks/claude';
 import { claudeSessionSettings, installedHooks } from '../../../server/hooks/session';
-import type { AgentServerHalf, ConnectView } from '../agent';
+import type { HookTarget } from '../../../server/hooks/installer';
+import type { AgentServerHalf, ConnectView, OwnerSession } from '../agent';
 
 const projectCommand = ({ url, token, shell }: ConnectView) => claudeCommand(url, { token, scope: 'project', shell });
+
+// The session of a thread's owner in a folder (AgentServerHalf.resumes): the same each time, as a UUID, which is all
+// `--session-id` takes, made from the two by name (version 5). Another folder gives another, as Claude Code keeps its
+// sessions by folder.
+export function claudeSessionId({ thread, folder }: OwnerSession): string {
+  const bytes = createHash('sha1').update(`tricot owner\0${thread}\0${folder}`).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// Whether Claude Code kept a session: its transcript, `<id>.jsonl`, in its projects folder (under the folder
+// CLAUDE_CONFIG_DIR moves), in the folder named after the one it ran in, its path with every character but a letter or
+// a digit made a `-`; or in any other there, as one reached through a link may be named otherwise.
+export function claudeKept(target: HookTarget, folder: string, id: string): boolean {
+  const projects = path.join(claudeFolder(target, 'user'), 'projects');
+  const file = `${id}.jsonl`;
+  if (existsSync(path.join(projects, folder.replace(/[^a-zA-Z0-9]/g, '-'), file))) return true;
+  try {
+    return readdirSync(projects).some((named) => existsSync(path.join(projects, named, file)));
+  } catch {
+    return false;
+  }
+}
 
 function stepsHint({ out, name, shell }: ConnectView): void {
   out("To show Claude's steps on the card it works on (asks before changing anything):");
@@ -49,6 +77,15 @@ export const server: AgentServerHalf = {
   session: claudeSession,
   // Tried with Claude Code 2.1.321: a line pasted, then Enter, is sent.
   wakes: { enterAfterMs: 150 },
+  // Tried with 2.1.332: `--session-id` refuses an id it has a transcript for in that folder ("already in use"), and
+  // takes it in another; `--resume <id>` carries a session on from any folder, written on in its own transcript, and
+  // ends at once on an id it has none for ("No conversation found"). So one kept is resumed, and else started on it.
+  resumes: {
+    session(owner, target) {
+      const id = claudeSessionId(owner);
+      return claudeKept(target, owner.folder, id) ? { args: ['--resume', id], resumed: true } : { args: ['--session-id', id], resumed: false };
+    },
+  },
   // Its permission prompts on the board, a prompt that opens with ^Design
   // answered through that lens, and its steps when the person said yes to
   // live steps, as settings for the session; whatever its own settings run

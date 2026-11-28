@@ -51,6 +51,7 @@ import { listNames } from '../core/format';
 import { coordinatorMessage, launchRole, roleUrl, type Launch, type SessionRole } from '../core/roles';
 import { firstMessage, wakeUrl } from '../core/sessions';
 import { isWindows } from '../platform/os';
+import { home } from '../platform/paths';
 import { which } from '../platform/which';
 import { AGENTS, connectFirst, notInstalled, sessionHooks, type AgentEnv } from './agentCommand';
 import { readRules, ruleForRun, startedOn, startsOnLine, UNREAD_RULES } from './agentRules';
@@ -229,6 +230,9 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
     // as the others were here, with its role and its thread on its address,
     // on its agent's rule as read now: the board asks only a terminal that
     // holds a coordinator, and any agent this terminal starts may be one.
+    // Where its agent can, it carries on the session it had for that thread in
+    // this folder (core/agents/agent.ts resumes), told only to answer what is
+    // new; else it starts afresh, with its role's brief.
     orchestrators: atOnceOf,
     launch: async (wanted: Launch) => {
       const agent = AGENTS[wanted.agent];
@@ -238,10 +242,12 @@ export async function severalAgents(a: AgentEnv, ids: string[], passthrough: str
       const now = await readRules(lock.url, a.dataDir);
       const set = 'rules' in now ? now.rules : {};
       try {
+        const carried = agent.resumes?.session({ thread: wanted.thread, folder }, { home: home(ctx.env, ctx.platform), env: ctx.env });
         // On the orchestrators' rule, told what to run its scouts and workers on (core/agentRules.ts).
         // As an orchestrator, or a pairing session of its own (core/roles.ts launchRole), which runs no subagents.
-        const role = launchRole(wanted, subagentWords(set, wanted.agent));
-        return hostedAgent(wanted.agent, wanted.name, command, [], ruleForRun(agent, roleRule(set, wanted.agent, 'orchestrator'), undefined), () => {}, role);
+        const role = launchRole(wanted, subagentWords(set, wanted.agent), carried?.resumed);
+        const owner = hostedAgent(wanted.agent, wanted.name, command, carried?.args ?? [], ruleForRun(agent, roleRule(set, wanted.agent, 'orchestrator'), undefined), () => {}, role);
+        return carried?.resumed ? { ...owner, resumed: true } : owner;
       } catch (error) {
         return { problem: `${wanted.name} didn't start: ${error instanceof Error ? error.message : error}` };
       }

@@ -246,6 +246,23 @@ export interface SkillForm {
   reconnect: string;
 }
 
+// How it carries a session on from where an earlier one ended (cli/severalAgents.ts): Tricot's terminal starts the
+// owner of a thread on the same session each time, named by the thread and the folder it runs in, so an owner started
+// again, as after Tricot or its terminal restarted, finds all it knew and is told only to answer what is new
+// (core/roles.ts resumedMessage). Nothing is stored for it: the session's name is made from those two each time.
+export interface ResumeTraits {
+  // Its own words for that session, before anything passed through, and whether they carry on one it kept
+  // (`resumed`) rather than start it.
+  session(owner: OwnerSession, target: HookTarget): { args: string[]; resumed: boolean };
+}
+
+// An owner's session, as Tricot names it: the thread it owns, by its id (no other thread of its Tricot has it, and a
+// rename of the board leaves it as it is), and the folder the owner runs in.
+export interface OwnerSession {
+  thread: string;
+  folder: string;
+}
+
 export interface AgentServerHalf {
   hooks: HookInstaller;
   // The skill `tricot connect` adds beside its hook. None: Tricot writes none
@@ -262,6 +279,10 @@ export interface AgentServerHalf {
   // Connected on its own, it ends its turn when it has nothing to do, and
   // Tricot wakes it in its own session, this way. None: it listens.
   queueWakes?: QueueWakeTraits;
+  // As the owner of a thread in Tricot's terminal, it carries its earlier
+  // session on, this way. None: each start is a fresh session, which reads
+  // its thread back.
+  resumes?: ResumeTraits;
   // Tricot's hooks for that session, and the line that says where approvals go.
   sessionHooks?(input: SessionHooksInput): { settings?: Record<string, unknown>; said?: string };
   // Its own flags for a rule (core/agentRules.ts ruleFlags, which checks the

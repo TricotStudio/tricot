@@ -62,7 +62,7 @@
 //
 // Nothing here is a part's: threads are the core's, so Canvas has the roles too.
 import { samePerson } from './format';
-import type { Board, Thread, ThreadStatus } from './types';
+import type { Actor, Board, Thread, ThreadStatus } from './types';
 
 export type SessionRole = { kind: 'coordinator' } | { kind: 'orchestrator' | 'pairing'; thread: string };
 
@@ -206,7 +206,8 @@ export function pairingName(agent: string, page: string, taken: string[]): strin
 export const CLOSE_AFTER_DELETE_MS = 60_000;
 
 // How long an orchestrator whose thread is done sleeps before it is closed, though its terminal has room: a word in its
-// thread later starts a fresh one, which reads the thread back.
+// thread later starts it again, on the session it had where its agent can (agents/agent.ts resumes), else a fresh one,
+// which reads the thread back.
 export const QUIET_CLOSE_MS = 60 * 60_000;
 
 // An orchestrator a terminal holds, and where the work of the thread it owns stands, as the board tells the terminal
@@ -239,33 +240,52 @@ export function launchRoom(launch: Pick<Launch, 'agent' | 'pairing'>, atWork: re
 }
 
 // A thread whose owner Tricot's terminal starts, as the board tells it (server/wakes.ts): an orchestrator, or a pairing
-// session (`pairing`: who pairs, and the page they pair on, none for the board context).
+// session (`pairing`: who pairs, and the page they pair on, none for the board context). `asked`: a word there waits
+// for it (`askedOwner`), so the terminal starts it before the others, past the owners it runs at once.
 export interface Launch {
   thread: string; // its id
   title: string;
   name: string; // the owner's name on the board
   agent: string; // which agent to start, by its id ("claude")
   pairing?: { person: string; page?: string };
+  asked?: true;
 }
 
-// The threads of a board whose work waits on an owner no one answers for:
-// at work, with an agent to start, and none of the owner's name on the board
-// (`answering`). One waiting on people, in review or done starts no one: a
-// person's reply, or their verdict on a review, sets it back to work first.
+// Whether a word in a thread an agent owns waits for its owner: a message after the owner's own last one that is for
+// it, as delivery.ts meantFor reads one (a person's or another agent's, such as a coordinator sending a person's
+// follow-up on, that @-mentions nobody or the owner, and that the loop guard didn't hold), once the owner has come to
+// the thread: it wrote there, or its work waits on people or for review. New work its owner never came to waits its
+// turn instead, as does a pairing session's first request. Done work waits for no one: a person's word sets it back to
+// work, so what is left after its owner there is the summary it was closed with.
+export function askedOwner(thread: Pick<Thread, 'owner' | 'status' | 'messages'>): boolean {
+  const owner = thread.owner;
+  if (!owner || !thread.status || thread.status === 'done') return false;
+  const isOwner = (author: Actor) => author.kind === 'agent' && samePerson(author.name, owner);
+  const last = thread.messages.findLastIndex((m) => isOwner(m.author));
+  if (last < 0 && thread.status === 'working') return false;
+  return thread.messages.slice(last + 1).some((m) => !isOwner(m.author) && !m.held && (!m.mentions?.length || m.mentions.some((name) => samePerson(name, owner))));
+}
+
+// The threads of a board whose owner no one answers for (`answering`: none of its name on the board), with an agent
+// to start: those at work, and those where a word waits for their owner (`askedOwner`), whatever their status, so a
+// person's plain reply to work in review, which leaves it waiting there, still reaches its owner. Their status stays as
+// it is: only a person's reply to work waiting on them or done, or their verdict on a review, sets it back to work.
 export function launchesOn(board: Board, answering: (name: string) => boolean): Launch[] {
-  return (board.threads ?? []).flatMap((thread) =>
-    thread.status === 'working' && thread.owner && thread.launch && !answering(thread.owner)
-      ? [
-          {
-            thread: thread.id,
-            title: thread.title,
-            name: thread.owner,
-            agent: thread.launch,
-            ...(pairingThread(thread) && { pairing: { person: thread.startedBy.name, ...(thread.pageId && { page: thread.pageId }) } }),
-          },
-        ]
-      : [],
-  );
+  return (board.threads ?? []).flatMap((thread) => {
+    if (!thread.owner || !thread.launch || answering(thread.owner)) return [];
+    const asked = askedOwner(thread);
+    if (thread.status !== 'working' && !asked) return [];
+    return [
+      {
+        thread: thread.id,
+        title: thread.title,
+        name: thread.owner,
+        agent: thread.launch,
+        ...(pairingThread(thread) && { pairing: { person: thread.startedBy.name, ...(thread.pageId && { page: thread.pageId }) } }),
+        ...(asked && { asked: true as const }),
+      },
+    ];
+  });
 }
 
 // The first thing an orchestrator Tricot starts reads.
@@ -284,13 +304,24 @@ export function pairingMessage(launch: Pick<Launch, 'thread' | 'title'> & { pair
   );
 }
 
+// The first thing an owner reads that Tricot starts again on its earlier session (core/agents/agent.ts resumes): it
+// knows its thread and its role already, so it is told only that Tricot restarted and to answer what is new, after
+// reading its thread again, and a pairing session its page too.
+export function resumedMessage(launch: Pick<Launch, 'thread' | 'title' | 'pairing'>): string {
+  const owner = `Tricot restarted, and you are still the owner of the Tricot thread "${launch.title}" [thread id: ${launch.thread}]`;
+  if (!launch.pairing) return `${owner}: read it with get_thread, and answer what is new there.`;
+  const { person, page } = launch.pairing;
+  const read = page ? `get_canvas(page_id: ${page})` : 'get_canvas';
+  return `${owner}, pairing with ${person}: read it with get_thread, catch up with ${read}, and answer what is new there and on its pins.`;
+}
+
 // What Tricot's terminal starts an owner as (cli/severalAgents.ts): its role on its address and the first thing it
 // reads, with what its background agents run on (`subagents`, as the person's rule says), for an orchestrator and a
-// pairing session alike.
-export function launchRole(launch: Launch, subagents?: string): { role: SessionRole; message: string } {
+// pairing session alike. One carrying on its earlier session (`resumed`) reads resumedMessage in place of its brief.
+export function launchRole(launch: Launch, subagents?: string, resumed = false): { role: SessionRole; message: string } {
   const told = (message: string) => (subagents ? `${message} ${subagents}` : message);
-  if (launch.pairing) return { role: { kind: 'pairing', thread: launch.thread }, message: told(pairingMessage({ ...launch, pairing: launch.pairing })) };
-  return { role: { kind: 'orchestrator', thread: launch.thread }, message: told(orchestratorMessage(launch)) };
+  if (launch.pairing) return { role: { kind: 'pairing', thread: launch.thread }, message: told(resumed ? resumedMessage(launch) : pairingMessage({ ...launch, pairing: launch.pairing })) };
+  return { role: { kind: 'orchestrator', thread: launch.thread }, message: told(resumed ? resumedMessage(launch) : orchestratorMessage(launch)) };
 }
 
 // The first thing a coordinator Tricot starts reads, after its board.
