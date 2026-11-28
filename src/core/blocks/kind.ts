@@ -140,16 +140,18 @@ export type PartLike<A extends { kind: string } = PinAnchor> = {
 // here, and nothing else switches on the part's kind. What isn't said is the
 // default given beside it.
 export interface PartHooks<A extends PinAnchor = PinAnchor> {
-  // The part in a phrase: node "Retry", box 1, line 12 of a.ts. The quote if not said.
-  name?(pin: PartLike<A>): string;
+  // The part in a phrase: node "Retry", box 1, line 12 of a.ts, on its block
+  // when it is known (a sequence diagram's participant "User"). The quote if not said.
+  name?(pin: PartLike<A>, block?: Block): string;
   // The part as a prompt or a comment quotes it: the words in quotes,
   // a.ts:12 · “code”. If not said, its block's name · its phrase.
   quote?(pin: PartLike<A>): string;
   // What a task's detail or a question's context quotes of it, after
   // "Pinned from …:". The pin's quote if not said.
   detail?(pin: PartLike<A>): string;
-  // What its pin no longer finding it means: "object removed". "text changed" if not said.
-  lost?: string;
+  // What its pin no longer finding it means: "object removed", or as its block
+  // says when it is known (a sequence diagram's "participant removed"). "text changed" if not said.
+  lost?: string | ((block?: Block) => string);
   // Whether two of its anchors are the same part: a box is, whatever number
   // it was given. Anchors that are equal if not said.
   same?(a: A, b: A): boolean;
@@ -165,8 +167,8 @@ export interface PartHooks<A extends PinAnchor = PinAnchor> {
   // they are told to: "the line". Where they read the canvas, it reads with
   // what people said about it, wherever it was said.
   answeredOn?: string;
-  // What agents read after it to find it: " (id Retry)". Nothing if not said.
-  where?(pin: Omit<Pin, 'anchor'> & { anchor: A }): string;
+  // What agents read after it to find it, on its block when it is known: " (id Retry)". Nothing if not said.
+  where?(pin: Omit<Pin, 'anchor'> & { anchor: A }, block?: Block): string;
   // Said when a block isn't one that has it: "Spots are pinned on 3D scenes; …".
   missing?(block: Block): string;
 }

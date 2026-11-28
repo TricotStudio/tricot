@@ -276,10 +276,12 @@
 .block-diagram.is-pinnable g.edgeLabel {
   cursor: pointer;
 }
+/* An arrow's unseen twin, wide to click: a diagram's own rules for its lines
+   (a sequence diagram's `line`) would draw it thin. */
 .block-diagram .pin-hit {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 14px;
+  fill: none !important;
+  stroke: transparent !important;
+  stroke-width: 14px !important;
   pointer-events: stroke;
   cursor: pointer;
 }
@@ -308,6 +310,149 @@
   color: var(--pin-ink) !important;
 }
 .block-diagram g.label.pin-part.is-draft :is(.labelBkg, .edgeLabel, p) {
+  background: var(--pin-draft-bg) !important;
+  color: var(--open-ink) !important;
+}
+
+/* A sequence diagram's participants, each a box (or an actor's figure) at the
+   top and the same again at the foot, and its messages, a line and its text
+   (canvas/blocks/diagram/drawn/sequence.ts). */
+.block-diagram.is-pinnable :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom, .messageText) {
+  cursor: pointer;
+}
+.block-diagram.is-pinnable :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom):not(.pin-part):hover > :is(rect, circle, line),
+.block-diagram.is-pinnable [data-et='message']:not(.pin-part):has(+ .pin-hit:hover) {
+  stroke: color-mix(in srgb, var(--pin-draft) 75%, var(--border-strong)) !important;
+}
+.block-diagram :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom).pin-part > :is(rect, circle) {
+  fill: var(--pin-bg) !important;
+  stroke: var(--pin) !important;
+  stroke-width: 2px !important;
+}
+.block-diagram :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom).pin-part > line {
+  stroke: var(--pin) !important;
+  stroke-width: 2px !important;
+}
+.block-diagram :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom).pin-part.is-draft > :is(rect, circle) {
+  fill: var(--pin-draft-bg) !important;
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom).pin-part.is-draft > line {
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram [data-et='message'].pin-part {
+  stroke: var(--pin) !important;
+  stroke-width: 2.5px !important;
+}
+.block-diagram [data-et='message'].pin-part.is-draft {
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram text.messageText.pin-part {
+  fill: var(--pin-ink) !important;
+}
+.block-diagram text.messageText.pin-part.is-draft {
+  fill: var(--open-ink) !important;
+}
+
+/* A class diagram's classes and relations, drawn as a flowchart's nodes and
+   arrows are and marked by the same rules, with a relation's cardinalities
+   beside its label. Its notes, and a lollipop's ring, are no part: a click
+   goes through them (canvas/blocks/diagram/drawn/classDiagram.ts). */
+.block-diagram.is-pinnable svg.classDiagram g.edgeTerminals {
+  cursor: pointer;
+}
+.block-diagram.is-pinnable svg.classDiagram g.node:not([id*='classId-']) {
+  pointer-events: none;
+}
+.block-diagram g.edgeTerminals.pin-part :is(.edgeLabel, p) {
+  background: var(--pin-bg) !important;
+  color: var(--pin-ink) !important;
+}
+.block-diagram g.edgeTerminals.pin-part.is-draft :is(.edgeLabel, p) {
+  background: var(--pin-draft-bg) !important;
+  color: var(--open-ink) !important;
+}
+
+/* A state diagram's composite states, each a cluster round its own states
+   (canvas/blocks/diagram/drawn/state.ts); its states, start and end markers
+   and transitions are drawn as a flowchart's nodes and arrows, and marked
+   so. A note is no part: a click goes through it. */
+.block-diagram.is-pinnable g.statediagram-cluster[data-id] {
+  cursor: pointer;
+}
+.block-diagram.is-pinnable g.statediagram-cluster[data-id]:not(.pin-part):hover rect {
+  stroke: color-mix(in srgb, var(--pin-draft) 75%, var(--border-strong)) !important;
+}
+.block-diagram.is-pinnable g.node.statediagram-note {
+  pointer-events: none;
+}
+.block-diagram g.statediagram-cluster.pin-part rect {
+  stroke: var(--pin) !important;
+  stroke-width: 2px !important;
+}
+.block-diagram g.statediagram-cluster.pin-part rect.outer {
+  fill: var(--pin-bg) !important;
+}
+.block-diagram g.statediagram-cluster.pin-part.is-draft rect {
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram g.statediagram-cluster.pin-part.is-draft rect.outer {
+  fill: var(--pin-draft-bg) !important;
+}
+
+/* The labelled pieces of the other kinds (canvas/blocks/diagram/drawn/pieces.ts),
+   each marked data-piece: its text, the group holding it with its shape (a
+   mindmap's node, a kanban card), or a shape drawn apart from it (a pie's
+   slice, a Gantt task's bar). A text alone gets a halo. Only pieces take a
+   click, by what they paint: a frame drawn over others (a C4 boundary) or a
+   flow over a name (a Sankey link) lets it through. */
+.block-diagram svg:has([data-piece]) * {
+  pointer-events: none;
+}
+.block-diagram svg:has([data-piece]) :is([data-piece], [data-piece] *) {
+  pointer-events: visiblePainted;
+}
+.block-diagram.is-pinnable [data-piece] {
+  cursor: pointer;
+}
+.block-diagram.is-pinnable [data-piece]:not(.pin-part):hover :is(rect, polygon, circle, ellipse, path),
+.block-diagram.is-pinnable :is(rect, polygon, circle, ellipse, path)[data-piece]:not(.pin-part):hover {
+  stroke: color-mix(in srgb, var(--pin-draft) 75%, var(--border-strong)) !important;
+}
+.block-diagram.is-pinnable :is(text[data-piece]:not(.pin-part), [data-piece]:not(.pin-part) text):hover {
+  text-decoration: underline;
+}
+.block-diagram :is([data-piece].pin-part :is(rect, polygon, circle, ellipse, path), :is(rect, polygon, circle, ellipse, path)[data-piece].pin-part) {
+  fill: var(--pin-bg) !important;
+  stroke: var(--pin) !important;
+  stroke-width: 2px !important;
+}
+.block-diagram :is([data-piece].pin-part line, line[data-piece].pin-part) {
+  stroke: var(--pin) !important;
+}
+.block-diagram :is([data-piece].pin-part text, text[data-piece].pin-part) {
+  fill: var(--pin-ink) !important;
+  stroke: var(--pin-bg) !important;
+  stroke-width: 4px !important;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+.block-diagram :is([data-piece].pin-part foreignObject, foreignObject[data-piece].pin-part) :is(div, span, p) {
+  background: var(--pin-bg) !important;
+  color: var(--pin-ink) !important;
+}
+.block-diagram :is([data-piece].pin-part.is-draft :is(rect, polygon, circle, ellipse, path), :is(rect, polygon, circle, ellipse, path)[data-piece].pin-part.is-draft) {
+  fill: var(--pin-draft-bg) !important;
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram :is([data-piece].pin-part.is-draft line, line[data-piece].pin-part.is-draft) {
+  stroke: var(--pin-draft) !important;
+}
+.block-diagram :is([data-piece].pin-part.is-draft text, text[data-piece].pin-part.is-draft) {
+  fill: var(--open-ink) !important;
+  stroke: var(--pin-draft-bg) !important;
+}
+.block-diagram :is([data-piece].pin-part.is-draft foreignObject, foreignObject[data-piece].pin-part.is-draft) :is(div, span, p) {
   background: var(--pin-draft-bg) !important;
   color: var(--open-ink) !important;
 }

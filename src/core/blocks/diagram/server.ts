@@ -4,7 +4,8 @@
 import { z } from 'zod';
 import type { DiagramTypes } from './index';
 import { arrowQuote } from './quote';
-import { readFlowchart, type Flowchart } from './flowchart';
+import { readFlowchart } from './flowchart';
+import { pinnedKinds, readDiagram, type DiagramGraph } from './readers';
 import type { AgentHalf, BlockOf, PartWords, PeopleHalf, ServerHalf } from '../kind';
 import { blockNamed, partAsksDigest, type AskWords } from '../asks';
 import { pinWhere } from '../../digest';
@@ -38,20 +39,21 @@ function diagramText(source: string): string {
   return [...new Set(parts)].join(' · ');
 }
 
-// The diagram's flowchart, for pinning its nodes and arrows.
-function flowchartOf(block: DiagramBlock): Flowchart {
-  const chart = readFlowchart(block.source);
-  if (!chart) throw new BoardError(`Nodes and arrows are pinned in flowcharts, and ${blockLabel(block)} isn't one. Pin the whole diagram instead.`);
-  return chart;
+// The diagram's nodes and arrows, as its kind calls them (readers.ts), for pinning them.
+function graphOf(block: DiagramBlock): DiagramGraph {
+  const graph = readDiagram(block.source);
+  if (!graph) throw new BoardError(`Parts are pinned in ${pinnedKinds}, and ${blockLabel(block)} isn't one. Pin the whole diagram instead.`);
+  return graph;
 }
 
 const sameText = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 type DiagramBlock = BlockOf<DiagramTypes>;
 
-// A flowchart's nodes and arrows take requests (core/parts.ts): people point
-// at a box, an arrow or its label in its full view and ask an agent to change
-// it, which it does in the diagram's Mermaid source.
+// A diagram's nodes and arrows take requests (core/parts.ts), whatever its
+// kind calls them (readers.ts): a participant and a message, a class and a
+// relation… People point at a box, an arrow or its label in its full view and
+// ask an agent to change it, which it does in the diagram's Mermaid source.
 const part: PartWords = {
   kind: 'diagram',
   anchors: ['node', 'arrow'],
@@ -93,7 +95,7 @@ export const agent: AgentHalf<DiagramTypes> = {
       throw new BoardError('Pin a diagram part with node (and to_node for an arrow) only.');
     }
     // A node by its id, or by its text as it reads.
-    const chart = block.type === 'diagram' ? readFlowchart(block.source) : null;
+    const chart = block.type === 'diagram' ? readDiagram(block.source) : null;
     const nodeId = (name: string) =>
       chart?.nodes.find((n) => n.id === name.trim())?.id ?? chart?.nodes.find((n) => sameText(n.label, name))?.id ?? name.trim();
     if (args.to_node === undefined) return { kind: 'node', nodeId: nodeId(args.node as string) };
@@ -104,7 +106,8 @@ export const agent: AgentHalf<DiagramTypes> = {
 export const people: PeopleHalf = {
   create: z.object({ type: z.literal('diagram'), source: z.string() }),
   patch: { source: z.string().optional() },
-  // A flowchart's node by its id, or its arrow by the nodes it joins (the n-th between them).
+  // A node by its id, or an arrow by the nodes it joins (the n-th between them), whatever the diagram's kind calls them
+  // (readers.ts).
   parts: {
     node: z.object({ kind: z.literal('node'), nodeId: z.string() }),
     arrow: z.object({ kind: z.literal('arrow'), from: z.string(), to: z.string(), n: z.number().int().min(0).optional() }),
@@ -135,16 +138,18 @@ export const server: ServerHalf<DiagramTypes> = {
 
   anchor(block, part) {
     if (part.kind === 'node') {
-      const chart = flowchartOf(block);
+      const chart = graphOf(block);
+      const { node: word, nodes: words } = chart.reader.words;
       const node = chart.nodes.find((n) => n.id === part.nodeId);
       if (!node) {
         const names = listNames(chart.nodes.slice(0, 20).map((n) => n.id));
-        throw new BoardError(`${blockLabel(block)} has no node "${clip(part.nodeId, 60)}".${names ? ` Its nodes: ${names}.` : ''}`);
+        throw new BoardError(`${blockLabel(block)} has no ${word} "${clip(part.nodeId, 60)}".${names ? ` Its ${words}: ${names}.` : ''}`);
       }
       return { anchor: { kind: 'node', nodeId: node.id, label: node.label }, quote: clip(node.label, LIMITS.title) };
     }
     if (part.kind !== 'arrow') return undefined;
-    const chart = flowchartOf(block);
+    const chart = graphOf(block);
+    const { arrow: word, arrows: words } = chart.reader.words;
     const arrows = chart.arrows.filter((a) => a.from === part.from && a.to === part.to);
     const n = part.n ?? 0;
     const arrow = Number.isInteger(n) ? arrows[n] : undefined;
@@ -152,8 +157,8 @@ export const server: ServerHalf<DiagramTypes> = {
       const ends = `from "${clip(part.from, 40)}" to "${clip(part.to, 40)}"`;
       throw new BoardError(
         arrows.length
-          ? `${blockLabel(block)} has ${arrows.length} arrow${arrows.length === 1 ? '' : 's'} ${ends}, so arrow ${n + 1} isn't there.`
-          : `${blockLabel(block)} has no arrow ${ends}.`,
+          ? `${blockLabel(block)} has ${arrows.length} ${arrows.length === 1 ? word : words} ${ends}, so ${word} ${n + 1} isn't there.`
+          : `${blockLabel(block)} has no ${word} ${ends}.`,
       );
     }
     const anchor: PinAnchor = { kind: 'arrow', from: arrow.from, to: arrow.to, n: arrow.n, ...(arrow.label ? { label: arrow.label } : {}) };

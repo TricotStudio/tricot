@@ -1,9 +1,13 @@
-// Diagram blocks: Mermaid source drawn as a diagram; a flowchart's nodes and
-// arrows can be pinned. Double-click edits the source; Open shows it full
-// screen, to pair with an agent on its parts (diagramView.tsx).
+// Diagram blocks: Mermaid source drawn as a diagram; the boxes and arrows of
+// the kinds read (core/blocks/diagram/readers.ts: a flowchart's nodes and
+// arrows, a sequence diagram's participants and messages, a class diagram's,
+// a state diagram's, an entity relationship diagram's) can be pinned, and of
+// every other kind, the labelled pieces Mermaid draws (a mindmap's nodes).
+// Double-click edits the source; Open shows it full screen, to pair with an
+// agent on its parts (diagramView.tsx).
 
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { readFlowchart } from '../../../../core/blocks/diagram/flowchart';
+import { readDiagram } from '../../../../core/blocks/diagram/readers';
 import type { Block } from '../../../../core/types';
 import { useCanvas } from '../../context';
 import { useClickPick, type PlacedPin } from '../../pins';
@@ -11,41 +15,44 @@ import { dragged, selecting, useLongEdit } from '../interaction';
 import type { PreviewProps, ToolsProps, WebBlockKind } from '../kind';
 import { DiagramView } from './diagramView';
 import { Mermaid } from './Mermaid';
-import { diagramPart, drawnParts, useArrowTwins } from './parts';
+import { a, clickedPart, drawnParts, useArrowTwins, type DrawnPart } from './parts';
 
-// Clicking a flowchart's node or arrow pins it: amber while its prompt is
-// open, blue once linked, with its chip in the strip under the diagram.
-// Double-clicking still edits the source.
+// Clicking a node or an arrow (a participant or a message, a class or a
+// relation…, or of another kind a labelled piece) pins it: amber while its
+// prompt is open, blue once linked, with its chip in the strip under the
+// diagram. Double-clicking still edits the source.
 function DiagramBody({ block, placed }: { block: Extract<Block, { type: 'diagram' }>; placed: PlacedPin[] }) {
   const canvas = useCanvas();
   const edit = useLongEdit(block.id);
-  const chart = useMemo(() => readFlowchart(block.source), [block.source]);
+  const chart = useMemo(() => readDiagram(block.source), [block.source]);
   const [svg, setSvg] = useState<SVGSVGElement | null>(null);
   const pick = useClickPick();
   const pressedAt = useRef({ x: 0, y: 0 });
   const pinnable = Boolean(chart) && !canvas.readOnly;
   const draft = canvas.draft?.blockId === block.id ? canvas.draft.part : null;
 
-  useArrowTwins(svg, pinnable);
+  useArrowTwins(svg, pinnable ? chart : null);
 
   // The part being pinned in amber, linked parts in blue.
   useLayoutEffect(() => {
     if (!svg || !chart) return;
     const marked: Element[] = [];
-    const mark = (elements: Element[], state: 'draft' | 'linked') => {
-      for (const element of elements) {
+    // The prompt goes by the pieces a part's kind says (`by`): a participant's box at the top.
+    const mark = (part: DrawnPart, state: 'draft' | 'linked') => {
+      const { all, by } = drawnParts(svg, chart, part);
+      for (const element of all) {
         element.classList.add('pin-part', `is-${state}`);
-        if (state === 'draft') element.setAttribute('data-pin-draft', '');
+        if (state === 'draft' && by.includes(element)) element.setAttribute('data-pin-draft', '');
         marked.push(element);
       }
     };
     for (const { place } of placed) {
-      if (place?.kind === 'node' || place?.kind === 'arrow') mark(drawnParts(svg, place), 'linked');
+      if (place?.kind === 'node' || place?.kind === 'arrow') mark(place, 'linked');
     }
-    if (draft?.kind === 'node') mark(drawnParts(svg, draft), 'draft');
+    if (draft?.kind === 'node') mark(draft, 'draft');
     if (draft?.kind === 'arrow') {
       const arrow = chart.arrows.find((a) => a.from === draft.from && a.to === draft.to && a.n === draft.n);
-      if (arrow) mark(drawnParts(svg, { arrowId: arrow.id }), 'draft');
+      if (arrow) mark({ arrowId: arrow.id }, 'draft');
     }
     return () => {
       for (const element of marked) {
@@ -57,7 +64,7 @@ function DiagramBody({ block, placed }: { block: Extract<Block, { type: 'diagram
 
   const onClick = (event: MouseEvent) => {
     if (!pinnable || !chart || selecting(event)) return;
-    const part = diagramPart(chart, block.id, event.target as Element);
+    const part = clickedPart(chart, block.id, event, true);
     if (!part) return;
     event.stopPropagation();
     if (event.detail !== 1 || dragged(event, pressedAt.current)) return;
@@ -92,7 +99,7 @@ function DiagramBody({ block, placed }: { block: Extract<Block, { type: 'diagram
       onClick={onClick}
       onDoubleClickCapture={pick.cancel}
       onDoubleClick={edit.start}
-      title={pinnable ? 'Click a node or an arrow to pin it. Double-click to edit the Mermaid source' : 'Double-click to edit the Mermaid source'}
+      title={pinnable && chart ? `Click ${a(chart.reader.words.node)}${chart.reader.byText ? '' : ` or ${a(chart.reader.words.arrow)}`} to pin it. Double-click to edit the Mermaid source` : 'Double-click to edit the Mermaid source'}
     >
       <Mermaid source={block.source} onRender={setSvg} />
     </div>

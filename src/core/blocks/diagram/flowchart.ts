@@ -1,7 +1,10 @@
 // The nodes and arrows of a Mermaid flowchart, read from its source so that
 // pins on them can be checked and found again without drawing it. It reads
 // the common syntax, not all of it: a part it can't read can't be pinned, and
-// the diagram still renders as Mermaid draws it.
+// the diagram still renders as Mermaid draws it. It is the first kind of
+// diagram whose parts are read (readers.ts): the others give the same shape.
+
+import type { DiagramReader } from './readers';
 
 export interface FlowNode {
   id: string; // as the source names it: Retry in Retry(Retry it)
@@ -49,7 +52,7 @@ const TEXT_ARROW = /^[<ox]?(?:--|==|-\.)[ \t]*([^-=.>\s].*?)[ \t]*(?:-{2,}[>ox]|
 const ENTITIES: Record<string, string> = { quot: '"', amp: '&', lt: '<', gt: '>', nbsp: ' ' };
 
 // A node's or arrow's text as it reads: no quotes, tags or entity codes.
-function cleanLabel(raw: string): string {
+export function cleanLabel(raw: string): string {
   let text = raw.trim();
   for (const mark of ['"', '`']) {
     if (text.length >= 2 && text.startsWith(mark) && text.endsWith(mark)) text = text.slice(1, -1);
@@ -206,3 +209,11 @@ export function readFlowchart(source: string): Flowchart | null {
   const nodes = [...labels].filter(([id]) => !clusters.has(id) && !arrowIds.has(id)).map(([id, label]) => ({ id, label }));
   return { nodes, arrows };
 }
+
+export const flowchart: DiagramReader = {
+  kind: 'flowchart',
+  named: 'flowchart',
+  words: { node: 'node', nodes: 'nodes', arrow: 'arrow', arrows: 'arrows', box: 'box', boxes: 'boxes' },
+  link: '-->',
+  read: readFlowchart,
+};

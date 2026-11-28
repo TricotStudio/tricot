@@ -212,7 +212,7 @@ function wholeWord(block?: Block): string {
 // Takes a pin, or a part about to be pinned.
 export function pinPart(pin: PartLike, block?: Block): string {
   if (pin.anchor.kind === 'block') return `the whole ${wholeWord(block)}`;
-  return partHooks(pin.anchor.kind, block)?.name?.(pin) ?? pin.quote;
+  return partHooks(pin.anchor.kind, block)?.name?.(pin, block) ?? pin.quote;
 }
 
 // A part as a prompt or a comment quotes it: the words in quotes, or the part
@@ -229,7 +229,8 @@ export function partQuote(pin: PartLike, block?: Block): string {
 
 // What a pin no longer finding its part means: "cells changed".
 export function pinLost(pin: Pin, block?: Block): string {
-  return partHooks(pin.anchor.kind, block)?.lost ?? 'text changed';
+  const lost = partHooks(pin.anchor.kind, block)?.lost;
+  return (typeof lost === 'function' ? lost(block) : lost) ?? 'text changed';
 }
 
 // Whether two anchors pin the same part: as its kind says (a box or a spot

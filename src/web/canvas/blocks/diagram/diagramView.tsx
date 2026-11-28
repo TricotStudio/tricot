@@ -1,11 +1,16 @@
 // A diagram's full view, in the pairing shell (canvas/pairing/piece.tsx):
 // the diagram drawn large on the paper, its pinned nodes and arrows in blue,
 // with their markers under it. Viewed on your own, or paired with an agent:
-// click a box, an arrow or an arrow's label to ask the agent to change it, or
-// to leave a note. The agent changes the diagram's Mermaid source; the view
-// draws it anew, and each pin stays on its node (by its id, or failing that
-// its text) or its arrow (by the nodes it joins). Edit, or a double-click
-// while viewing, edits its source by hand, drawn beside it as it is typed.
+// click a box, an arrow or an arrow's label (whatever the diagram's kind calls
+// them: a participant or a message, a class or a relation, a state or a
+// transition, an entity or a relationship, and in any other kind a labelled
+// piece, a mindmap's node or a Gantt chart's task; core/blocks/diagram/readers.ts) to
+// ask the agent to change it, or to leave a note; a box that is a link (a
+// click … href line) is picked, not followed. The agent changes the diagram's
+// Mermaid source; the view draws it anew, and each pin stays on its node (by
+// its id, or failing that its text) or its arrow (by the nodes it joins).
+// Edit, or a double-click while viewing, edits its source by hand, drawn
+// beside it as it is typed.
 //
 // It zooms as an image does (canvas/pairing/zoom.tsx): the wheel or a pinch
 // round the pointer, Fit, 100% and 200% in the bar, and dragging pans, while
@@ -13,13 +18,13 @@
 // its size on screen, so it stays sharp at every zoom.
 
 import { useCallback, useLayoutEffect, useMemo, useState, type MouseEvent } from 'react';
-import { readFlowchart } from '../../../../core/blocks/diagram/flowchart';
+import { pinnedKinds, readDiagram, type DiagramGraph } from '../../../../core/blocks/diagram/readers';
 import type { Block } from '../../../../core/types';
 import { Icon } from '../../../shared/components';
 import { DRAFT_ANCHOR, PieceView, type PieceBodyProps } from '../../pairing/piece';
 import { usePanDrag, useZoom, ZOOM_KEYS, ZoomControls, ZoomHint, type Size, type Zoom } from '../../pairing/zoom';
 import type { OverlayProps } from '../kind';
-import { diagramPart, drawnParts, useArrowTwins } from './parts';
+import { clickedPart, drawnParts, pointingWords, useArrowTwins, type DrawnPart } from './parts';
 import { Mermaid } from './Mermaid';
 import './diagramView.css';
 
@@ -38,12 +43,22 @@ const LABELS = {
 
 type Sizing = { zoom: Zoom; setNatural(size: Size | null): void };
 
+const capital = (text: string) => `${text[0].toUpperCase()}${text.slice(1)}`;
+
+// What the bar says a diagram is, by its kind: Flowchart · 4 boxes, 3 arrows; Sequence diagram · 3 participants, 5 messages;
+// and of a kind read by its pieces, as it was read: Mindmap · 7 pieces.
+function described({ reader, named, nodes, arrows }: DiagramGraph): string {
+  const { words } = reader;
+  const parts = `${nodes.length} ${words.boxes ?? words.nodes}`;
+  return `${capital(named ?? reader.named)} · ${reader.byText ? parts : `${parts}, ${arrows.length} ${words.arrows}`}`;
+}
+
 function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, sizing }: PieceBodyProps<DiagramBlock> & { sizing: Sizing }) {
   const { zoom, setNatural } = sizing;
   const pan = usePanDrag(zoom);
-  const chart = useMemo(() => readFlowchart(block.source), [block.source]);
+  const chart = useMemo(() => readDiagram(block.source), [block.source]);
   const [svg, setSvg] = useState<SVGSVGElement | null>(null);
-  useArrowTwins(svg, Boolean(chart));
+  useArrowTwins(svg, chart);
 
   // Its size as Mermaid draws it, for the zoom; a diagram that can't be drawn has none.
   const onRender = useCallback(
@@ -60,24 +75,28 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, si
   useLayoutEffect(() => {
     if (!svg || !chart) return;
     const marked: Element[] = [];
-    const mark = (elements: Element[], state: 'draft' | 'linked', id: string, opened = false) => {
-      for (const element of elements) {
+    // The popover goes by the pieces a part's kind says (`by`): a participant's box at the top.
+    const mark = (part: DrawnPart, state: 'draft' | 'linked', id: string, opened = false) => {
+      const { all, by } = drawnParts(svg, chart, part);
+      for (const element of all) {
         element.classList.add('pin-part', `is-${state}`);
         if (opened) element.classList.add('is-open');
         if (state === 'draft') element.setAttribute('data-pin-draft', '');
-        const ids = element.getAttribute('data-pair-anchor');
-        element.setAttribute('data-pair-anchor', ids ? `${ids} ${id}` : id);
+        if (by.includes(element)) {
+          const ids = element.getAttribute('data-pair-anchor');
+          element.setAttribute('data-pair-anchor', ids ? `${ids} ${id}` : id);
+        }
         marked.push(element);
       }
     };
     for (const { pin, place } of placed) {
-      if (place?.kind === 'node' || place?.kind === 'arrow') mark(drawnParts(svg, place), 'linked', pin.id, pin.id === open);
+      if (place?.kind === 'node' || place?.kind === 'arrow') mark(place, 'linked', pin.id, pin.id === open);
     }
     const draft = chosen?.blockId === block.id ? chosen.part : null;
-    if (draft?.kind === 'node') mark(drawnParts(svg, draft), 'draft', DRAFT_ANCHOR);
+    if (draft?.kind === 'node') mark(draft, 'draft', DRAFT_ANCHOR);
     if (draft?.kind === 'arrow') {
       const arrow = chart.arrows.find((a) => a.from === draft.from && a.to === draft.to && a.n === (draft.n ?? 0));
-      if (arrow) mark(drawnParts(svg, { arrowId: arrow.id }), 'draft', DRAFT_ANCHOR);
+      if (arrow) mark({ arrowId: arrow.id }, 'draft', DRAFT_ANCHOR);
     }
     return () => {
       for (const element of marked) {
@@ -91,7 +110,7 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, si
   // Pairing, a click picks the node or arrow under it; reading, it opens what was said about it.
   const onClick = (event: MouseEvent) => {
     if (!chart) return;
-    const part = diagramPart(chart, block.id, event.target as Element);
+    const part = clickedPart(chart, block.id, event, pointing);
     if (!part) return;
     if (pointing) return pick(part);
     const on = placed.find(({ place }) => {
@@ -118,12 +137,12 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, si
           className={`zoom-sheet block-diagram diagram-full${zoom.sheet ? '' : ' is-unsized'}${pointing && chart ? ' is-pinnable' : ''}${placed.length ? ' has-pins' : ''}`}
           style={zoom.sheet ?? undefined}
           onClick={onClick}
-          title={pointing ? (chart ? 'Click a box, an arrow or its label to ask about it' : 'Only a flowchart’s boxes and arrows can be pointed at') : undefined}
+          title={pointing ? (chart ? `${capital(pointingWords(chart).point)} to ask about it` : `Only the boxes and arrows of ${pinnedKinds} can be pointed at`) : undefined}
         >
           <Mermaid source={block.source} onRender={onRender} />
         </div>
         {zoom.sheet && (
-          <ZoomHint zoom={zoom}>{pointing ? 'Click a box or an arrow to ask about it · drag to pan · scroll to zoom' : 'Scroll or pinch to zoom · drag to pan'}</ZoomHint>
+          <ZoomHint zoom={zoom}>{pointing ? `Click ${pointingWords(chart).aim} to ask about it · drag to pan · scroll to zoom` : 'Scroll or pinch to zoom · drag to pan'}</ZoomHint>
         )}
       </div>
     </div>
@@ -131,9 +150,10 @@ function DiagramParts({ block, placed, pointing, chosen, open, pick, openPin, si
 }
 
 export function DiagramView({ block, name, version, pinId, pinAsked, paired, onClose }: OverlayProps<DiagramBlock>) {
-  const chart = readFlowchart(block.source);
+  const chart = readDiagram(block.source);
   const kind = block.source.trim().split(/\s/)[0] || 'Mermaid';
-  const from = chart ? `Flowchart · ${chart.nodes.length} boxes, ${chart.arrows.length} arrows` : `Mermaid ${kind}`;
+  const from = chart ? described(chart) : `Mermaid ${kind}`;
+  const { point, example } = pointingWords(chart);
   const [natural, setNaturalSize] = useState<Size | null>(null);
   // The same size again keeps the zoom as it is.
   const setNatural = useCallback((size: Size | null) => setNaturalSize((was) => (was && size && was.width === size.width && was.height === size.height ? was : size)), []);
@@ -156,9 +176,9 @@ export function DiagramView({ block, name, version, pinId, pinAsked, paired, onC
       from={from}
       browse={{ label: 'View', hint: 'Look at it on your own, zooming and panning; click a marked part to see what was said about it' }}
       it="the diagram"
-      point="click a box, an arrow or its label"
+      point={point}
       does="changes the diagram's source"
-      example="call it Retry later, say"
+      example={example}
       controls={natural ? <ZoomControls zoom={zoom} labels={LABELS} /> : undefined}
       body={(props) => <DiagramParts {...props} sizing={sizing} />}
       edit={{

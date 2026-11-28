@@ -7,6 +7,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { placePin } from '../src/core/pins';
 import { Store } from '../src/core/store';
 import { createApp } from '../src/server/app';
 import { letIn, type TestSeat } from './seatHelper';
@@ -263,6 +264,248 @@ describe('MCP + REST end to end', () => {
     const old = board.pages[0].canvas.pins.find((p: { id: string }) => p.id === asked.id);
     assert.deepEqual([old.quote, old.discussion.thread.length, old.discussion.resolved.by.name], ['let attempt = 0;', 2, 'Sam']);
     assert.equal((await comment('And the wait between?')).json.pin.id, fresh.json.pin.id, 'the new pin finds its line: said again, it joins');
+  });
+
+  it("pins a sequence diagram's participants and messages as a flowchart's nodes and arrows, which agents read in its words and which find their part again", async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Sign-in' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Sign-in flow' }));
+    const source = [
+      'sequenceDiagram',
+      '  autonumber',
+      '  actor U as User',
+      '  participant S as Server',
+      '  U->>+S: Sign in',
+      '  Note over U,S: Over TLS',
+      '  alt known',
+      '    S-->>-U: 200',
+      '  else refused',
+      '    S--xU: 403',
+      '  end',
+      '  loop every minute',
+      '    U-)S: heartbeat',
+      '  end',
+      '  DB->>S: rows',
+    ].join('\n');
+    const diagram = idOf(await callText('add_block', { page_id: pageId, type: 'diagram', title: 'Sign in', source }));
+    const ask = (part: Record<string, unknown>, body: string) => post(`/canvas/blocks/${diagram}/pins/comment`, { actor: 'Sam', part, body, ask: true });
+
+    // A participant by its id, quoted by the name it is shown by; a message by its ends and which of theirs, quoted with what it says.
+    const server = await ask({ kind: 'node', nodeId: 'S' }, 'Call it the API');
+    const refused = await ask({ kind: 'arrow', from: 'S', to: 'U', n: 1 }, 'Say 401');
+    assert.deepEqual([server.status, server.json.pin.quote, server.json.pin.anchor], [201, 'Server', { kind: 'node', nodeId: 'S', label: 'Server' }]);
+    assert.deepEqual([refused.status, refused.json.pin.quote, refused.json.pin.anchor], [201, 'Server → User: 403', { kind: 'arrow', from: 'S', to: 'U', n: 1, label: '403' }]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned participant "Server" \(id S\)[^\n]*\n[^\n]*\n {2}pinned message "Server → User: 403" \(S ->> U, text "403", occurrence 2\)/);
+    const missing = await ask({ kind: 'node', nodeId: 'Gateway' }, 'What is this?');
+    assert.deepEqual([missing.status, missing.json.error], [400, 'diagram "Sign in" has no participant "Gateway". Its participants: U, S and DB.']);
+
+    // The agent renames Server and rewords the refusal: each pin finds its part. With Server and its messages gone, they let go.
+    const placed = async () => {
+      const canvas = (await (await fetch(`${base}/api/boards/${boardId}`)).json()).pages[0].canvas;
+      const block = canvas.blocks.find((b: { id: string }) => b.id === diagram);
+      return [server.json.pin.id, refused.json.pin.id].map((id: string) => placePin(block, canvas.pins.find((p: { id: string }) => p.id === id)));
+    };
+    await callText('update_block', { block_id: diagram, rev: 1, source: source.replace('S as Server', 'S as API').replace(': 403', ': 401') });
+    assert.deepEqual(await placed(), [
+      { kind: 'node', nodeId: 'S' },
+      { kind: 'arrow', arrowId: 'M_S_U_1' },
+    ]);
+    await callText('update_block', { block_id: diagram, rev: 2, source: 'sequenceDiagram\n  actor U as User\n  participant G as Gateway\n  U->>G: Sign in\n  G-->>U: 200' });
+    assert.deepEqual(await placed(), [null, null]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned participant "Server" \(id S\) \(participant removed\)[^\n]*\n[^\n]*\n {2}pinned message "Server → User: 403" [^\n]* \(message removed\)/);
+  });
+
+  it("pins a class diagram's classes and relations as a flowchart's nodes and arrows, which agents read in its words and which find their part again", async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Shop' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Shop model' }));
+    const source = [
+      'classDiagram',
+      '  class Customer["Shopper"]',
+      '  class Order {',
+      '    +int total',
+      '    +place()',
+      '  }',
+      '  Order : +cancel()',
+      '  <<entity>> Order',
+      '  Customer "1" --> "*" Order : places',
+      '  Customer --> Order : returns',
+      '  Order *-- LineItem',
+      '  note for Order "One per checkout"',
+      '  namespace Billing {',
+      '    class Invoice~T~',
+      '  }',
+      '  Invoice <.. Order',
+    ].join('\n');
+    const diagram = idOf(await callText('add_block', { page_id: pageId, type: 'diagram', title: 'Shop', source }));
+    const ask = (part: Record<string, unknown>, body: string) => post(`/canvas/blocks/${diagram}/pins/comment`, { actor: 'Sam', part, body, ask: true });
+
+    // A class by its name in the source, quoted by the name it is shown by; a relation by its classes in the source's
+    // order and which of theirs, quoted with its label. Members, annotations, notes and namespaces are none of them.
+    const customer = await ask({ kind: 'node', nodeId: 'Customer' }, 'Call it Client');
+    const returns = await ask({ kind: 'arrow', from: 'Customer', to: 'Order', n: 1 }, 'Make it a dependency');
+    assert.deepEqual([customer.status, customer.json.pin.quote, customer.json.pin.anchor], [201, 'Shopper', { kind: 'node', nodeId: 'Customer', label: 'Shopper' }]);
+    assert.deepEqual(
+      [returns.status, returns.json.pin.quote, returns.json.pin.anchor],
+      [201, 'Shopper → Order: returns', { kind: 'arrow', from: 'Customer', to: 'Order', n: 1, label: 'returns' }],
+    );
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned class "Shopper" \(id Customer\)[^\n]*\n[^\n]*\n {2}pinned relation "Shopper → Order: returns" \(Customer -- Order, text "returns", occurrence 2\)/);
+    const missing = await ask({ kind: 'node', nodeId: 'Billing' }, 'What is this?');
+    assert.deepEqual([missing.status, missing.json.error], [400, 'diagram "Shop" has no class "Billing". Its classes: Customer, Order, LineItem and Invoice.']);
+
+    // The agent renames Shopper and adds a relation before the one pinned: each pin finds its part, the relation by its
+    // label. With Customer gone, they let go.
+    const placed = async () => {
+      const canvas = (await (await fetch(`${base}/api/boards/${boardId}`)).json()).pages[0].canvas;
+      const block = canvas.blocks.find((b: { id: string }) => b.id === diagram);
+      return [customer.json.pin.id, returns.json.pin.id].map((id: string) => placePin(block, canvas.pins.find((p: { id: string }) => p.id === id)));
+    };
+    await callText('update_block', { block_id: diagram, rev: 1, source: source.replace('Shopper', 'Buyer').replace('  Customer "1"', '  Customer --> Order : browses\n  Customer "1"') });
+    assert.deepEqual(await placed(), [
+      { kind: 'node', nodeId: 'Customer' },
+      { kind: 'arrow', arrowId: 'id_Customer_Order_3' },
+    ]);
+    await callText('update_block', { block_id: diagram, rev: 2, source: 'classDiagram\n  class Order\n  Order *-- LineItem' });
+    assert.deepEqual(await placed(), [null, null]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned class "Shopper" \(id Customer\) \(class removed\)[^\n]*\n[^\n]*\n {2}pinned relation "Shopper → Order: returns" [^\n]* \(relation removed\)/);
+  });
+
+  it("pins a state diagram's states and transitions, its start and end markers by the composite they are in, which agents read in its words and which find their part again", async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Sign-in states' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Session' }));
+    const source = [
+      'stateDiagram-v2',
+      '  [*] --> Idle',
+      '  state "Waiting for input" as Waiting',
+      '  Idle --> Waiting : start',
+      '  Waiting --> Busy',
+      '  Waiting --> Busy : again',
+      '  note right of Waiting : a note',
+      '  state Busy {',
+      '    [*] --> Working',
+      '    Working --> [*]',
+      '  }',
+      '  state check <<choice>>',
+      '  Busy --> check',
+      '  check --> [*] : failed',
+    ].join('\n');
+    const diagram = idOf(await callText('add_block', { page_id: pageId, type: 'diagram', title: 'Session', source }));
+    const ask = (part: Record<string, unknown>, body: string) => post(`/canvas/blocks/${diagram}/pins/comment`, { actor: 'Sam', part, body, ask: true });
+
+    // A state by its id, quoted by the name it is shown by; a transition by its ends and which of theirs, quoted with what it says;
+    // a composite's [*] is a point of its own, named as Mermaid names it.
+    const waiting = await ask({ kind: 'node', nodeId: 'Waiting' }, 'Call it Ready');
+    const again = await ask({ kind: 'arrow', from: 'Waiting', to: 'Busy', n: 1 }, 'Say retry');
+    const enter = await ask({ kind: 'arrow', from: 'Busy_start', to: 'Working' }, 'Start by checking');
+    assert.deepEqual([waiting.status, waiting.json.pin.quote, waiting.json.pin.anchor], [201, 'Waiting for input', { kind: 'node', nodeId: 'Waiting', label: 'Waiting for input' }]);
+    assert.deepEqual([again.status, again.json.pin.quote, again.json.pin.anchor], [201, 'Waiting for input → Busy: again', { kind: 'arrow', from: 'Waiting', to: 'Busy', n: 1, label: 'again' }]);
+    assert.deepEqual([enter.status, enter.json.pin.quote], [201, 'start of Busy → Working']);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned state "Waiting for input" \(id Waiting\)[^\n]*\n[^\n]*\n {2}pinned transition "Waiting for input → Busy: again" \(Waiting --> Busy, text "again", occurrence 2\)/);
+    const missing = await ask({ kind: 'node', nodeId: 'Done' }, 'What is this?');
+    assert.deepEqual([missing.status, missing.json.error], [400, 'diagram "Session" has no state "Done". Its states: Idle, Waiting, Busy, Working, check, root_start, Busy_start, Busy_end and root_end.']);
+
+    // The agent renames Waiting, rewords the transition and adds one before them: each pin finds its part. With Waiting and Busy gone, they let go.
+    const placed = async () => {
+      const canvas = (await (await fetch(`${base}/api/boards/${boardId}`)).json()).pages[0].canvas;
+      const block = canvas.blocks.find((b: { id: string }) => b.id === diagram);
+      return [waiting, again, enter].map(({ json }) => placePin(block, canvas.pins.find((p: { id: string }) => p.id === json.pin.id)));
+    };
+    const edited = source.replace('Waiting for input', 'Ready').replace(': again', ': retry').replace('[*] --> Idle', '[*] --> Idle\n  Idle --> Idle : tick');
+    await callText('update_block', { block_id: diagram, rev: 1, source: edited });
+    assert.deepEqual(await placed(), [
+      { kind: 'node', nodeId: 'Waiting' },
+      { kind: 'arrow', arrowId: 'T_Waiting_Busy_1' },
+      { kind: 'arrow', arrowId: 'T_Busy_start_Working_0' },
+    ]);
+    await callText('update_block', { block_id: diagram, rev: 2, source: 'stateDiagram\n  [*] --> Idle\n  Idle --> Done\n  Done --> [*]' });
+    assert.deepEqual(await placed(), [null, null, null]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned state "Waiting for input" \(id Waiting\) \(state removed\)[^\n]*\n[^\n]*\n {2}pinned transition "Waiting for input → Busy: again" [^\n]* \(transition removed\)/);
+  });
+
+  it("pins an entity relationship diagram's entities and relationships as a flowchart's nodes and arrows, which agents read in its words and which find their part again", async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Shop' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Schema' }));
+    const source = [
+      'erDiagram',
+      '  CUSTOMER ||--o{ ORDER : places',
+      '  CUSTOMER {',
+      '    string name PK "shown on invoices {sic}"',
+      '  }',
+      '  p[Person] {',
+      '    string email',
+      '  }',
+      '  CUSTOMER |o--|| p : "is a"',
+      '  ORDER only one to zero or more INVOICE : billed',
+      '  ORDER ||..o{ INVOICE : "credit note"',
+      '  "Delivery Address" }o--|| CUSTOMER : ""',
+    ].join('\n');
+    const diagram = idOf(await callText('add_block', { page_id: pageId, type: 'diagram', title: 'Orders', source }));
+    const ask = (part: Record<string, unknown>, body: string) => post(`/canvas/blocks/${diagram}/pins/comment`, { actor: 'Sam', part, body, ask: true });
+
+    // An entity by its name, quoted by the alias it is shown by; a relationship by its ends and which of theirs, quoted with its label.
+    const person = await ask({ kind: 'node', nodeId: 'p' }, 'Call it Member');
+    const credit = await ask({ kind: 'arrow', from: 'ORDER', to: 'INVOICE', n: 1 }, 'Make it one to one');
+    assert.deepEqual([person.status, person.json.pin.quote, person.json.pin.anchor], [201, 'Person', { kind: 'node', nodeId: 'p', label: 'Person' }]);
+    assert.deepEqual([credit.status, credit.json.pin.quote, credit.json.pin.anchor], [201, 'ORDER → INVOICE: credit note', { kind: 'arrow', from: 'ORDER', to: 'INVOICE', n: 1, label: 'credit note' }]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned entity "Person" \(id p\)[^\n]*\n[^\n]*\n {2}pinned relationship "ORDER → INVOICE: credit note" \(ORDER -- INVOICE, text "credit note", occurrence 2\)/);
+    const missing = await ask({ kind: 'node', nodeId: 'SHIPMENT' }, 'What is this?');
+    assert.deepEqual([missing.status, missing.json.error], [400, 'diagram "Orders" has no entity "SHIPMENT". Its entities: CUSTOMER, ORDER, p, INVOICE and Delivery Address.']);
+
+    // The agent renames p and puts another relationship before the credit note: each pin finds its part, by its text. With both gone, they let go.
+    const placed = async () => {
+      const canvas = (await (await fetch(`${base}/api/boards/${boardId}`)).json()).pages[0].canvas;
+      const block = canvas.blocks.find((b: { id: string }) => b.id === diagram);
+      return [person.json.pin.id, credit.json.pin.id].map((id: string) => placePin(block, canvas.pins.find((p: { id: string }) => p.id === id)));
+    };
+    const renamed = source.replace('p[Person]', 'person[Person]').replace('|| p :', '|| person :').replace('  ORDER ||..o{', '  ORDER ||--|| INVOICE : "paid by"\n  ORDER ||..o{');
+    await callText('update_block', { block_id: diagram, rev: 1, source: renamed });
+    assert.deepEqual(await placed(), [
+      { kind: 'node', nodeId: 'person' },
+      { kind: 'arrow', arrowId: 'R_ORDER_INVOICE_2' },
+    ]);
+    await callText('update_block', { block_id: diagram, rev: 2, source: 'erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  INVOICE }o--|| ORDER : for' });
+    assert.deepEqual(await placed(), [null, null]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned entity "Person" \(id p\) \(entity removed\)[^\n]*\n[^\n]*\n {2}pinned relationship "ORDER → INVOICE: credit note" [^\n]* \(relationship removed\)/);
+  });
+
+  it('pins the labelled pieces of a kind no reader reads exactly, a mindmap\'s or a Gantt chart\'s, by their words, which find them again while the words stay', async () => {
+    const idOf = (text: string) => text.match(/\[(?:page )?id: ([^\]]+)\]/)![1];
+    const boardId = idOf(await callText('create_board', { title: 'Launch' }));
+    const pageId = idOf(await callText('add_page', { board_id: boardId, title: 'Launch plan' }));
+    const mindmap = ['mindmap', '  root((Launch plan))', '    Research', '      id1[Interview users]', '    Build', '      b2(Beta release)'].join('\n');
+    const gantt = ['gantt', '  title Launch schedule', '  dateFormat YYYY-MM-DD', '  section Design', '  Write the brief :a1, 2024-01-01, 7d', '  section Build', '  Build the API :after a1, 10d'].join('\n');
+    const map = idOf(await callText('add_block', { page_id: pageId, type: 'diagram', title: 'Plan', source: mindmap }));
+    const chart = idOf(await callText('add_block', { page_id: pageId, type: 'diagram', title: 'Schedule', source: gantt }));
+    const ask = (block: string, nodeId: string, body: string) => post(`/canvas/blocks/${block}/pins/comment`, { actor: 'Sam', part: { kind: 'node', nodeId }, body, ask: true });
+
+    // A piece by its text: a mindmap's node, a Gantt chart's task, kept as a node whose id is its words.
+    const beta = await ask(map, 'Beta release', 'Call it Preview');
+    const brief = await ask(chart, 'Write the brief', 'Two weeks, not one');
+    assert.deepEqual([beta.status, beta.json.pin.quote, beta.json.pin.anchor], [201, 'Beta release', { kind: 'node', nodeId: 'Beta release', label: 'Beta release' }]);
+    assert.deepEqual([brief.status, brief.json.pin.quote, brief.json.pin.anchor], [201, 'Write the brief', { kind: 'node', nodeId: 'Write the brief', label: 'Write the brief' }]);
+    // Agents read a piece by its words alone: it has no id of its own in the source.
+    assert.match(await callText('get_canvas', { page_id: pageId }), /\n {2}pinned piece "Beta release" → request to change the diagram,[^\n]*\n[^\n]*\n[\s\S]*\n {2}pinned piece "Write the brief" → /);
+    const missing = await ask(map, 'Launch party', 'What is this?');
+    assert.deepEqual([missing.status, missing.json.error], [400, 'diagram "Plan" has no piece "Launch party". Its pieces: Launch plan, Research, Interview users, Build and Beta release.']);
+
+    // The agent moves and reshapes Beta release and moves the brief's dates: each pin finds its piece by its words. Reworded, they let go.
+    const placed = async () => {
+      const canvas = (await (await fetch(`${base}/api/boards/${boardId}`)).json()).pages[0].canvas;
+      const pinned = (block: string, id: string) => placePin(canvas.blocks.find((b: { id: string }) => b.id === block), canvas.pins.find((p: { id: string }) => p.id === id));
+      return [pinned(map, beta.json.pin.id), pinned(chart, brief.json.pin.id)];
+    };
+    await callText('update_block', { block_id: map, rev: 1, source: mindmap.replace('    Build\n      b2(Beta release)', '      b9[Beta release]\n    Build') });
+    await callText('update_block', { block_id: chart, rev: 1, source: gantt.replace('section Design', 'section Plan').replace('2024-01-01, 7d', '2024-01-08, 14d') });
+    assert.deepEqual(await placed(), [
+      { kind: 'node', nodeId: 'Beta release' },
+      { kind: 'node', nodeId: 'Write the brief' },
+    ]);
+    await callText('update_block', { block_id: map, rev: 2, source: mindmap.replace('Beta release', 'Preview') });
+    await callText('update_block', { block_id: chart, rev: 2, source: gantt.replace('Write the brief', 'Draft the brief') });
+    assert.deepEqual(await placed(), [null, null]);
+    assert.match(await callText('get_canvas', { page_id: pageId }), /pinned piece "Beta release" \(piece removed\)[\s\S]*pinned piece "Write the brief" \(piece removed\)/);
   });
 
   it('ends an idle wait with a hint to call again', async () => {

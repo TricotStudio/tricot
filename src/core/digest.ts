@@ -132,7 +132,7 @@ export function boardDigest(board: Board, viewer?: string, now = Date.now(), sho
 // fractions of the image, a spot's point on a 3D scene, the ids the Mermaid
 // source gives a node or arrow, a line's text.
 export function pinWhere(pin: Pin, block?: Block): string {
-  return partHooks(pin.anchor.kind, block)?.where?.(pin) ?? '';
+  return partHooks(pin.anchor.kind, block)?.where?.(pin, block) ?? '';
 }
 
 // Whether a pin links work: a card, which a server that offers no cards tells nothing of.

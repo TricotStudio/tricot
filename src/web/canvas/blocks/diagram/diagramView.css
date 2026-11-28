@@ -33,3 +33,19 @@
 .diagram-full path.pin-part.is-open {
   stroke-width: 3.5px !important;
 }
+.diagram-full :is([data-et='participant'], g:has(> .actor-bottom), g.actor-bottom).pin-part.is-open > :is(rect, circle, line) {
+  stroke-width: 3px !important;
+}
+.diagram-full [data-et='message'].pin-part.is-open {
+  stroke-width: 3.5px !important;
+}
+.diagram-full g.statediagram-cluster.pin-part.is-open rect {
+  stroke-width: 3px !important;
+}
+/* An entity's attribute rows keep their lines: only its outline is drawn stronger. */
+.diagram-full g.node.pin-part.is-open :is(.row-rect-odd, .row-rect-even) path {
+  stroke-width: 2px !important;
+}
+.diagram-full :is([data-piece].pin-part.is-open :is(rect, polygon, circle, ellipse, path), :is(rect, polygon, circle, ellipse, path)[data-piece].pin-part.is-open) {
+  stroke-width: 3px !important;
+}
